@@ -28,9 +28,45 @@ export const bodyLine = (items: ReadonlyArray<{ readonly id: string }>): string 
 };
 
 /** The other bodies she wears right now, by name, and who stands with her on this one. */
-export const alsoLine = (also: ReadonlyArray<string>, crew: ReadonlyArray<string>): string =>
+/** One of her other bodies as the Cast holds it now (live, per turn), for "what about your other bodies?". */
+export interface BodyNow {
+  readonly name: string;
+  readonly kind: string;
+  readonly online: boolean | null;
+  /** The persona wearing it; `you` when it is the one this turn speaks as. */
+  readonly wearer: string | null;
+  readonly you: boolean;
+  /** A desk body: on screen or hidden, and which screen, as its desktop reported. */
+  readonly shown?: boolean;
+  readonly screen?: string;
+}
+
+const bodyState = (b: BodyNow): string => {
+  if (b.online === false) return "offline";
+  const where =
+    b.kind !== "desktop"
+      ? "on"
+      : b.shown === false
+        ? "hidden on his desktop"
+        : b.shown === true
+          ? `on his desktop${b.screen === undefined ? "" : ` (${b.screen})`}`
+          : "on his desktop";
+  const who = b.you ? "you wear it" : b.wearer === null ? null : `${b.wearer} wears it`;
+  return who === null ? where : `${where}, ${who}`;
+};
+
+/**
+ * Her other bodies, each with its live state, and who stands with her here (the Director, 20 Nov: she said her desk body
+ * was not on his desk while it was). Empty when she has no other body.
+ */
+export const alsoLine = (also: ReadonlyArray<BodyNow>, crew: ReadonlyArray<string>): string =>
   [
-    also.length === 0 ? null : `Right now you are also in your body on ${list(also)}.`,
+    also.length === 0
+      ? null
+      : `Your other bodies right now, live: ${also
+          .slice(0, 6)
+          .map((b) => `${b.name} (${bodyState(b)})`)
+          .join("; ")}. Answer about them from this, not from memory.`,
     crew.length === 0
       ? null
       : `${list(crew)} ${crew.length === 1 ? "stands" : "stand"} beside you here.`,

@@ -16,7 +16,7 @@ import * as HouseholdDevices from "./HouseholdDevices.ts";
 import * as PhonePairing from "./PhonePairing.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaCast } from "./TessayaCast.ts";
-import { CastCallInput } from "@t3tools/tessaya-contracts";
+import { CastBody, CastCallInput } from "@t3tools/tessaya-contracts";
 import { TessayaCast as TessayaCastRules } from "@t3tools/contracts/settings";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { privateRowsAtBrain } from "./PrivateRows.ts";
@@ -117,6 +117,12 @@ const CastAct = Schema.Union([
   Schema.Struct({ a: Schema.Literal("told"), body: Schema.String.check(Schema.isMaxLength(120)) }),
   // a worker's own rules from before the brain kept them: added for bodies the brain has none for
   Schema.Struct({ a: Schema.Literal("merge"), rules: TessayaCastRules }),
+  // a worker's desk bodies, as its desktop reported them now
+  Schema.Struct({
+    a: Schema.Literal("desks"),
+    server: Schema.String.check(Schema.isMaxLength(120)),
+    desks: Schema.Array(CastBody).check(Schema.isMaxLength(8)),
+  }),
   Schema.Struct({
     a: Schema.Literal("call"),
     input: CastCallInput,
@@ -258,6 +264,9 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
           return done();
         case "told":
           return done(yield* cast.value.told(a.body));
+        case "desks":
+          yield* cast.value.desksFrom(a.server, a.desks);
+          return done();
         case "merge": {
           const settings = yield* Effect.serviceOption(ServerSettingsService);
           if (Option.isNone(settings)) return refused("No settings here.");

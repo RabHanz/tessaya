@@ -91,6 +91,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "people_who",
       "people_introduce",
       "people_forget_me",
+      // Her own state: whom a face was for is the tool's to keep to him.
+      "tessaya_my_state",
     ].map((t) => [t, "general" as const]),
   ),
   ...Object.fromEntries(

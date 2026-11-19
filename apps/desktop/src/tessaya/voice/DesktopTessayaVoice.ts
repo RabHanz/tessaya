@@ -5214,6 +5214,14 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     input.bodyCue,
   );
   input.onMascot?.(mascot);
+  /** Her desk body as it is now: on screen or hidden, and the screen it stands on. */
+  const deskBody = () => {
+    const at = mascot.bounds();
+    return {
+      shown: at !== null,
+      screen: at === null ? null : Electron.screen.getDisplayMatching(at).label || "his screen",
+    };
+  };
   /** The others with her, one per persona as his setting says, by persona id. */
   const crew = new Map<string, DesktopMascot>();
   const crewPersonas = () => {
@@ -9991,6 +9999,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         locked: screenLocked,
         idleSeconds: Electron.powerMonitor.getSystemIdleTime(),
         crew: crewPersonas().map((p) => ({ id: p.id, name: p.name })),
+        body: deskBody(),
       }),
       applySetting: (id, value) => applyHome(id, value),
       onMascot: (act, persona) =>
@@ -10007,6 +10016,15 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           new Electron.Notification({ title: card.title, body: card.body, silent: true }).show();
       },
       onChange: (poke) => {
+        // her body showing, hiding or moving screen reaches her brain within seconds, not on the next minute (20 Nov)
+        let lastBody = JSON.stringify(deskBody());
+        const bodyWatch = setInterval(() => {
+          const now = JSON.stringify(deskBody());
+          if (now !== lastBody) {
+            lastBody = now;
+            poke();
+          }
+        }, 3_000);
         const locked = () => {
           screenLocked = true;
           poke();
@@ -10022,6 +10040,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         Electron.powerMonitor.on("lock-screen", locked);
         Electron.powerMonitor.on("unlock-screen", unlocked);
         return () => {
+          clearInterval(bodyWatch);
           Electron.screen.removeListener("display-added", poke);
           Electron.screen.removeListener("display-removed", poke);
           Electron.powerMonitor.removeListener("on-ac", poke);

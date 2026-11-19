@@ -307,6 +307,8 @@ const servicesInner = Layer.mergeAll(
       BrainHost.outboxLayer,
       // one phone, every machine: a sign-out of a household device here is a sign-out everywhere (M-097)
       HouseholdDevices.layer,
+      // a desk body reaches her brain the moment it shows, hides or moves, so every vessel knows it (20 Nov)
+      TessayaCast.reportDesksLayer.pipe(Layer.provide(DeviceRegistry.layer)),
       // Her standing understanding of each person and of herself (G4), versioned in the one memory.
       TessayaUnderstanding.layer.pipe(
         Layer.provide(memoryLayer),

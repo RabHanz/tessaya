@@ -72,6 +72,8 @@ export interface DesktopFacts {
   readonly scan: PeripheralScan | null;
   /** The others standing with her on his desktop, each its own body the server can move (M-080 step 8). */
   readonly crew?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** Her desk body now: on screen or hidden, and which screen, so her brain knows it from any vessel (20 Nov). */
+  readonly body?: { readonly shown: boolean; readonly screen: string | null };
 }
 
 const PLUMBING =
@@ -222,6 +224,20 @@ export const desktopManifest = (input: {
       ),
       item("screen.list", "Screens", "string", "system", "the screens connected to this computer"),
       item(
+        "companion.shown",
+        "Her desk body showing",
+        "bool",
+        "companion",
+        "whether her desk body is on screen now",
+      ),
+      item(
+        "companion.screen",
+        "Her desk body's screen",
+        "string",
+        "companion",
+        "which screen her desk body is on",
+      ),
+      item(
         "power.on_battery",
         "On battery",
         "bool",
@@ -323,6 +339,12 @@ export const desktopValues = (
   const list = (xs: ReadonlyArray<string>) => (xs.length === 0 ? "none" : xs.join(", "));
   out.push(
     { itemId: "screen.list", value: list(facts.screens) },
+    ...(facts.body === undefined
+      ? []
+      : [
+          { itemId: "companion.shown", value: facts.body.shown },
+          { itemId: "companion.screen", value: facts.body.screen ?? "" },
+        ]),
     { itemId: "power.on_battery", value: facts.onBattery },
     { itemId: "presence.locked", value: facts.locked },
     // In whole minutes, so a value changes about once a minute rather than every call.

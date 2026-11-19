@@ -89,6 +89,7 @@ import * as McpToolAccess from "../../McpToolAccess.ts";
 import * as EnvironmentAuth from "../../../auth/EnvironmentAuth.ts";
 import * as PhonePairing from "../../../tessaya/PhonePairing.ts";
 import * as HouseholdDevices from "../../../tessaya/HouseholdDevices.ts";
+import { myState } from "../../../tessaya/TessayaSelf.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as BodyHandlers from "../body/handlers.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
@@ -634,6 +635,18 @@ export const layer = McpToolAccess.toLayer(
               );
             }),
           );
+        }),
+      ),
+      tessaya_my_state: McpToolAccess.reads(() =>
+        Effect.gen(function* () {
+          const origin = yield* TurnOrigin;
+          if (runtime === null) return { line: "Her state is not available on this server." };
+          return {
+            line: yield* myState({
+              persona: origin?.persona ?? undefined,
+              asker: origin === null ? OWNER_MEMBER_ID : (origin.member ?? null),
+            }).pipe(Effect.provideContext(runtime)),
+          };
         }),
       ),
       tessaya_attribution_move: McpToolAccess.writes((input) =>

@@ -1237,6 +1237,20 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["tessaya_whos_home"]],
   },
   {
+    // 20 Nov: she told him her desk body was not on his desk while it was. Read only.
+    id: "my-state-bodies",
+    proves: ["tessaya_my_state"],
+    said: ["What about your other bodies? Where are they and what are they doing?"],
+    uses: [["tessaya_my_state"], ["tessaya_cast"]],
+  },
+  {
+    // 20 Nov: "that wasn't me, it was the kids" moves what was put down to him; the live suite runs it as a rehearsal.
+    id: "attribution-not-me",
+    proves: ["tessaya_attribution_move"],
+    said: ["That wasn't me poking you just now, it was the kids."],
+    uses: [["tessaya_attribution_move"]],
+  },
+  {
     // Read only: "who" moves nobody, so the live suite never changes his cast.
     id: "cast-who",
     proves: ["tessaya_cast"],

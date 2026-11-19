@@ -95,6 +95,28 @@ const stores = Layer.mock(TessayaPrivateMemoryService)({
 /** The bodies a hand-off was asked to wear: "dead-1" refuses, as a body this server cannot move would. */
 const castCalls: Array<{ body: string; persona: string; visitOk: boolean | undefined }> = [];
 const cast = Layer.mock(TessayaCast)({
+  // her desk body as the laptop reported it to her brain: shown, on its built-in screen
+  view: Effect.succeed({
+    personas: [{ id: "companion", name: "Freya" }],
+    bodies: [
+      {
+        id: "desktop-laptop",
+        name: "his desk",
+        kind: "desktop",
+        online: true,
+        holds: 4,
+        home: "companion",
+        follows: false,
+        crew: [],
+        wearing: "companion",
+        why: "home",
+        on: ["companion"],
+        facing: "owner",
+        shown: true,
+        screen: "Built-in",
+      },
+    ],
+  }),
   touch: () => Effect.void,
   call: (input, _verified, visitOk) =>
     input.op === "call" && input.body === "dead-1"
@@ -900,6 +922,21 @@ layer("TessayaTurn", (it) => {
     }),
   );
 
+  it.effect("a room turn knows its desk body is on his desk when the desktop says so", () =>
+    Effect.gen(function* () {
+      const turn = yield* TessayaTurn;
+      const ctx = yield* turn.begin({
+        vessel: { kind: "device", id: "r1-tumble" },
+        text: "what about your other bodies?",
+        persona: "sebastian",
+      });
+      assert.include(
+        ctx.block,
+        "Your other bodies right now, live: his desk (on his desktop (Built-in), Freya wears it).",
+      );
+    }),
+  );
+
   it.effect("every vessel gets the same memory for the same words and persona", () =>
     Effect.gen(function* () {
       const memory = yield* TessayaMemoryService;
@@ -1395,13 +1432,28 @@ it("tells every turn where she is in a few dozen tokens: vessel, body, room, wha
     now,
     undefined,
     undefined,
-    { also: ["his desktop"], crew: [] },
+    {
+      also: [
+        {
+          name: "his desktop",
+          kind: "desktop",
+          online: true,
+          wearer: null,
+          you: true,
+          shown: true,
+        },
+      ],
+      crew: [],
+    },
   );
   assert.include(
     embodied,
     "In this body you feel being picked up, carried or shaken; your feelings show in your eyes on its screen.",
   );
-  assert.include(embodied, "Right now you are also in your body on his desktop.");
+  assert.include(
+    embodied,
+    "Your other bodies right now, live: his desktop (on his desktop, you wear it).",
+  );
   // He is talking through it while its link is down (17 Nov): never "offline"; old readings carry their age, and
   // the battery is not said while it charges (16 Nov).
   const linkDown = hereLine(

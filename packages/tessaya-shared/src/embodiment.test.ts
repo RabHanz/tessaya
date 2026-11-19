@@ -19,9 +19,34 @@ describe("embodiment", () => {
     expect(bodyLine(ids("power.battery_pct"))).toBe("");
   });
 
-  it("names the other bodies she wears now, and who stands with her", () => {
-    expect(alsoLine(["Tumble", "his phone"], ["Alfred"])).toBe(
-      "Right now you are also in your body on Tumble and his phone. Alfred stands beside you here.",
+  it("names every other body with its live state and wearer, and who stands with her", () => {
+    expect(
+      alsoLine(
+        [
+          {
+            name: "Desk body",
+            kind: "desktop",
+            online: true,
+            wearer: "Freya",
+            you: false,
+            shown: true,
+            screen: "DELL U2720Q",
+          },
+          { name: "Tumble", kind: "r1", online: true, wearer: null, you: true },
+          { name: "his phone", kind: "phone", online: false, wearer: "Freya", you: false },
+          {
+            name: "Office desk",
+            kind: "desktop",
+            online: true,
+            wearer: null,
+            you: false,
+            shown: false,
+          },
+        ],
+        ["Alfred"],
+      ),
+    ).toBe(
+      "Your other bodies right now, live: Desk body (on his desktop (DELL U2720Q), Freya wears it); Tumble (on, you wear it); his phone (offline); Office desk (hidden on his desktop). Answer about them from this, not from memory. Alfred stands beside you here.",
     );
     expect(alsoLine([], [])).toBe("");
   });

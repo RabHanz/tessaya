@@ -42,6 +42,11 @@ export const CastBody = Schema.Struct({
   on: Schema.Array(Schema.String),
   /** Whose mood it shows: the device's owner (a body asks TessayaMood with this and `wearing`). */
   facing: Schema.NullOr(Schema.String),
+  /** A desk body as its desktop last reported it: on screen or hidden, and on which screen. */
+  shown: Schema.optionalKey(Schema.Boolean),
+  screen: Schema.optionalKey(Schema.String),
+  /** When the brain last heard of a body another server reports (epoch ms). */
+  seenAt: Schema.optionalKey(Schema.Number),
 });
 export type CastBody = typeof CastBody.Type;
 

@@ -20,6 +20,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Stream from "effect/Stream";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -29,6 +30,7 @@ import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
 import { makeBrainLink } from "./BrainHost.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import * as ServerConfig from "../config.ts";
+import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
@@ -65,6 +67,8 @@ export class TessayaCast extends Context.Service<
     } | null>;
     /** A Tessel's loop hears what it wears and whether it follows, on every change. */
     readonly listen: (listener: Listener) => Effect.Effect<void>;
+    /** On her brain: another server's desk bodies as its desktop reported them now (`desks` brain op). */
+    readonly desksFrom: (server: string, desks: ReadonlyArray<CastBody>) => Effect.Effect<void>;
   }
 >()("t3/tessaya/TessayaCast") {}
 
@@ -155,6 +159,9 @@ export const castLine = (op: CastCallInput, v: CastView): string => {
   }
 };
 
+/** A desk body another server reported is offline when it has not been heard of for this long (two heartbeats). */
+const REMOTE_FRESH_MS = 150_000;
+
 const make = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const registry = yield* DeviceRegistry;
@@ -162,6 +169,10 @@ const make = Effect.gen(function* () {
   const current = yield* Effect.serviceOption(CurrentPersona);
   // Kept where the turns run, on her brain; a desktop's visit stays with its own crew here.
   const visits = new Map<string, Visit & { readonly crewBefore?: ReadonlyArray<string> }>();
+  const remoteDesks = new Map<
+    string,
+    { readonly body: CastBody; readonly at: number; readonly from: string }
+  >();
   const listeners = new Set<Listener>();
   const roster = Effect.map(personasList, (l) =>
     l.personas.map((p) => ({ id: p.id, name: p.name })),
@@ -199,6 +210,9 @@ const make = Effect.gen(function* () {
         now,
       });
       const holds = isDesktop ? DESKTOP_HOLDS : 1;
+      // what the desktop last said of its body: on screen or hidden, and where (desktopDevice.ts)
+      const shown = isDesktop ? yield* registry.value(d.deviceId, "companion.shown") : undefined;
+      const screen = isDesktop ? yield* registry.value(d.deviceId, "companion.screen") : undefined;
       out.push({
         id: d.deviceId,
         name: d.name,
@@ -218,8 +232,18 @@ const make = Effect.gen(function* () {
               : "visit",
         on: onBody(rule, worn, personas, holds),
         facing: owner,
+        ...(typeof shown === "boolean" ? { shown } : {}),
+        ...(typeof screen === "string" && screen !== "" ? { screen } : {}),
       });
     }
+    // Desk bodies other servers report (each desktop talks to its own server): the brain lists every body she has.
+    for (const [id, r] of remoteDesks)
+      if (!out.some((b) => b.id === id))
+        out.push({
+          ...r.body,
+          online: r.body.online !== false && now - r.at < REMOTE_FRESH_MS,
+          seenAt: r.at,
+        });
     return { personas, bodies: out };
   });
 
@@ -466,7 +490,39 @@ const make = Effect.gen(function* () {
     listen: Effect.fn("TessayaCast.listen")((listener: Listener) =>
       Effect.sync(() => void listeners.add(listener)),
     ),
+    desksFrom: Effect.fn("TessayaCast.desksFrom")(function* (server, desks) {
+      const at = yield* Clock.currentTimeMillis;
+      for (const [id, r] of remoteDesks) if (r.from === server) remoteDesks.delete(id);
+      for (const d of desks.slice(0, 8)) remoteDesks.set(d.id, { body: d, at, from: server });
+    }),
   });
 });
+
+/**
+ * A server that isn't her brain tells it its desk bodies: at once when one shows, hides or moves screen (the registry's
+ * change), and every minute so the brain knows it is still there. Never queued: an old body state is no state.
+ */
+export const reportDesksLayer = Layer.effectDiscard(
+  Effect.gen(function* () {
+    const cast = yield* TessayaCast;
+    const registry = yield* DeviceRegistry;
+    const brain = yield* makeBrainLink;
+    const env = yield* Effect.serviceOption(ServerEnvironment.ServerEnvironment);
+    const server = Option.isNone(env) ? "worker" : String(yield* env.value.getEnvironmentId);
+    const send = Effect.gen(function* () {
+      if (yield* brain.isBrain) return;
+      const desks = (yield* cast.view).bodies.filter(
+        (b) => b.kind === "desktop" && b.seenAt === undefined,
+      );
+      if (desks.length > 0) yield* brain.send("cast", { a: "desks", server, desks });
+    }).pipe(Effect.ignoreCause({ log: true }));
+    yield* Stream.fromSubscription(yield* registry.changes).pipe(
+      Stream.filter((c) => c.kind === "desktop" && c.itemId.startsWith("companion.")),
+      Stream.runForEach(() => send),
+      Effect.forkScoped,
+    );
+    yield* send.pipe(Effect.repeat(Schedule.spaced("1 minute")), Effect.forkScoped);
+  }),
+);
 
 export const layer = Layer.effect(TessayaCast, make);
