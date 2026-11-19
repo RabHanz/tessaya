@@ -22,6 +22,7 @@ const PLACES: Readonly<Record<string, ReadonlyArray<string>>> = {
     "u.act",
   ],
   voice: [
+    "s.voice",
     "v.enabled",
     "v.muted",
     "v.mic",
@@ -45,7 +46,7 @@ const PLACES: Readonly<Record<string, ReadonlyArray<string>>> = {
     "v.pillHide",
     "v.pillFull",
   ],
-  personas: ["s.voice", "v.persona:alfred"],
+  personas: ["v.persona:alfred"],
   assistant: [
     "s.brain",
     "s.brainCheck",

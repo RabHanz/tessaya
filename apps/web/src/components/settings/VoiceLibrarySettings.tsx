@@ -27,9 +27,10 @@ import {
   type PersonaMood,
 } from "@t3tools/tessaya-shared/moodView";
 import { LoaderIcon, PauseIcon, PlayIcon } from "lucide-react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { formatEnvironmentQueryError, useEnvironmentQuery } from "../../state/query";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Badge } from "../ui/badge";
@@ -48,6 +49,8 @@ import { SettingsRow, SettingsSection } from "./settingsLayout";
 import { useOptionalSettingsScope } from "./SettingsScopeContext";
 import { PersonaRoster } from "./PersonaRosterSettings";
 import { PersonaOpsAccess } from "./PersonaOpsSettings";
+import { CastSection } from "./CastSettings";
+import { placeLine } from "./PersonasPage.logic";
 import { VoicePlayground } from "./VoicePlayground";
 
 const NO_CLOUD = "none";
@@ -68,13 +71,35 @@ const byEar = (voices: ReadonlyArray<LibraryVoiceView>) =>
         : 1,
   );
 
-export function VoiceLibrarySections() {
+/**
+ * `voices`: the Playground and every voice to pick from (the Lab's Voices bench). `personas`: the Personas page, each
+ * persona a card with its voice, body and mood, then where they all are (Cast) and their inner state.
+ */
+export function VoiceLibrarySections({
+  page = "voices",
+  environmentId,
+}: {
+  readonly page?: "voices" | "personas";
+  /** Her pages pass her environment; inside a settings scope it comes from the scope. */
+  readonly environmentId?: EnvironmentId;
+}) {
   const environment = useOptionalSettingsScope()?.environment ?? null;
-  if (environment?.connection.phase !== "connected") return null;
-  return <VoiceLibrary key={environment.environmentId} environmentId={environment.environmentId} />;
+  const id =
+    environmentId ??
+    (environment?.connection.phase === "connected" ? environment.environmentId : null);
+  if (id === null) return null;
+  return <VoiceLibrary key={id} environmentId={id} page={page} />;
 }
 
-function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId }) {
+function VoiceLibrary({
+  environmentId,
+  page,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly page: "voices" | "personas";
+}) {
+  const cast = useEnvironmentQuery(tessayaWorkSessions.castQuery({ environmentId, input: {} }));
+  const castCall = useAtomCommand(tessayaWorkSessions.castCall, { reportFailure: false });
   const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
   const call = async (
     kind: "read" | "act" | "owner",
@@ -89,6 +114,7 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
   const [library, setLibrary] = useState<VoiceLibraryView | null>(null);
   const [note, setNote] = useState("");
   const [moods, setMoods] = useState<Readonly<Record<string, PersonaMood | null>>>({});
+  const [openMoods, setOpenMoods] = useState<ReadonlySet<string>>(new Set());
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const readMoods = async (personas: ReadonlyArray<PersonaVoiceRow>) => {
     const read = await Promise.all(
@@ -192,139 +218,8 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
     />
   );
 
-  return (
+  const voiceLists = (
     <>
-      <VoicePlayground library={library} call={call} onChanged={refresh} />
-      <PersonaRoster
-        environmentId={environmentId}
-        clones={library.clones ?? []}
-        onChanged={refresh}
-      />
-      <PersonaOpsAccess environmentId={environmentId} />
-      <SettingsSection id="voice-personas" title="Persona voices">
-        <SettingsRow
-          title="Who speaks in which voice"
-          description={`Each persona’s voice on the desktop, the room device and the phone. Previews say: “${library.previewLine}”`}
-          status={status}
-        />
-        {library.personas.map((persona) => (
-          <PersonaRow
-            key={persona.id}
-            persona={persona}
-            library={library}
-            onPlay={(voice) => void play(voice)}
-            playing={playing}
-            onPick={(engine, voice) => void setPersona(persona.id, engine, voice)}
-          />
-        ))}
-      </SettingsSection>
-      <SettingsSection id="voice-moods" title="Inner state">
-        <SettingsRow
-          title="How each persona feels now, and why"
-          description="A general mood, and how she feels toward each person, shown only to them (the owner sees everyone). This is a working state that shapes how Tessaya talks. It is not a claim of feelings."
-          control={
-            <Button size="sm" variant="outline" onClick={() => void readMoods(library.personas)}>
-              Check again
-            </Button>
-          }
-        />
-        {library.personas.map((persona) => {
-          const mood = moods[persona.id];
-          return mood == null ? (
-            <SettingsRow
-              key={persona.id}
-              title={persona.name}
-              description="The mood could not be read."
-            />
-          ) : (
-            <Fragment key={persona.id}>
-              <SettingsRow
-                title={moodTitle(`${persona.name}, in general`, mood)}
-                description={becauseOf(mood.why)}
-              />
-              {(mood.people ?? []).map((person) => (
-                <SettingsRow
-                  key={person.member}
-                  title={moodTitle(`${persona.name}, toward ${person.name}`, person)}
-                  description={[becauseOf(person.why), opinionOf(person)]
-                    .filter((s) => s !== "")
-                    .join(" ")}
-                  control={
-                    mood.dials === undefined ? undefined : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          void call("owner", "moodReset", {
-                            persona: persona.id,
-                            member: person.member,
-                          }).then(() => readMoods(library.personas))
-                        }
-                      >
-                        Reset
-                      </Button>
-                    )
-                  }
-                />
-              ))}
-              {mood.dials === undefined ? null : (
-                <FoldedSettingsSection
-                  id={`dials-${persona.id}`}
-                  title={`${persona.name}'s dials`}
-                  summary="Every emotional trait, from warmth to jealousy. You can also say it: “make Freya a bit more playful”."
-                >
-                  {DIALS.map(([dial, says]) => (
-                    <SettingsRow
-                      key={dial}
-                      title={dial}
-                      description={says}
-                      control={
-                        <Select
-                          value={stepOf(mood.dials?.[dial] ?? 0)}
-                          onValueChange={(value) => {
-                            updateSettings({
-                              tessayaMood: {
-                                personas: { [persona.id]: { [dial]: Number(value) } },
-                              },
-                            });
-                            setMoods((now) => ({
-                              ...now,
-                              [persona.id]: {
-                                ...mood,
-                                dials: { ...mood.dials, [dial]: Number(value) },
-                              },
-                            }));
-                          }}
-                        >
-                          <SelectTrigger size="sm" aria-label={`${persona.name}: ${dial}`}>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectPopup>
-                            {STEPS.map(([value, label]) => (
-                              <SelectItem key={value} value={value}>
-                                {label}
-                              </SelectItem>
-                            ))}
-                          </SelectPopup>
-                        </Select>
-                      }
-                    />
-                  ))}
-                </FoldedSettingsSection>
-              )}
-            </Fragment>
-          );
-        })}
-        {batonDesktopBridge()?.tonePass === undefined ? null : (
-          <FoldedSettingsSection
-            id="voice-tone"
-            title="Label my tone"
-            summary="Your 40 newest recorded turns on this computer. Play one and tap how you were; this teaches Tessaya your voice's tone. The labels stay on this computer. You can also say “let’s label my tone”."
-          >
-            <TonePass />
-          </FoldedSettingsSection>
-        )}
-      </SettingsSection>
       <SettingsSection id="voice-library" title="Voices on this machine">
         <SettingsRow
           title="Pocket voices"
@@ -348,6 +243,227 @@ function VoiceLibrary({ environmentId }: { readonly environmentId: EnvironmentId
           </p>
           {byEar(library.cloud).map((voice) => row(voice, library.previews.cloud))}
         </FoldedSettingsSection>
+      )}
+    </>
+  );
+  /** How a persona feels toward each person, and its dials: shown on its card when he opens them. */
+  const moodDetails = (
+    persona: { readonly id: string; readonly name: string },
+    mood: PersonaMood,
+  ) => (
+    <>
+      <SettingsRow
+        title="What this is"
+        description="A working state that shapes how they talk, shown only to the person it is about (you see everyone). It is not a claim of feelings."
+      />
+      {(mood.people ?? []).length === 0 ? (
+        <SettingsRow
+          title="Toward people"
+          description="No feelings toward anyone yet; they grow as people talk to them."
+        />
+      ) : null}
+      {mood.dials === undefined ? (
+        <SettingsRow
+          title="Dials"
+          description="Shown only to the owner’s own signed-in app: this session can’t change them."
+        />
+      ) : null}
+      {(mood.people ?? []).map((person) => (
+        <SettingsRow
+          key={person.member}
+          title={moodTitle(`Toward ${person.name}`, person)}
+          description={[becauseOf(person.why), opinionOf(person)].filter((s) => s !== "").join(" ")}
+          control={
+            mood.dials === undefined ? undefined : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  void call("owner", "moodReset", {
+                    persona: persona.id,
+                    member: person.member,
+                  }).then(() => readMoods(library.personas))
+                }
+              >
+                Reset
+              </Button>
+            )
+          }
+        />
+      ))}
+      {mood.dials === undefined ? null : (
+        <FoldedSettingsSection
+          id={`dials-${persona.id}`}
+          title="Dials"
+          summary="Every emotional trait, from warmth to jealousy. You can also say it: “make Freya a bit more playful”."
+        >
+          {DIALS.map(([dial, says]) => (
+            <SettingsRow
+              key={dial}
+              title={dial}
+              description={says}
+              control={
+                <Select
+                  value={stepOf(mood.dials?.[dial] ?? 0)}
+                  onValueChange={(value) => {
+                    updateSettings({
+                      tessayaMood: {
+                        personas: { [persona.id]: { [dial]: Number(value) } },
+                      },
+                    });
+                    setMoods((now) => ({
+                      ...now,
+                      [persona.id]: {
+                        ...mood,
+                        dials: { ...mood.dials, [dial]: Number(value) },
+                      },
+                    }));
+                  }}
+                >
+                  <SelectTrigger size="sm" aria-label={`${persona.name}: ${dial}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectPopup>
+                    {STEPS.map(([value, label]) => (
+                      <SelectItem key={value} value={value}>
+                        {label}
+                      </SelectItem>
+                    ))}
+                  </SelectPopup>
+                </Select>
+              }
+            />
+          ))}
+        </FoldedSettingsSection>
+      )}
+    </>
+  );
+  if (page === "voices")
+    return (
+      <>
+        <VoicePlayground library={library} call={call} onChanged={refresh} />
+        {voiceLists}
+      </>
+    );
+  const bodies = cast.data?.bodies ?? [];
+  return (
+    <>
+      <PersonaRoster
+        environmentId={environmentId}
+        clones={library.clones ?? []}
+        onChanged={refresh}
+        renderCard={(p) => {
+          const persona = library.personas.find((x) => x.id === p.id);
+          const mood = moods[p.id];
+          return (
+            <>
+              {persona === undefined ? null : (
+                <PersonaRow
+                  title="Voice"
+                  persona={persona}
+                  library={library}
+                  onPlay={(voice) => void play(voice)}
+                  playing={playing}
+                  onPick={(engine, voice) => void setPersona(persona.id, engine, voice)}
+                />
+              )}
+              <SettingsRow
+                title="Body and place"
+                description={placeLine(p.id, bodies)}
+                control={
+                  bodies.length === 0 ? undefined : (
+                    <Select
+                      items={bodies.map((body) => ({ value: body.id, label: body.name }))}
+                      value={null}
+                      onValueChange={(body) => {
+                        // the same act as "bring Freya to Tumble": called there to stay, until sent home
+                        if (typeof body === "string")
+                          void castCall({
+                            environmentId,
+                            input: { op: "call", body, persona: p.id, stay: true },
+                          }).then((result) => {
+                            setNote(
+                              result._tag === "Success"
+                                ? ""
+                                : `${p.name} couldn’t move there. ${formatEnvironmentQueryError(result.cause)}`,
+                            );
+                            cast.refresh();
+                          });
+                      }}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-44"
+                        aria-label={`Bring ${p.name} to a body`}
+                      >
+                        <SelectValue placeholder="Bring to…" />
+                      </SelectTrigger>
+                      <SelectPopup>
+                        {bodies.map((body) => (
+                          <SelectItem key={body.id} value={body.id}>
+                            {body.name}
+                          </SelectItem>
+                        ))}
+                      </SelectPopup>
+                    </Select>
+                  )
+                }
+              />
+              {mood == null ? (
+                <SettingsRow title="Mood" description="The mood could not be read." />
+              ) : (
+                <SettingsRow
+                  title={moodTitle("Mood", mood)}
+                  description={becauseOf(mood.why)}
+                  control={
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void readMoods(library.personas)}
+                      >
+                        Check again
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-expanded={openMoods.has(p.id)}
+                        onClick={() =>
+                          setOpenMoods((now) => {
+                            const next = new Set(now);
+                            if (!next.delete(p.id)) next.add(p.id);
+                            return next;
+                          })
+                        }
+                      >
+                        {openMoods.has(p.id) ? "Hide feelings" : "Feelings and dials"}
+                      </Button>
+                    </div>
+                  }
+                />
+              )}
+              {mood != null && openMoods.has(p.id) ? moodDetails(p, mood) : null}
+            </>
+          );
+        }}
+      />
+      {status === undefined ? null : (
+        <SettingsSection title="Voices">
+          <SettingsRow title="Couldn’t change that" status={status} />
+        </SettingsSection>
+      )}
+      <CastSection environmentId={environmentId} />
+      <PersonaOpsAccess environmentId={environmentId} />
+      {batonDesktopBridge()?.tonePass === undefined ? null : (
+        <SettingsSection id="voice-moods" title="Your tone">
+          <FoldedSettingsSection
+            id="voice-tone"
+            title="Label my tone"
+            summary="Your 40 newest recorded turns on this computer. Play one and tap how you were; this teaches Tessaya your voice's tone. The labels stay on this computer. You can also say “let’s label my tone”."
+          >
+            <TonePass />
+          </FoldedSettingsSection>
+        </SettingsSection>
       )}
     </>
   );
@@ -380,6 +496,8 @@ function PreviewButton(props: {
 
 function PersonaRow(props: {
   readonly persona: PersonaVoiceRow;
+  /** Inside the persona's own card the row is just its voice. */
+  readonly title?: string;
   readonly library: VoiceLibraryView;
   readonly playing: string | null;
   readonly onPlay: (voice: LibraryVoiceView) => void;
@@ -406,7 +524,7 @@ function PersonaRow(props: {
     ));
   return (
     <SettingsRow
-      title={persona.lead ? `${persona.name} (lead)` : persona.name}
+      title={props.title ?? (persona.lead ? `${persona.name} (lead)` : persona.name)}
       description={
         clone !== undefined
           ? `Speaks in your clone ${clone.name} where clones can be spoken; ${speaks?.name ?? persona.speaks} elsewhere.`

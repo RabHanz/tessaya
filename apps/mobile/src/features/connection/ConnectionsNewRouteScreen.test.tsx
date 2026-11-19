@@ -72,7 +72,6 @@ vi.mock("./devAutoConnect", () => ({
   autoConnectReport: () => ({ connecting: false, error: null }),
   devAutoConnectAttemptAtom: {},
 }));
-vi.mock("../../state/tessayaHousehold", () => ({ joinHousehold: async () => [] }));
 vi.mock("../../state/use-remote-environment-registry", () => ({
   setPendingConnectionError: (message: string | null) => {
     harness.pendingConnectionError = message;

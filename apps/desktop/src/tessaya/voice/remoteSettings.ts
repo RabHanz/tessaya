@@ -75,8 +75,9 @@ const TAB_VOICE: Record<TabId, DesktopSettingsControl["voice"] | null> = {
   phone: "owner",
   // Read only: her health has no controls; "why are you slow?" goes through tessaya_health.
   health: null,
-  // Moves go through tessaya_cast, which needs his own ask.
-  cast: null,
+  // The Personas area's pages are the web's; moves go through tessaya_cast, which needs his own ask. v.persona rows stay free.
+  groups: null,
+  voices: null,
   setup: null,
   home: null,
   now: null,

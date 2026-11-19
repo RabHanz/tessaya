@@ -22,7 +22,6 @@ import {
   BATON_PHONE_PAIRING_WS_METHODS,
   PhonePairingError,
   PhonePairingResult,
-  PhoneSignOutResult,
 } from "./phonePairing.ts";
 import { tessayaSpelling, type TessayaSpelling } from "./renamed.ts";
 import {
@@ -677,12 +676,6 @@ const WsTessayaPhonePairingRpc = Rpc.make(BATON_PHONE_PAIRING_WS_METHODS.issue, 
   payload: Schema.Struct({}),
   success: PhonePairingResult,
   error: Schema.Union([PhonePairingError, EnvironmentAuthorizationError]),
-});
-
-const WsTessayaPhoneSignOutRpc = Rpc.make(BATON_PHONE_PAIRING_WS_METHODS.signOut, {
-  payload: Schema.Struct({}),
-  success: PhoneSignOutResult,
-  error: EnvironmentAuthorizationError,
 });
 
 const CatalogErrors = EnvironmentAuthorizationError;
@@ -1351,7 +1344,6 @@ export const TessayaRpcGroup = RpcGroup.make(
   WsTessayaLearnCallRpc,
   WsTessayaPersonaOpsCallRpc,
   WsTessayaPhonePairingRpc,
-  WsTessayaPhoneSignOutRpc,
   WsTessayaCastGetRpc,
   WsTessayaCastCallRpc,
   WsTessayaActivityListRpc,

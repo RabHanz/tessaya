@@ -9,14 +9,13 @@ import {
 import { Link, useLocation } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
-import { usePrimaryEnvironmentId } from "../../state/environments";
+import { usePrimaryEnvironment, usePrimaryEnvironmentId } from "../../state/environments";
 import { Button } from "../ui/button";
 import { AddPhoneSection } from "./AddPhoneSettings";
 import { ApisSettingsPanel } from "./ApisSettings";
 import { TessayaAccountsSettings } from "./TessayaAccountsSettings";
 import { BrainSettingsPanel } from "./BrainSettings";
 import { BrainUsagePanel } from "./BrainUsageSettings";
-import { CastSection } from "./CastSettings";
 import { HealthSection } from "./HealthSettings";
 import { RecentlyForgottenSection } from "./RecentlyForgottenSettings";
 import { ActivityPanel } from "./ActivitySettings";
@@ -28,6 +27,7 @@ import { UpcomingPanel } from "./UpcomingSettings";
 import type { SettingsScopeSearch } from "./settingsScope";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { VoiceLibrarySections } from "./VoiceLibrarySettings";
+import { PersonaGroupsSection } from "./PersonaRosterSettings";
 
 function AccountsPage() {
   const { environment } = useSettingsScope();
@@ -49,17 +49,6 @@ function PhonePage() {
   return (
     <SettingsPageContainer>
       {primary === null ? null : <AddPhoneSection environmentId={primary} />}
-    </SettingsPageContainer>
-  );
-}
-
-function CastPage() {
-  const { environment } = useSettingsScope();
-  return (
-    <SettingsPageContainer>
-      {environment === null ? null : (
-        <CastSection key={environment.environmentId} environmentId={environment.environmentId} />
-      )}
     </SettingsPageContainer>
   );
 }
@@ -89,10 +78,38 @@ function ForgottenPage() {
   );
 }
 
-function VoicesPage() {
+/**
+ * Her household's pages: one brain, so no environment or project picker (D-038). They read this machine's server once
+ * it is connected. shortcut: the primary server; swap for the household atom (householdClient) when web adopts it.
+ */
+function useHouseholdEnvironmentId() {
+  const primary = usePrimaryEnvironment();
+  return primary?.connection.phase === "connected" ? primary.environmentId : null;
+}
+/** Personas › Personas: one card per persona (voice, body and place, mood), then where they are and how they feel. */
+function PersonasPage() {
+  const primary = useHouseholdEnvironmentId();
   return (
     <SettingsPageContainer>
-      <VoiceLibrarySections />
+      {primary === null ? null : <VoiceLibrarySections page="personas" environmentId={primary} />}
+    </SettingsPageContainer>
+  );
+}
+
+function GroupsPage() {
+  const primary = useHouseholdEnvironmentId();
+  return (
+    <SettingsPageContainer>
+      {primary === null ? null : <PersonaGroupsSection key={primary} environmentId={primary} />}
+    </SettingsPageContainer>
+  );
+}
+
+function VoicesPage() {
+  const primary = useHouseholdEnvironmentId();
+  return (
+    <SettingsPageContainer>
+      {primary === null ? null : <VoiceLibrarySections environmentId={primary} />}
     </SettingsPageContainer>
   );
 }
@@ -104,7 +121,10 @@ const TESSAYA_PAGES = {
   apis: ApisSettingsPanel,
   accounts: AccountsPage,
   voices: VoicesPage,
-  cast: CastPage,
+  personas: PersonasPage,
+  groups: GroupsPage,
+  // Cast lives in the Personas page now; its old address opens that page
+  cast: PersonasPage,
   usage: BrainUsagePanel,
   activity: ActivityPanel,
   brain: BrainSettingsPanel,
@@ -116,6 +136,13 @@ const TESSAYA_PAGES = {
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
+const UNSCOPED: ReadonlySet<TessayaPage> = new Set([
+  "hardware",
+  "personas",
+  "groups",
+  "voices",
+  "cast",
+]);
 
 export const isTessayaPage = (page: string): page is TessayaPage =>
   Object.hasOwn(TESSAYA_PAGES, page);
@@ -127,8 +154,8 @@ export function TessayaPageView({ page }: { readonly page: TessayaPage }) {
   const [chosen, setChosen] = useState<SettingsScopeSearch | null>(null);
   const search = chosen ?? (primary === null ? {} : { machine: primary });
   const Page = TESSAYA_PAGES[page];
-  // Hardware is the household's devices on every server: no settings scope, so no server picker (13 Nov).
-  if (page === "hardware")
+  // The household's pages: no settings scope, so no server picker (13 Nov, D-038).
+  if (UNSCOPED.has(page))
     return (
       <div className="flex h-dvh min-h-0 flex-col overflow-auto bg-background">
         <Page />
@@ -148,8 +175,7 @@ const PLACE_PAGE: Partial<Record<TessayaPlaceId, TessayaPage>> = {
   homeassistant: "homeassistant",
   apis: "apis",
   accounts: "accounts",
-  personas: "voices",
-  cast: "cast",
+  personas: "personas",
   phone: "phone",
   health: "health",
 };

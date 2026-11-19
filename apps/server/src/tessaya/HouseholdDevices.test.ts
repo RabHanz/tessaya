@@ -14,7 +14,7 @@ import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { HOME_KEY } from "./BrainHost.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
-import { CallerSessionId, layer as householdDevices, signOutCaller } from "./HouseholdDevices.ts";
+import { layer as householdDevices } from "./HouseholdDevices.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 
 const at = DateTime.makeUnsafe("2026-11-20T12:00:00Z");
@@ -105,37 +105,4 @@ it.effect(
       expect(asked).toEqual({ environmentId: "office", device });
       expect(revokedOnBrain).toEqual(["b-phone"]);
     }).pipe(Effect.provide(SqlitePersistenceMemory)),
-);
-
-it.effect(
-  "the phone signing itself out of the household is signed out on every machine; one paired before households only here",
-  () =>
-    Effect.gen(function* () {
-      const device = "hd-fedcba987654";
-      const askedThere: Array<string> = [];
-      const revoked: Array<string> = [];
-      const auth = {
-        listSessions: () =>
-          Effect.succeed([session("p-1", `Phone · ${device}`), session("old", "Phone")]),
-        revokeSession: (id: string) => Effect.sync(() => (revoked.push(id), true)),
-      } as unknown as EnvironmentAuth.EnvironmentAuth["Service"];
-      const mcp = {
-        call: (input: { environmentId: string }) =>
-          Effect.sync(() => (askedThere.push(input.environmentId), { revoked: 1 })),
-      } as unknown as PeerMcpClient.PeerMcpClient["Service"];
-      const signOut = (sessionId: string) =>
-        signOutCaller().pipe(
-          Effect.provideService(CallerSessionId, sessionId),
-          Effect.provideService(EnvironmentAuth.EnvironmentAuth, auth),
-          Effect.provideService(PeerLinks.PeerLinks, {
-            list: Effect.succeed([office]),
-          } as unknown as PeerLinks.PeerLinks["Service"]),
-          Effect.provideService(PeerMcpClient.PeerMcpClient, mcp),
-        );
-      expect(yield* signOut("p-1")).toEqual({ everywhere: true });
-      expect(askedThere).toEqual(["office"]);
-      expect(revoked).toContain("p-1");
-      expect(yield* signOut("old")).toEqual({ everywhere: false });
-      expect(askedThere).toEqual(["office"]);
-    }).pipe(Effect.provide(Layer.fresh(SqlitePersistenceMemory))),
 );
