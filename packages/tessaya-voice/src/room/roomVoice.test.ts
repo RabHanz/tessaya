@@ -2272,105 +2272,113 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     expect(t.brainCalls.map((c) => c.tessaya.tainted)).toEqual([false, true]);
   });
 
-  it("open talk-over: a household voice over her stops her and is answered; another voice or her echo never does", async () => {
-    // Her reply as speech-like sound, and the R1's 0.3.92 uplink: each frame says how much of her it has played.
-    const her = Int16Array.from(speechLike(6, 3, 190), (v) => v * 32768);
-    const run = async (
-      mode: "open" | "keyword",
-      him: boolean,
-      likeness = 0.6,
-      enrolled = true,
-      line = "It's seven forty here, and the sun is up.",
-      verifiedFirst = false,
-    ) => {
-      const logs: string[] = [];
-      const t = setup({
-        log: (l) => logs.push(l),
-        ...(verifiedFirst
-          ? {
-              speaker: async () => ({
-                ...UNVERIFIED(0),
-                kind: "owner" as const,
-                personId: "owner",
-                confidence: 0.8,
-                verified: true,
-              }),
-            }
-          : {}),
-        member: async () => likeness,
-        members: () => enrolled,
-        // Her echo alone is recognised as her own words so far (her first clause), which with her sound make it hers.
-        recognise: heardInTurn([
-          "What time is it?",
-          him ? "No, I meant in London." : "It's seven forty here.",
-        ]),
-        vad: () => ({
-          score: async (w) =>
-            Math.sqrt(w.reduce((a, v) => a + v * v, 0) / w.length) > 300 ? 0.9 : 0.05,
-        }),
-        brain: async function* (input, signal) {
-          t.brainCalls.push(input);
-          yield line;
-          if (input.messages.at(-1)!.content === "What time is it?") await abortedBy(signal);
-        },
-        speak: async function* (_text, signal) {
-          // Streamed as the voice makes it, a frame at a time.
-          for (let at = 0; at < her.length; at += 960) yield her.subarray(at, at + 960);
-          await abortedBy(signal);
-        },
-      });
-      t.room.message(`freya/r1/${DEV}/cmd/voice/talkover`, Buffer.from(JSON.stringify({ mode })));
-      let seq = 0;
-      let played = 0;
-      const sent = () =>
-        t.published
-          .filter((p) => p.topic.endsWith("/voice/down"))
-          .reduce((n, p) => n + (p.payload as Uint8Array).length, 0);
-      const up = async (voice: (i: number) => number, n: number) => {
-        for (let k = 0; k < n; k += 1) {
-          const rx = sent();
-          const pcm = new Int16Array(960);
-          for (let i = 0; i < 960; i += 1) {
-            // What is left of her after the R1's own echo cancelling (-26 dB), at its 123 ms latency, plus him.
-            const e = played / 2 + i - 1972;
-            pcm[i] =
-              (e >= 0 && e < rx / 2 ? her[e % her.length]! * 0.05 : 0) + voice(seq * 960 + i);
+  // Her reply as speech-like sound, and the R1's 0.3.92 uplink: each frame says how much of her it has played.
+  const her = Int16Array.from(speechLike(6, 3, 190), (v) => v * 32768);
+  const run = async (
+    mode: "open" | "keyword",
+    him: boolean,
+    likeness = 0.6,
+    enrolled = true,
+    line = "It's seven forty here, and the sun is up.",
+    verifiedFirst = false,
+    // Her echo through the mic during the "him" phase (the new case's coupling), heard as these words.
+    echoOver: string | null = null,
+  ) => {
+    const logs: string[] = [];
+    const t = setup({
+      log: (l) => logs.push(l),
+      ...(verifiedFirst
+        ? {
+            speaker: async () => ({
+              ...UNVERIFIED(0),
+              kind: "owner" as const,
+              personId: "owner",
+              confidence: 0.8,
+              verified: true,
+            }),
           }
-          played = Math.min(rx, played + 1920);
-          const head = new DataView(new ArrayBuffer(16));
-          head.setUint32(0, seq, true);
-          head.setUint32(4, rx, true);
-          head.setUint32(8, rx - played, true);
-          const bytes = new Uint8Array(16 + 1920);
-          bytes.set(new Uint8Array(head.buffer), 0);
-          bytes.set(toBytes(pcm), 16);
-          t.room.message(`freya/r1/${DEV}/voice/up/tainted`, bytes);
-          seq += 1;
-          t.advance(60);
-          await t.room.session(DEV)!.drained();
+        : {}),
+      member: async () => likeness,
+      members: () => enrolled,
+      // Her echo alone is recognised as her own words so far (her first clause), which with her sound make it hers.
+      recognise: heardInTurn([
+        "What time is it?",
+        echoOver ?? (him ? "No, I meant in London." : "It's seven forty here."),
+      ]),
+      vad: () => ({
+        score: async (w) =>
+          Math.sqrt(w.reduce((a, v) => a + v * v, 0) / w.length) > 300 ? 0.9 : 0.05,
+      }),
+      brain: async function* (input, signal) {
+        t.brainCalls.push(input);
+        yield line;
+        if (input.messages.at(-1)!.content === "What time is it?") await abortedBy(signal);
+      },
+      speak: async function* (_text, signal) {
+        // Streamed as the voice makes it, a frame at a time.
+        for (let at = 0; at < her.length; at += 960) yield her.subarray(at, at + 960);
+        await abortedBy(signal);
+      },
+    });
+    t.room.message(`freya/r1/${DEV}/cmd/voice/talkover`, Buffer.from(JSON.stringify({ mode })));
+    let seq = 0;
+    let played = 0;
+    const sent = () =>
+      t.published
+        .filter((p) => p.topic.endsWith("/voice/down"))
+        .reduce((n, p) => n + (p.payload as Uint8Array).length, 0);
+    let coupling = 0.05;
+    const up = async (voice: (i: number) => number, n: number) => {
+      for (let k = 0; k < n; k += 1) {
+        const rx = sent();
+        const pcm = new Int16Array(960);
+        for (let i = 0; i < 960; i += 1) {
+          // What is left of her after the R1's own echo cancelling (-26 dB), at its 123 ms latency, plus him.
+          const e = played / 2 + i - 1972;
+          pcm[i] =
+            (e >= 0 && e < rx / 2 ? her[e % her.length]! * coupling : 0) + voice(seq * 960 + i);
         }
-      };
-      const loud = (i: number) => Math.round(4000 * Math.sin(i / 7) * Math.sin(i / 900));
-      const quiet = () => 0;
-      t.s2();
-      await up(loud, 20);
-      await up(quiet, 10);
-      // She is talking now: her echo alone for 1.8 s, then (perhaps) him over her.
-      await up(quiet, 30);
-      if (him) await up(loud, 20);
-      await up(quiet, 20);
-      const flushed = t.published.some(
-        (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
-      );
-      return {
-        flushed,
-        asked: t.brainCalls.map((c) => c.messages.at(-1)!.content),
-        // Her reply reached the R1 exactly once: nothing dropped, nothing sent twice.
-        sentOnce: sent() === her.length * 2,
-        paused: logs.some((l) => l.endsWith("a voice over hers; she paused")),
-        stopped: logs.filter((l) => l.endsWith("talked over; she stopped")).length,
-      };
+        played = Math.min(rx, played + 1920);
+        const head = new DataView(new ArrayBuffer(16));
+        head.setUint32(0, seq, true);
+        head.setUint32(4, rx, true);
+        head.setUint32(8, rx - played, true);
+        const bytes = new Uint8Array(16 + 1920);
+        bytes.set(new Uint8Array(head.buffer), 0);
+        bytes.set(toBytes(pcm), 16);
+        t.room.message(`freya/r1/${DEV}/voice/up/tainted`, bytes);
+        seq += 1;
+        t.advance(60);
+        await t.room.session(DEV)!.drained();
+      }
     };
+    const loud = (i: number) => Math.round(4000 * Math.sin(i / 7) * Math.sin(i / 900));
+    const quiet = () => 0;
+    t.s2();
+    await up(loud, 20);
+    await up(quiet, 10);
+    // She is talking now: her echo alone for 1.8 s, then (perhaps) him over her.
+    await up(quiet, 30);
+    if (echoOver !== null) {
+      coupling = 0.9;
+      await up(quiet, 20);
+      coupling = 0.05;
+    } else if (him) await up(loud, 20);
+    await up(quiet, 20);
+    const flushed = t.published.some(
+      (p) => p.topic.endsWith("/voice/ctl") && String(p.payload).includes("flush"),
+    );
+    return {
+      flushed,
+      asked: t.brainCalls.map((c) => c.messages.at(-1)!.content),
+      // Her reply reached the R1 exactly once: nothing dropped, nothing sent twice.
+      sentOnce: sent() === her.length * 2,
+      paused: logs.some((l) => l.endsWith("a voice over hers; she paused")),
+      stopped: logs.filter((l) => l.endsWith("talked over; she stopped")).length,
+    };
+  };
+
+  it("open talk-over: a household voice over her stops her and is answered; another voice or her echo never does", async () => {
     // Stopped once: the hold goes with her, so its voice check never stops her again (09:28:22-24, 15 Nov).
     expect(await run("open", true)).toMatchObject({
       flushed: true,
@@ -2412,6 +2420,22 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
         flushed: true,
         asked: ["What time is it?", "No, I meant in London."],
       });
+  });
+
+  it("never cuts her off for her own reply coming back loud in his session (20 Nov, 03:19 GMT+5)", async () => {
+    // His session, but the words over her are her own reply coming back loud and misheard ("Not much, Donald.",
+    // likeness 0.77, Voice ID -0.09; 20 Nov, 03:19 GMT+5): never taken as his, she is not cut off.
+    expect(
+      await run(
+        "open",
+        false,
+        -0.09,
+        true,
+        "It's seven forty here, and the sun is up.",
+        true,
+        "Not much, Donald.",
+      ),
+    ).toMatchObject({ flushed: false, asked: ["What time is it?"] });
   });
 
   it("never says her reasoning, nor keeps it in the conversation (07:17:55, 07:38:34, 07:44:27)", async () => {

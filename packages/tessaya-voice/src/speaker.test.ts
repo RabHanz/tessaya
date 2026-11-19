@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   adaptProfile,
   admits,
+  likelyHis,
   CAMPLUS_POLICY,
   cosine,
   decideSpeaker,
@@ -516,6 +517,18 @@ describe("the speaker identity", () => {
   ] as const)("lets %s in with %j: turn %s, barge %s", (kind, change, turn, barge) => {
     expect(admits(who(kind), { ...gate, ...change }, "turn")).toBe(turn);
     expect(admits(who(kind), { ...gate, ...change }, "barge")).toBe(barge);
+  });
+
+  it("answers a voice just under the bar in his own session as likely him, never a replay, never outside it", () => {
+    const low = (confidence: number, more: Partial<SpeakerIdentity> = {}) =>
+      who("guest", { confidence, ...more });
+    // 20 Nov, the new case: his words read under the listen bar and were ignored.
+    expect(admits(likelyHis(low(0.3), true), gate, "turn")).toBe(true);
+    expect(likelyHis(low(0.3), true).kind).toBe("unverified");
+    expect(speakerPath(likelyHis(low(0.3), true))).toBe("outside");
+    expect(likelyHis(low(0.3), false).kind).toBe("guest");
+    expect(likelyHis(low(0.1), true).kind).toBe("guest");
+    expect(likelyHis(low(0.3, { replay: "heard" }), true).kind).toBe("guest");
   });
 
   it("sends everyone but him down the outside path, an unjudged voice too where Voice ID runs", () => {
