@@ -727,7 +727,42 @@ export const solveLimbs = (
     out[l.mid] = best.mid;
     out[l.end] = best.end;
   }
+  // a hand that rests on her lies along her: fingers that would go in are bent back at the wrist, onto the surface
+  const after = fk(rig, out);
+  for (const side of ["left", "right"] as const) {
+    const end = `${side}Hand`;
+    const wrist = after.pos[end];
+    const parent = rig.bones[end]?.parent;
+    if (wrist === undefined || parent == null || after.rot[end] === undefined) continue;
+    const dir = qRotate(after.rot[end], handRest(rig, side));
+    const s = rig.height / 1.6;
+    let deepest: { depth: number; n: V3 } | null = null;
+    for (const k of [0.07, 0.12]) {
+      const p = add(wrist, scale(dir, k * s));
+      for (const c of body) {
+        const away = sub(p, closestOn(c.a, c.b, p));
+        const depth = c.r + 0.02 * s - len(away);
+        if (depth > 0 && len(away) > 1e-6 && (deepest === null || depth > deepest.depth))
+          deepest = { depth, n: unit(away) };
+      }
+    }
+    if (deepest === null) continue;
+    const along = sub(dir, scale(deepest.n, dot(dir, deepest.n)));
+    if (len(along) < 1e-3) continue;
+    const bent = unit(add(unit(along), scale(deepest.n, 0.15)));
+    const world = qMul(qBetween(dir, bent), after.rot[end]);
+    out[end] = qMul(qConj(after.rot[parent] ?? QI), world);
+  }
   return { pose: out, issues };
+};
+/** Where a hand's fingers point at rest, on this rig: toward its middle finger, else along the forearm. */
+const handRest = (rig: Rig, side: string): V3 => {
+  const hand = rig.bones[`${side}Hand`];
+  const finger = rig.bones[`${side}MiddleProximal`];
+  const fore = rig.bones[`${side}LowerArm`];
+  if (hand && finger) return unit(sub(finger.rest, hand.rest));
+  if (hand && fore) return unit(sub(hand.rest, fore.rest));
+  return [side === "left" ? 1 : -1, 0, 0];
 };
 
 /** The nearest points of segments a..b and c..d (alternating projections; exact for crossing limbs). */
@@ -818,7 +853,10 @@ const separateArms = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
     // the wrists themselves only so close that palms still meet
     const pairs = [
       [nearestPair(w["leftLowerArm"]!, thick("left"), w["rightLowerArm"]!, thick("right")), 2 * r],
-      [nearestPair(thick("left"), w["leftHand"]!, thick("right"), w["rightHand"]!), 0.015 * rig.height],
+      [
+        nearestPair(thick("left"), w["leftHand"]!, thick("right"), w["rightHand"]!),
+        0.015 * rig.height,
+      ],
     ] as const;
     const [[p, q], reach] = pairs.reduce((a, b) =>
       b[1] - len(sub(b[0][0], b[0][1])) > a[1] - len(sub(a[0][0], a[0][1])) ? b : a,

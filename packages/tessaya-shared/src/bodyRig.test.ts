@@ -211,7 +211,8 @@ describe("preparePose", () => {
     // a hand on her hip, authored a little inside her: it ends on the surface, the arm re-solved to reach it
     const out = preparePose(vroid, POSTURES.teasing.bones);
     expect(out.issues.map((i) => [i.bone, i.kind])).toContainEqual(["leftHand", "penetration"]);
-    const w = fk(vroid, out.pose).pos;
+    const world = fk(vroid, out.pose);
+    const w = world.pos;
     const hand = w["leftHand"]!;
     // and the skin under it gives a little
     expect(softContacts(vroid, w).some((c) => c.depth > 0 && len(sub3(c.at, hand)) < 0.15)).toBe(
@@ -414,7 +415,7 @@ describe("fitProxies", () => {
 /**
  * Frames the offline MuJoCo checker (tessaya-ops/physics-spike/check.py) failed in her motion library, each at its
  * deepest overlap: a hand inside her head, forearms through each other, a hand on the hip inside the pelvis. Measured
- * with the checker's own capsules (a tapered forearm, the hand a ball past the wrist, the head a ball above its joint).
+ * with the checker's own capsules (a tapered forearm, a flat hand along its bone, the head a ball above its joint).
  */
 const CHECKER_FRAMES: ReadonlyArray<
   readonly [string, number, Record<string, [number, number, number]>]
@@ -556,10 +557,12 @@ const checkerDepth = (pair: string, pose: Record<string, Q>): number => {
     const e = p(`${s}LowerArm`);
     const h = p(`${s}Hand`);
     const mid = v3.add(e, v3.scale(v3.sub(h, e), 0.55));
+    // the open hand: flat, wrist to fingertips along the hand bone
+    const tip = v3.add(h, qRotate(w.rot[`${s}Hand`]!, [s === "left" ? 0.14 : -0.14, 0, 0]));
     return [
       { a: e, b: mid, r: 0.034 },
       { a: mid, b: h, r: 0.026 },
-      ball(v3.add(h, v3.scale(v3.unit(v3.sub(h, e)), 0.06)), 0.035),
+      { a: h, b: tip, r: 0.02 },
     ];
   };
   const parts: Record<string, Part[]> = {
