@@ -52,14 +52,23 @@ export interface SenseReach {
   readonly up: number;
   readonly dir: readonly [number, number, number];
 }
+type P3 = readonly [number, number, number];
 /** A region of skin: where it is on the skeleton, how dense its receptors are, and whether it is hairy. */
 export interface SenseRegion {
   readonly id: string;
   /**
    * A humanoid bone (or a pack's custom bone, by its node name), and the bone it runs toward: the region is that
    * segment. With `radius` (m) a touch within that capsule is this region, ahead of the general map's own split.
+   * `offset` (m) moves its centre and `radii` (m) make it an ellipsoid, both in the bone's own frame (the model's
+   * axes at rest, facing +z, turning with the bone), so many regions can share one bone without nesting.
    */
-  readonly anchor: { readonly bone: string; readonly to?: string; readonly radius?: number };
+  readonly anchor: {
+    readonly bone: string;
+    readonly to?: string;
+    readonly radius?: number;
+    readonly offset?: P3;
+    readonly radii?: P3;
+  };
   readonly reach?: SenseReach;
   /** Two-point discrimination threshold (mm): density follows from it (fingertips ~2–3, back ~40). */
   readonly twoPointMm: number;
@@ -287,6 +296,15 @@ export const decodeSensePack = (
     const radius = r?.anchor?.radius;
     if (radius !== undefined && (typeof radius !== "number" || radius < 0.005 || radius > 0.5))
       errors.push(`regions[${i}].anchor.radius: 0.005 to 0.5 m, or leave it out`);
+    const triple = (v: unknown, lo: number, hi: number) =>
+      v === undefined ||
+      (Array.isArray(v) &&
+        v.length === 3 &&
+        v.every((x) => typeof x === "number" && x >= lo && x <= hi));
+    if (!triple(r?.anchor?.offset, -0.5, 0.5))
+      errors.push(`regions[${i}].anchor.offset: [x, y, z] within ±0.5 m, or leave it out`);
+    if (!triple(r?.anchor?.radii, 0.005, 0.5))
+      errors.push(`regions[${i}].anchor.radii: [x, y, z] of 0.005 to 0.5 m, or leave it out`);
     const reach = r?.reach;
     if (
       reach !== undefined &&
@@ -530,7 +548,6 @@ export const reflexesOf = (
     )
     .sort((a, b) => b.strength - a.strength);
 
-type P3 = readonly [number, number, number];
 const segmentD = (p: P3, a: P3, b: P3) => {
   const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]] as const;
   const l2 = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
@@ -545,21 +562,32 @@ const segmentD = (p: P3, a: P3, b: P3) => {
 };
 /**
  * The pack region a touch at `p` is on, when one claims it: a region with an anchor radius is the capsule along its
- * bone (to `to`, else a sphere), nearest first. `boneAt` finds any bone by name, custom ones included; null leaves the
- * touch to the general map's own split (touchZoneAt).
+ * bone (to `to`, else a sphere), or with an offset or radii the ellipsoid in the bone's frame, nearest first (by
+ * its scaled distance). `boneAt` finds any bone by name, custom ones included, and `inBone` gives a point in a bone's
+ * frame; null leaves the touch to the general map's own split (touchZoneAt).
  */
 export const claimedRegion = (
   map: SenseMap,
   p: P3,
   boneAt: (name: string) => P3 | undefined,
+  inBone?: (name: string, p: P3) => P3 | undefined,
 ): string | null => {
   let best: { id: string; d: number } | null = null;
   for (const r of map.regions.values()) {
-    const radius = r.anchor.radius;
-    if (radius === undefined) continue;
-    const a = boneAt(r.anchor.bone);
-    if (a === undefined) continue;
-    const d = segmentD(p, a, (r.anchor.to === undefined ? a : boneAt(r.anchor.to)) ?? a) / radius;
+    const { radius, offset, radii } = r.anchor;
+    if (radius === undefined && radii === undefined) continue;
+    let d: number;
+    if (offset !== undefined || radii !== undefined) {
+      const q = inBone?.(r.anchor.bone, p);
+      if (q === undefined) continue;
+      const o = offset ?? [0, 0, 0];
+      const e = radii ?? [radius!, radius!, radius!];
+      d = Math.hypot((q[0] - o[0]) / e[0], (q[1] - o[1]) / e[1], (q[2] - o[2]) / e[2]);
+    } else {
+      const a = boneAt(r.anchor.bone);
+      if (a === undefined) continue;
+      d = segmentD(p, a, (r.anchor.to === undefined ? a : boneAt(r.anchor.to)) ?? a) / radius!;
+    }
     if (d <= 1 && (best === null || d < best.d)) best = { id: r.id, d };
   }
   return best?.id ?? null;
@@ -567,13 +595,24 @@ export const claimedRegion = (
 
 /** The private layer's older `zones` cue (a bone and a radius each) as a pack, so one registry holds them all. */
 export const zonesPack = (
-  zones: ReadonlyArray<{ readonly id: string; readonly bone: string; readonly radius: number }>,
+  zones: ReadonlyArray<{
+    readonly id: string;
+    readonly bone: string;
+    readonly radius: number;
+    readonly offset?: P3;
+    readonly radii?: P3;
+  }>,
 ): SensePack => ({
   version: 1,
   id: "zones",
   regions: zones.map((z) => ({
     id: z.id,
-    anchor: { bone: z.bone, radius: z.radius },
+    anchor: {
+      bone: z.bone,
+      radius: z.radius,
+      ...(z.offset === undefined ? {} : { offset: z.offset }),
+      ...(z.radii === undefined ? {} : { radii: z.radii }),
+    },
     twoPointMm: 30,
     hairy: true,
   })),

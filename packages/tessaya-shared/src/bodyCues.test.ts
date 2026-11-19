@@ -209,6 +209,14 @@ describe("cue wire", () => {
         zones: [
           { id: "ears", bone: "head", radius: 0.05 },
           { id: "x", bone: "head", radius: 3 },
+          {
+            id: "side",
+            bone: "hips",
+            radius: 0.05,
+            offset: [0.1, 0, 0.9],
+            radii: [0.05, 0.08, 0.04],
+          },
+          { id: "flat", bone: "hips", radius: 0.05, offset: [0.1, 0], radii: "wide" },
         ],
       },
       {
@@ -216,6 +224,14 @@ describe("cue wire", () => {
         zones: [
           { id: "ears", bone: "head", radius: 0.05 },
           { id: "x", bone: "head", radius: 0.3 },
+          {
+            id: "side",
+            bone: "hips",
+            radius: 0.05,
+            offset: [0.1, 0, 0.5],
+            radii: [0.05, 0.08, 0.04],
+          },
+          { id: "flat", bone: "hips", radius: 0.05 },
         ],
       },
     ],
