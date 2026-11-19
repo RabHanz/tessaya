@@ -49,7 +49,18 @@ const setup = (extra: Layer.Layer<DeviceSync> | Layer.Layer<never> = Layer.empty
     device("desk-1", "desktop", "Desk", "owner"),
   ];
   const registry = Layer.succeed(DeviceRegistry)(
-    DeviceRegistry.of({ list: Effect.succeed(devices) } as never),
+    DeviceRegistry.of({
+      list: Effect.succeed(devices),
+      // what the desktop reported of its body (desktopDevice.ts companion.* items)
+      value: (id: string, item: string) =>
+        Effect.succeed(
+          id === "desk-1"
+            ? ({ "companion.shown": true, "companion.screen": "DELL" } as Record<string, unknown>)[
+                item
+              ]
+            : undefined,
+        ),
+    } as never),
   );
   const desktop = Layer.succeed(TessayaDesktopSettings)(
     TessayaDesktopSettings.of({
@@ -195,6 +206,7 @@ it.effect(
               Layer.succeed(DeviceRegistry)(
                 DeviceRegistry.of({
                   list: Effect.succeed([device("desk-2", "desktop", "Laptop")]),
+                  value: () => Effect.undefined,
                 } as never),
               ),
               ServerSettingsService.layerTest({
@@ -255,4 +267,39 @@ it.effect(
         (yield* onWorker(Effect.flatMap(TessayaCast, (c) => c.view))).bodies.map((b) => b.id),
       ).toContain("desk-2");
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "her brain lists a desk body another server reports, live with its screen, and offline once it stops reporting",
+  () => {
+    const { layer } = setup();
+    return Effect.gen(function* () {
+      const cast = yield* TessayaCast;
+      // this server's own desk carries what its desktop reported
+      expect((yield* cast.view).bodies.find((b) => b.id === "desk-1")).toMatchObject({
+        shown: true,
+        screen: "DELL",
+      });
+      const laptopDesk = {
+        ...(yield* cast.view).bodies.find((b) => b.id === "desk-1")!,
+        id: "desktop-xiaomi",
+        name: "XIAOMI (desktop)",
+        screen: "Built-in",
+      };
+      const answer = yield* receiveAtBrain("cast", {
+        a: "desks",
+        server: "laptop",
+        desks: [laptopDesk],
+      });
+      expect(answer.ok).toBe(true);
+      expect((yield* cast.view).bodies.find((b) => b.id === "desktop-xiaomi")).toMatchObject({
+        kind: "desktop",
+        online: true,
+        shown: true,
+        screen: "Built-in",
+      });
+      yield* TestClock.adjust("3 minutes");
+      expect((yield* cast.view).bodies.find((b) => b.id === "desktop-xiaomi")?.online).toBe(false);
+    }).pipe(Effect.provide(layer));
+  },
 );

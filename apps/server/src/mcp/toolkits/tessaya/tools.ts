@@ -409,6 +409,18 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const MyStateTool = Tool.make("tessaya_my_state", {
+  ...shared,
+  description:
+    "Your own state now, live: every body you are in (the desk body on his screen or hidden, Tumble, the phone) and who wears each, your mood, what each body's face shows, what your desk body is doing, who is around and your devices. Call it when asked about yourself or your other bodies and the lines you were given do not cover it; never answer that from memory.",
+  success: Schema.Struct({ line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const AttributionMoveTool = Tool.make("tessaya_attribution_move", {
   ...shared,
   description:
@@ -1196,6 +1208,7 @@ export const TessayaToolkit = Toolkit.make(
   MemoryRememberTool,
   MemoryForgetTool,
   AttributionMoveTool,
+  MyStateTool,
   MemoryUnlearnTool,
   MemoryAboutTool,
   ComingUpTool,

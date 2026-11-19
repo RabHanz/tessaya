@@ -4,7 +4,7 @@
  * desktop, a desk device, the phone and the mascot are vessels. Each sends the same envelope, gets the same memory
  * for the same words and persona, and every addressed turn it carries is learned from the same way.
  */
-import { alsoLine, bodyLine } from "@t3tools/tessaya-shared/embodiment";
+import { alsoLine, bodyLine, type BodyNow } from "@t3tools/tessaya-shared/embodiment";
 import { SAME_CONVERSATION_MS } from "@t3tools/tessaya-shared/agentPrompt";
 import {
   type Assurance,
@@ -371,7 +371,7 @@ export const hereLine = (
   now: number,
   plays?: "bt" | "onboard",
   volume?: number,
-  embody?: { readonly also: ReadonlyArray<string>; readonly crew: ReadonlyArray<string> },
+  embody?: { readonly also: ReadonlyArray<BodyNow>; readonly crew: ReadonlyArray<string> },
 ): string => {
   const parts: string[] = [];
   if (device !== null) {
@@ -1448,7 +1448,7 @@ export const make = Effect.gen(function* () {
       ? null
       : yield* registry.value.get(turn.vessel.id).pipe(Effect.orElseSucceed(() => null));
     const now = yield* Clock.currentTimeMillis;
-    // the other bodies this persona wears right now, and who stands with her on this one (Cast)
+    // every other body she is in right now, live from the Cast with who wears it, and who stands with her on this one
     const view = Option.isNone(cast)
       ? null
       : // a cast that can't say leaves her where-you-are without it, never the turn
@@ -1460,10 +1460,16 @@ export const make = Effect.gen(function* () {
         ? undefined
         : {
             also: view.bodies
-              .filter(
-                (b) => b.id !== turn.vessel.id && b.wearing === turn.persona && b.online !== false,
-              )
-              .map((b) => b.name),
+              .filter((b) => b.id !== turn.vessel.id)
+              .map((b): BodyNow => ({
+                name: b.name,
+                kind: b.kind,
+                online: b.online,
+                wearer: b.wearing === null ? null : nameOf(b.wearing),
+                you: b.wearing === turn.persona,
+                ...(b.shown === undefined ? {} : { shown: b.shown }),
+                ...(b.screen === undefined ? {} : { screen: b.screen }),
+              })),
             crew: (here?.on ?? []).filter((p) => p !== turn.persona).map(nameOf),
           };
     if (member === null || turn.sharedRoom === true)
