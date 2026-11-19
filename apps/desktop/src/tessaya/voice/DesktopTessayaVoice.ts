@@ -1428,7 +1428,7 @@ export interface DesktopTessayaVoiceInput {
   /** Her speech and mood as 3D body cues (bodyCues.ts), for the private window's body while it is open (M-047). */
   readonly bodyCue?: (cue: BodyCue) => void;
   /** What her desk world is now (a full-screen app in front), for her own wishes to keep out of his way. */
-  readonly onWorld?: (world: { readonly fullscreen: boolean }) => void;
+  readonly onWorld?: (world: { readonly fullscreen: boolean; readonly opened: boolean }) => void;
   /** He chose her full body for the desk (or not), so it stands there outside a private moment too. */
   readonly fullBody?: (on: boolean) => void;
   /** Her one mascot on the desk, once made, so an owner-only layer can draw its body over her (layerBody). */
@@ -5445,6 +5445,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       });
     });
   };
+  let lastFront: string | null = null;
   // Where he works and whether it fills its screen, every 3 s while she is on: her edge, and stepping away.
   setInterval(() => {
     if (!settings.mascot || sidecar === null) return;
@@ -5458,7 +5459,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
           Electron.screen.getAllDisplays().map((d) => d.bounds),
         );
       const full = settings.hideInFullscreen && fullscreen;
-      input.onWorld?.({ fullscreen });
+      // another app came to the front: something new on her world (she may go and look)
+      const front = app?.exe ?? null;
+      const opened = front !== null && lastFront !== null && front !== lastFront;
+      lastFront = front;
+      input.onWorld?.({ fullscreen, opened });
       for (const m of everyMascot()) {
         m.foreground(rect, full);
         m.asleep(silenced(new Date()));

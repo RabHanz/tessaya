@@ -614,7 +614,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       const page = layerLink.page();
       if (page !== null) await layerFetch(`${page}/${path}`, body);
     };
-    let deskWorld = { fullscreen: false };
+    let deskWorld: { fullscreen: boolean; opened?: boolean } = { fullscreen: false };
     const layerLink = startPersonaLayerLink({
       world: () => deskWorld,
       post: async (body) => {
@@ -1128,9 +1128,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
       },
       onWorld: (world) => {
         // a change is told at once, not at the next 10 s report
-        const changed = world.fullscreen !== deskWorld.fullscreen;
+        const changed = world.fullscreen !== deskWorld.fullscreen || world.opened;
         deskWorld = world;
         if (changed) void layerLink.report();
+        // "opened" is news once: the next report carries it only if another app comes forward again
+        if (world.opened) deskWorld = { fullscreen: world.fullscreen };
       },
       fullBody: (on) => {
         if (on === deskFullBody) return;

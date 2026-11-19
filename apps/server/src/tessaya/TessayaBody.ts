@@ -212,10 +212,11 @@ export const bodyHolderLine = Effect.fn("TessayaBody.holderLine")(function* () {
 
 // What the desk last said of her world: a full-screen app in front, and when a call was last seen. shortcut: per
 // process and one desk; a second desktop's report overwrites the first's.
-let deskWorld: { fullscreen: boolean; fullscreenAt: number; callAt: number } = {
+let deskWorld: { fullscreen: boolean; fullscreenAt: number; callAt: number; openedAt: number } = {
   fullscreen: false,
   fullscreenAt: 0,
   callAt: 0,
+  openedAt: 0,
 };
 /** A full-screen report goes stale after this; a call keeps her resting this long after it was last seen. */
 const WORLD_FRESH_MS = 30_000;
@@ -223,13 +224,17 @@ const CALL_REST_MS = 2 * 60_000;
 export const noteDeskWorld = Effect.fn("TessayaBody.deskWorld")(function* (w: {
   readonly fullscreen?: boolean;
   readonly call?: boolean;
+  readonly opened?: boolean;
 }) {
   const now = yield* Clock.currentTimeMillis;
   deskWorld = {
     fullscreen: w.fullscreen ?? deskWorld.fullscreen,
     fullscreenAt: w.fullscreen === undefined ? deskWorld.fullscreenAt : now,
     callAt: w.call === true ? now : deskWorld.callAt,
+    openedAt: w.opened === true ? now : deskWorld.openedAt,
   };
+  // something new on her world is a wish to consider now, not at the next minute
+  if (w.opened === true) yield* wishTick().pipe(Effect.ignore);
 });
 const himAtDesk = (now: number, home: boolean): "working" | "away" | "fullscreen" | "call" =>
   now - deskWorld.callAt < CALL_REST_MS
@@ -284,8 +289,8 @@ export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
     mood: { label: view.label, intensity: view.intensity, energy: view.energy },
     him: himAtDesk(now, owner?.likelyHome === true),
     himAt,
-    worldAt: himAt ?? now,
-    newThingAt: null,
+    worldAt: Math.max(himAt ?? 0, deskWorld.openedAt) || now,
+    newThingAt: deskWorld.openedAt === 0 ? null : deskWorld.openedAt,
     last: lastWish,
   });
   if (wish === null) return null;
