@@ -23,6 +23,7 @@ import {
   dryRun,
   isPrivateScene,
   sceneCues,
+  type BodyScene,
 } from "@t3tools/tessaya-shared/bodyScene";
 import { REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
 import {
@@ -164,6 +165,37 @@ const presenceOf = Effect.fn("TessayaBody.presence")(function* (caller: BodyCall
 /** He spoke over her or said a stop word on a vessel: a scene on her body pauses, and his next thread takes it. */
 export const interruptBody = Effect.fn("TessayaBody.interrupt")(function* () {
   yield* moveFocus(DESK_BODY, { kind: "interrupt", at: yield* Clock.currentTimeMillis });
+});
+
+/** The scene each thread last played on her desk body, so "carry on" plays the rest of it. */
+const played = new Map<string, { readonly scene: BodyScene; readonly caller: BodyCaller }>();
+const CARRY_ON = /^\s*(?:ok(?:ay)?,?\s+)?(?:carry on|keep going|go on|continue)\b[\s.!]*$/i;
+
+/**
+ * "Carry on": a scene he paused plays again from where it stopped, on its own thread's body. True when it resumed;
+ * any other sentence, or nothing paused, leaves her as she is.
+ */
+export const resumeBody = Effect.fn("TessayaBody.resume")(function* (said: string) {
+  const f = focus.get(DESK_BODY) ?? REST;
+  if (f.state !== "paused" || !CARRY_ON.test(said)) return false;
+  const step = yield* moveFocus(DESK_BODY, { kind: "resume", at: yield* Clock.currentTimeMillis });
+  if (step.focus.state !== "scene") return false;
+  const was = played.get(f.thread);
+  if (was === undefined) return true;
+  const from = (was.scene.beats.at(-1)?.atMs ?? 0) - f.left;
+  const rest = was.scene.beats
+    .filter((b) => b.atMs >= from)
+    .map((b) => ({ ...b, atMs: b.atMs - from }));
+  yield* route(
+    {
+      cues: sceneCues(was.scene, undefined, rest),
+      privateMove: isPrivateScene(was.scene),
+      acts: rest.flatMap((b) => extensionActs(b.move)),
+      desk: rest.flatMap((b) => deskActsOf(b.move)),
+    },
+    was.caller,
+  );
+  return true;
 });
 
 /** His screen locked or a private lease ended: a private thread loses her body at once. */
@@ -581,6 +613,7 @@ export const playScene = Effect.fn("TessayaBody.scene")(function* (
       route: "none" as const,
       notes: decoded.notes,
     };
+  played.set(thread, { scene, caller });
   // the thread playing it is doing something, for her board ("playing the Dance scene")
   const turnSvc = yield* Effect.serviceOption(TessayaTurn);
   if (Option.isSome(turnSvc))

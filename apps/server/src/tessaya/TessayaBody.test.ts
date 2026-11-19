@@ -10,7 +10,9 @@ import {
   bodyHolderLine,
   bodyState,
   feel,
+  interruptBody,
   moveBody,
+  resumeBody,
   playScene,
   noteDeskWorld,
   restBody,
@@ -231,6 +233,30 @@ describe("TessayaBody", () => {
       expect(yield* bodyHolderLine()).toBe(
         "Her desk body is with a conversation that has gone quiet (a scene is playing).",
       );
+      yield* restBody();
+    }),
+  );
+
+  it.effect("carry on plays the rest of a scene he paused, and nothing else resumes it", () =>
+    Effect.gen(function* () {
+      yield* restBody();
+      yield* TestClock.adjust("3 seconds");
+      const taken: Array<{ cues: ReadonlyArray<unknown> }> = [];
+      const layers = { all: [openLayer(taken as Array<unknown>)] };
+      const freya: BodyCaller = { ...her, id: "desktop:sc", thread: "freya|w9", signal: "speak" };
+      yield* playScene("greeting", freya, false).pipe(Effect.provideService(PersonaLayers, layers));
+      const whole = taken[0]!.cues.length;
+      yield* TestClock.adjust("1 second");
+      yield* interruptBody();
+      const resume = (said: string) =>
+        resumeBody(said).pipe(Effect.provideService(PersonaLayers, layers));
+      expect(yield* resume("what's the weather")).toBe(false);
+      expect(yield* resume("Carry on.")).toBe(true);
+      expect(taken).toHaveLength(2);
+      expect(taken[1]!.cues.length).toBeLessThanOrEqual(whole);
+      expect(yield* bodyHolderLine()).toMatch(/a scene is playing/);
+      // nothing paused now: carry on is only words
+      expect(yield* resume("carry on")).toBe(false);
       yield* restBody();
     }),
   );
