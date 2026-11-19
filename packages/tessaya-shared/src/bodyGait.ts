@@ -132,11 +132,15 @@ export const gaitAt = (
   t: number,
   base: Partial<Record<PoseBone, Euler>> = {},
   ramp = 1,
+  /** 0 steps on the spot (feet lift and set down where they were, as in a turn); 1 walks. */
+  travel = 1,
 ): GaitFrame => {
   const st = GAIT_STYLES[gait.style];
   const h = rig.height / 1.7;
   const k = Math.max(0, Math.min(1, ramp));
-  const v = gait.speed * k;
+  // on the spot the foot does not roll onto its toes: it lifts and sets down flat
+  const tr = Math.max(0, Math.min(1, travel));
+  const v = gait.speed * k * tr;
   const period = 2 / gait.cadence;
   const beta = gait.stance;
   const rest = fk(rig, {});
@@ -181,7 +185,7 @@ export const gaitAt = (
       pitch[s] = st.heel * 0.5;
     } else if (p < beta) {
       const u = (p - heelOff) / (beta - heelOff);
-      const th = st.heel * 0.5 + 0.55 * k * mj(u);
+      const th = st.heel * 0.5 + 0.55 * k * tr * mj(u);
       const toe = add3([x, y0, z0 - v * heelOff * period], toe0);
       const toeNow: V3 = [toe[0], toe[1], toe[2] - v * (p - heelOff) * period];
       at = sub(toeNow, rotX(toe0, th));
@@ -191,11 +195,11 @@ export const gaitAt = (
     } else {
       const u = (p - beta) / (1 - beta);
       // swing: from where push-off left the ankle to the next heel strike, lifted clear
-      const th = (st.heel * 0.5 + 0.55 * k) * (1 - mj(u * 1.6));
+      const th = (st.heel * 0.5 + 0.55 * k * tr) * (1 - mj(u * 1.6));
       const toe = add3([x, y0, z0 - v * heelOff * period], toe0);
       const from = sub(
         [toe[0], toe[1], toe[2] - v * (beta - heelOff) * period],
-        rotX(toe0, st.heel * 0.5 + 0.55 * k),
+        rotX(toe0, st.heel * 0.5 + 0.55 * k * tr),
       );
       const to: V3 = [x, y0, z0];
       const w = mj(u);
