@@ -4,13 +4,14 @@ import {
   AuthMcpApprovalError,
   AuthMcpClientAccess,
   AuthMcpAuthorizationRequest,
+  isMcpRuntimeAccess,
   isRuntimeModeAbove,
   managedRuntimeModeCeilingMessage,
   parseMcpApprovalCode,
 } from "@t3tools/contracts";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { isLoopbackHost } from "@t3tools/shared/preview";
-import { EyeIcon, type LucideIcon } from "lucide-react";
+import { EyeIcon, PersonStandingIcon, type LucideIcon } from "lucide-react";
 import type * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -42,6 +43,12 @@ export const accessConfig: Record<
     icon: EyeIcon,
   },
   ...runtimeModeConfig,
+  "body-only": {
+    label: "Her body only",
+    description:
+      "Moves and reads a 3D body in the body playground. Sees no projects, threads, files or settings.",
+    icon: PersonStandingIcon,
+  },
 };
 
 const ARM_DELAY_MS = 700;
@@ -347,7 +354,7 @@ export function McpConsent({
               ))}
             </RadioGroup>
             <p className="text-xs text-muted-foreground">
-              Beyond read only, it can start, message and stop threads, and none of them can run
+              Supervised and above can start, message and stop threads, and none of them can run
               with more than the mode you pick.
             </p>
           </div>
@@ -396,7 +403,7 @@ function ConnectAgentHeading({
 function ceilingReason(details: AuthMcpApprovalDetails, access: AuthMcpClientAccess) {
   const ceiling = details.runtimeModeCeiling;
   return ceiling === undefined ||
-    access === "read-only" ||
+    !isMcpRuntimeAccess(access) ||
     !isRuntimeModeAbove(access, ceiling.maxRuntimeMode)
     ? undefined
     : managedRuntimeModeCeilingMessage(ceiling.organization, ceiling.maxRuntimeMode);

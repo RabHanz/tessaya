@@ -1,7 +1,7 @@
 Approving a cloud task is its own permission (baton:cloud-approve): not in the standard client scopes, held by the desktop app session and by a client paired for it.
 
 diff --git a/apps/server/src/auth/McpOAuth.test.ts b/apps/server/src/auth/McpOAuth.test.ts
-index 4cd276c51133bbcc1d88b59421dad9e4856037c4..26428138788f74d9787bfb63e2ba84b5583b864f 100644
+index 4cd276c51133bbcc1d88b59421dad9e4856037c4..1634bcd01fe888437a793c76d5663fe74c133e5f 100644
 --- a/apps/server/src/auth/McpOAuth.test.ts
 +++ b/apps/server/src/auth/McpOAuth.test.ts
 @@ -1,7 +1,10 @@
@@ -15,7 +15,73 @@ index 4cd276c51133bbcc1d88b59421dad9e4856037c4..26428138788f74d9787bfb63e2ba84b5
    AuthStandardClientScopes,
    type AuthCreatePairingCredentialInput,
    type EnvironmentCloudLinkStateResult,
-@@ -805,3 +808,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
+@@ -538,6 +541,65 @@ it.live("a code minted with an access level's scopes approves that access", () =
+   ),
+ );
+ 
++it.live(
++  "body-only signs an agent in to the body scope alone, from its own code or one that may start work",
++  () =>
++    withRoutes((handler, auth) =>
++      Effect.gen(function* () {
++        const clientId = yield* registeredClientId(handler);
++        const params = authorizeParams(clientId);
++        const bodyCode = yield* auth.issuePairingCredential({ access: "body-only" });
++        expect(bodyCode.credential).toMatch(/^BODY-[2-9A-HJ-NP-Z]{12}$/);
++        // its own code approves nothing more
++        expect(
++          (yield* decide(handler, params, {
++            _tag: "pairing-code",
++            access: "read-only",
++            code: bodyCode.credential,
++          })).status,
++        ).toBe(400);
++        const readOnly = yield* auth.issuePairingCredential({ scopes: ["orchestration:read"] });
++        expect(
++          (yield* decide(handler, params, {
++            _tag: "pairing-code",
++            access: "body-only",
++            code: readOnly.credential,
++          })).status,
++        ).toBe(400);
++        const operator = yield* auth.issuePairingCredential({
++          scopes: ["orchestration:read", "orchestration:operate"],
++        });
++        for (const code of [bodyCode.credential, operator.credential]) {
++          const approved = yield* decide(handler, params, {
++            _tag: "pairing-code",
++            access: "body-only",
++            code,
++          });
++          expect(approved.status).toBe(200);
++          const token = yield* handler(
++            at(
++              "/oauth/mcp/token",
++              form({
++                grant_type: "authorization_code",
++                code: new URL(approved.redirectTo!).searchParams.get("code")!,
++                redirect_uri: params.redirect_uri,
++                client_id: clientId,
++                code_verifier: verifier,
++              }),
++            ),
++          ).pipe(Effect.flatMap(json<{ access_token: string; scope: string }>));
++          expect(token.scope).toBe("tessaya:body");
++          const client = yield* auth.authenticateMcpClient(
++            HttpServerRequest.fromWeb(
++              at("/mcp", { headers: { authorization: `Bearer ${token.access_token}` } }),
++            ),
++          );
++          expect(client.access).toBe("body-only");
++        }
++      }),
++    ),
++);
++
+ it.live("an app approval code approves only an app sign-in, at its own level", () =>
+   withRoutes((handler, auth) =>
+     Effect.gen(function* () {
+@@ -805,3 +867,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
    expect(matches("https://bot.example/cb", "https://bot.example/cb?x=1")).toBe(false);
    expect(matches("https://bot.example/cb", "https://evil.example/cb")).toBe(false);
  });
@@ -308,7 +374,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd41
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfbaf8645eba 100644
+index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165941162c7 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
 @@ -1,4 +1,5 @@
@@ -317,7 +383,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
  import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
  
  import {
-@@ -46,7 +47,39 @@ export const AuthAccessReadScope = "access:read" as const;
+@@ -46,7 +47,44 @@ export const AuthAccessReadScope = "access:read" as const;
  export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
@@ -354,11 +420,16 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
 + * and uploads models, which her server signs. It reaches nothing else.
 + */
 +export const AuthTessayaWakeTrainerScope = "tessaya:wake-trainer" as const;
++/**
++ * An outside agent approved for her body only (M-089): the three body tools on /mcp and nothing else, no thread,
++ * project, file or setting. Never part of the standard client scopes; the "body-only" MCP access level carries it alone.
++ */
++export const AuthTessayaBodyScope = "tessaya:body" as const;
 +const AuthEnvironmentScopeName = Schema.Literals([
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
    AuthSettingsWriteScope,
-@@ -64,16 +97,78 @@ export const AuthEnvironmentScope = Schema.Literals([
+@@ -64,16 +102,79 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthAccessWriteScope,
    AuthRelayReadScope,
    AuthRelayWriteScope,
@@ -369,6 +440,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
 +  AuthTessayaMemberScope,
 +  AuthTessayaGuestScope,
 +  AuthTessayaWakeTrainerScope,
++  AuthTessayaBodyScope,
  ]);
 -export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
 +/**
@@ -411,7 +483,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
 +  AuthEnvironmentScopeName.literals.filter(
 +    (scope) => scope !== AuthReviewWriteScope && scope !== AuthTessayaHandsHostScope,
 +  ),
- );
++);
 +type AuthGrantScopeName = typeof AuthGrantScopeName.Type;
 +export const AuthGrantScope = Schema.Literals([
 +  ...AuthGrantScopeName.literals,
@@ -425,7 +497,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
 +      encode: (scope) => scope,
 +    }),
 +  ),
-+);
+ );
 +/** The grantable scopes under the names this build writes. */
 +export const AuthGrantScopeNames = AuthGrantScopeName.literals;
  export type AuthGrantScope = typeof AuthGrantScope.Type;
@@ -441,7 +513,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
  
  const legacyScopes = new Set<AuthEnvironmentScope>([
-@@ -109,10 +204,23 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -109,10 +210,24 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
@@ -456,6 +528,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
 +  [AuthTessayaMemberScope]: AuthOrchestrationReadScope,
 +  [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
 +  [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,
++  [AuthTessayaBodyScope]: AuthOrchestrationReadScope,
 +};
 +
  /** Keep permission denials decodable by clients with the original scope enum. */
@@ -466,6 +539,62 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..87fd68658f03c90a90e2b622b68ddfba
      requiredPermission,
    };
  }
+@@ -261,21 +376,39 @@ export const AuthMcpClientAccess = Schema.Literals([
+   "auto-accept-edits",
+   "auto",
+   "full-access",
++  "body-only",
+ ]);
+ export type AuthMcpClientAccess = typeof AuthMcpClientAccess.Type;
++/** The levels that are a runtime mode an agent's work runs at; read-only and body-only start no work. */
++export type AuthMcpRuntimeAccess = Exclude<AuthMcpClientAccess, "read-only" | "body-only">;
++export const isMcpRuntimeAccess = (access: AuthMcpClientAccess): access is AuthMcpRuntimeAccess =>
++  access !== "read-only" && access !== "body-only";
+ 
+ /** The scopes an agent session gets for an access level, and a pairing code must carry. */
+ export const mcpClientScopes = (access: AuthMcpClientAccess): ReadonlyArray<AuthGrantScope> =>
+   access === "read-only"
+     ? [AuthOrchestrationReadScope]
+-    : access === "full-access"
+-      ? [
+-          AuthOrchestrationReadScope,
+-          AuthOrchestrationOperateScope,
+-          AuthSettingsWriteScope,
+-          AuthSourceControlWriteScope,
+-        ]
+-      : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
++    : access === "body-only"
++      ? [AuthTessayaBodyScope]
++      : access === "full-access"
++        ? [
++            AuthOrchestrationReadScope,
++            AuthOrchestrationOperateScope,
++            AuthSettingsWriteScope,
++            AuthSourceControlWriteScope,
++          ]
++        : [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
++
++/**
++ * Whether a session holding `scopes` may approve an agent at `access`. Body-only is less than any level that can start
++ * work, all of which already reach the body tools, so whoever may approve those may approve it.
++ */
++export const mayGrantMcpAccess = (
++  scopes: ReadonlyArray<string>,
++  access: AuthMcpClientAccess,
++): boolean =>
++  mcpClientScopes(access).every((scope) => scopes.includes(scope)) ||
++  (access === "body-only" && scopes.includes(AuthOrchestrationOperateScope));
+ 
+ /** The random part of a one-time pairing code: this many characters from this alphabet. */
+ export const PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+@@ -287,6 +420,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
+   "auto-accept-edits": "EDITS",
+   auto: "AUTO",
+   "full-access": "FULL",
++  "body-only": "BODY",
+ } as const satisfies Record<AuthMcpClientAccess, string>;
+ 
+ const MCP_APPROVAL_CODE_PATTERN = new RegExp(
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
 index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..1f1e41e67465e99a9412f9cd53fc4078ca4febde 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts

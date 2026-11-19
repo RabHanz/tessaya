@@ -79,6 +79,9 @@ policy. Approving without a code starts at **Read only**:
 - **Supervised** through **Full access** also let it start, message and stop
   threads in every project. A thread it starts or steers cannot run with more
   permissions than the mode you chose.
+- **Her body only** lets the agent drive the [body playground](./tessaya-playground.md)
+  with the three body tools and nothing else: no projects, threads, files or
+  settings.
 
 ## What outside agents can call
 

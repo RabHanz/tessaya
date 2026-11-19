@@ -578,6 +578,39 @@ it.effect("refuses preview tools to a client outside a thread before they run", 
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("shows a body-only client nothing but the body tools", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const bodyOnly = {
+      ...invocation,
+      thread: undefined,
+      requestNamespace: "client:session-2",
+      client: { sessionId: "session-2", label: "Body agent", access: "body-only" as const },
+    };
+    const click = yield* server
+      .callTool({ name: "preview_act", arguments: { action: "click", locator: "text=Send" } })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, bodyOnly),
+        Effect.provideService(McpSchema.McpServerClient, client),
+        Effect.result,
+      );
+    // refused as if the tool did not exist, before its own checks run (the read-only case above runs them)
+    expect(click).toMatchObject({
+      _tag: "Failure",
+      failure: { message: "Tool 'preview_act' not found" },
+    });
+  }).pipe(
+    Effect.provide(
+      Layer.merge(
+        layerTest,
+        McpHttpServer.layerBodyOnlyClients.pipe(
+          Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        ),
+      ),
+    ),
+  ),
+);
+
 it.effect("advertises the compact input schema for every registered tool", () =>
   Effect.gen(function* () {
     const server = yield* McpServer.McpServer;

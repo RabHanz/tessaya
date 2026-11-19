@@ -275,6 +275,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const ownCamera = useEnvironmentSettings(environmentId, (s) => s.tessayaOwnSensorsNoApproval);
   const lively = useEnvironmentSettings(environmentId, (s) => s.tessayaLiveliness);
   const breath = useEnvironmentSettings(environmentId, (s) => s.tessayaVoiceBreath);
+  const outsideBody = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyOutsideAgents);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -308,6 +309,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Her own camera without a card"
             checked={ownCamera}
             onCheckedChange={(on) => update({ tessayaOwnSensorsNoApproval: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Body-only agents move her body"
+        description="Agents you approved for her body only may move her own body, not only the body playground. It still waits while a conversation you are in has her."
+        control={
+          <Switch
+            aria-label="Body-only agents move her body"
+            checked={outsideBody}
+            onCheckedChange={(on) => update({ tessayaBodyOutsideAgents: on })}
           />
         }
       />

@@ -541,6 +541,65 @@ it.live("a code minted with an access level's scopes approves that access", () =
   ),
 );
 
+it.live(
+  "body-only signs an agent in to the body scope alone, from its own code or one that may start work",
+  () =>
+    withRoutes((handler, auth) =>
+      Effect.gen(function* () {
+        const clientId = yield* registeredClientId(handler);
+        const params = authorizeParams(clientId);
+        const bodyCode = yield* auth.issuePairingCredential({ access: "body-only" });
+        expect(bodyCode.credential).toMatch(/^BODY-[2-9A-HJ-NP-Z]{12}$/);
+        // its own code approves nothing more
+        expect(
+          (yield* decide(handler, params, {
+            _tag: "pairing-code",
+            access: "read-only",
+            code: bodyCode.credential,
+          })).status,
+        ).toBe(400);
+        const readOnly = yield* auth.issuePairingCredential({ scopes: ["orchestration:read"] });
+        expect(
+          (yield* decide(handler, params, {
+            _tag: "pairing-code",
+            access: "body-only",
+            code: readOnly.credential,
+          })).status,
+        ).toBe(400);
+        const operator = yield* auth.issuePairingCredential({
+          scopes: ["orchestration:read", "orchestration:operate"],
+        });
+        for (const code of [bodyCode.credential, operator.credential]) {
+          const approved = yield* decide(handler, params, {
+            _tag: "pairing-code",
+            access: "body-only",
+            code,
+          });
+          expect(approved.status).toBe(200);
+          const token = yield* handler(
+            at(
+              "/oauth/mcp/token",
+              form({
+                grant_type: "authorization_code",
+                code: new URL(approved.redirectTo!).searchParams.get("code")!,
+                redirect_uri: params.redirect_uri,
+                client_id: clientId,
+                code_verifier: verifier,
+              }),
+            ),
+          ).pipe(Effect.flatMap(json<{ access_token: string; scope: string }>));
+          expect(token.scope).toBe("tessaya:body");
+          const client = yield* auth.authenticateMcpClient(
+            HttpServerRequest.fromWeb(
+              at("/mcp", { headers: { authorization: `Bearer ${token.access_token}` } }),
+            ),
+          );
+          expect(client.access).toBe("body-only");
+        }
+      }),
+    ),
+);
+
 it.live("an app approval code approves only an app sign-in, at its own level", () =>
   withRoutes((handler, auth) =>
     Effect.gen(function* () {

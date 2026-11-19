@@ -1,5 +1,6 @@
 import {
   type AuthMcpClientAccess,
+  isMcpRuntimeAccess,
   type EnvironmentId,
   McpCapabilityUnavailableError,
   OrchestratorMcpFailure,
@@ -81,15 +82,15 @@ const runtimeModeRank: Record<RuntimeMode, number> = {
 const interactionModeRank: Record<ProviderInteractionMode, number> = { plan: 0, default: 1 };
 
 /**
- * The modes a client caller's writes are capped at: what it was approved
- * with, narrowed by what it asked for on this request. A read-only client
- * never reaches a write (`McpToolAccess` refuses it first), so it maps to the
- * lowest runtime mode rather than to nothing.
+ * A client's write cap: its approved mode, narrowed by this request's ask. Read-only and body-only
+ * clients start no work (`McpToolAccess` refuses them), so they map to the lowest mode, not nothing.
  */
 export const clientModeCeiling = (client: McpClientCaller | undefined): ClientModes => {
   const approved: ClientModes = {
     runtimeMode:
-      client === undefined || client.access === "read-only" ? "approval-required" : client.access,
+      client === undefined || !isMcpRuntimeAccess(client.access)
+        ? "approval-required"
+        : client.access,
     interactionMode: "default",
   };
   const asked = client?.narrowedTo;

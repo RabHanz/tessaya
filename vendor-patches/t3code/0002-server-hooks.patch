@@ -100,17 +100,30 @@ index 14f12059ce5ce64748987735835cfa3d3a1a9356..aa2c4d91db931b33c62819321e30f5c1
        "preserves a rejected MCP pairing code for exactly one concurrent lower-access retry",
        () =>
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1b9c88a81 100644
+index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..8c714dd27e985e669f5a6707d77ae8971bc19537 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
-@@ -1,5 +1,6 @@
+@@ -1,8 +1,11 @@
  import {
    AuthAccessTokenType,
 +  AuthTessayaMemorySyncScope,
    AuthAccessWriteScope,
    AuthMcpClientAccess,
    AuthOrchestrationOperateScope,
-@@ -49,6 +50,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
++  AuthOrchestrationReadScope,
++  AuthTessayaBodyScope,
+   AuthStandardClientScopes,
+   type AuthAccessTokenResult,
+   type AuthBrowserSessionResult,
+@@ -21,6 +24,7 @@ import {
+   type AuthWebSocketTicketUse,
+   DpopFailureReason,
+   type DpopFailureReason as DpopFailureReasonType,
++  isMcpRuntimeAccess,
+   mcpClientScopes,
+ } from "@t3tools/contracts";
+ import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
+@@ -49,6 +53,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
  import * as ManagedLimits from "../policy/managedLimits.ts";
  import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
  import { MCP_APPROVAL_SUBJECT_PREFIX } from "../persistence/AuthPairingLinks.ts";
@@ -118,7 +131,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1
  import { requestUrl } from "../requestUrl.ts";
  
  const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
-@@ -77,6 +79,8 @@ export interface IssuedBearerSession {
+@@ -77,6 +82,8 @@ export interface IssuedBearerSession {
  // MCP client tokens are restricted to /mcp; HTTP API and WebSocket RPC would bypass their access cap.
  const MCP_CLIENT_SUBJECT = "mcp-client";
  const MCP_CLIENT_SESSION_TTL = Duration.days(30);
@@ -127,7 +140,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1
  
  export interface McpClientSession {
    readonly sessionId: AuthSessionId;
-@@ -86,6 +90,34 @@ export interface McpClientSession {
+@@ -86,6 +93,34 @@ export interface McpClientSession {
    readonly peerLink: boolean;
  }
  
@@ -162,7 +175,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1
  export interface AuthenticatedSession {
    readonly sessionId: AuthSessionId;
    readonly subject: string;
-@@ -496,6 +528,11 @@ export class EnvironmentAuth extends Context.Service<
+@@ -496,6 +531,11 @@ export class EnvironmentAuth extends Context.Service<
      >;
      readonly issuePairingCredential: (
        input?: AuthCreatePairingCredentialInput,
@@ -174,7 +187,31 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1
      ) => Effect.Effect<
        AuthPairingCredentialResult,
        ServerAuthInternalError | ManagedLimits.ManagedPolicyRefusedError
-@@ -985,7 +1022,9 @@ export const make = Effect.gen(function* () {
+@@ -917,7 +957,23 @@ export const make = Effect.gen(function* () {
+   > & {
+     readonly method: PairingGrantStore.BootstrapGrant["method"] | "reusable-dev-token";
+   };
++  // The body scope is for an agent's MCP sign-in only: no browser or app session ever holds it, so a code that
++  // carries nothing else can't become one.
+   const resolveBootstrapGrant = (
++    credential: string,
++    input?: Parameters<typeof resolveAnyBootstrapGrant>[1],
++  ) =>
++    resolveAnyBootstrapGrant(credential, input).pipe(
++      Effect.flatMap((grant) => {
++        if (input?.mcpApproval !== undefined || !grant.scopes.includes(AuthTessayaBodyScope))
++          return Effect.succeed(grant);
++        const scopes = grant.scopes.filter((scope) => scope !== AuthTessayaBodyScope);
++        return scopes.length === 0
++          ? Effect.fail(new ServerAuthScopeNotGrantedError({}))
++          : Effect.succeed({ ...grant, scopes });
++      }),
++    );
++  const resolveAnyBootstrapGrant = (
+     credential: string,
+     input?: {
+       readonly proofKeyThumbprint?: string;
+@@ -985,7 +1041,9 @@ export const make = Effect.gen(function* () {
                        proofKeyThumbprint: input.proofKeyThumbprint,
                        ttl: Duration.hours(1),
                      }
@@ -185,7 +222,7 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1
                  replaceActiveForSubjectAndMethod: grant.method === "desktop-bootstrap",
                  client: {
                    ...requestMetadata,
-@@ -1142,12 +1181,20 @@ export const make = Effect.gen(function* () {
+@@ -1142,12 +1200,20 @@ export const make = Effect.gen(function* () {
        Effect.withSpan("EnvironmentAuth.revokeOtherSessionsExcept"),
      );
  
@@ -208,8 +245,55 @@ index 58c1f1bc0cadfa3d128cb874c606dfde3bb299f5..07f9556d90330a55aece3dffb65b67a1
        ...(input?.label ? { label: input.label } : {}),
        ...(input?.access ? { mcpApproval: input.access } : {}),
      }).pipe(
+@@ -1319,13 +1385,18 @@ export const make = Effect.gen(function* () {
+     return sessions.verify(token).pipe(
+       mapSessionVerificationErrors,
+       Effect.flatMap((session) =>
+-        session.subject === MCP_CLIENT_SUBJECT && session.method === "bearer-access-token"
++        session.subject === MCP_CLIENT_SUBJECT &&
++        session.method === "bearer-access-token" &&
++        (session.scopes.includes(AuthOrchestrationReadScope) ||
++          session.scopes.includes(AuthTessayaBodyScope))
+           ? Effect.succeed({
+               sessionId: session.sessionId,
+               label: session.client.label ?? "MCP client",
+               access: session.scopes.includes(AuthOrchestrationOperateScope)
+                 ? (session.runtimeModeCeiling ?? "approval-required")
+-                : "read-only",
++                : session.scopes.includes(AuthOrchestrationReadScope)
++                  ? "read-only"
++                  : "body-only",
+               peerLink: session.peerLink === true,
+             } satisfies McpClientSession)
+           : Effect.fail(
+@@ -1345,7 +1416,7 @@ export const make = Effect.gen(function* () {
+         method: "bearer-access-token",
+         scopes: mcpClientScopes(input.access),
+         ttl: MCP_CLIENT_SESSION_TTL,
+-        ...(input.access === "read-only" ? {} : { runtimeModeCeiling: input.access }),
++        ...(isMcpRuntimeAccess(input.access) ? { runtimeModeCeiling: input.access } : {}),
+         peerLink: input.peerLink,
+         client: { ...input.client, label: input.label, deviceType: "bot" },
+       })
+@@ -1367,6 +1438,16 @@ export const make = Effect.gen(function* () {
+       requiredScopes: mcpClientScopes(access),
+       mcpApproval: access,
+     }).pipe(
++      // Body-only is less than any level that starts work: a code that may approve those approves it too.
++      Effect.catchTags({
++        ServerAuthScopeNotGrantedError: (cause) =>
++          access === "body-only"
++            ? resolveBootstrapGrant(code.trim(), {
++                requiredScopes: [AuthOrchestrationOperateScope],
++                mcpApproval: access,
++              })
++            : Effect.fail(cause),
++      }),
+       Effect.catchTags({
+         ServerAuthInvalidCredentialError: () =>
+           Effect.fail(new ServerAuthMcpApprovalCodeError({ reason: "unknown_or_used" })),
 diff --git a/apps/server/src/auth/http.ts b/apps/server/src/auth/http.ts
-index c2a99533fb14789f945575445da93c1411ecc453..78760dbf4dc0744a078bd54f641dc5f64095b629 100644
+index c2a99533fb14789f945575445da93c1411ecc453..25858bef93911138dfc5b85fd3acd2533edacaad 100644
 --- a/apps/server/src/auth/http.ts
 +++ b/apps/server/src/auth/http.ts
 @@ -1,6 +1,7 @@
@@ -220,7 +304,15 @@ index c2a99533fb14789f945575445da93c1411ecc453..78760dbf4dc0744a078bd54f641dc5f6
    AuthStandardClientScopes,
    AuthGrantScope,
    EnvironmentAuthInvalidError,
-@@ -25,6 +26,7 @@ import { causeErrorTag } from "@t3tools/shared/observability";
+@@ -17,6 +18,7 @@ import {
+   EnvironmentScopeRequiredError,
+   EnvironmentAuthenticatedAuth,
+   EnvironmentAuthenticatedPrincipal,
++  mayGrantMcpAccess,
+   mcpClientScopes,
+ } from "@t3tools/contracts";
+ import type { AuthEnvironmentScope, DpopFailureReason } from "@t3tools/contracts";
+@@ -25,6 +27,7 @@ import { causeErrorTag } from "@t3tools/shared/observability";
  import * as Clock from "effect/Clock";
  import * as DateTime from "effect/DateTime";
  import * as Effect from "effect/Effect";
@@ -228,7 +320,7 @@ index c2a99533fb14789f945575445da93c1411ecc453..78760dbf4dc0744a078bd54f641dc5f6
  import * as Schema from "effect/Schema";
  import * as Layer from "effect/Layer";
  import * as Cookies from "effect/http/Cookies";
-@@ -39,6 +41,9 @@ import { deriveAuthClientMetadata } from "./utils.ts";
+@@ -39,6 +42,9 @@ import { deriveAuthClientMetadata } from "./utils.ts";
  import { verifyRequestDpopProof } from "./dpop.ts";
  import { requestUrl } from "../requestUrl.ts";
  
@@ -238,7 +330,7 @@ index c2a99533fb14789f945575445da93c1411ecc453..78760dbf4dc0744a078bd54f641dc5f6
  const CREDENTIAL_RESPONSE_HEADERS = {
    "cache-control": "no-store",
    pragma: "no-cache",
-@@ -360,7 +365,9 @@ export const layer = HttpApiBuilder.group(
+@@ -360,7 +366,9 @@ export const layer = HttpApiBuilder.group(
              const requestedScopes =
                args.payload.scope === undefined
                  ? undefined
@@ -249,7 +341,17 @@ index c2a99533fb14789f945575445da93c1411ecc453..78760dbf4dc0744a078bd54f641dc5f6
              if (requestedScopes === null || requestedScopes?.length === 0) {
                return yield* failEnvironmentInvalidRequest("invalid_scope");
              }
-@@ -461,7 +468,13 @@ export const layer = HttpApiBuilder.group(
+@@ -456,12 +464,22 @@ export const layer = HttpApiBuilder.group(
+             ) {
+               return yield* failEnvironmentInvalidRequest("invalid_scope");
+             }
++            const access = args.payload.access;
+             for (const delegatedScope of delegatedScopes) {
+-              if (!session.scopes.has(delegatedScope)) {
++              if (
++                !session.scopes.has(delegatedScope) &&
++                !(access !== undefined && mayGrantMcpAccess([...session.scopes], access))
++              ) {
                  return yield* failEnvironmentScopeRequired(delegatedScope);
                }
              }
@@ -321,10 +423,76 @@ index 9619030be2fab47f08db5612cde10d1666ded762..a9b28e600131187dc4c7f34db3bdc24f
  import * as NodeFS from "node:fs";
  import * as NodeOS from "node:os";
 diff --git a/apps/server/src/mcp/McpToolAccess.ts b/apps/server/src/mcp/McpToolAccess.ts
-index f96a38d6d7341eaf98c8c158eb21cc7080c1ce00..cfdd02d8171a064882182c5bfcf122f5d80046c5 100644
+index f96a38d6d7341eaf98c8c158eb21cc7080c1ce00..b2972dbb8a0b94bdcf867438c7a7cd3ae0e7576a 100644
 --- a/apps/server/src/mcp/McpToolAccess.ts
 +++ b/apps/server/src/mcp/McpToolAccess.ts
-@@ -279,6 +279,16 @@ export const startsThreads = <P, A, E, R>(
+@@ -111,19 +111,29 @@ export class Declaration<out Handler> {
+   }
+ }
+ 
+-const refuseReadOnlyClient = McpInvocationContext.McpInvocationContext.pipe(
+-  Effect.flatMap((scope) =>
+-    scope.client?.access === "read-only"
+-      ? Effect.fail(
+-          new OrchestratorMcpFailure({
+-            code: "capability_denied",
+-            message:
+-              "This tool changes the environment, and this MCP client was approved for read-only access.",
+-          }),
+-        )
+-      : Effect.void,
+-  ),
+-);
++const refuseClientAt = (bodyOnlyMay: boolean) =>
++  McpInvocationContext.McpInvocationContext.pipe(
++    Effect.flatMap((scope) =>
++      scope.client?.access === "read-only"
++        ? Effect.fail(
++            new OrchestratorMcpFailure({
++              code: "capability_denied",
++              message:
++                "This tool changes the environment, and this MCP client was approved for read-only access.",
++            }),
++          )
++        : // /mcp already hides every other tool from it (layerBodyOnlyClients); this holds where that isn't wired
++          scope.client?.access === "body-only" && !bodyOnlyMay
++          ? Effect.fail(
++              new OrchestratorMcpFailure({
++                code: "capability_denied",
++                message: "This MCP client was approved for her body only.",
++              }),
++            )
++          : Effect.void,
++    ),
++  );
++const refuseReadOnlyClient = refuseClientAt(false);
+ 
+ const writingCaller = refuseReadOnlyClient.pipe(
+   Effect.andThen(loadCaller()),
+@@ -183,6 +193,22 @@ export const writes = <P, A, E, R>(
+     () => orchestratingCaller,
+   );
+ 
++/** The body tools' writes: as `writes`, and the only ones a body-only client may make. */
++export const bodyWrites = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) => {
++  const caller = refuseClientAt(true).pipe(
++    Effect.andThen(readCaller()),
++    Effect.tap(assertLiveCaller),
++  );
++  return declare(
++    (params: P) =>
++      caller.pipe(
++        Effect.tap((c) => assertNotLinked(c, "change this environment's scheduled tasks")),
++        Effect.flatMap(() => handle(params)),
++      ),
++    () => caller,
++  );
++};
++
+ /** Requires handler capability checks, not thread control; linked work is refused the same way. */
+ export const writesWithCapability = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>
+   declare(
+@@ -279,6 +305,16 @@ export const startsThreads = <P, A, E, R>(
    );
  };
  
@@ -2138,7 +2306,7 @@ index 93e0e36e4fbd44accb21563995304a7490bcd59b..7b712c02989de891fb22e6081bea5bc4
  export type AgentSessionImportInput = typeof AgentSessionImportInput.Type;
  
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8d268590d 100644
+index 49470541d90be695ad24df030ca6522682a82611..d55d9de6b5aa38deb87bd74745427be360d7df37 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -33,6 +33,14 @@ import {
@@ -2312,7 +2480,7 @@ index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8
    continueThreadsAfterServerUpdate: Schema.Boolean.pipe(
      Schema.withDecodingDefault(Effect.succeed(true)),
    ),
-@@ -1382,6 +1525,75 @@ export const ServerSettings = Schema.Struct({
+@@ -1382,6 +1525,77 @@ export const ServerSettings = Schema.Struct({
    cloudSpeechCredentials: CloudSpeechCredentials.pipe(
      Schema.withDecodingDefault(Effect.succeed({ openai: "", xai: "", openrouter: "" })),
    ),
@@ -2347,6 +2515,8 @@ index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8
 +  tessayaLiveliness: Schema.Literals(["still", "calm", "lively"]).pipe(
 +    Schema.withDecodingDefault(Effect.succeed("calm" as const)),
 +  ),
++  // Tessaya: whether agents approved for her body only (body-only MCP) may move her own body; off, only the playground.
++  tessayaBodyOutsideAgents: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 +  // Tessaya: a soft breath before a long later sentence of her reply on the Tessel; off until it sounds natural (19 Nov).
 +  tessayaVoiceBreath: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
 +  // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
@@ -2388,7 +2558,7 @@ index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8
    speechModelId: Schema.String.pipe(
      Schema.withDecodingDefault(Effect.succeed("handy-computer/parakeet-unified-en-0.6b-gguf")),
    ),
-@@ -1391,10 +1603,12 @@ export const ServerSettings = Schema.Struct({
+@@ -1391,10 +1605,12 @@ export const ServerSettings = Schema.Struct({
    ),
    // Vocabulary shared by everyone who dictates in a project; it lives with the project's environment.
    speechProjectCustomWords: SpeechCustomWords.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
@@ -2402,7 +2572,7 @@ index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8
    projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
      Schema.withDecodingDefault(Effect.succeed({})),
    ),
-@@ -1827,8 +2041,68 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1827,8 +2043,69 @@ export const ServerSettingsPatch = Schema.Struct({
    fastWorktreeCheckout: Schema.optionalKey(Schema.Boolean),
    responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
    enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
@@ -2415,6 +2585,7 @@ index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8
 +  tessayaOwnSensorsNoApproval: Schema.optionalKey(Schema.Boolean),
 +  tessayaLiveliness: Schema.optionalKey(Schema.Literals(["still", "calm", "lively"])),
 +  tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
++  tessayaBodyOutsideAgents: Schema.optionalKey(Schema.Boolean),
 +  tessayaMood: Schema.optionalKey(
 +    Schema.Struct({
 +      enabled: Schema.optionalKey(Schema.Boolean),
@@ -2471,7 +2642,7 @@ index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8
    enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
    cloudSpeechCredentials: Schema.optionalKey(
      Schema.Struct({
-@@ -1837,11 +2111,26 @@ export const ServerSettingsPatch = Schema.Struct({
+@@ -1837,11 +2114,26 @@ export const ServerSettingsPatch = Schema.Struct({
        openrouter: Schema.optionalKey(SettingsSecretValue),
      }),
    ),
@@ -2498,7 +2669,7 @@ index 49470541d90be695ad24df030ca6522682a82611..af3d6269633963f8b029f20e0815d6e8
    projectAgentBrowserAccessOverrides: Schema.optionalKey(
      Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
    ),
-@@ -2091,3 +2380,6 @@ export const ClientSettingsPatch = Schema.Struct({
+@@ -2091,3 +2383,6 @@ export const ClientSettingsPatch = Schema.Struct({
    mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
  });
  export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

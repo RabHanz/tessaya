@@ -17,3 +17,11 @@ Each stage shows its playground id in its corner, such as `pg-k3x9a2b`. An agent
 - `tessaya_body_move` and `tessaya_body_scene` with `target: "playground"` move the stage's body; `tessaya_body_state` with the same target reads it back.
 - Add `playground: "<id>"` to pick a stage, such as the second one in Compare. Without it, the most recently open stage is used.
 - Outside agents use the playground unless they ask for `target: "her"`. Only everyday moves play here.
+
+## Connect an agent for her body only
+
+To let an agent drive the body and nothing else, approve its sign-in at **Her body only** ([Outside agents](./outside-agents.md#approve-a-sign-in)). Choose it in **Use T3 Code in another app (MCP)**, or on the sign-in page; a code made for it starts with `BODY-`. The agent then sees only `tessaya_body_move`, `tessaya_body_scene` and `tessaya_body_state`.
+
+- Each agent is limited to a burst of 12 moves, then 4 a second, and every move it makes is in the activity log under its sign-in.
+- Remove it in **Settings → Sharing & access** like any other agent.
+- A body-only agent never moves or reads her own body unless you turn on **Body-only agents move her body** in **Settings → Brain**. Even then, a conversation you are in keeps her, and private moves are always refused.

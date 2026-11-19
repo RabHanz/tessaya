@@ -689,7 +689,12 @@ export const routes = HttpRouter.use((router) =>
     const peer = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const client = yield* auth.authenticateMcpClient(request).pipe(Effect.option);
-      if (client._tag === "None" || !client.value.peerLink || deskTools === null)
+      if (
+        client._tag === "None" ||
+        !client.value.peerLink ||
+        client.value.access === "body-only" ||
+        deskTools === null
+      )
         return HttpServerResponse.jsonUnsafe({ message: "Not here." }, { status: 403 });
       const path = new URL(request.url, "http://local").pathname.replace(/^\/tessaya\/peer\//, "");
       const json = yield* request.json.pipe(Effect.orElseSucceed(() => ({})));

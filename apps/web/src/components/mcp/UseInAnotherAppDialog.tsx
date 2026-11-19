@@ -9,6 +9,8 @@ import {
   type EnvironmentId,
   managedCapabilityDenial,
   managedRuntimeModeDenial,
+  AuthOrchestrationOperateScope,
+  isMcpRuntimeAccess,
   mcpClientScopes,
   sessionGrantsScope,
 } from "@t3tools/contracts";
@@ -219,9 +221,13 @@ function useGrantableLevels(environment: EnvironmentPresentation) {
         (!canMint
           ? `This device needs the Manage access permission on ${environment.label}.`
           : session === null ||
-              !mcpClientScopes(level).every((scope) => sessionGrantsScope(session, scope))
+              !(
+                mcpClientScopes(level).every((scope) => sessionGrantsScope(session, scope)) ||
+                (level === "body-only" &&
+                  sessionGrantsScope(session, AuthOrchestrationOperateScope))
+              )
             ? `This device cannot grant this on ${environment.label}.`
-            : level === "read-only"
+            : !isMcpRuntimeAccess(level)
               ? undefined
               : managedRuntimeModeDenial(policy, level));
       return reason === undefined ? [] : [[level, reason] as const];
@@ -808,7 +814,8 @@ function LinkedLine({
       : null,
   ).data?.links;
   const identities = useEnvironmentIdentities();
-  if (!offered || links === undefined || links.length === 0) return null;
+  // a body-only agent reaches no thread, so no linked machine either
+  if (!offered || links === undefined || links.length === 0 || access === "body-only") return null;
   const named = links.map((link) => {
     const name =
       identities.find((identity) => identity.environmentId === link.environmentId)?.label ??

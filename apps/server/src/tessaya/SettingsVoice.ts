@@ -58,6 +58,9 @@ export const SERVER_SETTINGS_VOICE: {
     "whether she may use her own camera on the Tessel when you ask her, without a card to your phone",
   ),
   tessayaVoiceBreath: free("a soft breath between her sentences on the Tessel"),
+  tessayaBodyOutsideAgents: owner(
+    "whether agents approved for her body only may move her own body, not just the body playground",
+  ),
   tessayaRoomCleanup: free(
     "fixing a word she misheard on the Tessel from what you were talking about, before she answers",
   ),

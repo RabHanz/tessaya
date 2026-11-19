@@ -111,19 +111,29 @@ export class Declaration<out Handler> {
   }
 }
 
-const refuseReadOnlyClient = McpInvocationContext.McpInvocationContext.pipe(
-  Effect.flatMap((scope) =>
-    scope.client?.access === "read-only"
-      ? Effect.fail(
-          new OrchestratorMcpFailure({
-            code: "capability_denied",
-            message:
-              "This tool changes the environment, and this MCP client was approved for read-only access.",
-          }),
-        )
-      : Effect.void,
-  ),
-);
+const refuseClientAt = (bodyOnlyMay: boolean) =>
+  McpInvocationContext.McpInvocationContext.pipe(
+    Effect.flatMap((scope) =>
+      scope.client?.access === "read-only"
+        ? Effect.fail(
+            new OrchestratorMcpFailure({
+              code: "capability_denied",
+              message:
+                "This tool changes the environment, and this MCP client was approved for read-only access.",
+            }),
+          )
+        : // /mcp already hides every other tool from it (layerBodyOnlyClients); this holds where that isn't wired
+          scope.client?.access === "body-only" && !bodyOnlyMay
+          ? Effect.fail(
+              new OrchestratorMcpFailure({
+                code: "capability_denied",
+                message: "This MCP client was approved for her body only.",
+              }),
+            )
+          : Effect.void,
+    ),
+  );
+const refuseReadOnlyClient = refuseClientAt(false);
 
 const writingCaller = refuseReadOnlyClient.pipe(
   Effect.andThen(loadCaller()),
@@ -182,6 +192,22 @@ export const writes = <P, A, E, R>(
       ),
     () => orchestratingCaller,
   );
+
+/** The body tools' writes: as `writes`, and the only ones a body-only client may make. */
+export const bodyWrites = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) => {
+  const caller = refuseClientAt(true).pipe(
+    Effect.andThen(readCaller()),
+    Effect.tap(assertLiveCaller),
+  );
+  return declare(
+    (params: P) =>
+      caller.pipe(
+        Effect.tap((c) => assertNotLinked(c, "change this environment's scheduled tasks")),
+        Effect.flatMap(() => handle(params)),
+      ),
+    () => caller,
+  );
+};
 
 /** Requires handler capability checks, not thread control; linked work is refused the same way. */
 export const writesWithCapability = <P, A, E, R>(handle: (params: P) => Effect.Effect<A, E, R>) =>

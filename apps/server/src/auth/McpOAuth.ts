@@ -14,6 +14,7 @@ import {
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   MCP_PEER_LINK_SOFTWARE_ID,
+  mayGrantMcpAccess,
   mcpClientScopes,
   parseMcpApprovalCode,
   type RuntimeMode,
@@ -450,6 +451,12 @@ const make = Effect.gen(function* () {
 
   const approve: McpOAuth["Service"]["approve"] = Effect.fn("McpOAuth.approve")(function* (input) {
     const { decision } = input;
+    // A linked environment works with threads; a body-only link would only carry the peer link's other powers.
+    if (input.authorization.client.peerLink && decision.access === "body-only") {
+      return yield* new McpOAuthPageError({
+        description: "Linking another environment needs a level that works with threads.",
+      });
+    }
     let access = decision.access;
     if (decision._tag === "pairing-code") {
       // An approval code is for one app's sign-in, never for linking another environment.
@@ -476,7 +483,7 @@ const make = Effect.gen(function* () {
       if (
         session === undefined ||
         !timingSafeEqualBase64Url(decision.csrfToken, session.csrfToken) ||
-        !mcpClientScopes(decision.access).every((scope) => session.scopes.includes(scope))
+        !mayGrantMcpAccess(session.scopes, decision.access)
       ) {
         return yield* new McpOAuthPageError({
           description: "Your session cannot approve this request. Enter a pairing code instead.",
