@@ -272,9 +272,11 @@ export const fitProxies = (
     return Math.max(fallback[part] / 2, Math.min(fallback[part] * 2, r));
   };
   return {
-    trunk: pick("trunk", 0.8),
+    trunk: pick("trunk", 0.5),
     head: pick("head", 0.6),
-    thigh: pick("thigh", 0.85),
+    // the median: clothes are skinned to the trunk and thighs too (a puffy sweater, a skirt's flare), and their outer
+    // surface is cloth a resting arm lies against, not body
+    thigh: pick("thigh", 0.5),
     forearm: pick("forearm", 0.8),
   };
 };
@@ -588,7 +590,9 @@ const restingParts = (
     neck && head ? add(head, scale(unit(sub(head, neck)), 0.07 * (rig.height / 1.6))) : undefined;
   return (
     [
-      [pos["hips"], top, size.trunk],
+      // the trunk from her waist up: below it the pelvis is its own narrower part, so a hand hanging at her hip
+      // rests against the pelvis's side instead of being held off by the trunk's rounded end
+      [pos["spine"] ?? pos["hips"], top, size.trunk],
       [neck, skull, size.head],
       [pos["leftUpperLeg"], pos["rightUpperLeg"], 0.65 * size.trunk],
       [pos["leftUpperLeg"], pos["leftLowerLeg"], size.thigh],
@@ -599,7 +603,8 @@ const restingParts = (
 /** The hand past the wrist, as a ball: what lands on her face or hip is the hand, not the wrist. */
 const handBall = (rig: Rig) => ({
   reach: 0.06 * (rig.height / 1.6),
-  r: 2.2 * (rig.proxies ?? proxiesByHeight(rig.height)).forearm,
+  // about the hand's own thickness (palm 3.6 cm, PALM_HALF): a fist-sized ball held a hanging hand off her hip
+  r: 1.2 * (rig.proxies ?? proxiesByHeight(rig.height)).forearm,
 });
 
 /**

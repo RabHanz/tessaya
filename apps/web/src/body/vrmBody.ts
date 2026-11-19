@@ -4,6 +4,7 @@
  * nothing at all while hidden. At rest it is a still picture with a blink every few seconds.
  */
 import { VRMLoaderPlugin, VRMUtils, type VRM, type VRMHumanBoneName } from "@pixiv/three-vrm";
+import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
 import {
   GESTURES,
   INTIMATE_FACES,
@@ -35,6 +36,7 @@ import {
   ACTS,
   BODY_JOINTS,
   POSE_BONES,
+  isHang,
   POSTURES,
   TOUCH_FACE,
   clipAt,
@@ -64,6 +66,7 @@ import {
   manifestOf,
   REFERENCE_RIG,
   preparePose,
+  proxiesByHeight,
   settled,
   SOFT_DEPTH,
   softContacts,
@@ -83,6 +86,7 @@ import { gaitAt, gaitOf, type Gait } from "@t3tools/tessaya-shared/bodyGait";
 import type { BodyTarget } from "@t3tools/tessaya-shared/bodyLocomotion";
 import type { StageMount, StageSpot } from "@t3tools/tessaya-shared/rooms";
 import { softenOnContact } from "./softContact.ts";
+import IDLE_URL from "./assets/idle-neutral.vrma?url";
 import {
   grabKindOf,
   nearestRoot,
@@ -451,6 +455,8 @@ export function mountBody(
      * host knows her world (the desk, other bodies); without it, a point is read across this view.
      */
     readonly locate?: (to: BodyTarget) => { readonly yaw: number; readonly metres: number } | null;
+    /** Her standing idle (VRMA), where the bundled one is not served (a harness). */
+    readonly idleUrl?: string;
     /** Each frame of a walk, how far she went and which way, so the host carries her (the desk moves her window). */
     readonly onWalk?: (step: {
       readonly metres: number;
@@ -475,6 +481,37 @@ export function mountBody(
   scene.add(root);
   const loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
+  loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
+  // her standing idle: real motion capture (assets/CREDITS.md) baked onto this model's own bones when it loads, so her
+  // arms hang at her sides and her weight shifts as a person's does, under whatever her posture adds
+  let idle: { readonly fps: number; readonly loop: true; readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>> } | null = null;
+  const bakeIdle = async (target: VRM, flip: boolean) => {
+    const got = await loader.loadAsync(options.idleUrl ?? IDLE_URL).catch(() => null);
+    const anim = (got?.userData["vrmAnimations"] as ReadonlyArray<unknown> | undefined)?.[0];
+    if (anim === undefined || disposed || vrm !== target) return;
+    const mixer = new THREE.AnimationMixer(target.scene);
+    const clip = createVRMAnimationClip(anim as Parameters<typeof createVRMAnimationClip>[0], target);
+    mixer.clipAction(clip).play();
+    const fps = 30;
+    const frames: Array<Partial<Record<PoseBone, Euler>>> = [];
+    for (let t = 0; t < clip.duration; t += 1 / fps) {
+      mixer.setTime(t);
+      const f: Partial<Record<PoseBone, Euler>> = {};
+      for (const b of POSE_BONES) {
+        const r = target.humanoid.getNormalizedBoneNode(b)?.rotation;
+        // written in VRM 1.0's axes, as every pose here is (a mirrored model is flipped around its update)
+        if (r) f[b] = [flip ? -r.x : r.x, r.y, flip ? -r.z : r.z] as unknown as Euler;
+      }
+      frames.push(f);
+    }
+    mixer.stopAllAction();
+    mixer.uncacheRoot(target.scene);
+    for (const b of POSE_BONES) target.humanoid.getNormalizedBoneNode(b)?.quaternion.identity();
+    if (vrm === target && frames.length > 1) {
+      idle = { fps, loop: true, frames };
+      invalidate();
+    }
+  };
 
   let vrm: VRM | null = null;
   let model: string | null = null;
@@ -1011,7 +1048,12 @@ export function mountBody(
   const fingersBent = [false, false];
   const applyPose = (now: number) => {
     if (vrm === null || rig === null) return;
-    const bones: Partial<Record<PoseBone, Euler>> = { ...posture().bones };
+    // her idle under her posture: a posture's own placements win, its plain hanging arms give way to the real ones
+    const bones: Partial<Record<PoseBone, Euler>> =
+      idle === null ? { ...posture().bones } : { ...clipAt(idle, now) };
+    if (idle !== null)
+      for (const [b, e] of Object.entries(posture().bones) as Array<[PoseBone, Euler]>)
+        if (!isHang(b, e)) bones[b] = e;
     vrm.scene.rotation.y = baseYaw + facing;
     if (clip !== null) Object.assign(bones, clipAt(clip, now - clip.start));
     Object.assign(
@@ -1085,6 +1127,12 @@ export function mountBody(
    * After the pose lands: lift an arm whose hand or elbow is inside her trunk (her proportions, not the pose's), and
    * set her on the floor when she sits or lies. Each corrects over a few frames and reports whether it is still moving.
    */
+  /** How far a point is from the segment a to b (m). */
+  const segDistance = (p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3) => {
+    const ab = scratch.copy(b).sub(a);
+    const t = Math.max(0, Math.min(1, p.clone().sub(a).dot(ab) / Math.max(1e-9, ab.lengthSq())));
+    return p.distanceTo(a.clone().addScaledVector(ab, t));
+  };
   const settleBody = (f: number): boolean => {
     if (vrm === null) return false;
     let moving = false;
@@ -1092,15 +1140,21 @@ export function mountBody(
     const top = worldOf("upperChest") ?? worldOf("chest");
     const ll = worldOf("leftUpperLeg");
     const rl = worldOf("rightUpperLeg");
-    if (hips && top && ll && rl && !posture().grounded) {
-      const half = Math.abs(ll.x - rl.x) * 1.05;
+    const lk = worldOf("leftLowerLeg");
+    const rk = worldOf("rightLowerLeg");
+    if (hips && top && ll && rl && lk && rk && rig !== null && !posture().grounded) {
+      // inside her is inside the trunk or a thigh as this model measures them (rig proxies), not a box around her
+      // hips: a hand hanging relaxed beside her thigh is outside her, and stays there
+      const size = rig.proxies ?? proxiesByHeight(rig.height);
       for (const side of ["left", "right"] as const) {
         for (const j of [`${side}Hand`, `${side}LowerArm`] as const) {
           const p = worldOf(j);
-          if (!p || p.y > top.y || p.y < hips.y - half) continue;
-          const dx = (p.x - hips.x) / half;
-          const dz = (p.z - hips.z) / (half * 0.7);
-          if (dx * dx + dz * dz < 1 && armOut[side] < 0.4) {
+          if (!p) continue;
+          const inside =
+            segDistance(p, hips, top) < size.trunk ||
+            segDistance(p, ll, lk) < size.thigh ||
+            segDistance(p, rl, rk) < size.thigh;
+          if (inside && armOut[side] < 0.4) {
             armOut[side] += 0.04;
             moving = true;
           }
@@ -1607,6 +1661,8 @@ export function mountBody(
     );
     sync = names.has("jawopen") && names.has("eyeblinkleft") ? names : null;
     mirrored = mirroredOf(next);
+    idle = null;
+    void bakeIdle(next, mirrored);
     shapeKeys = new Map();
     next.scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
