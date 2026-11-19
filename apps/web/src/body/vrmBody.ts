@@ -524,7 +524,11 @@ export function mountBody(
     along: THREE.Vector3;
     /** How far the hand sits off the point it landed on, so its fingers lie on a curved part instead of in it. */
     lift: number;
+    /** The bone it landed on and that bone's world-to-local at landing: the hand moves with her when she moves. */
+    bone: THREE.Object3D | null;
+    unbone: THREE.Matrix4;
   } | null = null;
+  const follow = new THREE.Matrix4();
   // a reflex arc (her sense packs) pulls her back, then she settles, over REFLEX_MS; a caress's arc leans her in
   let reflexAt = -Infinity;
   // the part giving to the hand, kept for the contact, and how far it has turned (eased)
@@ -1766,6 +1770,11 @@ export function mountBody(
       up: 0,
       dir: [0, 0, 1] as const,
     };
+    const boneName = r.at < 0.5 ? r.from : r.to;
+    const bone =
+      vrm?.humanoid.getRawBoneNode(boneName as VRMHumanBoneName) ??
+      vrm?.scene.getObjectByName(boneName) ??
+      null;
     const a = boneAt(r.from) ?? worldOf("upperChest") ?? worldOf("chest");
     const b = boneAt(r.to) ?? a;
     if (vrm === null || a === undefined || b === undefined) return;
@@ -1806,6 +1815,7 @@ export function mountBody(
     if (c.motion !== "grab") touch = { at: now, point: landed.clone(), strength: c.pressure, from };
     // a new touch starts where it lands: the drawn hand does not glide there through her body from the last one
     handEuro = null;
+    drawnAt = 0;
     agentTouch = {
       start: now,
       part: c.part,
@@ -1816,6 +1826,8 @@ export function mountBody(
       normal,
       along,
       lift,
+      bone,
+      unbone: bone?.matrixWorld.clone().invert() ?? new THREE.Matrix4(),
     };
     // the nerves under the hand fire, wherever it actually landed on her
     nerveRegion = (hit && regionOf(hit)) ?? c.part;
@@ -1852,14 +1864,19 @@ export function mountBody(
       );
       return true;
     }
+    // her reflex and her reaction move the part under the hand: it rides that bone instead of staying where she was
+    follow.identity();
+    if (a.bone !== null) follow.multiplyMatrices(a.bone.matrixWorld, a.unbone);
+    const normal = scratch.copy(a.normal).transformDirection(follow);
     const at = a.hit
       .clone()
       .addScaledVector(a.along, h.along * 0.05 * (rig?.height ?? 1.6))
-      .addScaledVector(a.normal, a.lift);
+      .applyMatrix4(follow)
+      .addScaledVector(normal, a.lift);
     handFrame = pointerHand({
       at: now,
       hit: [at.x, at.y, at.z],
-      normal: [a.normal.x, a.normal.y, a.normal.z],
+      normal: [normal.x, normal.y, normal.z],
       pressure: h.pressure,
       pressed: h.pressure > 0.02,
       fingertip: h.fingertip,
