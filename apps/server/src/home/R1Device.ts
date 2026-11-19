@@ -104,14 +104,16 @@ import {
   EXPRESSION_MOODS,
   type ExpressionMood,
   InputQuality,
+  type TessayaDevicesCallResult,
   TessayaVoicePrint,
   type VoiceIdGate,
 } from "@t3tools/tessaya-contracts";
+import { onPeer } from "../peer/PeerVessels.ts";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { serveHomeCall } from "./HomeCalls.ts";
-import { HomeDevices } from "./HomeDevices.ts";
+import { HomeDevices, routedAct } from "./HomeDevices.ts";
 import {
   R1Brain,
   RoomTools,
@@ -1499,16 +1501,45 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
       { who: "Tessaya in the room", surface: "assistant", ...(his ? { approved: true } : {}) },
     )
     .pipe(Effect.result);
-  if (took._tag === "Failure")
+  // On another server's hub (his turn on the brain, her hub at home): that server takes it and sends the picture back.
+  const there =
+    took._tag === "Failure" && took.failure.notLinked === true
+      ? yield* onPeer(
+          "device_owner",
+          { op: "camera", id },
+          {
+            takes: (v) => (v as TessayaDevicesCallResult).notLinked !== true,
+            wait: "15 seconds",
+          },
+        ).pipe(routedAct(id, "camera", "Tessaya in the room", (h) => h === null))
+      : null;
+  let shot: Option.Option<{ readonly dataUrl: string } | null>;
+  if (there !== null) {
+    const answer = there.value as TessayaDevicesCallResult;
+    const value = answer.value as
+      | { readonly status?: unknown; readonly line?: unknown; readonly shot?: unknown }
+      | undefined;
+    if (!answer.ok)
+      return {
+        text: answer.error ?? "That was not done.",
+        isError: true,
+        status: "failed",
+      } as ToolOutcome;
+    if (value?.status === "asked")
+      return { text: String(value.line), isError: false, status: "asked" } as ToolOutcome;
+    shot = Option.some(typeof value?.shot === "string" ? { dataUrl: value.shot } : null);
+  } else if (took._tag === "Failure")
     return { text: took.failure.why, isError: true, status: "failed" } as ToolOutcome;
-  if (took.success.status === "asked")
+  else if (took.success.status === "asked")
     return { text: took.success.line, isError: false, status: "asked" } as ToolOutcome;
-  const shot = yield* devices.value
-    .cameraView(id)
-    .pipe(
-      Effect.repeat({ schedule: Schedule.spaced("250 millis"), until: (v) => v !== null }),
-      Effect.timeoutOption(SHOT_WAIT),
-    );
+  else
+    shot = yield* devices.value
+      .cameraView(id)
+      .pipe(
+        Effect.repeat({ schedule: Schedule.spaced("250 millis"), until: (v) => v !== null }),
+        Effect.timeoutOption(SHOT_WAIT),
+      );
+
   if (Option.isNone(shot) || shot.value === null)
     return {
       text: "No picture came back from the camera.",

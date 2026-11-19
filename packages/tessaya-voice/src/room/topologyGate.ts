@@ -4,7 +4,9 @@
  * server's hub, joined by the loop's own bridge. Device writes are real, on the pretend Tessel, so a write that never
  * reaches her hub fails here (18 Nov: "Tumble isn't linked to the server"). Bundled with the loop; exit 0 when all pass.
  */
+import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
+import * as NodeHttp from "node:http";
 import * as NodePath from "node:path";
 import * as NodeSqlite from "node:sqlite";
 import * as NodeUtil from "node:util";
@@ -24,6 +26,8 @@ const { values } = NodeUtil.parseArgs({
     "brain-db": { type: "string" },
     "hub-db": { type: "string" },
     out: { type: "string" },
+    // A pretend Home Assistant on this port, which the hub's server is set up to reach (room-topology.sh).
+    "home-port": { type: "string" },
   },
 });
 const need = (key: keyof typeof values) => {
@@ -119,6 +123,21 @@ const report = () => {
   setVolume(state.volume);
   setOutput(state.output);
 };
+/** A plain red square, so a reply that names the colour shows the picture reached the model. */
+const RED_SHOT = Buffer.from(
+  "/9j/4AAQSkZJRgABAQAAAAAAAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCABAAEADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAb/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAUH/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AkwEVpoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/9k=",
+  "base64",
+);
+/** Her picture goes to the server her list names for pictures: her hub's (R1Reach ownProxy). */
+const upload = () =>
+  fetch(`${new URL("/camera/upload", hubUrl).toString()}?device=${id}`, {
+    method: "POST",
+    headers: { "content-type": "image/jpeg", "content-length": String(RED_SHOT.length) },
+    body: RED_SHOT,
+  }).then(
+    (r) => log(`camera upload ${r.status}`),
+    (e: unknown) => log(`camera upload failed ${String(e)}`),
+  );
 const tessel = connectMqtt({
   url: mqttOf(hubUrl),
   clientId: id,
@@ -133,6 +152,7 @@ const tessel = connectMqtt({
     if (tail === "cmd/volume" && typeof body["pct"] === "number") setVolume(body["pct"]);
     if (tail === "cmd/audio/output" && (body["to"] === "speaker" || body["to"] === "bt"))
       setOutput(body["to"]);
+    if (tail === "cmd/camera/capture") void upload();
     if (tail.startsWith("cmd/item/")) {
       const item = tail.slice("cmd/item/".length);
       const value = body["value"];
@@ -175,6 +195,110 @@ const brainOnly = connectMqtt({
   onMessage: () => undefined,
   log,
 });
+
+/** What the pretend Home Assistant was asked to do: `domain.service entity`. */
+const houseCalls: Array<string> = [];
+let houseConnected = false;
+/**
+ * A pretend Home Assistant with one lamp, on the hub's server only (19 Nov 04:40: "the house isn't connected" when the
+ * turn's server had no connection of its own). Its websocket API, as HomeAssistantConnection speaks it.
+ */
+const serveHouse = (port: number) => {
+  const lamp = { s: "off", a: { friendly_name: "Desk lamp" } };
+  const server = NodeHttp.createServer((_req, res) => res.writeHead(404).end());
+  server.on("upgrade", (req, socket) => {
+    const accept = NodeCrypto.createHash("sha1")
+      .update(`${String(req.headers["sec-websocket-key"])}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+      .digest("base64");
+    socket.write(
+      `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`,
+    );
+    const send = (message: unknown) => {
+      const body = Buffer.from(JSON.stringify(message));
+      const head =
+        body.length < 126
+          ? Buffer.from([0x81, body.length])
+          : Buffer.from([0x81, 126, body.length >> 8, body.length & 255]);
+      socket.write(Buffer.concat([head, body]));
+    };
+    let entities = -1;
+    const onMessage = (m: Record<string, unknown>) => {
+      const id = m["id"];
+      const ok = (result: unknown) => send({ id, type: "result", success: true, result });
+      switch (m["type"]) {
+        case "auth":
+          return send({ type: "auth_ok", ha_version: "2025.11.0" });
+        case "get_config":
+          return ok({ version: "2025.11.0", time_zone: "Asia/Karachi" });
+        case "config/area_registry/list":
+          return ok([{ area_id: "office", name: "Office" }]);
+        case "config/entity_registry/list":
+          return ok([{ entity_id: "light.desk_lamp", area_id: "office", name: null }]);
+        case "get_services":
+          return ok({ light: { turn_on: {}, turn_off: {}, toggle: {} } });
+        case "subscribe_entities":
+          entities = id as number;
+          houseConnected = true;
+          ok(null);
+          return send({ id, type: "event", event: { a: { "light.desk_lamp": lamp } } });
+        case "call_service": {
+          const target = (m["target"] ?? m["service_data"] ?? {}) as { entity_id?: unknown };
+          const entity = [target.entity_id].flat().join(",");
+          houseCalls.push(`${String(m["domain"])}.${String(m["service"])} ${entity}`);
+          ok({ context: { id: "topology" } });
+          const to = m["service"] === "turn_on" ? "on" : m["service"] === "turn_off" ? "off" : null;
+          if (to !== null && entity.includes("light.desk_lamp") && entities >= 0) {
+            lamp.s = to;
+            send({
+              id: entities,
+              type: "event",
+              event: { c: { "light.desk_lamp": { "+": { s: to } } } },
+            });
+          }
+          return;
+        }
+        default:
+          return ok([]);
+      }
+    };
+    // Client frames are masked and small here; one frame per message is all HomeAssistantConnection sends.
+    let pending = Buffer.alloc(0);
+    socket.on("data", (chunk: Buffer) => {
+      pending = Buffer.concat([pending, chunk]);
+      while (pending.length >= 6) {
+        const op = pending[0]! & 15;
+        let len = pending[1]! & 127;
+        let at = 2;
+        if (len === 126) {
+          len = pending.readUInt16BE(2);
+          at = 4;
+        } else if (len === 127) {
+          len = Number(pending.readBigUInt64BE(2));
+          at = 10;
+        }
+        if (pending.length < at + 4 + len) return;
+        const mask = pending.subarray(at, at + 4);
+        const body = Buffer.from(pending.subarray(at + 4, at + 4 + len)).map(
+          (b, i) => b ^ mask[i % 4]!,
+        );
+        pending = pending.subarray(at + 4 + len);
+        if (op === 8) return socket.end();
+        if (op !== 1) continue;
+        try {
+          const parsed = JSON.parse(body.toString()) as unknown;
+          for (const m of [parsed].flat()) onMessage(m as Record<string, unknown>);
+        } catch {
+          // Not JSON: Home Assistant would drop the connection; the case reports what was not done.
+        }
+      }
+    });
+    socket.on("error", () => undefined);
+    send({ type: "auth_required", ha_version: "2025.11.0" });
+  });
+  server.listen(port, "127.0.0.1");
+  return server;
+};
+const house = values["home-port"] === undefined ? null : serveHouse(Number(values["home-port"]));
 
 const until = async (ok: () => boolean, ms: number) => {
   const end = Date.now() + ms;
@@ -328,6 +452,34 @@ const cases: ReadonlyArray<TopologyCase> = [
           : null,
   },
   {
+    // Her own camera from his turn: no card, the picture reaches her brain (Director, 19 Nov 05:05).
+    id: "camera-no-card",
+    said: ["Have a look with your camera. What colour do you see?"],
+    check: ([reply], before) =>
+      told(before, "cmd/camera/capture").length === 0
+        ? `the Tessel was never told to take a picture (${JSON.stringify(commands.slice(before).map((c) => c.tail))})`
+        : /\b(phone|approv\w*|card|your yes)\b/i.test(reply!)
+          ? "asked for a yes on his phone"
+          : !/\bred\b/i.test(reply!)
+            ? "did not say what the picture shows (red)"
+            : null,
+  },
+  {
+    // The turn's server has no house of its own; the hub's server does, and the brain reaches it as a linked server.
+    id: "house-via-linked",
+    said: ["Turn on the desk lamp."],
+    check: ([reply]) =>
+      house === null
+        ? null
+        : !houseCalls.some((c) => c === "light.turn_on light.desk_lamp")
+          ? `the house was never asked to turn the lamp on (${houseCalls.join("; ") || "nothing"}${houseConnected ? "" : "; the hub never connected to it"})`
+          : /not connected|isn't connected|can't reach the house|no (house|home assistant)/i.test(
+                reply!,
+              )
+            ? "said the house is not connected"
+            : null,
+  },
+  {
     id: "status",
     said: ["What's your status? Are you connected properly?"],
     check: () => null,
@@ -339,6 +491,8 @@ const cases: ReadonlyArray<TopologyCase> = [
   },
 ];
 
+// The hub retries its house connection with a backoff of up to a minute, from before this gate started.
+if (house !== null) await until(() => houseConnected, 70_000);
 const rows: Array<Record<string, unknown>> = [];
 for (const c of cases) {
   const before = commands.length;
@@ -459,6 +613,7 @@ const failed = rows.filter((r) => r.result === "FAIL").length;
 const warned = rows.filter((r) => r.result === "WARN").length;
 console.log(`topology: ${rows.length - failed - warned} pass, ${failed} fail, ${warned} warn`);
 bridge.close();
+house?.close();
 tessel.close();
 loopOnHub.close();
 brainOnly.close();

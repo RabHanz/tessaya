@@ -6,6 +6,8 @@ import type { TessayaDevicesCallResult } from "@t3tools/tessaya-contracts";
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schedule from "effect/Schedule";
 
 import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
@@ -94,6 +96,26 @@ export const make = Effect.gen(function* () {
         return withOn(there);
       }),
     );
+  /**
+   * The picture taken here for another of his servers' turn (she is on this hub): it lands here, so it goes back in the
+   * answer. Only to a linked caller; anyone else reads nothing more than "taking one picture".
+   */
+  const withShot = (input: Args) => (answer: TessayaDevicesCallResult) =>
+    Effect.gen(function* () {
+      const status = (answer.value as { readonly status?: unknown } | undefined)?.status;
+      if (input["op"] !== "camera" || !answer.ok || status !== "done") return answer;
+      if ((yield* McpInvocationContext.McpInvocationContext).client?.linked !== true) return answer;
+      const shot = yield* devices("owner", "cameraView", { id: input["id"] }).pipe(
+        Effect.map(
+          (r) => (r.value as { readonly dataUrl?: string } | null | undefined)?.dataUrl ?? null,
+        ),
+        Effect.repeat({ schedule: Schedule.spaced("250 millis"), until: (v) => v !== null }),
+        Effect.timeoutOption("10 seconds"),
+      );
+      return Option.isNone(shot) || shot.value === null
+        ? answer
+        : { ...answer, value: { ...(answer.value as object), shot: shot.value } };
+    });
   const withOn = (there: { readonly on: string; readonly value: unknown }) => {
     const answer = there.value as TessayaDevicesCallResult;
     return { ...answer, value: { on: there.on, ...(answer.value as object | undefined) } };
@@ -136,7 +158,12 @@ export const make = Effect.gen(function* () {
       linked,
     ),
     device_owner: McpToolAccess.writes(
-      (input: Args) => routed("device_owner", input, devices("owner", ...split(input))),
+      (input: Args) =>
+        routed(
+          "device_owner",
+          input,
+          devices("owner", ...split(input)).pipe(Effect.flatMap(withShot(input))),
+        ),
       linked,
     ),
     device_read: McpToolAccess.reads((input: Args) =>
