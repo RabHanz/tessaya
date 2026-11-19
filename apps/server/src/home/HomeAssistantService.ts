@@ -72,6 +72,8 @@ const LABEL = "Tessaya";
 const UNDO_KEEP_MS = 24 * 3_600_000;
 /** How long after an act its follow-up (a timer, a condition) counts as the same request. */
 const SAME_REQUEST_MS = 60_000;
+/** How long after setting a delay a new one on the same devices from the same asker is a correction of it. */
+const AMEND_MS = 5 * 60_000;
 /** An undo snapshot's scene id: this, then the action id, whose first part is its time in base 36. */
 const UNDO_PREFIX = "tessaya_undo_";
 const DELETED_KEEP_MS = 7 * 86_400_000;
@@ -1376,6 +1378,36 @@ const make = Effect.gen(function* () {
     return { tier, reasons } satisfies HomeVerdict;
   });
 
+  /**
+   * The delay this one corrects: his "no, fifteen" straight after "for fifty minutes" changes the timer she just set on
+   * the same devices, never adds a second (19 Nov 22:25). Her history carries her words, not the first timer's id.
+   */
+  const pendingDelay = Effect.fn("HomeAssistant.pendingDelay")(function* (
+    input: HomeAutomationInput,
+    by: HomeActor,
+    now: number,
+  ) {
+    if (input.runInMinutes === undefined) return null;
+    const reach = new Set(actionCalls(input.actions).flatMap((c) => asList(c.target["entity_id"])));
+    if (reach.size === 0) return null;
+    const rows = yield* sql<AutomationRowDb & { readonly created_at: number }>`
+      SELECT * FROM fabric_home_automations WHERE id LIKE 'tessaya_temporary_%' AND status = 'active' AND once = 1
+        AND actor = ${by.who} AND surface = ${by.surface} AND created_at >= ${now - AMEND_MS} ORDER BY created_at DESC
+    `.pipe(Effect.orDie);
+    return (
+      rows.find((r) => {
+        try {
+          const actions = asRecord(JSON.parse(r.config))["actions"];
+          return actionCalls(actions).some((c) =>
+            asList(c.target["entity_id"]).some((e) => reach.has(e)),
+          );
+        } catch {
+          return false;
+        }
+      })?.id ?? null
+    );
+  });
+
   const saveAutomation = Effect.fn("HomeAssistant.saveAutomation")(function* (
     input: HomeAutomationInput,
     by: HomeActor,
@@ -1389,7 +1421,8 @@ const make = Effect.gen(function* () {
     // A delay has an end by nature, whatever kind was asked for.
     const kind: HomeAutomationKind =
       runAt !== null && input.kind === "permanent" ? "temporary" : input.kind;
-    const id = input.id ?? `tessaya_${kind}_${yield* newId}`;
+    const amends = input.id === undefined ? yield* pendingDelay(input, by, now) : null;
+    const id = input.id ?? amends ?? `tessaya_${kind}_${yield* newId}`;
     const triggers =
       runAt === null ? (input.triggers ?? []) : [{ trigger: "time", at: clockTime(runAt) }];
     const expiresAt =
@@ -1444,10 +1477,10 @@ const make = Effect.gen(function* () {
           reasons: [...verdict.reasons, "it changes an automation Tessaya did not make"],
         }
       : verdict;
-    // A delay is said by its clock time, so he hears what will happen and can correct it (19 Nov: fifty, not fifteen).
+    // A delay is said by its length and its clock time, so he hears what will happen and can correct it (19 Nov: fifty, not fifteen).
     const ends =
       runAt !== null
-        ? `, runs at ${clockTime(runAt).slice(0, 5)}`
+        ? `, runs in ${input.runInMinutes} minutes, at ${clockTime(runAt).slice(0, 5)}`
         : expiresAt === null
           ? ""
           : `, ends ${localTime(expiresAt)}`;
@@ -1463,7 +1496,7 @@ const make = Effect.gen(function* () {
       actions,
       mode: input.mode ?? "single",
     };
-    const line = `${input.id === undefined ? "create" : "change"} the ${mine ? kind : "existing"} automation "${config.alias}" (${id}${runAt === null ? "" : `, runs at ${clockTime(runAt).slice(0, 5)}`})`;
+    const line = `${input.id === undefined && amends === null ? "create" : "change"} the ${mine ? kind : "existing"} automation "${config.alias}" (${id}${runAt === null ? "" : `, runs in ${input.runInMinutes} minutes, at ${clockTime(runAt).slice(0, 5)}`})`;
     return yield* gate({
       by,
       verdict: editsHis,

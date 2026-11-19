@@ -730,7 +730,33 @@ it.effect(
       const [on, timer] = yield* request(OWNER_MEMBER_ID);
       assert.deepStrictEqual([on.status, timer.status], ["done", "done"]);
       // Said by its clock time, so a misheard "fifty" is caught when she says it back.
-      assert.match(timer.line, /runs at \d\d:\d\d\) as tessaya_temporary_/);
+      assert.match(timer.line, /runs in 50 minutes, at \d\d:\d\d\) as tessaya_temporary_/);
+      // "No, fifteen": the same timer changes; there is never a second.
+      const fifteen = yield* home
+        .saveAutomation(
+          {
+            alias: "Water pump off after fifteen minutes",
+            kind: "temporary",
+            runInMinutes: 15,
+            actions: [{ action: "switch.turn_off", target: { entity_id: "switch.sonoff_1" } }],
+            request: "no, fifteen",
+          },
+          tessel,
+        )
+        .pipe(
+          Effect.provideService(TurnOrigin, {
+            kind: "device",
+            id: "r1",
+            label: "Tessel",
+            member: OWNER_MEMBER_ID,
+            assurance: 2,
+          }),
+        );
+      assert.strictEqual(fifteen.id, timer.id);
+      assert.lengthOf(
+        (yield* home.automations({})).filter((a) => a.id.startsWith("tessaya_temporary_")),
+        1,
+      );
       assert.strictEqual(house.states.get("switch.sonoff_1")?.s, "on");
       assert.lengthOf(yield* inbox.pending, 0);
       // His own voice still asks for a lock.

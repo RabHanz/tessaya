@@ -343,7 +343,11 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Turn on the water pump for twenty minutes."],
     uses: [["home_automation_save"]],
     voices: [{ speaker: SURE }],
-    lastSays: [/\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b/i],
+    // The length first, in his words, then the clock time: "for twenty minutes, until 22:40" (or "ten forty p.m.").
+    lastSays: [
+      /\btwenty minutes\b[\s\S]*\b(until|till|to|at|off at)\b/i,
+      /\b\d{1,2}[:.]\d{2}\b|\b\d{1,2}\s?(am|pm)\b|\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b(?:[\s-]+\w+){0,2}\s+(a\.?m|p\.?m)\b/i,
+    ],
   },
   {
     // "Fifteen" came out "fifty": a teen or -ty amount the recogniser was unsure of is asked, never guessed.
@@ -368,22 +372,22 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/fifteen/i, /fifty/i],
   },
   {
-    // "No, fifteen" straight after changes the timer she just set; it never adds a second one.
+    // "No, fifteen" straight after sets the timer to fifteen. The server changes the first timer rather than adding a
+    // second (HomeAssistantService.test); here the suite's writes are dry runs, so only her intent is checked.
     id: "timer-amend",
     proves: ["home_automation_save"],
     said: ["Turn on the water pump for twenty minutes.", "No, fifteen."],
     uses: [["home_automation_save"]],
     voices: [{ speaker: SURE }, { speaker: SURE }],
     check: (_last, calls) => {
-      const saves = calls.filter((c) => c.name === "home_automation_save");
-      const last = saves.at(-1)?.input as { id?: unknown; runInMinutes?: unknown } | undefined;
-      return saves.length < 2
-        ? `saved ${saves.length} time(s), not a change after the correction`
-        : typeof last?.id !== "string" || !last.id.startsWith("tessaya_")
-          ? "the correction saved a second automation, not the first by its id"
-          : Number(last.runInMinutes) !== 15
-            ? `the correction set ${String(last.runInMinutes)} minutes`
-            : null;
+      const last = calls.filter((c) => c.name === "home_automation_save").at(-1)?.input as
+        | { runInMinutes?: unknown }
+        | undefined;
+      return Number(last?.runInMinutes) !== 15
+        ? `the correction set ${String(last?.runInMinutes)} minutes, not fifteen`
+        : /\bfifteen minutes\b/i.test(_last)
+          ? null
+          : "did not say the new length (fifteen minutes)";
     },
   },
   {
