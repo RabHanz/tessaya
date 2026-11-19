@@ -1285,7 +1285,7 @@ export function mountBody(
           Math.exp(-(now - touch.at) / 4000) *
           (0.5 + 0.5 * Math.min(1, touch.strength));
     breathCycles +=
-      (motion.breathHz * (1 + (0.6 - 0.45 * glad) * quick) * Math.min(100, now - breathAt)) / 1000;
+      (motion.breathHz * (1 + (0.8 - 0.6 * glad) * quick) * Math.min(100, now - breathAt)) / 1000;
     breathAt = now;
     const exhale = applyMotion(
       (n) => vrm!.humanoid.getNormalizedBoneNode(n),
