@@ -735,7 +735,7 @@ it.effect(
 it.effect(
   "with no connection here, the house through a linked server reads as connected, and off with none",
   () => {
-    // 19 Nov 05:20: on onnyx's server (no token) she said the house wasn't connected; hetzner had it.
+    // 19 Nov 05:20: on a server with no token she said the house wasn't connected; a linked one had it.
     const peers = (answers: boolean) =>
       Layer.mergeAll(
         Layer.mock(PeerLinks.PeerLinks)({

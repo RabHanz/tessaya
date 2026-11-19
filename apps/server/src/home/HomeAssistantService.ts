@@ -1963,8 +1963,8 @@ const make = Effect.gen(function* () {
   });
 
   return HomeAssistantService.of({
-    // With no connection here, the house through a linked server is connected (19 Nov 05:20: on onnyx's server she
-    // told him "the house isn't connected" while every home tool answered through hetzner).
+    // With no connection here, the house through a linked server is connected (19 Nov 05:20: on a server with no token
+    // she told him "the house isn't connected" while every home tool answered through the linked one).
     status: Effect.gen(function* () {
       if (status.state === "off" && (yield* viaLinked))
         return {
