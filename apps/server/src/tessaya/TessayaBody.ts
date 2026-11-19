@@ -357,13 +357,10 @@ export const wishTick = Effect.fn("TessayaBody.wish")(function* () {
   const turn = yield* Effect.serviceOption(TessayaTurn);
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (Option.isNone(turn) || Option.isNone(mood)) return null;
-  const mine = (yield* turn.value.threads()).filter((t) => t.person === OWNER_MEMBER_ID);
-  const himAt = mine.reduce<number | null>(
-    (at, t) => Math.max(at ?? 0, t.presentAt ?? 0) || at,
-    null,
-  );
   const owner = (yield* turn.value.whoIsHome).find((p) => p.member === OWNER_MEMBER_ID);
   const view = yield* mood.value.view(undefined, undefined, OWNER_MEMBER_ID);
+  // when he was last with her, on any vessel (spoke, typed, touched, around): her one affect's, as every body reads it
+  const himAt = view.seenAt ?? null;
   const settings = yield* Effect.serviceOption(ServerSettingsService);
   const liveliness = Option.isNone(settings)
     ? "calm"
@@ -844,6 +841,9 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (nerves?.tone != null && mood._tag === "Some")
     yield* mood.value.note(f.persona ?? undefined, { kind: "felt", tone: nerves.tone }, member);
+  // his own hand on her is him being with her: when he was last with her, for every body's wishes
+  if (owner && f.by === undefined && mood._tag === "Some")
+    yield* mood.value.note(f.persona ?? undefined, { kind: "seen" }, OWNER_MEMBER_ID);
   const live = yield* Effect.serviceOption(TurnLiveContext);
   if (live._tag === "None") return;
   const who =

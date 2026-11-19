@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -324,11 +325,43 @@ describe("TessayaBody", () => {
     }),
   );
 
+  it.effect(
+    "a room turn a minute ago means he was with her: her desk wish never says she misses him",
+    () =>
+      Effect.gen(function* () {
+        yield* restBody();
+        yield* TestClock.adjust("6 hours");
+        const world = (seenAt: number | null) =>
+          Layer.mergeAll(
+            // no thread of his says he was present (a room-loop turn sets none): her affect's seenAt does
+            Layer.mock(TessayaTurn)({
+              threads: () => Effect.succeed([]),
+              whoIsHome: Effect.succeed([{ member: "owner", likelyHome: true } as never]),
+            }),
+            Layer.mock(TessayaMood)({
+              view: () =>
+                Effect.succeed({ label: "neutral", intensity: 0.1, energy: 0.6, seenAt } as never),
+            }),
+            Layer.succeed(PersonaLayers, { all: [openLayer([])] }),
+          );
+        expect(yield* wishTick().pipe(Effect.provide(world(null)))).toMatchObject({
+          want: "seekHim",
+        });
+        yield* restBody();
+        yield* TestClock.adjust("20 minutes");
+        const now = yield* Clock.currentTimeMillis;
+        expect((yield* wishTick().pipe(Effect.provide(world(now - 60_000))))?.want).not.toBe(
+          "seekHim",
+        );
+        yield* restBody();
+      }),
+  );
+
   it.effect("when the rules give her nothing, a lively her asks the cheap model now and then", () =>
     Effect.gen(function* () {
       yield* restBody();
       // past the earlier cases' last wish (her wish rhythm is per process)
-      yield* TestClock.adjust("4 hours");
+      yield* TestClock.adjust("12 hours");
       const asked: Array<{ role: string; feature: string }> = [];
       const world = Layer.mergeAll(
         Layer.mock(TessayaTurn)({

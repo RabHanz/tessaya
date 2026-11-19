@@ -48,6 +48,14 @@ const GroupAct = Schema.Struct({ conversation: Id, group: GroupValue });
 const InboxAct = Schema.Struct({ op: Id, args: Schema.Record(Schema.String, Schema.Unknown) });
 
 const decodeMoodAct = Schema.decodeUnknownOption(MoodAct);
+const MoodAsk = Schema.Struct({
+  p: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))),
+  m: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+  z: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))),
+  /** A vessel asking for its own face (atDevice): its owner's relationship when it may show it. */
+  d: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(120))),
+});
+const decodeMoodAsk = Schema.decodeUnknownOption(MoodAsk);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
@@ -81,6 +89,18 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
           act.value.m,
         );
       return done();
+    }
+    case "moodView": {
+      const ask = decodeMoodAsk(payload);
+      if (Option.isNone(ask)) return refused("Not a mood ask.");
+      const mood = yield* Effect.serviceOption(TessayaMood);
+      if (Option.isNone(mood)) return refused("No mood here.");
+      const a = ask.value;
+      return done(
+        a.d === undefined
+          ? yield* mood.value.view(a.p ?? undefined, a.z ?? undefined, a.m)
+          : yield* mood.value.atDevice(a.d, a.p ?? undefined, a.z ?? undefined),
+      );
     }
     case "presence": {
       const act = decodePresenceAct(payload);

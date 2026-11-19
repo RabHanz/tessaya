@@ -19,6 +19,11 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood, layer as moodLayer } from "./TessayaMood.ts";
 import { TessayaPeople } from "./TessayaPeople.ts";
 import { TessayaPresence, layer as presenceLayer } from "./TessayaPresence.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
 
 const learning = Layer.mock(TessayaMemoryLearning)({
   learn: () => Effect.succeed({ stored: 1, held: 0, corrections: 1 }),
@@ -352,4 +357,62 @@ it.effect(
         Effect.provide(moodLayer.pipe(Layer.provide(people), Layer.provideMerge(moodSettings))),
       );
     }).pipe(Effect.provide(SqlitePersistenceMemory)),
+);
+
+it.effect(
+  "one mood: a server that isn't her brain shows the brain's mood and when he was last with her, not its own copy",
+  () =>
+    Effect.gen(function* () {
+      const settings = ServerSettingsService.layerTest({
+        tessayaMood: { enabled: true, intensity: 0.6, bondCap: 0.15 },
+      });
+      const brain = yield* Layer.build(
+        moodLayer.pipe(Layer.provideMerge(settings), Layer.provideMerge(SqlitePersistenceMemory)),
+      );
+      // he talked to her on a Tessel: the brain heard it
+      yield* Effect.flatMap(TessayaMood, (m) => m.heard(undefined, "UTC", OWNER_MEMBER_ID)).pipe(
+        Effect.provideContext(brain),
+      );
+      const worker = yield* Layer.build(
+        moodLayer.pipe(
+          Layer.provideMerge(settings),
+          Layer.provideMerge(
+            Layer.succeed(PeerLinks.PeerLinks, {
+              enabled: Effect.succeed(true),
+              list: Effect.succeed([
+                { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+              ]),
+            } as never),
+          ),
+          Layer.provideMerge(
+            Layer.succeed(
+              PeerMcpClient.PeerMcpClient,
+              PeerMcpClient.PeerMcpClient.of({
+                call: (input) =>
+                  receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
+                    Effect.provideContext(brain),
+                  ) as never,
+              }),
+            ),
+          ),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      );
+      const sql = yield* SqlClient.SqlClient.pipe(Effect.provideContext(worker));
+      yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+      const onBrain = yield* Effect.flatMap(TessayaMood, (m) =>
+        m.view(undefined, undefined, OWNER_MEMBER_ID),
+      ).pipe(Effect.provideContext(brain));
+      const onWorker = yield* Effect.flatMap(TessayaMood, (m) =>
+        m.view(undefined, undefined, OWNER_MEMBER_ID),
+      ).pipe(Effect.provideContext(worker));
+      assert.isNumber(onBrain.seenAt);
+      assert.strictEqual(onWorker.seenAt, onBrain.seenAt);
+      assert.strictEqual(onWorker.label, onBrain.label);
+      // a body asking for its own face gets the brain's too
+      const face = yield* Effect.flatMap(TessayaMood, (m) => m.atDevice("laptop", undefined)).pipe(
+        Effect.provideContext(worker),
+      );
+      assert.strictEqual(face.label, onBrain.label);
+    }).pipe(Effect.scoped),
 );
