@@ -172,22 +172,26 @@ const publishPronunciations = Effect.fn("R1Device.publishPronunciations")(functi
   yield* Stream.runForEach(changes, (s) => publish(s.voicePronounce));
 });
 
-/** Her breath between sentences on the Tessel (`tessayaVoiceBreath`), retained for a late loop. */
-const breathTopic = (deviceId: string) => `freya/r1/${deviceId}/voice/breath`;
-
-const publishBreath = Effect.fn("R1Device.publishBreath")(function* () {
+/** A switch for each Tessel's loop, retained for a late loop: her breath (`voice/breath`), his kept turns (`voice/capture`). */
+const publishSwitch = Effect.fn("R1Device.publishSwitch")(function* (
+  tail: "voice/breath" | "voice/capture",
+  read: (s: {
+    readonly tessayaVoiceBreath: boolean;
+    readonly tessayaTurnCapture: boolean;
+  }) => boolean,
+) {
   const settings = yield* Effect.serviceOption(ServerSettingsService);
   if (Option.isNone(settings)) return;
   const changes = yield* settings.value.subscribeChanges;
   let sent: boolean | null = null;
-  const publish = Effect.fn("R1Device.publishBreathOnce")(
+  const publish = Effect.fn("R1Device.publishSwitchOnce")(
     function* (on: boolean) {
       if (on === sent) return;
       for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices))
         if (device.deviceId !== null)
           yield* publishToDevice(
             device,
-            breathTopic(device.deviceId),
+            `freya/r1/${device.deviceId}/${tail}`,
             JSON.stringify({ on }),
             true,
           );
@@ -195,8 +199,8 @@ const publishBreath = Effect.fn("R1Device.publishBreath")(function* () {
     },
     (e) => Effect.ignore(e),
   );
-  yield* publish((yield* settings.value.getSettings).tessayaVoiceBreath);
-  yield* Stream.runForEach(changes, (s) => publish(s.tessayaVoiceBreath));
+  yield* publish(read(yield* settings.value.getSettings));
+  yield* Stream.runForEach(changes, (s) => publish(read(s)));
 });
 
 /** Voice ID's switches (`voiceIdGate`) for the room loop's gate, retained for a late loop. */
@@ -1807,7 +1811,16 @@ export const routes = HttpRouter.use((router) =>
       Effect.ignore,
       Effect.forkScoped,
     );
-    yield* publishBreath().pipe(Effect.provideContext(context), Effect.ignore, Effect.forkScoped);
+    yield* publishSwitch("voice/breath", (s) => s.tessayaVoiceBreath).pipe(
+      Effect.provideContext(context),
+      Effect.ignore,
+      Effect.forkScoped,
+    );
+    yield* publishSwitch("voice/capture", (s) => s.tessayaTurnCapture).pipe(
+      Effect.provideContext(context),
+      Effect.ignore,
+      Effect.forkScoped,
+    );
     yield* publishRestMood().pipe(Effect.provideContext(context), Effect.ignore, Effect.forkScoped);
     // The room's tools (R1Tools.layer); without them the key route speaks in the acts form as before.
     const tools = yield* RoomTools;

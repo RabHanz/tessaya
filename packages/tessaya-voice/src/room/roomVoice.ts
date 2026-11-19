@@ -79,6 +79,7 @@ import {
 import { DOWN_FRAME_BYTES, fromBytes, speechLevel, toBytes } from "./audio.ts";
 import { PILL_SOUNDS, renderSound, soundMs, type PillSound } from "../cueSounds.ts";
 import type { Affect } from "./senseVoice.ts";
+import type { TurnCaptureMeta } from "./turnCapture.ts";
 import type { KwsEvent, WakeRequest } from "./wakeStream.ts";
 import { segmentsOf, type TurnVoices } from "./segments.ts";
 import {
@@ -395,6 +396,8 @@ export interface RoomDeps {
   readonly embed?: (pcm: Int16Array) => Promise<Float32Array | null>;
   /** How like the household's enrolled voices this is (best cosine over every profile); open talk-over needs it. */
   readonly member?: (pcm: Int16Array) => Promise<number>;
+  /** Keeps his own turn's audio for his voice models (turnCapture.ts); only his, never another voice's. */
+  readonly keepTurn?: (id: string, pcm: Int16Array, meta: TurnCaptureMeta) => void;
   /** Someone in the household has a voice profile here: without one, talking over her stays keyword. */
   readonly members?: () => boolean;
   readonly now: () => number;
@@ -2672,6 +2675,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         ...(identity.test === true ? { test: true } : {}),
         ...(reasked ? { reasked: true } : {}),
       };
+      // His own voice only: a turn Voice ID verified as him, or his words over her in his session (never a member's or a
+      // guest's), and only while his setting keeps it on (voice/capture).
+      const his = identity.kind === "owner" && identity.verified && identity.test !== true;
+      const overHis =
+        bargedIn && hisSession() && identity.kind !== "saved" && identity.kind !== "guest";
+      if (given === undefined && text !== "" && capturing.get(id) !== false && (his || overHis))
+        deps.keepTurn?.(id, pcm, {
+          turn,
+          text,
+          speaker: identity.kind,
+          score: score === null ? null : r3(score),
+          overHer: bargedIn,
+        });
       bargedIn = false;
       deps.publish(topic(id, "event/voice/metrics"), JSON.stringify(metrics));
       deps.log(`[${id}] metrics ${JSON.stringify(metrics)}`);
@@ -3249,6 +3265,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const pronunciations = new Map<string, Readonly<Record<string, string>>>();
   /** Voice ID's switches per R1, from her server (`voice/gate`, retained): the one record the desktop also sets. */
   const voiceIdGates = new Map<string, SpeakerGate>();
+  /** Whether his turns are kept for his voice models per R1 (`voice/capture`, retained); on unless he turns it off. */
+  const capturing = new Map<string, boolean>();
   /** Her breath between sentences per R1, from her server (`voice/breath`, retained); off until he turns it on. */
   const breathing = new Map<string, boolean>();
   /** Her last "I'm here" on each R1 and when, across its sessions. */
@@ -3563,6 +3581,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         }
         deps.log(
           `[${id}] pronunciations: ${pronunciations.get(id) === undefined ? 0 : Object.keys(pronunciations.get(id)!).length}`,
+        );
+        return;
+      }
+      if (tail === "voice/capture") {
+        capturing.set(id, json()["on"] !== false);
+        deps.log(
+          `[${id}] keeping his turns for his voice: ${capturing.get(id) === false ? "off" : "on"}`,
         );
         return;
       }
