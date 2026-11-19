@@ -17,6 +17,7 @@ import {
   composeEndpoints,
   hubOrder,
   ownHubUrls,
+  heardHubs,
   ownProxy,
   R1Reach,
   reportMatches,
@@ -55,6 +56,18 @@ it("puts the LAN first, the tunnel only when away is on, and keeps a fallback br
   expect(one(false, [], [], "t")).toEqual({ broker: [`wss://t${HUB}`], proxy: "https://t" });
   expect(reportMatches('{"broker":["x"],"proxy":""}', { broker: ["x"], proxy: "" })).toBe(true);
   expect(reportMatches("garbage", { broker: ["x"], proxy: "" })).toBe(false);
+});
+
+it("always lists his home hub first, then only the hubs whose room loop hears her (19 Nov 07:16)", () => {
+  const hubs = [
+    // Home's own loop was down when it last said so: still first, so her home check takes her back.
+    { id: "home", room: false },
+    { id: "cloud", room: true },
+    // His laptop's hub, from a server too old to say: no loop there, left out.
+    { id: "laptop" },
+  ];
+  expect(heardHubs(hubs).map((h) => h.id)).toEqual(["home", "cloud"]);
+  expect(heardHubs([{ id: "a", room: false }]).map((h) => h.id)).toEqual(["a"]);
 });
 
 it("gives every hub a slot in his order, and every server the same list, so she moves back to the first", () => {
