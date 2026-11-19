@@ -11,7 +11,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { OWNER_MEMBER_ID, vesselSubject } from "@t3tools/tessaya-shared/household";
+import { PrivateCaller, TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
 import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 
@@ -99,6 +100,8 @@ export interface LayerBrain {
     readonly system: string;
     readonly prompt: string;
   }) => Promise<string>;
+  /** Keeps one note in his one sealed tier (his private store on the brain path, D2); true once it is stored. */
+  readonly remember?: (text: string) => Promise<boolean>;
 }
 
 export interface LayerContext {
@@ -378,6 +381,31 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
                 }),
           ),
           Effect.flatMap(encodeJson),
+        ),
+      ),
+    remember: (text) =>
+      run(
+        Effect.serviceOption(TessayaPrivateMemoryService).pipe(
+          Effect.flatMap((stores) =>
+            Option.isNone(stores)
+              ? Effect.succeed(false)
+              : stores.value
+                  .remember({
+                    // the layer's gate already held his verified voice or PIN: his own turn, typed as his desk is
+                    turn: { route: "assistant", typed: true, tainted: false, speaker: null },
+                    text,
+                    kind: "note",
+                  })
+                  .pipe(
+                    Effect.provideService(PrivateCaller, {
+                      session: vesselSubject(turn.vessel.id),
+                      desktop: true,
+                      member: OWNER_MEMBER_ID,
+                    }),
+                    Effect.map((r) => r.stored),
+                    Effect.orElseSucceed(() => false),
+                  ),
+          ),
         ),
       ),
     run: (name, input) =>

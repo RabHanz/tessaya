@@ -12,6 +12,7 @@ import { deskTurnStream } from "./DeskTurn.ts";
 import { TessayaTurn, type TurnEnvelope, type WhoIsHome } from "./TessayaTurn.ts";
 import { type PersonaLayer, PersonaLayers } from "./PersonaLayers.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
 
 const run = (
   ownMachine: boolean,
@@ -24,6 +25,7 @@ const run = (
     const begun: Array<TurnEnvelope> = [];
     const ran: Array<{ name: string; input: unknown }> = [];
     const asked: Array<{ role: string; feature: string; model?: string; persona?: string }> = [];
+    const sealed: Array<{ text: string; typed: boolean }> = [];
     const hands = createHandsBroker({ now: () => 0, newId: () => "c1" });
     // The desktop is listening and offers its screen.
     void hands.take(1, [
@@ -103,6 +105,13 @@ const run = (
             append: () => Effect.sync(() => touched.push("record")) as never,
           }),
           Layer.succeed(PersonaLayers, { all: layers }),
+          Layer.mock(TessayaPrivateMemoryService)({
+            remember: (input) =>
+              Effect.sync(() => {
+                sealed.push({ text: input.text, typed: input.turn.typed });
+                return { stored: true, whose: "owner", reason: null };
+              }),
+          }),
           Layer.succeed(
             TessayaOneShot,
             TessayaOneShot.of({
@@ -130,6 +139,7 @@ const run = (
       touched,
       begun,
       asked,
+      sealed,
       ran,
     };
   });
@@ -215,7 +225,7 @@ effectIt.effect(
         refused: boolean;
         wrote: string;
       }> = [];
-      const { said, touched, begun, ran, asked } = yield* run(true, [
+      const { said, touched, begun, ran, asked, sealed } = yield* run(true, [
         {
           id: "test",
           onTurn: async (_t, brain) => {
@@ -223,6 +233,8 @@ effectIt.effect(
             const acted = await brain!.run("home_do", { light: "desk", on: false });
             const refused = await brain!.run("tessaya_memory_remember", { text: "x" });
             // her reply is written by the one brain's call, on the model the layer's router chose
+            // a note of hers goes into his one sealed tier (step 6), not the public memory
+            if ((await brain!.remember!("he likes rain")) !== true) throw new Error("not kept");
             const wrote = await brain!.complete!({
               model: "claude-sonnet-5-5",
               system: "her",
@@ -253,6 +265,7 @@ effectIt.effect(
         },
       ]);
       // one call on the spine, as a spoken turn on his subscription, never with its words
+      expect(sealed).toEqual([{ text: "he likes rain", typed: true }]);
       expect(asked).toEqual([
         { role: "voice", feature: "private-turn", model: "claude-sonnet-5-5" },
       ]);
