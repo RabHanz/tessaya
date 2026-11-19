@@ -101,11 +101,13 @@ export const composeEndpoints = (input: {
 };
 
 /**
- * The hubs she may be sent to: those where a room loop can hear her (a loop-less hub left her deaf until the home
- * check moved her back). All of them when none can, so she still has somewhere to connect.
+ * The hubs she may be sent to, in his order: his first (home) hub always, so the device's home check can take her back
+ * (19 Nov 07:16: on the standby its list had no home LAN, so she never went home), then only the others that say a
+ * room loop hears her there (a loop-less hub, his laptop's, left her deaf; one too old to say is left out). All of
+ * them when that leaves none.
  */
-const heardHubs = <H extends { readonly room?: boolean }>(hubs: ReadonlyArray<H>) => {
-  const heard = hubs.filter((h) => h.room !== false);
+export const heardHubs = <H extends { readonly room?: boolean }>(hubs: ReadonlyArray<H>) => {
+  const heard = hubs.filter((h, i) => i === 0 || h.room === true);
   return heard.length > 0 ? heard : hubs;
 };
 
