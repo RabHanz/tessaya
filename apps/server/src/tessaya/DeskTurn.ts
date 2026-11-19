@@ -185,12 +185,16 @@ export const deskTurnStream = (
       ) {
         // A persona layer answers the whole turn itself, with her memory and every tool this turn has; nothing below
         // runs, so nothing is learned or recorded.
-        const layered = yield* replyFor(turn, {
-          tools,
-          own: hands === null ? [] : vesselTools(hands, originOf(turn), consent),
-          allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
-          device: body.vessel,
-        }).pipe((layer) =>
+        const layered = yield* replyFor(
+          turn,
+          {
+            tools,
+            own: hands === null ? [] : vesselTools(hands, originOf(turn), consent),
+            allowed: pack.personas.find((p) => p.id === turn.persona)?.tools ?? null,
+            device: body.vessel,
+          },
+          groupNote,
+        ).pipe((layer) =>
           hands === null ? layer : Effect.provideService(layer, VesselHands, hands),
         );
         if (layered !== null) {

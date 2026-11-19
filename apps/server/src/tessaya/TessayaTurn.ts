@@ -787,14 +787,16 @@ export const make = Effect.gen(function* () {
     };
     if ("refused" in privatePersonOf(asked) || Option.isNone(stores)) return "";
     // shortcut: only a store opened for this vessel's own session is read; nothing opens one for a device yet (M2).
-    const recalled = yield* stores.value.recall({ turn: asked, text: turn.text }).pipe(
-      Effect.provideService(PrivateCaller, {
-        session: vesselSubject(turn.vessel.id),
-        desktop: true,
-        member: memberOfSubject(vesselSubject(turn.vessel.id)),
-      }),
-      Effect.option,
-    );
+    const recalled = yield* stores.value
+      .recall({ turn: asked, text: turn.text, persona: turn.persona ?? null })
+      .pipe(
+        Effect.provideService(PrivateCaller, {
+          session: vesselSubject(turn.vessel.id),
+          desktop: true,
+          member: memberOfSubject(vesselSubject(turn.vessel.id)),
+        }),
+        Effect.option,
+      );
     return Option.isSome(recalled) ? recalled.value.block : "";
   });
 
