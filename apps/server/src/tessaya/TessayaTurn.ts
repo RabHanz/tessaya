@@ -939,7 +939,7 @@ export const make = Effect.gen(function* () {
       .run({
         prompt: `In at most eight plain words, say what this conversation is about now, as a topic ("the heating schedule", "his trip to Lahore"). No quotes, no full sentence.\n\n${lines}`,
         outputSchema: Gist,
-        role: "background",
+        role: "gist",
         feature: "attention-gist",
       })
       .pipe(Effect.orElseSucceed(() => null));
