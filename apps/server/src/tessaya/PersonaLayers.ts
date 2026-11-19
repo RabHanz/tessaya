@@ -16,6 +16,7 @@ import { PrivateCaller, TessayaPrivateMemoryService } from "./TessayaPrivateMemo
 import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
 import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 import type { PrivateRooms } from "@t3tools/tessaya-shared/rooms";
+import type { FeltTone } from "@t3tools/tessaya-shared/affect";
 
 import type { RoomToolSet } from "../home/R1Brain.ts";
 import { capToolText, personaTools, type VesselTool } from "./TessayaBrain.ts";
@@ -108,6 +109,8 @@ export interface LayerBrain {
   readonly remember?: (text: string, persona?: string) => Promise<boolean>;
   /** How close this private moment felt (0..1), into her one mood toward him (P2); never its words. */
   readonly felt?: (warmth: number) => Promise<void>;
+  /** How a touch in a private moment felt, a tone only, into her one mood; never where or how. */
+  readonly touched?: (tone: FeltTone) => Promise<void>;
 }
 
 export interface LayerContext {
@@ -449,7 +452,24 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
           Effect.flatMap((mood) =>
             Option.isNone(mood)
               ? Effect.void
-              : mood.value.note(turn.persona, { kind: "close", warmth }, OWNER_MEMBER_ID),
+              : // his turn reached her (the time away resolves, the day counts), then how close it was
+                mood.value
+                  .heard(turn.persona, turn.timeZone, OWNER_MEMBER_ID)
+                  .pipe(
+                    Effect.andThen(
+                      mood.value.note(turn.persona, { kind: "close", warmth }, OWNER_MEMBER_ID),
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    touched: (tone) =>
+      run(
+        Effect.serviceOption(TessayaMood).pipe(
+          Effect.flatMap((mood) =>
+            Option.isNone(mood)
+              ? Effect.void
+              : mood.value.note(turn.persona, { kind: "felt", tone }, OWNER_MEMBER_ID),
           ),
         ),
       ),
