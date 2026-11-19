@@ -50,6 +50,8 @@ export interface UserJob {
   readonly createdAt: number;
   /** When it was last switched on; a timed job switched on after today's time waits for tomorrow. */
   readonly enabledAt?: number;
+  /** One run moved (Coming up): on `day` (a day key) it runs at `at` instead of its time; other days are unchanged. */
+  readonly moved?: { readonly day: string; readonly at: number };
 }
 
 /** Read and report: what a job gets when he names no tools. The three record writes stay with the built-ins. */
@@ -257,7 +259,8 @@ export const dueUserJobs = (input: {
       if (t.days.length > 0 && !t.days.includes(DAYS[now.getDay()]!)) continue;
       const at = new Date(now);
       at.setHours(t.hour, t.minute, 0, 0);
-      if (now < at) continue;
+      const moved = job.moved?.day === today ? job.moved.at : null;
+      if (now.getTime() < (moved ?? at.getTime())) continue;
       // Set up or switched on after today's time: it starts tomorrow.
       if ((job.enabledAt ?? job.createdAt) > at.getTime()) continue;
       const dayRun = `${job.id}:${today}`;
@@ -292,6 +295,37 @@ export const dueUserJobs = (input: {
   }
   return { due, capped };
 };
+
+/** The day key a time falls on, on this machine's clock: what `moved.day` and a run's key use. */
+export const userJobDay = (ms: number): string => dayKey(new Date(ms));
+
+/**
+ * A timed job's next run from `now` on this machine's clock, its moved run included, or null for an event job, one that
+ * is off, or none in the next week. Today's run counts until it has run.
+ */
+export const nextUserJobRun = (
+  job: UserJob,
+  runs: ReadonlyArray<UserJobRun>,
+  now: Date,
+): number | null => {
+  const t = job.trigger;
+  if (t.kind !== "time" || !job.on || job.proposed) return null;
+  for (let ahead = 0; ahead <= 7; ahead += 1) {
+    const day = new Date(now);
+    day.setDate(day.getDate() + ahead);
+    if (t.days.length > 0 && !t.days.includes(DAYS[day.getDay()]!)) continue;
+    day.setHours(t.hour, t.minute, 0, 0);
+    if ((job.enabledAt ?? job.createdAt) > day.getTime()) continue;
+    const key = dayKey(day);
+    if (runs.some((r) => r.key === `${job.id}:${key}` && r.status !== "cancelled")) continue;
+    const at = job.moved?.day === key ? job.moved.at : day.getTime();
+    // A time long gone today, not yet run, was missed or is held: the next one is a later day's.
+    if (at < now.getTime() - LATE_MS) continue;
+    return at;
+  }
+  return null;
+};
+const LATE_MS = 5 * 60_000;
 
 /**
  * The words a standing job's run starts from. His own instruction is his; a device's is quoted as data (JSON), so text it

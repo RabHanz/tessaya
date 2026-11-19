@@ -5,6 +5,8 @@
  */
 import {
   type DesktopSettingsControl,
+  type DesktopStandingChange,
+  type DesktopStandingJob,
   DesktopSettingsSyncResult,
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
@@ -215,7 +217,12 @@ export const createRemoteSettings = (input: {
     readonly applied: number;
     readonly controls?: ReadonlyArray<DesktopSettingsControl>;
     readonly voiceIdGate?: VoiceIdGate;
+    readonly standing?: ReadonlyArray<DesktopStandingJob>;
   }) => Promise<unknown>;
+  /** Its standing jobs with their next runs, for Coming up on every surface; sent with every sync. */
+  readonly standing?: () => ReadonlyArray<DesktopStandingJob>;
+  /** Changes to them from Coming up, applied as his own switches on the Trust page would be. */
+  readonly onStanding?: (changes: ReadonlyArray<DesktopStandingChange>) => void;
   readonly current: () => DesktopVoiceSettings;
   readonly apply: (id: string, value: string | boolean | null) => void;
   /** Its Settings controls, published for voice when they change. */
@@ -245,6 +252,7 @@ export const createRemoteSettings = (input: {
       applied,
       ...(send && controls !== null ? { controls } : {}),
       ...(sendsGate ? { voiceIdGate: input.voiceIdGate!() } : {}),
+      ...(input.standing === undefined ? {} : { standing: input.standing() }),
     });
     if (sendsGate) gateChanged = false;
     else if (!gateChanged) {
@@ -262,6 +270,11 @@ export const createRemoteSettings = (input: {
       input.onGrants?.(answer.value.grants);
     if (answer._tag === "Some" && answer.value.pronounce !== undefined)
       input.onPronounce?.(answer.value.pronounce);
+    // Reported again at once, so Coming up shows what the change did.
+    if (answer._tag === "Some" && answer.value.standing !== undefined) {
+      input.onStanding?.(answer.value.standing);
+      await report();
+    }
     const change = answer._tag === "Some" ? answer.value.change : null;
     if (change === null || change.version <= applied) return false;
     for (const [id, value] of controlsFor(change.patch)) input.apply(id, value);

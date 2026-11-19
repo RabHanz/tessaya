@@ -4,6 +4,7 @@
  * sent back to its owner. Nothing is stored here. A source that cannot do something says so in a sentence.
  */
 import type {
+  DesktopStandingJob,
   HomeAutomationRow,
   OrchestrationRuleError,
   OrchestrationRuleWithFirings,
@@ -36,6 +37,8 @@ import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
+import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
+import { houseZone, isoIn } from "./houseZone.ts";
 
 const short = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`;
@@ -199,6 +202,25 @@ export const dateItems = (
     can: can(false, false, false),
   }));
 
+export const standingItems = (report: {
+  readonly connected: boolean;
+  readonly jobs: ReadonlyArray<DesktopStandingJob>;
+}): ReadonlyArray<UpcomingItem> =>
+  report.jobs.map((j) => ({
+    id: `standing:${j.id}`,
+    source: "standing",
+    title: short(j.title, 200),
+    line: short(
+      report.connected ? j.line : `${j.line} As your computer last said; it is not connected now.`,
+      400,
+    ),
+    at: j.on ? j.at : null,
+    condition: !j.on ? "Off until you turn it back on" : j.at === null ? j.condition : null,
+    repeats: j.repeats,
+    paused: !j.on,
+    can: can(false, true, j.on && j.movable && j.at !== null),
+  }));
+
 /** The sentence for an op a source cannot do. */
 export const refusal = (item: UpcomingItem, op: UpcomingChangeInput["op"]): string | null => {
   if (op === "cancel" && !item.can.cancel)
@@ -206,7 +228,9 @@ export const refusal = (item: UpcomingItem, op: UpcomingChangeInput["op"]): stri
       ? "That comes from your memories; change or forget the memory itself."
       : item.source === "rule"
         ? "A rule can be switched off, not deleted."
-        : "That cannot be cancelled from here.";
+        : item.source === "standing"
+          ? "A standing job can be switched off here; remove it on the Trust page."
+          : "That cannot be cancelled from here.";
   if ((op === "pause" || op === "resume") && !item.can.pause)
     return item.source === "reminder"
       ? "A reminder cannot be paused; move it or cancel it."
@@ -245,11 +269,12 @@ const owners = Effect.all({
   rules: Effect.serviceOption(OrchestrationRuleService),
   moves: Effect.serviceOption(ThreadAccountMoves),
   turn: Effect.serviceOption(TessayaTurn),
+  desktop: Effect.serviceOption(TessayaDesktopSettings),
 });
 
 export const make = Effect.sync(() => {
   const list = Effect.fn("TessayaUpcoming.list")(function* (input: { readonly days?: number }) {
-    const { home, commitments, tasks, rules, moves, turn } = yield* owners;
+    const { home, commitments, tasks, rules, moves, turn, desktop } = yield* owners;
     // Each source read on its own: one that fails is named, and the rest still show.
     const sources: ReadonlyArray<{
       readonly name: string;
@@ -285,6 +310,10 @@ export const make = Effect.sync(() => {
       ...Option.match(turn, {
         onNone: () => [],
         onSome: (t) => [{ name: "your memories", read: Effect.map(t.comingUp, dateItems) }],
+      }),
+      ...Option.match(desktop, {
+        onNone: () => [],
+        onSome: (d) => [{ name: "your computer", read: Effect.map(d.standingJobs, standingItems) }],
       }),
     ];
     const read = yield* Effect.forEach(
@@ -325,7 +354,7 @@ export const make = Effect.sync(() => {
     if (item === undefined) return yield* fail("That is no longer coming up.");
     const refused = refusal(item, input.op);
     if (refused !== null) return yield* fail(refused);
-    const { home, commitments, tasks, rules, moves } = yield* owners;
+    const { home, commitments, tasks, rules, moves, desktop } = yield* owners;
     const now = yield* Clock.currentTimeMillis;
     const at =
       input.op !== "move"
@@ -419,6 +448,29 @@ export const make = Effect.sync(() => {
         return cancelled
           ? done("Cancelled the waiting change.")
           : yield* fail("It already went in.");
+      }
+      case "standing": {
+        if (Option.isNone(desktop)) return yield* fail("Standing jobs are not available here.");
+        // A standing job runs once a day: its run moves within that day, never onto another.
+        if (input.op === "move") {
+          const zone = yield* houseZone();
+          if (isoIn(at!, zone).slice(0, 10) !== isoIn(item.at!, zone).slice(0, 10))
+            return yield* fail(
+              "A standing job's run moves within its own day; to change every day, change its time on the Trust page.",
+            );
+        }
+        yield* desktop.value.changeStanding({
+          id: key,
+          op: input.op === "cancel" ? "pause" : input.op,
+          ...(at === null ? {} : { at }),
+        });
+        const connected = (yield* desktop.value.standingJobs).connected;
+        return {
+          done: connected,
+          line: connected
+            ? `Sent to your computer: "${item.title}" ${input.op === "move" ? "moves" : input.op === "pause" ? "is off" : "is on"}.`
+            : `Your computer is not connected; "${item.title}" changes when it is back.`,
+        };
       }
       default:
         return yield* fail("That cannot be changed from here.");

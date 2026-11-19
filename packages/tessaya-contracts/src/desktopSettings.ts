@@ -114,6 +114,32 @@ export const DesktopSettingsView = Schema.Struct({
 });
 export type DesktopSettingsView = typeof DesktopSettingsView.Type;
 
+/** One standing job as the desktop that runs it reports it, for Coming up on every surface. */
+export const DesktopStandingJob = Schema.Struct({
+  /** "user:3" for his own, a built-in's id ("morning_brief") for the others. */
+  id: Schema.String.check(Schema.isMaxLength(120)),
+  title: Schema.String.check(Schema.isMaxLength(200)),
+  line: Schema.String.check(Schema.isMaxLength(400)),
+  on: Schema.Boolean,
+  /** Its next run (epoch ms), or null for one on an event or switched off. */
+  at: Schema.NullOr(Schema.Number),
+  /** What an event job waits for. */
+  condition: Schema.NullOr(Schema.String.check(Schema.isMaxLength(200))),
+  repeats: Schema.NullOr(Schema.String.check(Schema.isMaxLength(80))),
+  /** A timed job's next run may move, within its own day. */
+  movable: Schema.Boolean,
+});
+export type DesktopStandingJob = typeof DesktopStandingJob.Type;
+
+/** A change to one standing job, taken by the desktop on its next sync. */
+export const DesktopStandingChange = Schema.Struct({
+  id: Schema.String.check(Schema.isMaxLength(120)),
+  op: Schema.Literals(["pause", "resume", "move"]),
+  /** For move: when its next run is now. */
+  at: Schema.optionalKey(Schema.Number),
+});
+export type DesktopStandingChange = typeof DesktopStandingChange.Type;
+
 export const DesktopSettingsSyncInput = Schema.Struct({
   effective: DesktopVoiceSettings,
   /** The last change version this desktop applied; 0 for none. */
@@ -122,6 +148,8 @@ export const DesktopSettingsSyncInput = Schema.Struct({
   controls: Schema.optionalKey(Schema.Array(DesktopSettingsControl).check(Schema.isMaxLength(400))),
   /** His Voice ID switches, sent only after he changed them here; her brain keeps the one record. */
   voiceIdGate: Schema.optionalKey(VoiceIdGate),
+  /** Its standing jobs, his and the built-ins, with each one's next run; absent from older desktops. */
+  standing: Schema.optionalKey(Schema.Array(DesktopStandingJob).check(Schema.isMaxLength(60))),
 });
 export const DesktopSettingsSyncResult = Schema.Struct({
   change: Schema.NullOr(
@@ -146,4 +174,6 @@ export const DesktopSettingsSyncResult = Schema.Struct({
   pronounce: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** Voice ID's switches as her brain holds them; absent from older servers and while it can't be reached. */
   voiceIdGate: Schema.optionalKey(VoiceIdGate),
+  /** Changes to its standing jobs from Coming up, in the order they were made. */
+  standing: Schema.optionalKey(Schema.Array(DesktopStandingChange)),
 });

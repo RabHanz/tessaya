@@ -9,6 +9,7 @@ import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts"
 import { OrchestrationRuleService } from "./OrchestrationRuleService.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
 import { ThreadAccountMoves } from "./ThreadAccountMoves.ts";
+import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
 import * as TessayaUpcoming from "./TessayaUpcoming.ts";
 
 const NOW = Date.parse("2026-11-19T17:00:00.000Z");
@@ -47,6 +48,7 @@ const setup = (homeOverride?: Layer.Layer<HomeAssistantService>) => {
   const home =
     homeOverride ??
     Layer.succeed(HomeAssistantService, {
+      timeZone: Effect.succeed("Asia/Karachi"),
       automations: () => Effect.succeed(automations),
       setAutomation: (input: { id: string; op: string }) =>
         Effect.sync(() => {
@@ -142,8 +144,29 @@ const setup = (homeOverride?: Layer.Layer<HomeAssistantService>) => {
     cancelMove: (id: string) => Effect.sync(() => (calls.push(`move cancel ${id}`), true)),
     cancelLive: () => Effect.succeed(false),
   } as never);
+  const desktop = Layer.succeed(TessayaDesktopSettings, {
+    standingJobs: Effect.succeed({
+      connected: true,
+      jobs: [
+        {
+          id: "morning_brief",
+          title: "Morning brief",
+          line: "Reads your day out at the desk.",
+          on: true,
+          at: NOW + 13 * 60 * MIN,
+          condition: null,
+          repeats: "daily 06:00",
+          movable: true,
+        },
+      ],
+    }),
+    changeStanding: (c: { id: string; op: string; at?: number }) =>
+      Effect.sync(
+        () => void calls.push(`standing ${c.op} ${c.id} ${c.at === undefined ? "" : c.at - NOW}`),
+      ),
+  } as never);
   const layer = TessayaUpcoming.layer.pipe(
-    Layer.provideMerge(Layer.mergeAll(home, commitments, tasks, rules, moves)),
+    Layer.provideMerge(Layer.mergeAll(home, commitments, tasks, rules, moves, desktop)),
   );
   return { calls, layer };
 };
@@ -164,6 +187,7 @@ it.effect("lists every source in one order, soonest first, then what waits on so
         ["reminder:r1", 95],
         ["task:ci", 170],
         ["task:once", 300],
+        ["standing:morning_brief", 780],
         ["move:thread:t1", null],
         ["house:tessaya_device_2", null],
         ["rule:rule-1", null],
@@ -189,6 +213,8 @@ it.effect("sends each change to the item's owner, and moves only what has one ti
     yield* change("task:ci", "cancel");
     yield* change("rule:rule-1", "pause");
     yield* change("move:thread:t1", "cancel");
+    yield* change("standing:morning_brief", "pause");
+    yield* change("standing:morning_brief", "move", 13 * 60 + 20);
     assert.deepStrictEqual(calls, [
       "house move tessaya_temporary_1 15",
       "house delete tessaya_temporary_1",
@@ -200,6 +226,8 @@ it.effect("sends each change to the item's owner, and moves only what has one ti
       "task delete ci",
       "rule rule-1 disabled",
       "move cancel t1",
+      "standing pause morning_brief ",
+      `standing move morning_brief ${(13 * 60 + 20) * MIN}`,
     ]);
   }).pipe(Effect.provide(layer));
 });
@@ -227,6 +255,13 @@ it.effect("refuses in a sentence what a source cannot do, and changes nothing", 
       "A reminder cannot be paused; move it or cancel it.",
     );
     assert.strictEqual(yield* refused("rule:rule-1", "resume"), "It is not paused.");
+    assert.strictEqual(
+      yield* Effect.map(
+        Effect.flip(u.change({ id: "standing:morning_brief", op: "move", inMinutes: 36 * 60 }, by)),
+        (e) => e.reason,
+      ),
+      "A standing job's run moves within its own day; to change every day, change its time on the Trust page.",
+    );
     assert.strictEqual(yield* refused("house:gone", "cancel"), "That is no longer coming up.");
     assert.deepStrictEqual(calls, []);
   }).pipe(Effect.provide(layer));

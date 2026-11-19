@@ -618,7 +618,7 @@ const ComingUpItem = Schema.Struct({
 const ComingUpTool = Tool.make("tessaya_coming_up", {
   ...shared,
   description:
-    'Everything coming up in the next 7 days, soonest first, in one list: house timers and automations, reminders, scheduled tasks and jobs, then rules and device rules that wait on something, changes waiting for a session to go quiet, and dates from his memories (birthdays, plans; walled projects\' never shown). For "what\'s coming up", "anything this week", "what timers are running", or to find the id before tessaya_coming_up_change. `when` is how long until it ("in 18 min"); `at` is on the house\'s clock; say those, never work out a time yourself.',
+    'Everything coming up in the next 7 days, soonest first, in one list: house timers and automations, reminders, scheduled tasks and jobs, his standing jobs (the next run of each), then rules and device rules that wait on something, changes waiting for a session to go quiet, and dates from his memories (birthdays, plans; walled projects\' never shown). For "what\'s coming up", "anything this week", "what timers are running", or to find the id before tessaya_coming_up_change. `when` is how long until it ("in 18 min"); `at` is on the house\'s clock; say those, never work out a time yourself.',
   // No `parameters`: Tool.EmptyParams serializes as a plain object; Schema.Struct({}) has no object root.
   success: Schema.Struct({
     items: Schema.Array(ComingUpItem),
@@ -635,7 +635,7 @@ const ComingUpTool = Tool.make("tessaya_coming_up", {
 const ComingUpChangeTool = Tool.make("tessaya_coming_up_change", {
   ...shared,
   description:
-    'Cancel, pause, resume or move one item from tessaya_coming_up, by its `id`. To move, give `inMinutes` from now ("make it fifteen" is 15) or `at`, a time with its offset on the house\'s clock. A one-off timer, a reminder and a one-off scheduled task move; a repeating task, a rule or a date does not, and the answer says why: say that sentence. An automation he made himself still asks him first.',
+    "Cancel, pause, resume or move one item from tessaya_coming_up, by its `id`. To move, give `inMinutes` from now (\"make it fifteen\" is 15) or `at`, a time with its offset on the house's clock. A one-off timer, a reminder, a one-off scheduled task and a standing job's next run (within its own day) move; a repeating task, a rule or a date does not, and the answer says why: say that sentence. An automation he made himself still asks him first.",
   parameters: Schema.Struct({
     id: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(300)),
     op: Schema.Literals(["cancel", "pause", "resume", "move"]),

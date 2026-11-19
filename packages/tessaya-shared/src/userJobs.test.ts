@@ -4,6 +4,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_USER_JOB_TOOLS,
   dueUserJobs,
+  nextUserJobRun,
+  userJobDay,
   isUserJob,
   USER_JOB_RUNS_PER_DAY,
   USER_JOB_RUNS_PER_DAY_ALL,
@@ -131,6 +133,28 @@ describe("when his own jobs are due", () => {
     const ran = { id: "user:1", key: "user:1:2026-11-09", at: at(8, 1).getTime(), text: "" };
     expect(keys(due(at(9), [{ ...ran, status: "ok" }]))).toEqual([]);
     expect(keys(due(at(9), [{ ...ran, status: "cancelled" }]))).toEqual(["user:1:2026-11-09"]);
+  });
+
+  it("runs a moved run at its new time on its own day only, and says when the next run is", () => {
+    const moved = { ...morning, moved: { day: "2026-11-09", at: at(8, 20).getTime() } };
+    const due = (now: Date, runs: Runs = []) =>
+      dueUserJobs({ jobs: [moved], runs, now, startedAt: at(6), signals: none });
+    expect(keys(due(at(8, 5)))).toEqual([]);
+    expect(keys(due(at(8, 21)))).toEqual(["user:1:2026-11-09"]);
+    // The next day keeps its own time.
+    expect(keys(due(new Date(2026, 10, 10, 8, 1)))).toEqual(["user:1:2026-11-10"]);
+
+    expect(nextUserJobRun(moved, [], at(7))).toBe(at(8, 20).getTime());
+    const ran = {
+      id: "user:1",
+      key: "user:1:2026-11-09",
+      at: at(8, 21).getTime(),
+      text: "",
+      status: "ok" as const,
+    };
+    expect(nextUserJobRun(moved, [ran], at(9))).toBe(new Date(2026, 10, 10, 8, 0).getTime());
+    expect(nextUserJobRun({ ...morning, on: false }, [], at(7))).toBeNull();
+    expect(userJobDay(at(7).getTime())).toBe("2026-11-09");
   });
 
   it("keeps his missed-run choice, leaves out a proposal or a day not his, and starts a job set up after its time tomorrow", () => {

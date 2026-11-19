@@ -687,6 +687,7 @@ import {
 import { makeTestAudioInput, type TestAudioEvent } from "./testAudio.ts";
 import { startVoiceLoop, type VoiceLoop } from "./voiceLoop.ts";
 import { createUserJobStore } from "../presence/userJobStore.ts";
+import { standingAction, standingReport } from "../presence/standingReport.ts";
 import {
   dueUserJobs,
   whenText,
@@ -9923,6 +9924,30 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ...(input.onGrants === undefined ? {} : { onGrants: input.onGrants }),
       onPronounce: (pronounce) => void (herPronounce = pronounce),
       voiceIdGate: () => gateOf(settings.voiceId),
+      // Coming up on his phone and by voice: each job's next run, and its switch or moved run from there.
+      standing: () =>
+        standingReport({
+          jobs: userJobStore.list(),
+          runs: userJobStore.runs(),
+          state: standingStore.load(),
+          now: Date.now(),
+        }),
+      onStanding: (changes) => {
+        for (const change of changes) {
+          const action = standingAction(change, {
+            jobs: userJobStore.list(),
+            runs: userJobStore.runs(),
+            state: standingStore.load(),
+            now: Date.now(),
+          });
+          if (action === null) continue;
+          if (action.kind === "user")
+            userJobStore.update(action.id, action.patch, { approve: false });
+          else if (action.kind === "builtin") standingStore.setOn(action.id, action.on);
+          else standingStore.setMoved(action.id, action.moved);
+        }
+        render();
+      },
       onVoiceIdGate: (gate) => {
         if (JSON.stringify(gate) === JSON.stringify(gateOf(settings.voiceId))) return;
         save({ voiceId: { ...settings.voiceId, ...gate } });
