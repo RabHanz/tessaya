@@ -20,6 +20,7 @@ import { createRemoteEnvironmentProjectionAtoms } from "./remote-environment-pro
 import { serverEnvironment } from "./server";
 import { relayEnvironmentDiscovery } from "./relay";
 import { connectPairingUrl as connectPairingUrlCommand } from "../connection/onboarding";
+import { inHousehold, signOutOfHousehold } from "./tessayaHousehold";
 
 const RELAY_REMOVAL_ACCOUNT_NOTE: Record<Discovery.RelayEnvironmentRegistration, string> = {
   registered:
@@ -47,6 +48,8 @@ export interface PairingOutcome {
   readonly ok: boolean;
   /** Shown beside the pairing form; null when the failure got its own dialog. */
   readonly error: string | null;
+  /** The machine paired, when it worked. */
+  readonly environmentId?: EnvironmentId;
 }
 
 /** Pairs with the environment behind a pairing link and saves it. */
@@ -62,7 +65,7 @@ export async function pairEnvironment(
   );
   if (AsyncResult.isSuccess(result)) {
     appAtomRegistry.set(connectionPairingUrlAtom, "");
-    return { ok: true, error: null };
+    return { ok: true, error: null, environmentId: result.value };
   }
   const error = Cause.squash(result.cause);
   const message = error instanceof Error ? error.message : "Failed to pair with the environment.";
@@ -204,6 +207,25 @@ export function useRemoteConnections() {
         registration === "unregistered" || !hasCloudPublicConfig()
           ? [{ text: "Cancel", style: "cancel" }, remove]
           : [{ text: "Cancel", style: "cancel" }, openAccount, remove],
+      );
+      return;
+    }
+    // One way out to match the one way in (M-097): a household machine offers signing the phone out of all of them.
+    if (inHousehold(environmentId)) {
+      Dialog.alert(
+        "Sign this phone out?",
+        `Sign this phone out of every machine in your household, or forget only ${environment.environmentLabel} on this phone.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Forget this machine only", onPress: remove.onPress },
+          {
+            text: "Sign out of the household",
+            style: "destructive",
+            onPress: () => {
+              void signOutOfHousehold(environmentId, (id) => controller.removeEnvironment(id));
+            },
+          },
+        ],
       );
       return;
     }
