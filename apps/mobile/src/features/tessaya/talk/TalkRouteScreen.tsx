@@ -9,6 +9,7 @@ import { useIsFocused } from "@react-navigation/native";
 import type { TessayaPersona, TessayaVoiceCallResult } from "@t3tools/tessaya-contracts";
 import bodyStreamScript from "@t3tools/mobile-body-stream";
 import { lineCues } from "@t3tools/tessaya-shared/bodyCues";
+import { renderFor, VESSELS, type PropState } from "@t3tools/tessaya-shared/expressionMap";
 import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
 import { touchOpKind } from "@t3tools/tessaya-shared/touchReaction";
 import { modelOrder, type OfferedModel } from "@t3tools/tessaya-shared/playgroundOrder";
@@ -59,6 +60,8 @@ export function TalkRouteScreen() {
     null,
   );
   const webView = useRef<WebView<object>>(null);
+  // the hat her body here wears (renderFor for its form), sent only when it changes
+  const hat = useRef<string | null>(null);
   const inset = useRef(0);
   const listPersonas = useAtomCommand(tessayaWorkSessions.personasList, { reportFailure: false });
   const phoneCall = useAtomCommand(tessayaWorkSessions.phoneCall, { reportFailure: false });
@@ -243,17 +246,32 @@ export function TalkRouteScreen() {
     // her body speaks in the brain's one mood for this persona (as every other body does), neutral if unread
     const read = await voiceCall({
       environmentId,
-      input: { kind: "read", op: "mood", args: { persona: persona.id } },
+      input: {
+        kind: "read",
+        op: "mood",
+        args: { persona: persona.id, device: manifestNow().deviceId },
+      },
     });
     const felt =
       read._tag === "Success"
         ? ((read.value as TessayaVoiceCallResult).value as {
             label?: unknown;
             intensity?: unknown;
+            props?: PropState;
           } | null)
         : null;
     const mood = typeof felt?.label === "string" ? felt.label : "neutral";
     const intensity = typeof felt?.intensity === "number" ? felt.intensity : 0.4;
+    const prop = renderFor(VESSELS.body, mood, intensity, felt?.props).prop ?? null;
+    if (prop !== hat.current)
+      post({
+        type: "cue",
+        cue:
+          prop === null
+            ? { kind: "prop", id: "state" }
+            : { kind: "prop", id: "state", url: `builtin:${prop}` },
+      });
+    hat.current = prop;
     for (const cue of lineCues({ persona: persona.id, text, mood, intensity }))
       post({ type: "cue", cue });
     const reply = await voiceCall({

@@ -389,6 +389,40 @@ export const twoHandsAt = (
   return out;
 };
 
+/**
+ * One hand holding something in front of her, over a base posture (a held prop): the palm's centre `at` [ahead, up,
+ * her left] m from her upper chest, the fingers and the way the palm faces in her trunk's frame, the hand closed by
+ * `curl`. The arm and wrist come from the same solve as the two-hand skills; the other arm is left as it is.
+ */
+export const oneHandAt = (
+  s: Side,
+  goal: { readonly at: V3; readonly fingers: V3; readonly normal: V3; readonly curl: number },
+  base: Partial<Record<PoseBone, Euler>>,
+): Partial<Record<PoseBone | HandKey, Euler>> => {
+  const local: Record<string, Q> = Object.fromEntries(
+    Object.entries(base).map(([b, e]) => [b, qFromEuler(e as V3)]),
+  );
+  const w = fk(REFERENCE_RIG, local);
+  const trunk = w.rot["upperChest"] ?? w.rot["chest"]!;
+  const inTrunk = (v: V3) =>
+    mix(
+      [qRotate(trunk, [0, 0, 1]), v[0]],
+      [qRotate(trunk, [0, 1, 0]), v[1]],
+      [qRotate(trunk, [1, 0, 0]), v[2]],
+    );
+  const fingers = unit(inTrunk(goal.fingers));
+  const n = inTrunk(goal.normal);
+  const normal = unit(v3.sub(n, v3.scale(fingers, dot(n, fingers))));
+  const palm = v3.add(w.pos["upperChest"]!, inTrunk(goal.at));
+  const wrist = mix([palm, 1], [normal, -PALM_HALF], [fingers, -PALM_REACH]);
+  const c = Math.max(0, Math.min(1, goal.curl));
+  return {
+    [`${s}Shoulder`]: base[`${s}Shoulder`] ?? [0, 0, 0],
+    ...bestArm(s, local, w, wrist, handRot(s, fingers, normal)),
+    [`${s}Fingers`]: [c, 0, Math.min(1, c * 1.1)],
+  };
+};
+
 /** Where each palm's surface is in a pose (reference body), with the way it faces: what the tests and grader read. */
 export const palmsIn = (
   pose: Partial<Record<string, Euler>>,

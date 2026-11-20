@@ -164,6 +164,9 @@ describe("cue wire", () => {
       },
     ],
     [{ kind: "prop", id: "p1", url: "https://x.example/p.glb" }, null],
+    // a prop the body makes itself, by its vocabulary id
+    [{ kind: "prop", id: "state", url: "builtin:hardhat" }, "same"],
+    [{ kind: "prop", id: "state", url: "builtin:../x" }, null],
     [
       { kind: "prop", id: "p1", bone: "tail" },
       { kind: "prop", id: "p1" },

@@ -1,4 +1,5 @@
 import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
+import { renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 
 import type { DesktopMascot } from "./desktopMascot.ts";
 
@@ -15,6 +16,8 @@ export const mirrorBody = (
     send(p === undefined ? c : { ...c, forPersona: p });
   };
   let speaking = false;
+  // the hat her full body wears now (renderFor for its form), sent only when it changes
+  let held: string | null = null;
   return {
     ...m,
     turn: (phase) => {
@@ -30,6 +33,14 @@ export const mirrorBody = (
     mood: (label, intensity, props) => {
       m.mood(label, intensity, props);
       cue({ kind: "mood", mood: label, intensity });
+      const prop = renderFor(VESSELS.body, label, intensity, props).prop ?? null;
+      if (prop !== held)
+        cue(
+          prop === null
+            ? { kind: "prop", id: "state" }
+            : { kind: "prop", id: "state", url: `builtin:${prop}` },
+        );
+      held = prop;
     },
   };
 };
