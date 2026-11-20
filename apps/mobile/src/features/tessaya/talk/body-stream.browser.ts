@@ -11,6 +11,15 @@ type Incoming =
   | { readonly type: "visible"; readonly on: boolean }
   | { readonly type: "inset"; readonly bottom: number };
 
+// every frame the renderer draws, counted for the app's own cost check (talkCost.ts), sent every ten seconds
+let frames = 0;
+const raf = window.requestAnimationFrame.bind(window);
+window.requestAnimationFrame = (cb) => raf((t) => (frames++, cb(t)));
+setInterval(() => {
+  if (frames > 0) tell({ type: "frames", n: frames });
+  frames = 0;
+}, 10_000);
+
 const canvas = document.createElement("canvas");
 canvas.style.cssText = "position:fixed;inset:0;width:100%;height:100%;touch-action:none";
 document.body.append(canvas);

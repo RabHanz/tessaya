@@ -9,7 +9,9 @@ import { useIsFocused } from "@react-navigation/native";
 import type { TessayaPersona, TessayaVoiceCallResult } from "@t3tools/tessaya-contracts";
 import bodyStreamScript from "@t3tools/mobile-body-stream";
 import { lineCues } from "@t3tools/tessaya-shared/bodyCues";
+import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
 import { modelOrder, type OfferedModel } from "@t3tools/tessaya-shared/playgroundOrder";
+import * as Device from "expo-device";
 import { createAudioPlayer } from "expo-audio";
 import { File, Paths } from "expo-file-system";
 import { useEffect, useRef, useState } from "react";
@@ -24,6 +26,15 @@ import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { useVoiceInputController } from "../../voice-input/useVoiceInputController";
 import { askOutcome, talkPersona, toBase64 } from "./talk.logic";
+import {
+  addFrames,
+  startStretch,
+  STRETCH_MS,
+  stretchSummary,
+  tick,
+  TICK_MS,
+  type Stretch,
+} from "./talkCost";
 
 const PAGE = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}</style></head><body><script>${bodyStreamScript}</script></body></html>`;
 const POLL_MS = 1500;
@@ -50,6 +61,59 @@ export function TalkRouteScreen() {
   const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
   const persona = talkPersona(personas, picked);
   const drawing = focused && active;
+  const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, { reportFailure: false });
+  const cost = useRef<Stretch | null>(null);
+  const awayAt = useRef<number | null>(null);
+  const reportCost = (line: string) => {
+    if (environmentId === null) return;
+    const manifest = phoneManifest({
+      installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
+      model: Device.modelName ?? null,
+      os: Device.osName === null ? null : `${Device.osName} ${Device.osVersion ?? ""}`.trim(),
+      motion: Device.isDevice,
+    });
+    void devicesCall({
+      environmentId,
+      input: {
+        kind: "vessel",
+        op: "publish",
+        args: {
+          deviceId: manifest.deviceId,
+          manifest,
+          values: [{ itemId: "talk.cost", value: line }],
+        },
+      },
+    });
+  };
+
+  // her cost while she is on screen: frames from the page, busy time from a timer, one report per ten minutes
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a timer measures the JS thread only while she is drawn
+  useEffect(() => {
+    if (!drawing) {
+      cost.current = null;
+      if (awayAt.current === null) awayAt.current = Date.now();
+      return;
+    }
+    // back from ten minutes or more away: her page was closed the whole time, so it drew nothing
+    if (awayAt.current !== null && Date.now() - awayAt.current >= STRETCH_MS)
+      reportCost(
+        `background: 0 frames (her page closed) over ${Math.round((Date.now() - awayAt.current) / 60_000)} min`,
+      );
+    awayAt.current = null;
+    cost.current = startStretch(Date.now());
+    const timer = setInterval(() => {
+      if (cost.current === null) return;
+      const now = Date.now();
+      cost.current = tick(cost.current, now);
+      const line = stretchSummary(cost.current, now, "visible");
+      if (line !== null) {
+        reportCost(line);
+        cost.current = startStretch(now);
+      }
+    }, TICK_MS);
+    return () => clearInterval(timer);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- restarts only when she starts or stops being drawn
+  }, [drawing]);
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the app going to the background stops her drawing
   useEffect(() => {
@@ -157,8 +221,11 @@ export function TalkRouteScreen() {
           bounces={false}
           style={{ flex: 1, backgroundColor: "transparent" }}
           onMessage={(e) => {
-            if (e.nativeEvent.data.includes('"ready"') && model !== null)
-              post({ type: "model", ...model });
+            const data = e.nativeEvent.data;
+            if (data.includes('"ready"') && model !== null) post({ type: "model", ...model });
+            const frames = /"frames","n":(\d+)/.exec(data)?.[1];
+            if (frames !== undefined && cost.current !== null)
+              cost.current = addFrames(cost.current, Number(frames));
           }}
           onLoadEnd={() => {
             post({ type: "inset", bottom: inset.current });
