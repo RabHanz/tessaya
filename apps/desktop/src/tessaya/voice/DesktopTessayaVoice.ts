@@ -3977,6 +3977,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
             input: sidecar.input,
             pasteInto: sidecar.pasteInto,
             paste: sidecar.paste,
+            inputIdleMs: sidecar.inputIdleMs,
             setValue: sidecar.setValue,
           },
     locate: async (label, near, anywhere, invoke, ref) => {

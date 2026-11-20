@@ -471,7 +471,8 @@ export interface DictationSidecar {
   /** Where the caret is drawn in the focused field; null for a secret field or one that does not say. */
   readonly caretAt: () => Promise<CaretGeometry | null>;
   /** The system's last-input tick (any key, click or move). */
-  readonly lastInput: () => Promise<number | null>;
+  /** Milliseconds since anyone's last key or mouse input on this machine (hers too); null where it cannot be read. */
+  readonly inputIdleMs: () => Promise<number | null>;
   readonly input: (input: SidecarInput) => Promise<void>;
   /** Adds text to the box of a window by its UI Automation value: no keyboard, clipboard or focus. */
   readonly setValue: (
@@ -672,9 +673,9 @@ export const startDictationSidecar = (input: {
         return settle(event["id"] as number, { value: caretGeometry(event) });
       }
       if (event["ev"] === "last_input") {
-        const tick = event["tick"];
+        const idle = event["idle_ms"];
         return settle(event["id"] as number, {
-          value: typeof tick === "number" && tick > 0 ? tick : null,
+          value: typeof idle === "number" && idle >= 0 ? idle : null,
         });
       }
       if (event["ev"] === "caret") {
@@ -826,7 +827,7 @@ export const startDictationSidecar = (input: {
       }),
     caret: () => call<CaretContext | null>({ cmd: "caret" }),
     caretAt: () => call<CaretGeometry | null>({ cmd: "caret_at" }),
-    lastInput: () => call<number | null>({ cmd: "last_input" }),
+    inputIdleMs: () => call<number | null>({ cmd: "last_input" }),
     focusState: (window) =>
       call<FocusState>({ cmd: "focus_state", ...(window === undefined ? {} : { window }) }),
     input: (input) => call<void>({ cmd: "input", ...input }),
