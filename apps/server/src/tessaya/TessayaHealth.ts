@@ -31,6 +31,8 @@ import { R1Loop } from "../home/R1Loop.ts";
 import { ActionLog, emitAction } from "../provenance/ActionLog.ts";
 import { SpeechService } from "../speech/SpeechService.ts";
 import { TurnOrigin } from "./TurnOrigin.ts";
+import { AccountPoolService } from "./AccountPoolService.ts";
+import { ProviderDriverKind, type TessayaAccountPool } from "@t3tools/tessaya-contracts";
 
 const STALL_WINDOW_MS = 15 * 60_000;
 const NOTES_MS = 30 * 60_000;
@@ -66,6 +68,42 @@ const noteOf = (a: { readonly kind: string; readonly subject: string; readonly d
   a.kind === "host.health.level"
     ? `${a.subject}'s health went to ${field(a.data, "level") ?? "a new level"}`
     : `${a.subject} moved${field(a.data, "from") === null ? "" : ` from ${field(a.data, "from")}`}${field(a.data, "to") === null ? "" : ` to ${field(a.data, "to")}`}${field(a.data, "why") === null ? "" : ` because ${field(a.data, "why")}`}`;
+
+/** How recent her login's "spent" must be to be compared with cswap's active account. */
+const LOGIN_SPENT_MS = 30 * 60_000;
+
+/**
+ * Her login said it is spent while cswap's active account has room: the machine login is not that account (21 Nov:
+ * ~/.claude still held a spent login after a switch, and she answered "out of capacity" for hours). Null when they agree.
+ */
+export const loginMismatch = (
+  spent: { readonly until: string | null } | null,
+  pool: Pick<TessayaAccountPool, "accounts"> | null,
+): { readonly name: string; readonly ok: false; readonly note: string } | null => {
+  const active = pool?.accounts.find((a) => a.active);
+  if (spent === null || active === undefined || !active.usable) return null;
+  const room = active.headroomPercent ?? 0;
+  if (room < 20) return null;
+  return {
+    name: "Claude",
+    ok: false,
+    note: `her login says it is spent${spent.until === null ? "" : ` until ${spent.until}`}, but the active account (${active.label}) has ${Math.round(room)}% left: the machine login is not that account`,
+  };
+};
+
+const loginCheck = Effect.fn("TessayaHealth.loginCheck")(function* (
+  spent: ReadonlyArray<{ readonly data: unknown }>,
+) {
+  if (spent[0] === undefined) return [];
+  const pool = yield* Effect.serviceOption(AccountPoolService);
+  if (Option.isNone(pool)) return [];
+  const read = yield* pool.value.read(ProviderDriverKind.make("claudeAgent")).pipe(Effect.option);
+  const found = loginMismatch(
+    { until: field(spent[0].data, "until") },
+    Option.isSome(read) ? read.value : null,
+  );
+  return found === null ? [] : [found];
+});
 
 /** One snapshot of everything: this host first, then each voice host that reported in the last few minutes. */
 export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
@@ -134,8 +172,17 @@ export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
     hosts: [...hosts.values()],
     services: [...services.values()],
     vessels,
-    // shortcut: brain providers and their fallbacks are not in the snapshot yet; add when the brain route records them.
-    providers: [],
+    providers: [
+      ...(yield* loginCheck(
+        Option.isSome(log)
+          ? yield* log.value.list({
+              since: now - LOGIN_SPENT_MS,
+              kindPrefix: "brain.limit",
+              limit: 1,
+            })
+          : [],
+      )),
+    ],
     roomLoop,
     notes: actions.toSorted((a, b) => b.at - a.at).map((a) => ({ at: a.at, says: noteOf(a) })),
   } satisfies HealthSnapshot;
