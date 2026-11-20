@@ -42,8 +42,15 @@ describe("whether he was talking to her", () => {
       "Tessa said she would call me later.",
       "Casey said she would call me later.",
       "I was going to say yeah",
+      // 20 Nov, 07:29: talking to Freya, "Tessel" heard as "Tesla" switched him to Tessaya.
+      "Can you also decrease your screen brightness on the Tesla?",
+      "Can you also decrease your screen brightness on the Tessel?",
+      "Tell me something about Alfred.",
     ])
       expect(heard(t)).toBeNull();
+    // A call at the end still is one.
+    expect(heard("Thanks, Freya.")).toBe("Freya");
+    expect(heard("What do you think Alfred?")).toBe("Alfred");
   });
 
   it("hears which persona he asked for, as the Tessel misheard his four tries for Tessaya (15 Nov)", () => {
