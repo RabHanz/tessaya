@@ -54,6 +54,8 @@ export const BrainOp = Schema.Literals([
   "phoneCodes",
   // a household device signed out on one machine: signed out on all (M-097)
   "deviceRevoke",
+  // his reminders and her promises: kept on her brain, whose pulse alone raises them when due (M-103)
+  "commitments",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
