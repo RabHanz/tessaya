@@ -963,7 +963,9 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       return made?.ok === true ? (made.id ?? null) : null;
     },
     touched: ({ part, kind, self }) =>
-      run(feel({ vessel: "desktop", part, kind, ...(self === true ? { self } : {}) })),
+      run(
+        Effect.asVoid(feel({ vessel: "desktop", part, kind, ...(self === true ? { self } : {}) })),
+      ),
     capabilities: async () => ({
       personas: readPack(userdata).personas.map((p) => ({
         id: p.id,

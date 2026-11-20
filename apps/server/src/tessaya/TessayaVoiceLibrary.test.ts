@@ -210,6 +210,9 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
             reset: () => Effect.void,
             moves: Stream.empty,
             changes: () => Stream.empty,
+            reassign: () => Effect.succeed(0),
+            refresh: Effect.void,
+            facesOn: () => Effect.succeed([]),
           });
           const lines = Layer.succeed(TessayaExpression, {
             express: (event) =>
