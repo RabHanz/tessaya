@@ -396,7 +396,14 @@ export const twoHandsAt = (
  */
 export const oneHandAt = (
   s: Side,
-  goal: { readonly at: V3; readonly fingers: V3; readonly normal: V3; readonly curl: number },
+  goal: {
+    readonly at: V3;
+    readonly fingers: V3;
+    readonly normal: V3;
+    readonly curl: number;
+    /** How far the thumb folds over (0..1); with the fingers' curl when absent. */
+    readonly thumb?: number;
+  },
   base: Partial<Record<PoseBone, Euler>>,
 ): Partial<Record<PoseBone | HandKey, Euler>> => {
   const local: Record<string, Q> = Object.fromEntries(
@@ -419,7 +426,7 @@ export const oneHandAt = (
   return {
     [`${s}Shoulder`]: base[`${s}Shoulder`] ?? [0, 0, 0],
     ...bestArm(s, local, w, wrist, handRot(s, fingers, normal)),
-    [`${s}Fingers`]: [c, 0, Math.min(1, c * 1.1)],
+    [`${s}Fingers`]: [c, 0, Math.max(0, Math.min(1, goal.thumb ?? c * 1.1))],
   };
 };
 

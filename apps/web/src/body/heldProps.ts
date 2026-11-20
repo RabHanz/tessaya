@@ -19,6 +19,8 @@ export interface Grip {
   readonly fingers: V3;
   readonly normal: V3;
   readonly curl: number;
+  /** How far the thumb folds over the handle; with the curl when absent. */
+  readonly thumb?: number;
 }
 
 /** A prop in its grip's frame: y along the thumb, z out of the palm, origin where the hand closes round it. */
@@ -114,7 +116,13 @@ const cup = (
 const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }>> = {
   // a morning mug of coffee, held by its handle at her middle
   coffee: {
-    grip: { at: [0.28, -0.06, -0.1], fingers: [1, 0, 0.35], normal: [0, 0, 1], curl: 0.82 },
+    grip: {
+      at: [0.28, -0.06, -0.1],
+      fingers: [1, 0, 0.35],
+      normal: [0, 0, 1],
+      curl: 0.82,
+      thumb: 1,
+    },
     make: (look) =>
       cup(look, {
         r0: 0.038,
@@ -129,7 +137,13 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   },
   // an evening cup of tea: a flared cup with a gold rim, held a little closer and lighter
   tea: {
-    grip: { at: [0.27, -0.03, -0.08], fingers: [1, 0.1, 0.45], normal: [0, 0, 1], curl: 0.66 },
+    grip: {
+      at: [0.27, -0.03, -0.08],
+      fingers: [1, 0.1, 0.45],
+      normal: [0, 0, 1],
+      curl: 0.88,
+      thumb: 1,
+    },
     make: (look) =>
       cup(look, {
         r0: 0.026,
@@ -285,7 +299,13 @@ export const holdPose = (
   const m = (v: V3): V3 => (side === "right" ? v : [v[0], v[1], -v[2]]);
   return oneHandAt(
     side,
-    { at: m(grip.at), fingers: m(grip.fingers), normal: m(grip.normal), curl: grip.curl },
+    {
+      at: m(grip.at),
+      fingers: m(grip.fingers),
+      normal: m(grip.normal),
+      curl: grip.curl,
+      ...(grip.thumb === undefined ? {} : { thumb: grip.thumb }),
+    },
     base,
   );
 };

@@ -233,9 +233,9 @@ const HATS: Readonly<Record<string, Hat>> = {
   // a cap-style safety helmet: a tall shell with three raised ridges, a peak at the front and a narrow brim round
   hardhat: (f, look) => {
     const s = f.top - f.brow;
-    const seat = seatLine(f, 0.34, 0.3);
+    const seat = seatLine(f, 0.24, 0.3);
     const yellow = "#F2B630";
-    const shell = dome(f, seat, 0.12 * s, 1.05, (u, v) =>
+    const shell = dome(f, seat, 0.03 * s, 1.05, (u, v) =>
       v < 0.15
         ? 0
         : 0.03 * bump(off(u, 0), 0.025) * (1 - v * 0.6) +
@@ -490,5 +490,17 @@ export const wearHat = (vrm: VRM, id: string, frame: THREE.Object3D) => {
   const fit = headOf(vrm, frame, turn);
   const hat = fit === null ? null : hatFor(id, fit, vrm);
   hat?.rotation.set(0, turn === -1 ? Math.PI : 0, 0);
+  // the hat marks the stencil her hair is tested against (vrmBody browsOverHair): no strand shows through it
+  hat?.traverse((o) => {
+    for (const m of [(o as THREE.Mesh).material ?? []].flat()) {
+      // only its outside masks: seen from below, its inside must not hide the fringe under the brim
+      if ((m as { isOutline?: boolean }).isOutline === true) continue;
+      m.side = THREE.FrontSide;
+      m.stencilWrite = true;
+      m.stencilRef = 1;
+      m.stencilFunc = THREE.AlwaysStencilFunc;
+      m.stencilZPass = THREE.ReplaceStencilOp;
+    }
+  });
   return hat;
 };
