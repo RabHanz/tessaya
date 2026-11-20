@@ -10,7 +10,8 @@ import { accountPickHint, accountPickTarget, accountTicks } from "@t3tools/tessa
 import { maskedEmail, queuedText, roomText, roomTone } from "@t3tools/tessaya-shared/accountRoom";
 import { rankRotationTargets } from "@t3tools/tessaya-shared/accountRotation";
 import { isLiveThreadId, LIVE_INSTANCE, liveSessionIdOf } from "@t3tools/tessaya-shared/liveThread";
-import type { EnvironmentId, ModelSelection, ThreadId } from "@t3tools/contracts";
+import { ThreadId, type EnvironmentId, type ModelSelection } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import * as Option from "effect/Option";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { Fragment, useEffect, useState } from "react";
@@ -23,7 +24,11 @@ import { ThemedSwitch } from "../../components/ui/ThemedSwitch";
 import { cn } from "../../lib/cn";
 import { useNowMinuteMs } from "../../lib/clock";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
+import { environmentThreadShells, threadEnvironment } from "../../state/threads";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
+import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
+import { waitForThreadShell } from "./threadForkNavigation";
+import { uuidv4 } from "../../lib/uuid";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { TessayaAccountReach, TessayaAccountReachToggle } from "./TessayaAccountReach";
 import { accountPickOption, loadedLoginKey, type SessionLogin } from "./tessayaCatalog";
@@ -98,11 +103,59 @@ const effortOf = (selection: ModelSelection): string | null => {
  * session, which answers or queues it while it works (shown as Next · Cancel), or a move to another login. Returns
  * false when the pick belongs in the draft as on any other thread; `keep` stores a pick the session confirmed.
  */
+/**
+ * "Continue in <model>" from a terminal thread, as web does it (useContinueInNewThread): a fork of the conversation into a
+ * new thread on that model, whose first send hands the context over. The terminal session and its thread stay as they
+ * are. It is the way on from a session at its limit when no Claude login here has room (M-129).
+ */
+function useContinueInNewThread(environmentId: EnvironmentId, threadId: ThreadId) {
+  const thread = useAtomValue(
+    environmentThreadShells.threadShellAtom(scopeThreadRef(environmentId, threadId)),
+  );
+  const fork = useAtomCommand(threadEnvironment.forkFromRun, { reportFailure: false });
+  const setMetadata = useAtomCommand(threadEnvironment.updateMetadata, { reportFailure: false });
+  const selectDetail = useSelectWorkspaceDetail();
+  return async (selection: ModelSelection, onOpened: () => void) => {
+    const runId = thread?.latestRun?.runId;
+    if (thread === null || runId === undefined) {
+      Dialog.alert("Nothing to continue yet", "Send a message in the session first.");
+      return;
+    }
+    const targetThreadId = ThreadId.make(uuidv4());
+    const forked = await fork({
+      environmentId,
+      input: {
+        sourceThreadId: threadId,
+        targetThreadId,
+        runId,
+        title: `${thread.title} (${selection.model})`,
+        creationSource: "mobile",
+      },
+    });
+    if (
+      forked._tag !== "Success" ||
+      !(await waitForThreadShell(scopeThreadRef(environmentId, targetThreadId)))
+    ) {
+      Dialog.alert(`Could not continue in ${selection.model}`);
+      return;
+    }
+    // On the thread itself, so the choice holds on every device.
+    await setMetadata({
+      environmentId,
+      input: { threadId: targetThreadId, modelSelection: selection, providerChangeApproved: true },
+    });
+    onOpened();
+    selectDetail({ name: "Thread", params: { environmentId, threadId: targetThreadId } });
+  };
+}
+
 export function useLiveSheetChange(
   environmentId: EnvironmentId,
   threadId: ThreadId,
   sessionEffort: string | null,
+  onContinued: () => void,
 ) {
+  const continueIn = useContinueInNewThread(environmentId, threadId);
   const sessionId = liveSessionIdOf(threadId);
   const pool = useAtomValue(
     sessionId === null
@@ -145,10 +198,13 @@ export function useLiveSheetChange(
     }
     if (route.kind === "account") moveTo(route.key);
     else if (route.kind === "continue-in")
-      Dialog.alert(
-        "Continue in a new thread",
-        "A terminal session only runs Claude on a login this machine knows. Continuing in another provider opens a new thread: do that from web or desktop.",
-      );
+      Dialog.confirm({
+        title: `Continue in ${picked.model}`,
+        message:
+          "A terminal session only runs Claude on a login this machine knows. This opens a new thread on it with the conversation so far; the terminal session stays as it is.",
+        confirmText: "Continue",
+        onConfirm: () => void continueIn(picked, onContinued),
+      });
     else if (route.kind === "session")
       void setModel({ environmentId, input: { sessionId, ...route.change } }).then((result) => {
         if (result._tag !== "Success") {
