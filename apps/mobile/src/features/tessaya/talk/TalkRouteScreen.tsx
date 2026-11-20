@@ -14,10 +14,23 @@ import { touchOpKind } from "@t3tools/tessaya-shared/touchReaction";
 import { modelOrder, type OfferedModel } from "@t3tools/tessaya-shared/playgroundOrder";
 import * as Battery from "expo-battery";
 import * as Device from "expo-device";
-import { createAudioPlayer } from "expo-audio";
+import {
+  createAudioPlayer,
+  getRecordingPermissionsAsync,
+  requestRecordingPermissionsAsync,
+} from "expo-audio";
 import { File, Paths } from "expo-file-system";
+import { Image } from "expo-image";
 import { useEffect, useRef, useState } from "react";
-import { AppState, Pressable, ScrollView, useWindowDimensions, View } from "react-native";
+import {
+  AppState,
+  Linking,
+  Pressable,
+  ScrollView,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
@@ -27,7 +40,7 @@ import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { useVoiceInputController } from "../../voice-input/useVoiceInputController";
-import { askOutcome, talkPersona, toBase64 } from "./talk.logic";
+import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
 import {
   addFrames,
   batteryDrain,
@@ -55,6 +68,23 @@ export function TalkRouteScreen() {
   const [picked, setPicked] = useState<string | null>(null);
   const [heard, setHeard] = useState("");
   const [said, setSaid] = useState("");
+  // the microphone, asked for by a tap with its reason first, never as a system prompt in the middle of a hold
+  const [mic, setMic] = useState<"unknown" | "ask" | "granted" | "denied">("unknown");
+  const [typed, setTyped] = useState("");
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the system's microphone permission when she shows, and again on return from Settings
+  useEffect(() => {
+    if (!active) return;
+    void getRecordingPermissionsAsync().then(
+      (p) => setMic(p.granted ? "granted" : p.canAskAgain ? "ask" : "denied"),
+      () => setMic("ask"),
+    );
+  }, [active]);
+  const allowMic = async () => {
+    const p = await requestRecordingPermissionsAsync().catch(() => null);
+    setMic(p?.granted === true ? "granted" : "denied");
+  };
+  // she shows as her face at once, until her body has loaded and drawn
+  const [bodyShown, setBodyShown] = useState(false);
   const [model, setModel] = useState<{ readonly persona: string; readonly base64: string } | null>(
     null,
   );
@@ -224,10 +254,18 @@ export function TalkRouteScreen() {
         .catch(() => ({}))) as { models?: ReadonlyArray<OfferedModel> };
       for (const m of modelOrder(hello.models ?? [], null)) {
         if (m.url === undefined) continue;
-        const res = await fetch(new URL(m.url, base), { headers: auth }).catch(() => null);
-        if (res === null || !res.ok) continue;
-        const bytes = new Uint8Array(await res.arrayBuffer());
-        if (!cancelled) setModel({ persona: persona.id, base64: toBase64(bytes) });
+        // fetched once into the phone's cache and read back natively: a JS base64 of a large model took minutes (20 Nov)
+        const kept = new File(Paths.cache, bodyCacheName(m.url));
+        if (!kept.exists || kept.size === 0) {
+          const got = await File.downloadFileAsync(new URL(m.url, base).href, kept, {
+            headers: auth,
+            idempotent: true,
+          }).catch(() => null);
+          if (got === null) continue;
+        }
+        const base64 = await kept.base64().catch(() => null);
+        if (base64 === null) continue;
+        if (!cancelled) setModel({ persona: persona.id, base64 });
         return;
       }
     })();
@@ -320,10 +358,12 @@ export function TalkRouteScreen() {
                 // not one of her page's messages
               }
             }
+            if (data.includes('"shown"')) setBodyShown(true);
             const frames = /"frames","n":(\d+)/.exec(data)?.[1];
             if (frames !== undefined && cost.current !== null)
               cost.current = addFrames(cost.current, Number(frames));
           }}
+          onLoadStart={() => setBodyShown(false)}
           onLoadEnd={() => {
             post({ type: "inset", bottom: inset.current });
             if (model !== null) post({ type: "model", ...model });
@@ -331,6 +371,25 @@ export function TalkRouteScreen() {
         />
       ) : (
         <View className="flex-1" />
+      )}
+      {bodyShown ? null : (
+        <View
+          pointerEvents="none"
+          className="absolute inset-x-0 items-center gap-3"
+          style={{ top: insets.top + screenHeight * 0.18 }}
+        >
+          <Image
+            source={require("../welcome/face-neutral.webp")}
+            style={{ width: 160, height: 160 }}
+            contentFit="contain"
+            accessibilityIgnoresInvertColors
+          />
+          <Text className="text-base text-muted-foreground">
+            {environmentId === null
+              ? "Pair a computer to talk to her"
+              : `${persona?.name ?? "She"} is on her way…`}
+          </Text>
+        </View>
       )}
       <View
         className="absolute inset-x-0 bottom-0 gap-3 rounded-t-3xl bg-background/85 px-4 pt-4"
@@ -373,10 +432,49 @@ export function TalkRouteScreen() {
             </Pressable>
           ))}
         </ScrollView>
+        {mic === "ask" && environmentId !== null ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void allowMic()}
+            className="items-center gap-1 rounded-full bg-secondary py-4"
+          >
+            <Text className="text-foreground">Let {persona?.name ?? "her"} hear you</Text>
+            <Text className="text-xs text-muted-foreground">
+              She listens only while you hold the button.
+            </Text>
+          </Pressable>
+        ) : null}
+        {mic === "denied" && environmentId !== null ? (
+          <View className="gap-2">
+            <View className="flex-row items-center gap-2 rounded-full bg-secondary px-4">
+              <TextInput
+                value={typed}
+                onChangeText={setTyped}
+                placeholder={`Type to ${persona?.name ?? "her"}`}
+                returnKeyType="send"
+                onSubmitEditing={() => {
+                  void ask(typed);
+                  setTyped("");
+                }}
+                className="flex-1 py-3 text-base text-foreground"
+              />
+            </View>
+            <Pressable accessibilityRole="link" onPress={() => void Linking.openSettings()}>
+              <Text className="text-center text-xs text-muted-foreground">
+                The microphone is off for Tessaya. Turn it on in Settings to talk.
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
             listening ? "Let go to send" : `Hold to talk to ${persona?.name ?? "her"}`
+          }
+          style={
+            mic === "granted" || mic === "unknown" || environmentId === null
+              ? undefined
+              : { display: "none" }
           }
           disabled={!voice.isAvailable || environmentId === null}
           onPressIn={voice.start}

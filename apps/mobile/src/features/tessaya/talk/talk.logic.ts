@@ -21,10 +21,9 @@ export const askOutcome = (
     : { done: false, line };
 };
 
-/** Base64 of a model's bytes, in chunks, so a 20 MB body never builds one giant argument list. */
-export const toBase64 = (bytes: Uint8Array): string => {
-  let out = "";
-  for (let i = 0; i < bytes.length; i += 0x8000)
-    out += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  return btoa(out);
-};
+/** Where a body model is kept on the phone after its first load: one file per model address, so a new one is fetched. */
+export const bodyCacheName = (url: string): string =>
+  `tessaya-body-${url
+    .replace(/^[a-z]+:\/\/[^/]+/i, "")
+    .replace(/[^A-Za-z0-9._-]+/g, "_")
+    .slice(-120)}.vrm`;

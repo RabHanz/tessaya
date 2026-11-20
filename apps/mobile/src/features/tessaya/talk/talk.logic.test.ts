@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { askOutcome, talkPersona, toBase64 } from "./talk.logic";
+import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
 
 const persona = (id: string, extra: object = {}) => ({
   id,
@@ -37,8 +37,12 @@ describe("the Talk tab", () => {
     expect(askOutcome(null).done).toBe(true);
   });
 
-  it("encodes a model larger than one chunk without losing bytes", () => {
-    const bytes = new Uint8Array(0x8000 * 2 + 5).map((_, i) => i % 251);
-    expect(Uint8Array.from(atob(toBase64(bytes)), (c) => c.charCodeAt(0))).toEqual(bytes);
+  it("keeps one cached file per model address, and a new address is fetched anew", () => {
+    expect(bodyCacheName("https://home.example:3773/tessaya/playground/everyday.vrm")).toBe(
+      "tessaya-body-_tessaya_playground_everyday.vrm.vrm",
+    );
+    expect(bodyCacheName("/tessaya/playground/model/abc123")).not.toBe(
+      bodyCacheName("/tessaya/playground/model/def456"),
+    );
   });
 });
