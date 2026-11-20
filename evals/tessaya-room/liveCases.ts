@@ -418,6 +418,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/\b8[:.]45\b|\beight forty[- ]five\b/i],
   },
   {
+    // 20 Nov 09:28: "battle van" for his bedroom fan; the house's own names put it right before her brain reads it.
+    id: "battle-van",
+    proves: [],
+    said: ["Turn off the battle van."],
+    uses: [["home_do", "home_find", "home_state"]],
+    voices: [{ speaker: SURE }],
+    check: (_last, calls) =>
+      calls.some((c) => /bedroom_fan/.test(JSON.stringify(c.input)) || /Bedroom Fan/.test(c.text))
+        ? null
+        : "never reached the bedroom fan",
+    lastNotSays: [/battle van/i],
+  },
+  {
     id: "media-flip",
     proves: ["home_do"],
     said: ["Turn {media.flip} the {media}."],

@@ -109,6 +109,7 @@ import {
   type VoiceIdGate,
 } from "@t3tools/tessaya-contracts";
 import { onPeer } from "../peer/PeerVessels.ts";
+import { fixHouseNames } from "@t3tools/tessaya-shared/houseWords";
 import { changesSomething } from "./R1Tools.ts";
 import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -1111,6 +1112,9 @@ const CLEANUP_WAIT = "1500 millis";
  * waits. Off in Settings (`tessayaRoomCleanup`), with no key, or on any failure: his words as heard. Each try is on
  * the spine (turn.context.cleanup) with its time, so how often it fires and what it costs are read from there.
  */
+/** The kinds of device he tells to do things by name: their names put a misheard one right. */
+const HOUSE_DOMAINS = ["fan", "light", "switch", "cover", "climate", "media_player", "vacuum"];
+
 export const contextCleaned = Effect.fn("R1Device.contextCleaned")(function* (
   heard: string,
   before: ReadonlyArray<{ readonly role: string; readonly content: string }>,
@@ -1159,10 +1163,25 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   // His names, as dictation fixes them ("Tessa" → "Tessaya"), from his one dictionary.
   const entries = yield* vocabularyEntries;
   const pack = yield* r1Pack;
+  // A device he named, misheard ("the battle van"), put right against the house's own names.
+  const houseNames = withHouse
+    ? (yield* Effect.flatMap(HomeAssistantService, (h) =>
+        Effect.forEach(
+          HOUSE_DOMAINS,
+          (domain) => h.find({ domain, limit: 50 }).pipe(Effect.orElseSucceed(() => [])),
+          { concurrency: "unbounded" },
+        ),
+      ))
+        .flat()
+        .map((e) => e.name)
+    : [];
   const input = {
     ...raw,
     heard: yield* contextCleaned(
-      biasTranscript(raw.heard, entries, { names: pack.personas.map((p) => p.name) }),
+      fixHouseNames(
+        biasTranscript(raw.heard, entries, { names: pack.personas.map((p) => p.name) }),
+        houseNames,
+      ),
       raw.history,
       hisNames(
         pack.personas.map((p) => p.name),
