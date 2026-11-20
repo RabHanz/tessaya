@@ -613,6 +613,33 @@
       "split": "unseen",
       "source": "M-081 two-hand skills, Director 19 Nov 2026",
       "rubric": "one hand holding the other wrist or hand low in front, upright, a polite face"
+    },
+    {
+      "id": "clap-overhead",
+      "said": "Clap your hands above your head, like at a concert.",
+      "category": "fine-motor",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "Director 20 Nov 2026: contact by intent (clap anywhere in reach)",
+      "rubric": "claps with her hands meeting above her head, palms flat to each other"
+    },
+    {
+      "id": "clap-left",
+      "said": "Clap off to your left side.",
+      "category": "fine-motor",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "Director 20 Nov 2026: contact by intent (clap anywhere in reach)",
+      "rubric": "claps out to her left side, palm to palm"
+    },
+    {
+      "id": "clap-behind",
+      "said": "Clap your hands behind your back.",
+      "category": "fine-motor",
+      "difficulty": 2,
+      "split": "unseen",
+      "source": "Director 20 Nov 2026: contact by intent (clap anywhere in reach)",
+      "rubric": "claps behind her back, palms meeting there"
     }
   ]
 }

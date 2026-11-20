@@ -6,6 +6,7 @@ import { Tool } from "effect/ai";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { HAND_PLACES } from "@t3tools/tessaya-shared/bodyPlanner";
+import { CONTACT_PLACES, PALM_SHAPES } from "@t3tools/tessaya-shared/bodyContact";
 import { TWO_HAND_SKILLS } from "@t3tools/tessaya-shared/bodySkills";
 
 const shared = {
@@ -217,6 +218,20 @@ const Step = {
               description: `The skill's manner: ${Object.entries(TWO_HAND_SKILLS)
                 .map(([k, v]) => `${k}: ${v.join(", ")}`)
                 .join("; ")}.`,
+            }),
+          ),
+          where: Schema.optionalKey(
+            Schema.Union([
+              Schema.Literals(Object.keys(CONTACT_PLACES) as Array<keyof typeof CONTACT_PLACES>),
+              Schema.Tuple([Schema.Number, Schema.Number, Schema.Number]),
+            ]).annotate({
+              description:
+                "Where a two-hand skill's hands meet: chest (in front of her sternum, the default), overhead, behind (low behind her back), left, right; or [ahead, up, left] in metres from her upper chest.",
+            }),
+          ),
+          palm: Schema.optionalKey(
+            Schema.Literals(PALM_SHAPES).annotate({
+              description: "The palms flat (a sharp clap) or cupped (a hollow, softer one).",
             }),
           ),
         }).annotate({

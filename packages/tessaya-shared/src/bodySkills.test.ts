@@ -48,6 +48,8 @@ describe("two-hand skills", () => {
         expect(gap).toBeGreaterThanOrEqual(0);
         expect(gap).toBeLessThan(0.015);
         expect(facingOf(f)).toBeGreaterThan(skill === "interlace" ? 0.5 : 0.95);
+        // palms that meet are closed on her own hands too; interlaced fingers are not palm to palm
+        expect(f["palms"] === undefined).toBe(skill === "interlace");
       }
     },
   );
@@ -62,6 +64,41 @@ describe("two-hand skills", () => {
     const claps = touching.filter((t, i) => t && !touching[i - 1]).length;
     expect(claps).toBe(4);
     for (const f of frames("clap", "polite", 2)) expect(facingOf(f)).toBeGreaterThan(0.95);
+    // each frame tells the renderer the skin gap to close her own palms to, met on the beat
+    const asked = frames("clap", "polite", 2).map((f) => f["palms"]!);
+    expect(asked.every((p) => p[1] === 1 && p[2] === 0)).toBe(true);
+    expect(asked.filter((p) => p[0] <= 0.004).length).toBeGreaterThanOrEqual(8);
+    // centred in front of her sternum: 20-30 cm ahead of the upper chest, at mid-chest height
+    for (const f of frames("clap", "polite", 2)) {
+      const [ahead, up] = f["meet"]!;
+      expect(ahead).toBeGreaterThan(0.2);
+      expect(ahead).toBeLessThan(0.3);
+      expect(Math.abs(up + 0.05)).toBeLessThan(0.06);
+    }
+  });
+
+  it.each([
+    ["overhead", [0.1, 0.34, 0]],
+    ["left", [0.26, -0.06, 0.16]],
+    ["behind", [-0.2, -0.4, 0]],
+    ["a point", [0.3, 0.1, -0.1]],
+  ] as const)("claps %s: there, palm to palm, inside her joint ranges", (where, at) => {
+    const fs = Array.from({ length: 30 }, (_, i) =>
+      twoHandsAt(
+        "clap",
+        { style: "polite", rate: 2, where: where === "a point" ? at : where },
+        stand,
+        i / 30,
+      ),
+    );
+    const gaps = fs.map(gapOf);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(0);
+    expect(Math.min(...gaps)).toBeLessThan(0.01);
+    for (const f of fs) {
+      expect(worstFix(f)).toBeLessThan(0.1);
+      const meet = f["meet"]!;
+      expect(Math.hypot(meet[0] - at[0], meet[1] - at[1], meet[2] - at[2])).toBeLessThan(0.03);
+    }
   });
 
   it("holds the other wrist: her left palm on top of her right wrist, fingers wrapped round", () => {
