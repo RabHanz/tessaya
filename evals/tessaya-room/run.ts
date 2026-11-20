@@ -571,6 +571,45 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
             : "Handed back: say so in a few words.",
       };
     }
+    // As TessayaSessionInsight answers, for his "deploy check" (CI) and "parity sync" (merged) sessions.
+    case "tessaya_session_insight": {
+      const parity = /parity/i.test(String(args["session"] ?? ""));
+      return {
+        found: true,
+        session: parity ? "parity sync" : "deploy check",
+        key: parity ? "claude:parity" : "work:home:deploy",
+        machine: "home",
+        state: parity ? "idle" : "working",
+        private: false,
+        goal: parity ? "Bring the fork level with upstream" : "Ship the shop's checkout fix",
+        lastStep: parity ? "Merged the upstream sync PR" : "Pushed the fix and opened a PR",
+        now: parity ? null : "Waiting for CI on the PR",
+        waitingOn: parity ? null : "CI",
+        files: [],
+        errors: [],
+        prs: [
+          {
+            url: parity
+              ? "https://github.com/acme/app/pull/88"
+              : "https://github.com/acme/shop/pull/12",
+            line: parity ? "merged" : "open, 2 checks running, no review yet, blocked from merging",
+          },
+        ],
+        line: parity ? "parity sync is idle." : "deploy check is working.",
+      };
+    }
+    // As TessayaSessionInsight.steer answers: read back first, sent only on a confirmed second call.
+    case "tessaya_session_steer": {
+      const said = `From the owner, via Tessaya: ${String(args["text"] ?? "")}`;
+      return args["confirmed"] === true
+        ? { status: "sent", text: said, session: "deploy check", line: "Sent to deploy check." }
+        : {
+            status: "read_back",
+            text: said,
+            session: "deploy check",
+            line: `I'll send deploy check on home: "${said}". Shall I send it?`,
+          };
+    }
     case "tessaya_owner_doc":
       return { text: ownerDoc(OWNER.docs, args as { name?: string; section?: string }) };
     case "laptop_ask":

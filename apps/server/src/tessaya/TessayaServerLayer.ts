@@ -75,6 +75,7 @@ import * as DeviceTriggers from "../home/DeviceTriggers.ts";
 import * as HomeDeviceRoutes from "../home/HomeDeviceRoutes.ts";
 import * as TessayaSessionCatalogService from "./TessayaSessionCatalogService.ts";
 import * as TessayaSessionsAcross from "./TessayaSessionsAcross.ts";
+import * as TessayaSessionInsight from "./TessayaSessionInsight.ts";
 import * as TessayaWeaveService from "./TessayaWeaveService.ts";
 import * as TessayaCommitmentService from "./TessayaCommitmentService.ts";
 import * as TessayaMemoryLearning from "./TessayaMemoryLearning.ts";
@@ -229,6 +230,11 @@ const servicesInner = Layer.mergeAll(
   IntentService.layer,
   // Coming up: reads each owner below through the caller's context; it keeps nothing of its own.
   TessayaUpcoming.layer,
+  // What his coding sessions are doing and his words to them (M-104), for MCP and every voice.
+  TessayaSessionInsight.layer.pipe(
+    Layer.provide(TessayaOneShot.layer),
+    Layer.provide(TessayaEngine.layer),
+  ),
   TessayaPulse.layer,
   TessayaBody.wishLayer,
   FindingsReactor.layer,

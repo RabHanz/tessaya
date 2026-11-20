@@ -1,0 +1,169 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import { assert, it } from "@effect/vitest";
+import type { TessayaSessionSummary } from "@t3tools/tessaya-contracts";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
+import * as ServerConfig from "../config.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
+import * as TessayaEngine from "./TessayaEngine.ts";
+import { TessayaHousehold } from "./TessayaHousehold.ts";
+import { TessayaJobService } from "./TessayaJobService.ts";
+import { TessayaOneShot } from "./TessayaOneShot.ts";
+import { TessayaRecordService, layer as recordLayer } from "./TessayaRecordService.ts";
+import { TessayaSessionInsight, layer } from "./TessayaSessionInsight.ts";
+import { TessayaSessionsAcross } from "./TessayaSessionsAcross.ts";
+import { TessayaWeaveService } from "./TessayaWeaveService.ts";
+
+const userdata = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-insight-"));
+NodeFS.mkdirSync(NodePath.join(userdata, "operating-system", "roles"), { recursive: true });
+NodeFS.writeFileSync(
+  NodePath.join(userdata, "operating-system", "roles", "diary.md"),
+  "---\nname: Diary\nprivate: yes\n---\nKeeps his diary.",
+);
+
+const row = (key: string, session: string, thread: string | null): TessayaSessionSummary => ({
+  key,
+  session,
+  project: "t3code",
+  account: null,
+  state: "working",
+  urgent: false,
+  box: "hetzner",
+  updatedAt: "2026-11-20T02:00:00Z",
+  thread: thread === null ? null : { environmentId: "env-here", threadId: thread },
+  pane: null,
+  access: null,
+});
+
+const setup = () => {
+  const sent: Array<{ to: string; text: string }> = [];
+  const prompts: Array<string> = [];
+  const services = Layer.mergeAll(
+    Layer.succeed(TessayaSessionsAcross, {
+      list: () =>
+        Effect.succeed({
+          here: { environmentId: "env-here", label: "hetzner" },
+          sessions: [
+            row("work:env-here:t-build", "Build lane", "t-build"),
+            row("work:env-here:j-diary", "Diary notes", "t-diary"),
+          ],
+          unreachable: [],
+        }),
+    }),
+    TessayaEngine.layerStatic({
+      messages: [
+        { role: "user", text: "rerun the speed tests" },
+        {
+          role: "assistant",
+          text: "Ran them; opened https://github.com/RabHanz/tessaya/pull/1596. Key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789",
+        },
+      ],
+    }),
+    Layer.mock(PeerLinks.PeerLinks)({ list: Effect.succeed([]) }),
+    Layer.mock(PeerMcpClient.PeerMcpClient)({}),
+    Layer.mock(TessayaWeaveService)({
+      send: (input) =>
+        Effect.sync(() => {
+          sent.push(input);
+          return {
+            id: "w1",
+            from: input.from ?? "",
+            toLabel: input.to,
+            toPane: "p1",
+            text: input.text,
+            status: "delivered" as const,
+            reason: null,
+            job: null,
+            tries: 1,
+            createdAt: 0,
+            deliveredAt: 0,
+            repliedAt: null,
+            reply: null,
+          };
+        }),
+      tick: Effect.succeed({ delivered: 1, replied: 0 }),
+    }),
+    Layer.succeed(ServerConfig.ServerConfig, {
+      dbPath: NodePath.join(userdata, "statev2.sqlite"),
+    } as unknown as ServerConfig.ServerConfig["Service"]),
+    Layer.mock(TessayaJobService)({
+      personas: () => Effect.succeed(new Map([["j-diary", "diary"]])),
+    }),
+    Layer.mock(TessayaHousehold)({
+      grantsOf: () => Effect.succeed({ role: "owner" as const, machine: false, name: "Rabee" }),
+    }),
+    Layer.mock(TessayaOneShot)({
+      run: (input) =>
+        Effect.sync(() => {
+          prompts.push(input.prompt);
+          return {
+            goal: "Make the speed tests pass",
+            lastStep: "Ran the speed tests",
+            now: "Waiting on CI",
+            waitingOn: "CI",
+            files: [],
+            errors: [],
+          } as never;
+        }),
+    }),
+  );
+  return {
+    sent,
+    prompts,
+    layer: layer.pipe(
+      Layer.provideMerge(services),
+      Layer.provideMerge(recordLayer),
+      Layer.provideMerge(SqlitePersistenceMemory),
+    ),
+  };
+};
+
+it.effect(
+  "summarises a session from a redacted excerpt, and a private one only by its state",
+  () => {
+    const { prompts, layer } = setup();
+    return Effect.gen(function* () {
+      const insight = yield* TessayaSessionInsight;
+      const build = yield* insight.insight({ session: "what's the build session doing" });
+      assert.strictEqual(build.key, "work:env-here:t-build");
+      assert.strictEqual(build.lastStep, "Ran the speed tests");
+      assert.strictEqual(build.prs[0]?.url, "https://github.com/RabHanz/tessaya/pull/1596");
+      assert.notInclude(prompts.join(""), "sk-ant");
+
+      const diary = yield* insight.insight({ session: "diary" });
+      assert.isTrue(diary.private);
+      assert.isNull(diary.goal);
+      assert.strictEqual(prompts.length, 1);
+
+      const missing = yield* insight.insight({ session: "mascot" });
+      assert.isFalse(missing.found);
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect("reads his words back first, then sends them marked as his, and records the send", () => {
+  const { sent, layer } = setup();
+  return Effect.gen(function* () {
+    const insight = yield* TessayaSessionInsight;
+    const back = yield* insight.steer({ session: "build", text: "rerun the tests" });
+    assert.strictEqual(back.status, "read_back");
+    assert.strictEqual(back.text, "From Rabee, via Tessaya: rerun the tests");
+    assert.lengthOf(sent, 0);
+
+    const go = yield* insight.steer({ session: "build", text: "rerun the tests", confirmed: true });
+    assert.strictEqual(go.status, "sent");
+    assert.deepStrictEqual(
+      sent.map((s) => [s.to, s.text]),
+      [["Build lane", "From Rabee, via Tessaya: rerun the tests"]],
+    );
+    const rows = yield* (yield* TessayaRecordService).query({ kind: "steer", limit: 5 });
+    assert.strictEqual(rows[0]?.detail, "From Rabee, via Tessaya: rerun the tests");
+  }).pipe(Effect.provide(layer));
+});

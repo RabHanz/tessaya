@@ -836,6 +836,22 @@ export const liveCases: ReadonlyArray<LiveCase> = [
       calls.some((c) => c.name === "tessaya_open_in_terminal") ? null : "no session to move",
   },
   {
+    id: "session-insight",
+    proves: ["tessaya_session_insight"],
+    said: ["What is my newest session doing?"],
+    uses: [["tessaya_session_insight"]],
+    clean: ["tessaya_session_insight"],
+  },
+  {
+    // Read back only: the suite never confirms, so nothing is typed into a real session.
+    id: "session-steer",
+    proves: ["tessaya_session_steer"],
+    said: ["Tell my newest session to run the tests."],
+    voices: [{ speaker: SURE }],
+    uses: [["tessaya_session_steer"]],
+    clean: ["tessaya_session_steer"],
+  },
+  {
     id: "terminal-panes",
     proves: ["weave_send", "weave_list"],
     said: ["Tell the api terminal session to run the tests.", "Did it answer?"],

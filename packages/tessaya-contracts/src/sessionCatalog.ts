@@ -328,3 +328,51 @@ export const TessayaKeptResult = Schema.Struct({
   /** With `retryId`: sent into the thread, or why not. */
   retry: Schema.NullOr(Schema.Literals(["sent", "busy", "none"])),
 });
+
+/** What one of his coding sessions is doing, in a few short fields: a summary, never its log (M-104). */
+export const TessayaSessionInsightInput = Schema.Struct({
+  /** Its name or a few words of it ("the build session", "parity"), or a key from tessaya_work_now. */
+  session: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  /** Only this server's sessions: how a linked server is asked about its own. */
+  here: Schema.optionalKey(Schema.Boolean),
+});
+export const TessayaSessionPr = Schema.Struct({
+  url: Schema.String,
+  /** One line: open or merged, checks, review and whether it can merge. */
+  line: Schema.String,
+});
+export const TessayaSessionInsightResult = Schema.Struct({
+  found: Schema.Boolean,
+  session: Schema.String,
+  key: Schema.String,
+  machine: Schema.String,
+  state: Schema.String,
+  /** Private: only that it exists and its state are said. */
+  private: Schema.Boolean,
+  goal: Schema.NullOr(Schema.String),
+  lastStep: Schema.NullOr(Schema.String),
+  now: Schema.NullOr(Schema.String),
+  waitingOn: Schema.NullOr(Schema.String),
+  files: Schema.Array(Schema.String),
+  errors: Schema.Array(Schema.String),
+  prs: Schema.Array(TessayaSessionPr),
+  /** The answer in one sentence when the fields say little, or why there is none. */
+  line: Schema.String,
+});
+export type TessayaSessionInsightResult = typeof TessayaSessionInsightResult.Type;
+
+/** His words to one of his sessions, read back first unless he said send (M-104). */
+export const TessayaSessionSteerInput = Schema.Struct({
+  session: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
+  text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
+  /** True only when he said "send" with it, or said yes to the read-back of this exact text. */
+  confirmed: Schema.optionalKey(Schema.Boolean),
+});
+export const TessayaSessionSteerResult = Schema.Struct({
+  status: Schema.Literals(["read_back", "sent", "queued", "not_found", "failed"]),
+  /** The exact text that goes, attribution included. */
+  text: Schema.String,
+  session: Schema.String,
+  line: Schema.String,
+});
+export type TessayaSessionSteerResult = typeof TessayaSessionSteerResult.Type;
