@@ -101,6 +101,8 @@ import {
 const RATE = 16_000;
 /** Words over her this alike in loudness to her playing reply are her echo in his session too (turnRules' 0.6 tail bar). */
 const ECHO_ALIKE = 0.6;
+/** How long a turn in his session waits for its own Voice ID verdict before it starts on the session rule. */
+const VERDICT_WAIT_MS = 1_200;
 /** Her downlink kept for open talk-over: 8 s, far more than the R1 ever holds unplayed. */
 const DOWN_RING = RATE * 8;
 /** firmware 0.3.92 `cmd/voice/upformat {"v":1}`: each uplink frame leads with seq, rx, q (u32) and flags (u16), 16 bytes. */
@@ -2296,14 +2298,25 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       sentAway = false;
       lastActivity = deps.now();
       let dismissed = isDismissal(text) || stopIntent(text, config.stopPhrases) === "dismiss";
-      // Her brain starts now, not after the speaker and mood readers: what they already know goes with it (a verdict
-      // already in, as one begun on her name's segment, is not missed by a tick), and a voice the gate keeps out is
-      // still never heard.
-      await Promise.race([speakerP, deps.sleep(0)]);
+      // Her brain starts now with what the speaker reader already knows; in his own session it first waits a moment
+      // for this turn's verdict (started without one, his pump asked for a yes: 20 Nov, 06:03 GMT+5).
+      const session = hisSession();
+      await Promise.race([speakerP, deps.sleep(session ? VERDICT_WAIT_MS : 0)]);
       const known = speakerNow === null ? null : ([speakerNow.identity, affectNow] as const);
       const [speaker, affect] = known ?? [undefined, affectNow];
+      // Still none in his session: the session rule, his voice held (inherited: his path and his own house commands,
+      // nothing learned). A verdict that keeps the voice out still stops her when it lands.
+      const sessionVoice =
+        known === null && session
+          ? {
+              ...UNVERIFIED(deps.now()),
+              kind: "owner" as const,
+              personId: "owner",
+              inherited: true,
+            }
+          : null;
       // Ignoring him is the worst failure: a voice just under the bar in his own session is answered as likely him.
-      const identity = likelyHis(speaker ?? UNVERIFIED(deps.now()), hisSession());
+      const identity = sessionVoice ?? likelyHis(speaker ?? UNVERIFIED(deps.now()), session);
       const voicesAt = deps.now();
       const voices = (await voicesP) ?? { kind: "one" };
       if (voices.kind === "one-at-a-time") {
@@ -2535,7 +2548,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             { deviceId: id, messages: history.slice(-config.historyTurns * 2), tessaya: t },
             signal,
           );
-        const pending = known === null && speakerP !== undefined ? speakerP : undefined;
+        const pending =
+          known === null && sessionVoice === null && speakerP !== undefined ? speakerP : undefined;
         const reopened = async function* (verdict: NonNullable<typeof pending>) {
           const closedStart = new AbortController();
           const stop = () => closedStart.abort();

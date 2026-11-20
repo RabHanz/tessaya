@@ -3130,6 +3130,46 @@ describe("Voice ID never fails open to him (Director, 16 Nov)", () => {
     expect(spoken(t)).toBeLessThanOrEqual(heard + 1);
   });
 
+  it("in his session waits for this turn's verdict, and starts on the session rule without it (20 Nov, 06:03)", async () => {
+    const run = async (verdictInTime: boolean) => {
+      let calls = 0;
+      let tell: (who: SpeakerIdentity) => void = () => undefined;
+      let release: () => void = () => undefined;
+      let clock = 0;
+      const t = setup({
+        recognise: () => ({
+          feed: () => undefined,
+          finish: async () => (calls === 1 ? "Turn on the water pump." : "For fifteen minutes."),
+          cancel: () => undefined,
+        }),
+        // His first turn is verified; the second's verdict is still out when her brain would start.
+        speaker: () => (calls++ === 0 ? Promise.resolve(him) : new Promise((r) => (tell = r))),
+        now: () => clock,
+        sleep: (ms) =>
+          ms === 1_200
+            ? new Promise<void>((r) => (release = r))
+            : ((clock += ms), Promise.resolve()),
+      });
+      t.s2();
+      await t.feed(true, 20);
+      await t.feed(false, 40);
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      if (verdictInTime) tell(him);
+      release();
+      await t.feed(false, 30);
+      return t.brainCalls.map((c) => c.tessaya.speaker);
+    };
+    // Its verdict lands 400 ms in, inside the wait: her brain starts as his, once.
+    const inTime = await run(true);
+    expect(inTime).toHaveLength(2);
+    expect(inTime[1]).toMatchObject({ kind: "owner", verified: true });
+    // None by the bound: his held session decides (his path, nothing learned), never a guest's start.
+    const late = await run(false);
+    expect(late).toHaveLength(2);
+    expect(late[1]).toMatchObject({ kind: "owner", inherited: true, verified: false });
+  });
+
   it("gives his late verdict the closed answer once her words have begun, never his path", async () => {
     const t = await pendingTurn();
     t.firstWords();
