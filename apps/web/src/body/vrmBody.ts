@@ -994,7 +994,7 @@ export function mountBody(
       reachB.subVectors(reachTo, hips.getWorldPosition(reachB)).setY(0);
       if (reachB.lengthSq() > 1e-6) {
         reachB.crossVectors(UP, reachB.normalize()).normalize();
-        const lean = w * (0.06 + 0.3 * over);
+        const lean = w * (0.06 + 0.4 * over);
         for (const [b, share] of [
           ["spine", 0.4],
           ["chest", 0.35],
@@ -3768,6 +3768,28 @@ export function mountBody(
     tick: (now: number) => frame(now),
     /** For a shared stage: the hand persona `id` lays on her now, if any, and where her chest is. */
     touchedBy,
+    /**
+     * For checks: how far her surface is from a point along a direction (m; negative when the point is inside her),
+     * her hair aside; null when nothing of her is within 20 cm that way.
+     */
+    surfaceAlong: (at: readonly [number, number, number], dir: readonly [number, number, number]) => {
+      if (vrm === null) return null;
+      const p = new THREE.Vector3(...at);
+      const d = new THREE.Vector3(...dir).normalize();
+      // start a little behind the point, so a point already inside her meets the surface it is under
+      ray.set(p.clone().addScaledVector(d, -0.05), d);
+      const sides = new Map<THREE.Material, THREE.Side>();
+      vrm.scene.traverse((o) => {
+        const m = (o as THREE.Mesh).material;
+        for (const x of Array.isArray(m) ? m : m ? [m] : []) if (!sides.has(x)) sides.set(x, x.side);
+      });
+      for (const x of sides.keys()) x.side = THREE.DoubleSide;
+      const hit = ray
+        .intersectObject(vrm.scene, true)
+        .find((h) => h.object.visible && !isHair(h.object) && h.distance < 0.25);
+      for (const [x, side] of sides) x.side = side;
+      return hit === undefined ? null : hit.distance - 0.05;
+    },
     /** For a shared stage, after every body ticked this frame: her arm onto where another's body is now. */
     reachAfter: (now: number) => {
       const dt = reachLast === 0 ? 1000 / 60 : Math.min(100, now - reachLast);
