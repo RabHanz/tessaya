@@ -35,7 +35,10 @@ const rows = await Promise.all(
   cases.flatMap((c) =>
     Array.from({ length: samples }, async (_, sample) => {
       const answer = await ask(
-        readPrompt(c.said, c.opinion === undefined ? {} : { opinion: c.opinion }),
+        readPrompt(c.said, {
+          ...(c.opinion === undefined ? {} : { opinion: c.opinion }),
+          ...(c.household === true ? { household: true } : {}),
+        }),
       );
       return { case: c.id, sample, ...gradeRead(c, answer), answer };
     }),

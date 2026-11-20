@@ -645,6 +645,7 @@ const make = Effect.gen(function* () {
         .run({
           prompt: readPrompt(said, {
             ...(opinion === undefined ? {} : { opinion }),
+            ...(member !== null && (yield* isMember(member)) ? { household: true } : {}),
             ...(context?.before === undefined ? {} : { before: context.before }),
           }),
           outputSchema: TurnRead,

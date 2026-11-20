@@ -273,20 +273,32 @@ export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseStat
       const at = m.confidence >= PRESENCE_BARS.around ? (m.nearest?.vessel ?? "around") : null;
       near[m.member] = at;
       const was = state.near[m.member] ?? null;
-      if ((was === null) !== (at === null))
+      if ((was === null) !== (at === null)) {
+        // Back after a plan they told her (a nap, a trip): worth one warm word asking how it went.
+        const plan =
+          at === null || m.guest
+            ? undefined
+            : (yield* Effect.serviceOption(TessayaMood).pipe(
+                Effect.flatMap((mood) =>
+                  Option.isNone(mood)
+                    ? Effect.succeed(null)
+                    : mood.value.view(undefined, zone, m.member),
+                ),
+              ))?.shared?.find((x) => x.kind === "plan");
         events.push({
           id: `presence:${m.member}:${at ?? "gone"}:${Math.floor(now / 600_000)}`,
           category: "people",
           text:
             at === null
               ? `${m.member} is no longer around`
-              : `${m.member} just arrived${at === "around" ? "" : ` near ${at}`}`,
+              : `${m.member} just arrived${at === "around" ? "" : ` near ${at}`}${plan === undefined ? "" : `, back after their plan: ${JSON.stringify(plan.text)}`}`,
           at: now,
           member: m.member,
-          weight: at === null ? 15 : 35,
+          weight: at === null ? 15 : plan === undefined ? 35 : 55,
           urgent: false,
           told: false,
         });
+      }
     }
   }
   const moodService = yield* Effect.serviceOption(TessayaMood);

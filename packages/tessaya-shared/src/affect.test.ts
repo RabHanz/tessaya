@@ -446,6 +446,20 @@ describe("emotional intelligence (MA-021)", () => {
     expect(moodLine(personaView(p, "companion", dry, "sara"))).not.toContain("running joke");
   });
 
+  it("keeps a plan of theirs to follow up for a day, then lets it go", () => {
+    const p = feed([
+      [{ kind: "shared", what: "plan", text: "went to sleep after a night up" }, "sara"],
+    ]);
+    const soon = moodLine(personaView(p, "companion", { ...ctx, now: 2 * H }, "sara"), false, {
+      name: "Sara",
+    });
+    expect(soon).toContain("Sara's plan");
+    expect(soon).toContain("ask how that plan went");
+    expect(moodLine(personaView(p, "companion", { ...ctx, now: 25 * H }, "sara"))).not.toContain(
+      "plan",
+    );
+  });
+
   it("every trait is a dial: jealousy and pressure start off, and the owner's setting wins", () => {
     expect(dials.jealousy).toBe(0);
     expect(dials.pressure).toBe(0);

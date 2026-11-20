@@ -60,7 +60,8 @@ export const temperamentOf = (persona: string, traits?: FaceTraits): Temperament
 const MOOD_HALF_LIFE_MS = 3 * 3_600_000;
 const REACTION_HALF_LIFE_MS = 4 * 60_000;
 const BOND_HALF_LIFE_MS = 30 * 86_400_000;
-const BOND_PER_DAY = 0.01;
+// Nine days of daily talk left it near 0.05 of 0.15 (presence-diagnosis 20 Nov): about a working week to the cap.
+const BOND_PER_DAY = 0.03;
 /** Time away before she notices it (§3.4). */
 export const AWAY_MS = 3 * 3_600_000;
 /** The return reply's sulk at Playful lasts at most this long, then she is glad he is back. */
@@ -192,7 +193,8 @@ interface Impression {
   readonly misjudged?: { readonly text: string; readonly at: number } | null;
 }
 export interface SharedMoment {
-  readonly kind: "joke" | "milestone" | "repair";
+  /** A plan is something they are about to do or asked for later: it is followed up, then fades after a day. */
+  readonly kind: "joke" | "milestone" | "repair" | "moment" | "plan";
   readonly text: string;
   readonly at: number;
 }
@@ -258,7 +260,11 @@ export type AffectEvent =
       readonly why: string;
     }
   /** A running joke or a milestone they shared. */
-  | { readonly kind: "shared"; readonly what: "joke" | "milestone"; readonly text: string };
+  | {
+      readonly kind: "shared";
+      readonly what: "joke" | "milestone" | "moment" | "plan";
+      readonly text: string;
+    };
 
 const FELT: Readonly<
   Record<FeltTone, { readonly change: Partial<Record<AffectDim, number>>; readonly why: string }>
@@ -328,19 +334,26 @@ export const readPrompt = (
     readonly opinion?: string | null;
     /** What was said just before, hers and theirs, so the flow is read and not one line alone. */
     readonly before?: string;
+    /** They live in her household: fond to begin with, and their habits are habits (the Director's "dismissed"). */
+    readonly household?: boolean;
   } = {},
 ): string =>
   [
     tonePrompt(said).split("\n<said>")[0]!,
     'Also answer topic: what the talk is about, emotionally: "light" (banter, a joke, small talk), "sad" (a loss, bad news, something painful), "tense" (a conflict, an argument, a worry), "exciting" (good news, plans they look forward to), "interest" (a subject or hobby they love), "work" (tasks, code, errands), or "none".',
     'And theirs: how they seem from their words: "calm", "upbeat", "angry" (cross at anything: a bug, a person, the day), "stressed" (rushed, overwhelmed, worried), "low" (sad, down, flat), or "none" (can\'t tell). Swearing at a bug is angry, not rude.',
-    'And shared: if they tell a milestone of theirs (a new job, a birthday, a move, an exam passed, a baby) or make or bring back a joke with the assistant, {"what": "milestone" or "joke", "text": a few words naming it}; otherwise null.',
+    'And shared: if they tell a milestone of theirs (a new job, a birthday, a move, an exam passed, a baby), make or bring back a joke with the assistant, share a moment with it (they say they missed it, make up after a sharp word, open up about how they really are), or tell a plan of theirs (something they are about to do or want done later: going to sleep, a trip, a friend visiting, being woken at a time), {"what": "milestone", "joke", "moment" or "plan", "text": a few words as the assistant would remember it, naming them as "they" (\'they missed me after a day away\', \'they went to sleep after a night up\')}; otherwise null.',
     ...(context.opinion === undefined
       ? []
       : [
+          ...(context.household === true
+            ? [
+                'They live in the assistant\'s household: begin fond, and read their habits (a curt close such as "dismissed", terse commands, no thanks) as habits, never as rudeness.',
+              ]
+            : []),
           context.opinion === null
-            ? `And opinion: the assistant has just met them. From how they talk, a first impression: {"lean": -1 (wary) to 1 (fond), 0 when nothing shows, "text": a few kind, honest words about them, "why": what in their words it rests on}. Tentative and fair. ${FAIR}`
-            : `And opinion: the assistant's opinion of them so far is ${tag("opinion", context.opinion, 300)}. Answer null when this turn shows nothing new about them (a plain request shows nothing; the opinion is kept). Otherwise give it again in the same shape, moved only by what this shows, and change its direction only if this clearly shows it was wrong. ${FAIR}`,
+            ? `And opinion: the assistant has just met them. From how they talk, a first impression: {"lean": -1 (wary) to 1 (fond), 0 when nothing shows, "text": a few kind, honest words about them, "why": what in their words it rests on}. Tentative and fair. Write text and why as the assistant\'s own thought, in the first person ("they\'re patient with me"), never "the assistant". ${FAIR}`
+            : `And opinion: the assistant's opinion of them so far is ${tag("opinion", context.opinion, 300)}. Answer null when this turn shows nothing new about them (a plain request shows nothing; the opinion is kept). Otherwise give it again in the same shape, moved only by what this shows, and change its direction only if this clearly shows it was wrong. Write text and why as the assistant\'s own thought, in the first person, never "the assistant". ${FAIR}`,
         ]),
     ...(context.before === undefined || context.before === ""
       ? []
@@ -355,7 +368,7 @@ export const TurnRead = Schema.Struct({
   theirs: Schema.Literals(THEIRS),
   shared: Schema.NullOr(
     Schema.Struct({
-      what: Schema.Literals(["joke", "milestone"]),
+      what: Schema.Literals(["joke", "milestone", "moment", "plan"]),
       text: Schema.String.check(Schema.isMaxLength(120)),
     }),
   ),
@@ -404,6 +417,8 @@ const theirsReaction = (theirs: Theirs, r: number): Partial<Record<AffectDim, nu
   }
 };
 const SHARED_KEEP = 12;
+/** A plan of theirs is hers to follow up for a day. */
+const PLAN_MS = 24 * 3_600_000;
 /** A first impression is tentative for this many talks. */
 const TENTATIVE_TALKS = 4;
 /** "I think I misjudged you" is hers to say for a day after she changed her mind. */
@@ -519,14 +534,22 @@ const react = (
           ...at,
           reaction: add(
             at.reaction,
-            event.what === "joke" ? { valence: 0.1 } : { valence: 0.08, warmth: 0.05 },
+            event.what === "joke"
+              ? { valence: 0.1 }
+              : event.what === "plan"
+                ? { curiosity: 0.05 }
+                : { valence: 0.08, warmth: 0.05 },
           ),
           shared: remember(at.shared, { kind: event.what, text: event.text, at: now }),
         },
         reason:
           event.what === "joke"
             ? `a joke between them: ${event.text}`
-            : `their news: ${event.text}`,
+            : event.what === "moment"
+              ? `a moment between them: ${event.text}`
+              : event.what === "plan"
+                ? `their plan: ${event.text}`
+                : `their news: ${event.text}`,
       };
     case "turn_outcome":
       return event.ok
@@ -974,7 +997,9 @@ export const affectView = (s: AffectState, persona: string, ctx: AffectContext):
                 ? imp.misjudged.text
                 : null,
           },
-    shared: (s.shared ?? []).toReversed(),
+    shared: (s.shared ?? [])
+      .filter((m) => m.kind !== "plan" || ctx.now - m.at < PLAN_MS)
+      .toReversed(),
     theirs: s.flow != null && ctx.now - s.flow.at < FLOW_MS ? s.flow.theirs : null,
     leanings: {
       playfulness: ctx.dials?.playfulness ?? 0.5,
@@ -1015,6 +1040,7 @@ const referTo = (who: Who = {}) => {
     obj,
     be,
     was,
+    possessive: name === null ? { he: "his", she: "her", they: "their" }[sub] : `${name}'s`,
   };
 };
 
@@ -1080,11 +1106,15 @@ export const moodLine = (v: AffectView, spoken = false, who: Who = {}): string =
     .filter((m) => m.kind !== "joke" || (lean?.playfulness ?? 0.5) > 0.1)
     .slice(0, 3)
     .map((m) =>
-      m.kind === "joke" ? `a running joke: ${JSON.stringify(m.text)}` : JSON.stringify(m.text),
+      m.kind === "joke"
+        ? `a running joke: ${JSON.stringify(m.text)}`
+        : m.kind === "plan"
+          ? `${r.possessive} plan: ${JSON.stringify(m.text)}`
+          : JSON.stringify(m.text),
     );
   if (story.length > 0)
     parts.push(
-      `Between you and ${r.obj}: ${story.join("; ")}. Bring one up only if it fits naturally, at most once.`,
+      `Between you and ${r.obj}: ${story.join("; ")}. Bring one up only if it fits naturally, at most once; when ${r.sub} greets you after a plan, ask how that plan went, naming it.`,
     );
   if (v.energy < LATE_ENERGY)
     parts.push(

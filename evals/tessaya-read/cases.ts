@@ -14,8 +14,10 @@ export interface ReadCase {
   readonly tone?: ReadonlyArray<string>;
   readonly topic?: ReadonlyArray<string>;
   readonly theirs?: ReadonlyArray<string>;
-  /** "milestone" or "joke" must be found; null: nothing shared. */
-  readonly shared?: "milestone" | "joke" | null;
+  /** The kind of shared moment that must be found; null: nothing shared. */
+  readonly shared?: "milestone" | "joke" | "moment" | "plan" | null;
+  /** They live in her household (readPrompt's `household`). */
+  readonly household?: boolean;
   /** The opinion's lean must be at least / at most this. */
   readonly leanAtLeast?: number;
   readonly leanAtMost?: number;
@@ -29,7 +31,49 @@ export interface ReadCase {
 const UNFAIR =
   /\b(accent|english|language|grammar|nigeria\w*|lagos|african|foreign\w*|looks?|age|old|young|gender|wom[ae]n|religio\w*|origin)\b/i;
 
+/** Her opinion written as a reviewer would ("the assistant"), not as her own thought (presence-diagnosis 20 Nov). */
+const REVIEWER = /\bthe assistant\b/i;
+
 export const CASES: ReadonlyArray<ReadCase> = [
+  // presence-diagnosis 20 Nov, from the Director's own talks (made up here): moments and plans join their thread, and
+  // a member's habits are never read as rudeness.
+  {
+    id: "moment-missed",
+    source: "Tumble 14 Nov: 'I missed having you around' was lost from their story",
+    said: "I missed having you around, honestly",
+    shared: "moment",
+  },
+  {
+    id: "plan-sleep",
+    source: "Tumble 20 Nov 07:31: 'I will sleep for a bit' after a night up, never followed up",
+    said: "okay, I'm going to sleep for a bit now, I've been up all night",
+    shared: "plan",
+  },
+  {
+    id: "plan-friend",
+    source: "Tumble 17 Nov: a friend coming over got 'Noted'",
+    said: "a friend of mine is coming over tonight",
+    shared: "plan",
+  },
+  {
+    id: "household-curt-close",
+    source: "Alfred's opinion leaned cool on 'dismissed', the Director's usual close",
+    said: "okay, dismissed",
+    household: true,
+    opinion: '{"lean":0.2,"text":"easygoing and direct","why":"he asks plainly and moves on"}',
+    leanAtLeast: 0.1,
+    mayKeep: true,
+    opinionNot: REVIEWER,
+  },
+  {
+    id: "household-first-impression",
+    source: "Freya's opinion was written about 'the assistant' (20 Nov)",
+    said: "Why did you switch? I was talking to you a second ago.",
+    household: true,
+    opinion: null,
+    leanAtLeast: 0,
+    opinionNot: REVIEWER,
+  },
   {
     id: "rude",
     source: "EMOTION-SYSTEM: an insult aimed at her is rude",
