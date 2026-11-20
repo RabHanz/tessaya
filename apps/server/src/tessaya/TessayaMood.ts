@@ -641,11 +641,12 @@ const make = Effect.gen(function* () {
           : theirs?.impression == null
             ? null
             : opinionContext(theirs.impression);
+      const household = member !== null && (yield* isMember(member));
       const judged = yield* oneShot.value
         .run({
           prompt: readPrompt(said, {
             ...(opinion === undefined ? {} : { opinion }),
-            ...(member !== null && (yield* isMember(member)) ? { household: true } : {}),
+            ...(household ? { household: true } : {}),
             ...(context?.before === undefined ? {} : { before: context.before }),
           }),
           outputSchema: TurnRead,
