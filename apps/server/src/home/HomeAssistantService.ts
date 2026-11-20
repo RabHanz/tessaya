@@ -34,6 +34,8 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -260,8 +262,43 @@ export class HomeAssistantService extends Context.Service<
     readonly removeDevice: (id: string | null) => Effect.Effect<{ readonly configured: boolean }>;
     /** One pass of the sweep and the approval check; the layer runs it on its own clock. */
     readonly tick: Effect.Effect<void>;
+    /** Who or what arrived, a door, a doorbell, a lock, as the house reports it (M-114): what rules wait on. */
+    readonly events: Effect.Effect<PubSub.Subscription<HouseEvent>, never, Scope.Scope>;
   }
 >()("t3/home/HomeAssistantService") {}
+
+/** A change in the house a rule may wait on (M-114). `camera`: a camera on the same device, for a look at who it is. */
+export interface HouseEvent {
+  readonly entityId: string;
+  readonly name: string;
+  readonly kind: string;
+  readonly area: string | null;
+  readonly from: string | null;
+  readonly to: string;
+  readonly at: number;
+  readonly camera: string | null;
+}
+
+const WATCHED_CLASSES = new Set([
+  "motion",
+  "occupancy",
+  "presence",
+  "door",
+  "opening",
+  "garage_door",
+  "window",
+  "sound",
+]);
+/** The kind of change a rule can name, or null for one the house reports that no rule waits on. */
+const houseEventKind = (entityId: string, deviceClass: string | null): string | null => {
+  const domain = entityId.slice(0, entityId.indexOf("."));
+  if (domain === "event") return /door_?bell|ring|chime/i.test(entityId) ? "doorbell" : "event";
+  if (domain === "lock") return "lock";
+  if (domain !== "binary_sensor") return null;
+  if (/person|people|human/i.test(entityId)) return "person";
+  if (deviceClass === "occupancy" || deviceClass === "presence") return "presence";
+  return deviceClass !== null && WATCHED_CLASSES.has(deviceClass) ? deviceClass : null;
+};
 
 /** What a toggle script may flip, each with its own idempotent turn_on and turn_off. */
 const SWITCHED: ReadonlySet<string> = new Set(["fan", "light", "switch", "input_boolean"]);
@@ -521,20 +558,49 @@ const make = Effect.gen(function* () {
       Effect.mapError((e) => (isHomeCallError(e) ? said(e) : e)),
     );
 
+  const houseEvents = yield* PubSub.unbounded<HouseEvent>();
+  /** A known entity changed state: published when a rule could wait on it; the first full read publishes nothing. */
+  const changed = (id: string, from: string, to: string) => {
+    if (from === to) return;
+    const cached = states.get(id);
+    const kind = houseEventKind(id, (cached?.a["device_class"] as string | undefined) ?? null);
+    if (kind === null) return;
+    const deviceId = registry.entities.get(id)?.deviceId ?? null;
+    const camera =
+      deviceId === null
+        ? null
+        : ([...registry.entities].find(
+            ([e, x]) => e.startsWith("camera.") && x.deviceId === deviceId,
+          )?.[0] ?? null);
+    PubSub.publishUnsafe(houseEvents, {
+      entityId: id,
+      name: nameOf(id),
+      kind,
+      area: areaOf(id),
+      from,
+      to,
+      at: Date.now(),
+      camera,
+    });
+  };
   const applyDiff = (event: unknown) => {
     const diff = asRecord(event);
     for (const [id, raw] of Object.entries(asRecord(diff["a"]))) {
       const entry = asRecord(raw);
+      const before = states.get(id)?.s;
       states.set(id, { s: String(entry["s"] ?? ""), a: { ...asRecord(entry["a"]) } });
+      if (before !== undefined) changed(id, before, String(entry["s"] ?? ""));
     }
     for (const [id, raw] of Object.entries(asRecord(diff["c"]))) {
       const current = states.get(id) ?? { s: "", a: {} };
+      const before = states.has(id) ? current.s : undefined;
       const change = asRecord(raw);
       const plus = asRecord(change["+"]);
       if (plus["s"] !== undefined) current.s = String(plus["s"]);
       Object.assign(current.a, asRecord(plus["a"]));
       for (const key of asList(asRecord(change["-"])["a"])) delete current.a[key];
       states.set(id, current);
+      if (before !== undefined) changed(id, before, current.s);
     }
     for (const id of asList(diff["r"])) states.delete(id);
     status = { ...status, entities: states.size };
@@ -2252,6 +2318,7 @@ const make = Effect.gen(function* () {
   });
 
   return HomeAssistantService.of({
+    events: PubSub.subscribe(houseEvents),
     // With no connection here, the house through a linked server is connected (19 Nov 05:20: on a server with no token
     // she told him "the house isn't connected" while every home tool answered through the linked one).
     status: Effect.gen(function* () {
