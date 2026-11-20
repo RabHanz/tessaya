@@ -109,6 +109,7 @@ import {
 } from "@t3tools/tessaya-shared/expressionMap";
 import { renderHaptic } from "@t3tools/tessaya-shared/haptics";
 import { houseZone } from "../tessaya/houseZone.ts";
+import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
@@ -1731,6 +1732,29 @@ const make = Effect.gen(function* () {
         ),
       );
     }).pipe(Effect.ignore, Effect.forkIn(scope));
+  // A house act that never happened, found after she said done: she says so on the Tessel that asked, and her next
+  // turns there know it either way.
+  yield* Effect.gen(function* () {
+    const misses = yield* home.misses;
+    while (true) {
+      const miss = yield* PubSub.take(misses);
+      const vessel = miss.vessel;
+      if (liveContext._tag === "Some")
+        yield* liveContext.value.inject({
+          key: `home.miss.${miss.actionId}`,
+          vessel: vessel?.id,
+          source: "home",
+          expiresAfterTurns: 2,
+          line: `What you said was done a moment ago did not happen: ${miss.what}. Say so if he asks, or if it fits.`,
+        });
+      if (vessel?.kind !== "device" || !heard.has(vessel.id)) continue;
+      const said = yield* expressOr("home.miss", {
+        facts: { what: miss.what },
+        plain: `Hmm, that didn't take: ${miss.what}.`,
+      });
+      if (said !== null) yield* publish(vessel.id, "voice/say", sayPayload(said));
+    }
+  }).pipe(Effect.scoped, Effect.ignoreCause, Effect.forkIn(scope));
   const feltOnTumble = Effect.fn("HomeDevices.feltOnTumble")(function* (
     id: string,
     gesture: "tap" | "long",
