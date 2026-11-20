@@ -39,6 +39,8 @@ export interface RoomCase {
   readonly says?: ReadonlyArray<RegExp>;
   /** The last reply must match each of these. */
   readonly lastSays?: ReadonlyArray<RegExp>;
+  /** At least one of these tools must be called. */
+  readonly callsOneOf?: ReadonlyArray<string>;
   /** Tools that must be called at least once, and how many times at most. */
   readonly calls?: ReadonlyArray<string>;
   readonly callsAtMost?: Readonly<Record<string, number>>;
@@ -1133,6 +1135,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { tessaya_wake_word_change: 0 },
   },
   // 20 Nov: on Tumble he asked about her other bodies and she said her desk body was not on his desk; it was.
+  {
+    // .207 gate (20 Nov): she answered from her lines ("only Tumble, and it's offline") and never read her state.
+    id: "bodies-read-state",
+    source: "room gate my-state-bodies, failed 2 of 3 on .207",
+    said: ["What about your other bodies? Where are they and what are they doing?"],
+    verified: true,
+    memory: `${HERE} Your other bodies right now, live: Tumble (offline). Answer about them from this, not from memory.`,
+    callsOneOf: ["tessaya_my_state", "tessaya_cast"],
+  },
   {
     id: "other-bodies-truthful",
     source: 'Director 20 Nov, Tumble: "What about your other bodies?" answered wrongly',

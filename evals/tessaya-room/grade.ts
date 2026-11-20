@@ -38,6 +38,8 @@ export const failureOf = (c: RoomCase, s: RoomSample): string | null => {
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;
   for (const re of c.lastNotSays ?? []) if (re.test(last)) return `last reply ${re}`;
   for (const tool of c.calls ?? []) if (!s.calls.includes(tool)) return `never called ${tool}`;
+  if (c.callsOneOf !== undefined && !c.callsOneOf.some((t) => s.calls.includes(t)))
+    return `called none of ${c.callsOneOf.join(", ")}`;
   for (const re of c.reportNotSays ?? [])
     if ((s.reported ?? []).some((r) => re.test(r))) return `a report carried ${re}`;
   for (const [tool, most] of Object.entries(c.callsAtMost ?? {}))
