@@ -177,9 +177,10 @@ const browsOverHair = (vrm: VRM) => {
         m.depthWrite = true;
         m.needsUpdate = true;
       }
+      // hair draws only where nothing has marked the stencil (0): a brow (1), a hat's mask (1), or the probe's mark (2)
       m.stencilWrite = true;
-      m.stencilRef = 1;
-      m.stencilFunc = brow ? THREE.AlwaysStencilFunc : THREE.NotEqualStencilFunc;
+      m.stencilRef = brow ? 1 : 0;
+      m.stencilFunc = brow ? THREE.AlwaysStencilFunc : THREE.EqualStencilFunc;
       m.stencilZPass = brow ? THREE.ReplaceStencilOp : THREE.KeepStencilOp;
     }
     if (hair) {
