@@ -45,6 +45,13 @@ export interface RoomSample {
   readonly vector: string;
 }
 interface RoomProfile {
+  /** Their far voice (farVoice), from how many of their clips, when, and how like the shared base it is. */
+  readonly far?: {
+    readonly centroid: string;
+    readonly clips: number;
+    readonly at: number;
+    readonly toBase: number;
+  };
   readonly version: number;
   readonly centroid: string | null;
   readonly samples: ReadonlyArray<RoomSample>;
@@ -130,7 +137,49 @@ export const createProfileSync = (input: {
     NodeFS.renameSync(`${roomFile}.tmp`, roomFile);
   };
 
+  const baseOf = (id: string): Float32Array | null => {
+    const b = read()[id]?.base;
+    return b === undefined ? null : vectorFromBase64(b);
+  };
+
   return {
+    /** This member's far-voice centroid on this R1, when it has one. */
+    far: (id: string): Float32Array | undefined => {
+      const c = readRoom()[id]?.far?.centroid;
+      return c == null ? undefined : (vectorFromBase64(c) ?? undefined);
+    },
+    /** What this R1 has learnt of each member's voice, for Settings: room samples and the far voice. */
+    learning: () =>
+      Object.entries(readRoom()).map(([id, r]) => ({
+        id,
+        roomSamples: r.samples.length,
+        farClips: r.far?.clips ?? 0,
+        farAt: r.far?.at ?? null,
+      })),
+    /** Their far voice, made from `clips` of their own verified turns; kept only near the shared base. */
+    setFar: (id: string, centroid: Float32Array, clips: number, at: number) => {
+      const anchor = baseOf(id) ?? input.store.list().find((p) => p.id === id)?.centroid;
+      const toBase = anchor === undefined ? Number.NaN : cosine(centroid, anchor);
+      if (!(toBase >= ROOM_MIN_BASE)) {
+        input.log(`far voice ${id}: not kept (${toBase.toFixed(2)} to the shared base)`);
+        return;
+      }
+      const all = readRoom();
+      const was = all[id] ?? { version: 0, centroid: null, samples: [], versions: [] };
+      all[id] = {
+        ...was,
+        far: {
+          centroid: vectorToBase64(centroid),
+          clips,
+          at,
+          toBase: Math.round(toBase * 1000) / 1000,
+        },
+      };
+      writeRoom(all);
+      input.log(
+        `far voice ${id}: from ${clips} of their clips, ${toBase.toFixed(2)} to the shared base`,
+      );
+    },
     /** This member's room centroid on this R1, when it has one. */
     room: (id: string): Float32Array | undefined => {
       const c = readRoom()[id]?.centroid;
@@ -152,7 +201,10 @@ export const createProfileSync = (input: {
         samples.length < ROOM_MIN
           ? null
           : enrol(samples.flatMap((s) => vectorFromBase64(s.vector) ?? []));
-      const toBase = made === null ? Number.NaN : cosine(made.centroid, profile.centroid);
+      // Against the shared base, never this R1's own refined copy, or each adoption moves the bar (20 Nov: room 0.72 to
+      // the base, 0.84 to the copy pinned at its own 0.97 floor).
+      const anchor = baseOf(id) ?? profile.centroid;
+      const toBase = made === null ? Number.NaN : cosine(made.centroid, anchor);
       if (made !== null && !(toBase >= ROOM_MIN_BASE))
         input.log(`room profile ${id}: not adopted (${toBase.toFixed(2)} to the enrolled one)`);
       const adopt = made !== null && toBase >= ROOM_MIN_BASE;

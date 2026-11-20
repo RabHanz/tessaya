@@ -144,7 +144,7 @@ export const SERVER_SETTINGS_VOICE: {
   speechProjectCustomWords: free("his custom words and names for dictation"),
   voicePronounce: free("how she says words and names aloud"),
   voiceIdGate: owner(
-    "who besides him she answers: guests, saved people, talk-over, and anyone when the speaker model is missing",
+    "who besides him she answers: guests, saved people, talk-over, and anyone when the speaker model is missing; forgetLearningAt set to the current time in ms forgets what she recently learnt of his voice (his profile stays)",
   ),
   speechPostProcessingModelSelection: confirm("the model that tidies dictation"),
   dictationCleanup: free("how dictation is cleaned up"),

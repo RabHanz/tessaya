@@ -140,6 +140,22 @@ export const DesktopStandingChange = Schema.Struct({
 });
 export type DesktopStandingChange = typeof DesktopStandingChange.Type;
 
+/** What a Tessel's room loop has learnt of his far voice (`state/voice/learning`, retained). */
+export const VoiceLearningReport = Schema.Struct({
+  roomSamples: Schema.Number,
+  farClips: Schema.Number,
+  /** When it last added a far clip (ms); null for none. */
+  farAt: Schema.NullOr(Schema.Number),
+  /** When it last forgot (voiceIdGate.forgetLearningAt it acted on, ms); null for never. */
+  forgotAt: Schema.NullOr(Schema.Number),
+});
+export type VoiceLearningReport = typeof VoiceLearningReport.Type;
+export const VoiceLearning = Schema.Struct({
+  device: Schema.String.check(Schema.isMaxLength(60)),
+  ...VoiceLearningReport.fields,
+});
+export type VoiceLearning = typeof VoiceLearning.Type;
+
 export const DesktopSettingsSyncInput = Schema.Struct({
   effective: DesktopVoiceSettings,
   /** The last change version this desktop applied; 0 for none. */
@@ -174,6 +190,8 @@ export const DesktopSettingsSyncResult = Schema.Struct({
   pronounce: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** Voice ID's switches as her brain holds them; absent from older servers and while it can't be reached. */
   voiceIdGate: Schema.optionalKey(VoiceIdGate),
+  /** What each Tessel learnt of his far voice, from her brain; absent from older servers and while it can't be reached. */
+  voiceLearning: Schema.optionalKey(Schema.Array(VoiceLearning).check(Schema.isMaxLength(20))),
   /** Changes to its standing jobs from Coming up, in the order they were made. */
   standing: Schema.optionalKey(Schema.Array(DesktopStandingChange)),
 });

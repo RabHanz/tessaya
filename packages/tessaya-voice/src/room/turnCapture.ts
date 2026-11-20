@@ -16,11 +16,21 @@ export interface TurnCaptureMeta {
   readonly score: number | null;
   /** Said over her playback: her voice is in it too (for Voice ID's mixed-audio training). */
   readonly overHer: boolean;
+  /**
+   * False: a turn Voice ID could not verify, in a session where another turn verified him (20 Nov: his far and soft
+   * turns were the ones missing). A guest may be in his session, so these never shape his voice; kept 14 days.
+   */
+  readonly verified?: boolean;
 }
 
 export interface TurnCapture {
   readonly turn: (id: string, pcm: Int16Array, meta: TurnCaptureMeta) => void;
+  /** His verified turns' audio since `since` (ms), oldest first: what his far voice is made from. */
+  readonly ownerClips: (since: number) => ReadonlyArray<Int16Array>;
 }
+
+/** An unverified turn is kept this long, unless kept as a labelled test case elsewhere. */
+export const UNVERIFIED_KEEP_MS = 14 * 86_400_000;
 
 export const createTurnCapture = (opts: {
   readonly dir: string;
@@ -47,7 +57,24 @@ export const createTurnCapture = (opts: {
       files.delete(f);
     }
   };
+  const metaOf = (name: string): Record<string, unknown> | null => {
+    try {
+      return JSON.parse(
+        NodeFS.readFileSync(NodePath.join(opts.dir, name.replace(/\.pcm$/, ".json")), "utf8"),
+      ) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+  const unverified = new Set(
+    [...files.keys()].filter((f) => f.endsWith(".json") && metaOf(f)?.["verified"] === false),
+  );
   const rotate = () => {
+    for (const name of unverified)
+      if (now() - (files.get(name)?.at ?? 0) > UNVERIFIED_KEEP_MS) {
+        drop(name);
+        unverified.delete(name);
+      }
     for (const [name, f] of files) {
       if (total <= opts.capBytes && now() - f.at <= opts.maxAgeMs) return;
       drop(name);
@@ -69,10 +96,25 @@ export const createTurnCapture = (opts: {
           `${base}.json`,
           JSON.stringify({ v: 1, device: id, at, rate: 16_000, samples: pcm.length, ...meta }),
         );
+        if (meta.verified === false) unverified.add(`${base}.json`);
         rotate();
       } catch (e) {
         opts.log(`turn capture: save failed (${String(e)})`);
       }
     },
+    ownerClips: (since) =>
+      [...files.keys()]
+        .filter((f) => f.endsWith(".pcm") && (files.get(f)?.at ?? 0) > since)
+        .flatMap((f) => {
+          const m = metaOf(f);
+          if (m?.["speaker"] !== "owner" || m["verified"] === false || m["overHer"] === true)
+            return [];
+          try {
+            const b = NodeFS.readFileSync(NodePath.join(opts.dir, f));
+            return [new Int16Array(b.buffer, b.byteOffset, b.byteLength >> 1)];
+          } catch {
+            return [];
+          }
+        }),
   };
 };

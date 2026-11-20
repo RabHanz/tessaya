@@ -300,6 +300,7 @@ it.effect(
         heardHealth: Effect.succeed([
           {
             id: "t1",
+            voiceLearning: null,
             samples: { asrMs: [1_700, 1_800, 1_900] },
             stalls: [],
             turns: [

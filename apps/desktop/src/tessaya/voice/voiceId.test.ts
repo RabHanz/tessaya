@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import { personId } from "./speakerEnrolment.ts";
 import { createVoiceId } from "./voiceId.ts";
 import {
+  gateOf,
   parseVoiceIdSettings,
   VOICE_ID_DEFAULTS,
   voiceIdControls,
@@ -176,6 +177,30 @@ describe("Voice ID settings", () => {
       button: "Re-enrol",
       secondary: "Delete",
     });
+  });
+
+  it("shows what Tumble learnt of his far voice, none after he forgets, and keeps the forget for her brain", () => {
+    const learnt = { device: "t1", roomSamples: 2, farClips: 3, farAt: 5_000, forgotAt: null };
+    const line = (v: VoiceIdView) =>
+      voiceIdControls(v).find((c) => c.id === "vid.learning.t1") as { detail: string } | undefined;
+    expect(line(view({}))).toBeUndefined();
+    expect(line(view({ learning: [{ ...learnt, farClips: 0, farAt: null }] }))?.detail).toBe(
+      "None yet",
+    );
+    expect(line(view({ learning: [learnt] }))?.detail).toMatch(/^3 far samples, last added /);
+    const forgot = { ...VOICE_ID_DEFAULTS, on: true, forgetLearningAt: 6_000 };
+    expect(line(view({ settings: forgot, learning: [learnt] }))?.detail).toBe("None yet");
+    expect(
+      voiceIdControls(view({ learning: [learnt] })).find((c) => c.id === "vid.forgetLearning"),
+    ).toMatchObject({ kind: "action", button: "Forget" });
+    expect(gateOf(forgot)).toEqual({
+      respondToOthers: false,
+      offSilencesSaved: false,
+      savedBarge: false,
+      strictWhenUnavailable: false,
+      forgetLearningAt: 6_000,
+    });
+    expect(parseVoiceIdSettings(forgot)).toEqual(forgot);
   });
 
   it("cannot start a read while the microphone is closed", () => {

@@ -378,6 +378,30 @@ describe("the speaker identity", () => {
     );
   });
 
+  it("hears his far voice only as him talking, from 0.45 up, and never for acting on his word", () => {
+    const anchor = Float32Array.of(1, 0, 0);
+    const far = Float32Array.of(0, 1, 0);
+    const him = {
+      id: "owner",
+      name: "Owner",
+      kind: "owner" as const,
+      model: "m",
+      centroid: anchor,
+      samples: 3,
+      sources: ["spoken" as const],
+      enrolledAt: "",
+      far,
+    };
+    const across = Float32Array.of(0.1, 0.9, 0);
+    expect(profileScore(across, him)).toBeCloseTo(cosine(across, far));
+    expect(profileScore(across, him, "act")).toBeCloseTo(cosine(across, anchor));
+    // Under FAR_MIN the far voice adds nothing.
+    const faint = Float32Array.of(0.9, 0.4, 0);
+    expect(profileScore(faint, { ...him, far: Float32Array.of(0, 0, 1) })).toBeCloseTo(
+      cosine(faint, anchor),
+    );
+  });
+
   it("hears his voice over hers at a lower cut-off while his session holds", () => {
     // 16 Nov 12:36Z: his 3 words over her voice scored 0.33 and were dropped as "not a household voice".
     expect(memberByVoice(0.33, 2)).toBe("other");

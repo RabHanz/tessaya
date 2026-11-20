@@ -1,9 +1,10 @@
+// @effect-diagnostics globalDate:off
 /**
  * Settings, Voice and wake words: the Voice ID section (VOICE-ID slice 3). His profile with Re-enrol and Delete,
  * the people he saved, and one switch per open decision (D1-D8 in voiceid-plan.md), each at the plan's default
  * until he changes it.
  */
-import type { EnrolCard } from "@t3tools/tessaya-contracts";
+import type { EnrolCard, VoiceLearning } from "@t3tools/tessaya-contracts";
 import type { SpeakerProfile } from "@t3tools/tessaya-voice";
 
 import type { HomeControl } from "../home/tessayaHome.ts";
@@ -27,7 +28,11 @@ export interface VoiceIdSettings {
   readonly wisprSeed: boolean;
   /** D8: with no voice model or no profile, nobody is heard. Off: she behaves as today, logged "unverified". */
   readonly strictWhenUnavailable: boolean;
+  /** When he last asked every Tessel to forget what it learnt of his voice (ms); his profile stays. */
+  readonly forgetLearningAt?: number;
 }
+
+type VoiceIdSwitch = Exclude<keyof VoiceIdSettings, "forgetLearningAt">;
 
 export const VOICE_ID_DEFAULTS: VoiceIdSettings = {
   on: false,
@@ -42,7 +47,7 @@ export const VOICE_ID_DEFAULTS: VoiceIdSettings = {
 };
 
 /** The switches that say who else she hears: her brain's one `voiceIdGate`, which the Tessel reads too. */
-export const VOICE_ID_GATE_KEYS: ReadonlyArray<keyof VoiceIdSettings> = [
+export const VOICE_ID_GATE_KEYS: ReadonlyArray<VoiceIdSwitch> = [
   "respondToOthers",
   "offSilencesSaved",
   "savedBarge",
@@ -53,12 +58,13 @@ export const gateOf = (v: VoiceIdSettings) => ({
   offSilencesSaved: v.offSilencesSaved,
   savedBarge: v.savedBarge,
   strictWhenUnavailable: v.strictWhenUnavailable,
+  ...(v.forgetLearningAt === undefined ? {} : { forgetLearningAt: v.forgetLearningAt }),
 });
 
 /** Each saved field on its own: a missing or wrong-typed one keeps its default. */
 export const parseVoiceIdSettings = (saved: unknown): VoiceIdSettings => {
   const v = typeof saved === "object" && saved !== null ? (saved as Record<string, unknown>) : {};
-  const pick = (key: keyof VoiceIdSettings) =>
+  const pick = (key: VoiceIdSwitch) =>
     typeof v[key] === "boolean" ? (v[key] as boolean) : VOICE_ID_DEFAULTS[key];
   return {
     on: pick("on"),
@@ -70,11 +76,14 @@ export const parseVoiceIdSettings = (saved: unknown): VoiceIdSettings => {
     adapt: pick("adapt"),
     wisprSeed: pick("wisprSeed"),
     strictWhenUnavailable: pick("strictWhenUnavailable"),
+    ...(typeof v["forgetLearningAt"] === "number"
+      ? { forgetLearningAt: v["forgetLearningAt"] }
+      : {}),
   };
 };
 
 /** The switch rows' ids and the setting each one flips. */
-export const VOICE_ID_SWITCHES: Readonly<Record<string, keyof VoiceIdSettings>> = {
+export const VOICE_ID_SWITCHES: Readonly<Record<string, VoiceIdSwitch>> = {
   "vid.on": "on",
   "vid.others": "respondToOthers",
   "vid.savedOff": "offSilencesSaved",
@@ -100,6 +109,8 @@ export interface VoiceIdView {
   readonly note: string | null;
   /** The microphone is open, so a read can be heard. */
   readonly listening: boolean;
+  /** What each Tessel learnt of his far voice, from her brain. */
+  readonly learning?: ReadonlyArray<VoiceLearning>;
 }
 
 const SECTION = "Voice ID";
@@ -151,6 +162,38 @@ const statusOf = (
         : "Only you and the people you saved can wake her.",
   };
 };
+
+/** One line per Tessel; learning from before his last Forget reads as none until it learns again. */
+const learningRows = (
+  learning: ReadonlyArray<VoiceLearning>,
+  forgotAt: number | undefined,
+): ReadonlyArray<HomeControl> =>
+  learning.length === 0
+    ? []
+    : [
+        ...learning.map((l): HomeControl => {
+          const kept = l.farAt !== null && (forgotAt === undefined || l.farAt > forgotAt);
+          return {
+            id: `vid.learning.${l.device}`,
+            section: SECTION,
+            kind: "check",
+            status: "ok",
+            label: `Voice learning on Tumble${learning.length > 1 ? ` (${l.device})` : ""}`,
+            detail:
+              kept && l.farClips > 0
+                ? `${l.farClips} far ${l.farClips === 1 ? "sample" : "samples"}, last added ${new Date(l.farAt!).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
+                : "None yet",
+          };
+        }),
+        {
+          id: "vid.forgetLearning",
+          section: SECTION,
+          label: "Forget recent voice learning",
+          hint: "Tumble drops what it learnt of how you sound across the room and learns again from your next turns. Your voice profile stays.",
+          kind: "action",
+          button: "Forget",
+        },
+      ];
 
 export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> => {
   const { settings } = view;
@@ -284,6 +327,7 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
       settings.strictWhenUnavailable,
       true,
     ),
+    ...learningRows(view.learning ?? [], settings.forgetLearningAt),
   );
   return rows;
 };
