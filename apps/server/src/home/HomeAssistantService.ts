@@ -266,9 +266,7 @@ export class HomeAssistantService extends Context.Service<
      * One still from a house camera (M-114), for the model to see in this turn only: never written anywhere. `camera` is
      * an entity id or words that name one ("front door"); null picks the only camera.
      */
-    readonly snapshot: (
-      camera: string | null,
-    ) => Effect.Effect<
+    readonly snapshot: (camera: string | null) => Effect.Effect<
       {
         readonly camera: string;
         readonly name: string;
@@ -279,10 +277,21 @@ export class HomeAssistantService extends Context.Service<
     >;
     /** Who or what arrived, a door, a doorbell, a lock, as the house reports it (M-114): what rules wait on. */
     readonly events: Effect.Effect<PubSub.Subscription<HouseEvent>, never, Scope.Scope>;
+    /** House acts found not to have happened after she answered "done", for the vessel that asked to say so. */
+    readonly misses: Effect.Effect<PubSub.Subscription<HomeMiss>, never, Scope.Scope>;
   }
 >()("t3/home/HomeAssistantService") {}
 
 /** A change in the house a rule may wait on (M-114). `camera`: a camera on the same device, for a look at who it is. */
+/** A house act Home Assistant took but the device never reached, found after she had answered. */
+export interface HomeMiss {
+  /** The vessel whose turn asked, to say it there; null for an agent's call. */
+  readonly vessel: { readonly kind: string; readonly id: string } | null;
+  readonly actionId: string;
+  /** What did not happen, in words ("the Water Pump is still on"). */
+  readonly what: string;
+}
+
 export interface HouseEvent {
   readonly entityId: string;
   readonly name: string;
@@ -390,6 +399,8 @@ const hostOf = (url: string): string | null => {
 };
 const iso = (ms: number) => new Date(ms).toISOString();
 
+/** On a find's first result when it is surely the one he named. */
+export const SURE_MATCH = "the one he means: act on it with home_do, no second home_find";
 const SETTLE_MS = 3_000;
 /** How far a fan's own speed step may land from the percentage asked (1-6 speed fans step by 16-33). */
 const FAN_STEP_SLACK = 17;
@@ -574,6 +585,7 @@ const make = Effect.gen(function* () {
     );
 
   const houseEvents = yield* PubSub.unbounded<HouseEvent>();
+  const homeMisses = yield* PubSub.unbounded<HomeMiss>();
   /** A known entity changed state: published when a rule could wait on it; the first full read publishes nothing. */
   const changed = (id: string, from: string, to: string) => {
     if (from === to) return;
@@ -1319,21 +1331,32 @@ const make = Effect.gen(function* () {
           yield* sql`UPDATE fabric_home_actions SET undo_scene = ${scene} WHERE id = ${actionId}`.pipe(
             Effect.orDie,
           );
-        // HA's yes is not the device's: his fan stayed off after "done" (07:39, 13 Nov). Look, send once more, look.
+        // HA's yes is not the device's: his fan stayed off after "done" (07:39, 13 Nov). Look, send once more, look,
+        // after she has answered: waiting on it held "turn off the water pump" 2.5 s (20 Nov 15:37). A miss is said then.
         const undoId = scene === null ? null : actionId;
-        let lagging = yield* lagged(request, named);
-        if (lagging.length > 0) {
-          yield* send;
-          lagging = yield* lagged(request, named);
-        }
-        if (lagging.length > 0)
-          return outcome(
-            "failed",
-            actionId,
-            `Home Assistant took ${line} twice, but ${lagging.map((e) => `${nameOf(e)} is still ${states.get(e)?.s ?? "unknown"}${states.get(e)?.a["percentage"] == null ? "" : ` (speed ${String(states.get(e)!.a["percentage"])}%)`}`).join(", ")}. Say so; it may be offline or slow.`,
-            undoId,
-            ids,
+        const origin = yield* TurnOrigin;
+        yield* Effect.gen(function* () {
+          let lagging = yield* lagged(request, named);
+          if (lagging.length > 0) {
+            yield* send;
+            lagging = yield* lagged(request, named);
+          }
+          if (lagging.length === 0) return;
+          const what = lagging
+            .map(
+              (e) =>
+                `${nameOf(e)} is still ${states.get(e)?.s ?? "unknown"}${states.get(e)?.a["percentage"] == null ? "" : ` (speed ${String(states.get(e)!.a["percentage"])}%)`}`,
+            )
+            .join(", ");
+          yield* sql`UPDATE fabric_home_actions SET status = 'failed' WHERE id = ${actionId}`.pipe(
+            Effect.ignore,
           );
+          yield* PubSub.publish(homeMisses, {
+            vessel: origin === null ? null : { kind: origin.kind, id: origin.id },
+            actionId,
+            what,
+          });
+        }).pipe(Effect.ignoreCause, Effect.forkDetach);
         return outcome("done", actionId, `Done: ${line}.`, undoId, ids);
       }),
     });
@@ -2198,7 +2221,7 @@ const make = Effect.gen(function* () {
       .split(/[^\p{L}\p{N}]+/u)
       .filter((w) => w.length > 0);
     const area = input.area?.toLowerCase();
-    const scored: Array<{ id: string; score: number }> = [];
+    const scored: Array<{ id: string; score: number; hits: number }> = [];
     // An offline device is found too (marked unavailable), so it is never called missing.
     for (const id of new Set([
       ...states.keys(),
@@ -2218,11 +2241,24 @@ const make = Effect.gen(function* () {
       const unavailable = offline(id) ? 0.5 : 0;
       scored.push({
         id,
+        hits,
         score: hits - unavailable + (nameOf(id).toLowerCase().includes(words.join(" ")) ? 1 : 0),
       });
     }
     scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
-    const found = scored.slice(0, limit).flatMap(({ id }) => summary(id) ?? []);
+    // Every word he said, and ahead of the rest: the device he means, so she acts on it with no second search (20 Nov
+    // 15:37: "turn off the water pump" ran home_find twice before home_do).
+    const [top, next] = scored;
+    const sure =
+      top !== undefined &&
+      words.length > 0 &&
+      top.hits === words.length &&
+      (next === undefined || next.score < top.score);
+    const found = scored.slice(0, limit).flatMap(({ id }, i) => {
+      const e = summary(id);
+      if (e === null) return [];
+      return i === 0 && sure ? [{ ...e, attributes: { ...e.attributes, match: SURE_MATCH } }] : [e];
+    });
     // Two called "Lamp" are told apart by room, and the one she last used is marked, so she can ask which.
     const shared = new Set(found.map((e) => e.name).filter((n, i, all) => all.indexOf(n) !== i));
     if (shared.size === 0) return found;
@@ -2382,6 +2418,7 @@ const make = Effect.gen(function* () {
   return HomeAssistantService.of({
     snapshot,
     events: PubSub.subscribe(houseEvents),
+    misses: PubSub.subscribe(homeMisses),
     // With no connection here, the house through a linked server is connected (19 Nov 05:20: on a server with no token
     // she told him "the house isn't connected" while every home tool answered through the linked one).
     status: Effect.gen(function* () {

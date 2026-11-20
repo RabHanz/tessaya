@@ -2,7 +2,6 @@ import { assert, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -740,23 +739,33 @@ it.effect(
       assert.include(flip.why, "Fan is on");
       assert.strictEqual(house.calls.length, calls);
 
-      // 07:39: HA took turn_on, the fan stayed off, and she said done. Sent once more, then said as it is.
+      // 07:39: HA took turn_on, the fan stayed off, and she said done. Now she answers on HA's yes (20 Nov 15:37:
+      // the wait held her 2.5 s); the check runs after, sends once more, and a miss goes to the vessel that asked.
       house.put("light.stuck", { s: "off", a: { friendly_name: "Stuck light" } });
-      const stuck = yield* home
+      const misses = yield* home.misses;
+      const told = yield* home
         .call(
           { domain: "light", service: "turn_on", target: { entity_id: "light.stuck" }, why: "x" },
           assistant,
         )
-        .pipe(Effect.forkChild);
+        .pipe(Effect.provideService(TurnOrigin, { kind: "device", id: "r1", label: "R1" }));
+      assert.strictEqual(told.status, "done");
       yield* TestClock.adjust("7 seconds");
-      const told = yield* Fiber.join(stuck);
-      assert.strictEqual(told.status, "failed");
-      assert.include(told.line, "Stuck light is still off");
+      const miss = yield* PubSub.take(misses);
+      assert.include(miss.what, "Stuck light is still off");
+      assert.deepStrictEqual(miss.vessel, { kind: "device", id: "r1" });
       assert.strictEqual(house.calls.filter((c) => c === "light.turn_on").length, 2);
+      assert.strictEqual((yield* home.actions(5)).find((r) => r.id === told.id)?.status, "failed");
 
       house.put("light.desk_lamp", { s: "off", a: { friendly_name: "Lamp" } });
       house.put("light.bedside_lamp", { s: "on", a: { friendly_name: "Lamp" } });
       const lamps = yield* home.find({ text: "lamp" });
+      // Every word he said, ahead of the rest, marks the one he means (no second search); two Lamps tie, so neither.
+      assert.strictEqual(
+        (yield* home.find({ text: "stuck light" }))[0]?.attributes["match"],
+        HomeAssistantService.SURE_MATCH,
+      );
+      assert.isUndefined(lamps[0]?.attributes["match"]);
       assert.deepStrictEqual(lamps.map((e) => e.name).toSorted(), [
         "Lamp (Bedroom)",
         "Lamp (Office)",
@@ -1065,11 +1074,15 @@ it.effect(
         { domain: "fan", service: "turn_off", target: { entity_id: "fan.fan" }, why: "x" },
         assistant,
       );
+      const misses = yield* home.misses;
       const forty = yield* set(40);
       assert.strictEqual(forty.status, "done");
       assert.strictEqual(house.states.get("fan.fan")?.a["percentage"], 28);
       yield* TestClock.adjust("2 minutes");
       assert.strictEqual((yield* set(30)).status, "done");
+      yield* TestClock.adjust("10 seconds");
+      // Its own step is where it was asked to be: no miss.
+      assert.strictEqual(yield* PubSub.remaining(misses), 0);
     }).pipe(Effect.provide(layer));
   },
 );

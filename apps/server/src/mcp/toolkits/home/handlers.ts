@@ -9,7 +9,7 @@ import { TessayaRuntime } from "../../../tessaya/TessayaRpcHandlers.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { DeviceRegistry } from "../../../home/DeviceRegistry.ts";
 import { serveHomeCall, type HomeCallKind } from "../../../home/HomeCalls.ts";
-import type { HomeActor } from "../../../home/HomeAssistantService.ts";
+import { SURE_MATCH, type HomeActor } from "../../../home/HomeAssistantService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
 
@@ -126,11 +126,17 @@ export const make = Effect.gen(function* () {
     home_find: McpToolAccess.reads((input: Args) =>
       Effect.gen(function* () {
         const room = input["area"] === undefined ? yield* vesselRoom : null;
-        if (room !== null) {
-          const near = yield* home("read", "find", { ...input, area: room });
-          if (near.ok && Array.isArray(near.value) && near.value.length > 0) return near;
-        }
-        return yield* home("read", "find", { ...input });
+        if (room === null) return yield* home("read", "find", { ...input });
+        const near = yield* home("read", "find", { ...input, area: room });
+        const found = (r: typeof near) => (r.ok && Array.isArray(r.value) ? r.value : []);
+        const sure = (r: typeof near) =>
+          (found(r)[0] as { attributes?: Record<string, string> } | undefined)?.attributes?.[
+            "match"
+          ] === SURE_MATCH;
+        if (sure(near)) return near;
+        // The room's own results that are not what he named ("water pump" in the bedroom) never hide the house's.
+        const all = yield* home("read", "find", { ...input });
+        return sure(all) || found(near).length === 0 ? all : near;
       }),
     ),
     home_state: McpToolAccess.reads((input: Args) => home("read", "state", { ...input })),

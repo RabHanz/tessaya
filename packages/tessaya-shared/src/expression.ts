@@ -103,6 +103,11 @@ export const LINE_EVENTS = {
     "He asked the time or the date; {now} is it, read from the house clock. Just tell him, no more.",
     { slots: ["now"], maxWords: 6, mood: "neutral", gesture: "nodSmall" },
   ),
+  "home.miss": spec(
+    "Hmm, that didn't take: {what}.",
+    "She said a house change was done, but the device never got there; {what} says which and how it is now. Correct herself plainly.",
+    { slots: ["what"], maxWords: 8, mood: "concerned", gesture: "tilt", priority: "important" },
+  ),
   "err.brain": spec(
     "Sorry, I couldn't reach my brain just then.",
     "Her thinking failed mid-answer, so she has no answer this time; he can ask again. Never claim whether anything was done.",
