@@ -74,6 +74,7 @@ export const make = Effect.gen(function* () {
         ...text(input, "name"),
         ...text(input, "relation"),
         ...text(input, "member"),
+        ...(typeof input["appearance"] === "string" ? { appearance: input["appearance"] } : {}),
         ...(input["status"] === "member" || input["status"] === "guest"
           ? { status: input["status"] }
           : {}),

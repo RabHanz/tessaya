@@ -74,7 +74,7 @@ const ListTool = Tool.make("people_list", {
 const ManageTool = Tool.make("people_manage", {
   ...shared,
   description:
-    'The owner\'s changes to people. name: "remember that\'s my cousin Ali" (id "last" is the voice just heard; `relation` is how he knows them; saves them). merge (owner only): `id` is the same person as `into`. split: one voice was two people. notSame: `id` and `into` are different people. notPerson: a TV or radio. setStatus member (with `member`, their household id) or guest. save / unsave: keep an unnamed voice, or let it go at the expiry. retention (`days`, no `id`): forget unnamed voices after that many days; 0 keeps them (everyone named is always kept). ask: whether she may ask a new voice\'s name (`on`; no `id` for everyone). forget (owner only): "forget her", never "forget it" or "never mind"; first without `confirmed`, which says back what would go; only after his clear yes again with `confirmed` true; it goes to Recently forgotten. restore: bring back someone from Recently forgotten. Take ids from people_list. Say its line.',
+    'The owner\'s changes to people. name: "remember that\'s my cousin Ali" (id "last" is the voice just heard; `relation` is how he knows them; saves them). merge (owner only): `id` is the same person as `into`. split: one voice was two people. notSame: `id` and `into` are different people. notPerson: a TV or radio. setStatus member (with `member`, their household id) or guest. save / unsave: keep an unnamed voice, or let it go at the expiry. retention (`days`, no `id`): forget unnamed voices after that many days; 0 keeps them (everyone named is always kept). ask: whether she may ask a new voice\'s name (`on`; no `id` for everyone). forget (owner only): "forget her", never "forget it" or "never mind"; first without `confirmed`, which says back what would go; only after his clear yes again with `confirmed` true; it goes to Recently forgotten. restore: bring back someone from Recently forgotten. appearance (owner only): how someone looks, for telling them apart on a camera; save his own description at once, without asking; one you made from a camera picture only after his yes; `id`, or `name` alone (adds them if new); empty clears it. Take ids from people_list. Say its line.',
   parameters: Schema.Struct({
     action: Schema.Literals([
       "name",
@@ -89,6 +89,7 @@ const ManageTool = Tool.make("people_manage", {
       "forget",
       "retention",
       "restore",
+      "appearance",
     ]),
     id: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(140))),
     into: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(140))),
@@ -99,6 +100,7 @@ const ManageTool = Tool.make("people_manage", {
     on: Schema.optionalKey(Schema.Boolean),
     days: Schema.optionalKey(Schema.Number),
     confirmed: Schema.optionalKey(Schema.Boolean),
+    appearance: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(400))),
   }),
 })
   .annotate(Tool.Readonly, false)

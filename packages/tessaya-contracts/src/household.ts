@@ -225,6 +225,7 @@ export const TessayaHouseholdCallInput = Schema.Union([
       "restore",
       "purge",
       "bin",
+      "appearance",
     ]),
     id: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(140))),
     into: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(140))),
@@ -241,6 +242,8 @@ export const TessayaHouseholdCallInput = Schema.Union([
     /** With `retention`: days an unnamed voice is kept (0, the default: until forgotten); with `bin`: restore days. */
     days: Schema.optionalKey(Schema.Number),
     vessel: Schema.optionalKey(VesselId),
+    /** With `appearance`: how they look, in words he approved; empty clears it. No `id`: a new person by `name`. */
+    appearance: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(400))),
   }),
 ]);
 export type TessayaHouseholdCallInput = typeof TessayaHouseholdCallInput.Type;
@@ -263,6 +266,8 @@ export const TessayaPerson = Schema.Struct({
   keepUntil: Schema.NullOr(Schema.String),
   askName: Schema.Boolean,
   impression: Schema.NullOr(Schema.String),
+  /** How they look, in words he approved (M-114); the owner's to see. */
+  appearance: Schema.optionalKey(Schema.NullOr(Schema.String)),
   topics: Schema.Array(Schema.Struct({ at: Schema.String, said: Schema.String })),
 });
 export type TessayaPerson = typeof TessayaPerson.Type;
