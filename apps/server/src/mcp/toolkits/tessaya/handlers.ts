@@ -73,6 +73,8 @@ import {
 import { Consent, grantWho, hisOwnTurn } from "../../../tessaya/consent.ts";
 import { grantLabel, grantNamed, houseGrant } from "@t3tools/tessaya-shared/consent";
 import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
+import { TessayaAlarms } from "../../../tessaya/TessayaAlarms.ts";
+import { clockIn } from "@t3tools/tessaya-shared/alarms";
 import { pronunciations } from "../../../tessaya/Pronunciations.ts";
 import { scratchpad } from "../../../tessaya/TessayaScratchpad.ts";
 import * as ServerConfig from "../../../config.ts";
@@ -1168,6 +1170,40 @@ export const layer = McpToolAccess.toLayer(
                 }),
           ),
         ),
+      ),
+      // Alarms live on her brain's commitments; any server's turn sets and stops them there (TessayaCommitmentService).
+      tessaya_alarm: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          const alarms =
+            runtime === null ? Option.none() : Context.getOption(runtime, TessayaAlarms);
+          if (Option.isNone(alarms))
+            return yield* failed({ reason: "This server keeps no alarms." });
+          const a = alarms.value;
+          const { line } =
+            input.op === "set"
+              ? yield* a.set({
+                  ...(input.clock === undefined ? {} : { clock: input.clock }),
+                  ...(input.inMinutes === undefined ? {} : { inMinutes: input.inMinutes }),
+                  say: input.say ?? null,
+                })
+              : input.op === "stop"
+                ? yield* a.stop
+                : input.op === "snooze"
+                  ? yield* a.snooze(input.minutes)
+                  : { line: "" };
+          const set = yield* a.list;
+          const zone = yield* houseZone();
+          const alarms2 = set.map((c) => `${clockIn(c.due!, zone)}: ${c.text}`);
+          return {
+            line:
+              line !== ""
+                ? line
+                : alarms2.length === 0
+                  ? "No alarms are set."
+                  : `Set: ${alarms2.join("; ")}.`,
+            alarms: alarms2,
+          };
+        }),
       ),
       // The one dictionary, on her brain: a worker server passes the change there (TessayaVocabulary.atBrain).
       tessaya_vocabulary: McpToolAccess.writes(

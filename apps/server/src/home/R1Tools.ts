@@ -122,6 +122,8 @@ const ROOM_TOOLS = [
   "set_device_volume",
   // His standing yeses by voice: "stop letting you look at my screen".
   "tessaya_always_allowed",
+  // Alarms and wake-ups at a set time (M-108): "wake me up at 8:45", and "stop" or "snooze" when it rings.
+  "tessaya_alarm",
   // His prompt lab (B-030): "try my variant B on Sonnet"; making one live waits for his yes.
   "tessaya_prompt_lab",
   "settings_find",
@@ -495,44 +497,64 @@ export const replayDryRun = (name: string, input: unknown, device?: string): Too
                         status: "asked",
                         line: "Before I do: forgetting you removes your voice and what I know of you. Ask them for a clear yes, then call again with confirmed.",
                       })
-                    : name === "tessaya_always_allowed"
-                      ? // His standing yes as the real tool words it, so she confirms it rather than guessing.
+                    : name === "tessaya_alarm"
+                      ? // The alarm as the real tool words it (its time back to him), never "it waits for his answer".
                         JSON.stringify({
-                          allowed: [],
-                          line: "Got it. I won't ask about that again.",
+                          line: alarmRehearsal(input as Readonly<Record<string, unknown>>),
+                          alarms: [],
                         })
-                      : name === "tessaya_wake_word_change" ||
-                          name === "tessaya_job_lead" ||
-                          name.startsWith("people_")
-                        ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
-                        : name === "tessaya_memory_forget"
-                          ? JSON.stringify({
-                              line:
-                                typeof (input as { fact?: unknown }).fact === "string" &&
-                                (input as { confirmed?: unknown }).confirmed !== true &&
-                                (input as { restore?: unknown }).restore !== true
-                                  ? "Forget that? Ask for a clear yes, then call again with confirmed."
-                                  : NOT_HIS_VOICE_TO_FORGET,
-                            })
-                          : name === "device_watch" || name === "device_button"
-                            ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
-                              JSON.stringify({
-                                ok: true,
-                                value: {
-                                  status: "done",
-                                  line: name === "device_watch" ? "Saved the rule." : "Saved.",
-                                },
+                      : name === "tessaya_always_allowed"
+                        ? // His standing yes as the real tool words it, so she confirms it rather than guessing.
+                          JSON.stringify({
+                            allowed: [],
+                            line: "Got it. I won't ask about that again.",
+                          })
+                        : name === "tessaya_wake_word_change" ||
+                            name === "tessaya_job_lead" ||
+                            name.startsWith("people_")
+                          ? JSON.stringify({ ok: true, line: "Done (a replay: nothing changed)." })
+                          : name === "tessaya_memory_forget"
+                            ? JSON.stringify({
+                                line:
+                                  typeof (input as { fact?: unknown }).fact === "string" &&
+                                  (input as { confirmed?: unknown }).confirmed !== true &&
+                                  (input as { restore?: unknown }).restore !== true
+                                    ? "Forget that? Ask for a clear yes, then call again with confirmed."
+                                    : NOT_HIS_VOICE_TO_FORGET,
                               })
-                            : JSON.stringify({
-                                id: null,
-                                status: "queued",
-                                line: "Sent; it waits for his answer.",
-                              }),
+                            : name === "device_watch" || name === "device_button"
+                              ? // A rule is saved at once, not asked: "it waits for his answer" made her say so (13 Nov suite).
+                                JSON.stringify({
+                                  ok: true,
+                                  value: {
+                                    status: "done",
+                                    line: name === "device_watch" ? "Saved the rule." : "Saved.",
+                                  },
+                                })
+                              : JSON.stringify({
+                                  id: null,
+                                  status: "queued",
+                                  line: "Sent; it waits for his answer.",
+                                }),
         isError: false,
         status: "done",
       }
     : { text: `The arguments for ${name} are not right.`, isError: true };
 };
+
+/** What `tessaya_alarm` says in a rehearsal: its own words, with the time he gave. */
+const alarmRehearsal = (input: Readonly<Record<string, unknown>>): string =>
+  input["op"] === "stop"
+    ? "Stopped your alarm."
+    : input["op"] === "snooze"
+      ? `Snoozed for ${typeof input["minutes"] === "number" ? input["minutes"] : 9} minutes.`
+      : input["op"] === "list"
+        ? "No alarms are set."
+        : typeof input["clock"] === "string"
+          ? `Waking you at ${input["clock"]}.`
+          : typeof input["inMinutes"] === "number"
+            ? `Done, in ${input["inMinutes"]} minutes.`
+            : "Give me a time like 08:45, or how many minutes from now.";
 
 /**
  * A tool call that changes something (the house, a device, a send, a memory) or looks through the camera: on a turn

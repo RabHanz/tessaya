@@ -405,6 +405,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     },
   },
   {
+    // M-108 (20 Nov 07:27): "wake me up around 8:45" was not supported; it is said back with its time.
+    id: "alarm-set",
+    proves: ["tessaya_alarm"],
+    said: ["Wake me up at 8:45 tomorrow morning."],
+    uses: [["tessaya_alarm"]],
+    voices: [{ speaker: SURE }],
+    argsOf: "tessaya_alarm",
+    args: (input) => ({
+      "set for 08:45": input["op"] === "set" && /^0?8:45$/.test(String(input["clock"])),
+    }),
+    lastSays: [/\b8[:.]45\b|\beight forty[- ]five\b/i],
+  },
+  {
     id: "media-flip",
     proves: ["home_do"],
     said: ["Turn {media.flip} the {media}."],
