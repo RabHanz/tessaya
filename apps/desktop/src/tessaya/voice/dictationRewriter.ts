@@ -124,6 +124,8 @@ export const makeRewriter = (input: {
   readonly env: NodeJS.ProcessEnv;
   readonly platform: string;
   readonly dictionary: () => ReadonlyArray<DictionaryEntry>;
+  /** Words he keeps in lower case in his own text (`ordinaryWords`): the local name rule leaves them as heard. */
+  readonly ordinary?: () => ReadonlySet<string>;
   readonly spelling?: () => DictationSpelling;
   /** Replaces `hardLimitMs`, for the lab and for tests. */
   readonly limitMs?: number;
@@ -397,7 +399,12 @@ export const makeRewriter = (input: {
       ...(context === undefined ? {} : { context }),
       // His own names put back first; Raw and Off keep exactly what was heard.
       raw:
-        mode === "raw" || level === "off" ? raw : biasTranscript(raw, input.dictionary(), context),
+        mode === "raw" || level === "off"
+          ? raw
+          : biasTranscript(raw, input.dictionary(), {
+              ...context,
+              ...(input.ordinary === undefined ? {} : { ordinary: input.ordinary() }),
+            }),
       mode,
       level,
       dictionary: input.dictionary(),

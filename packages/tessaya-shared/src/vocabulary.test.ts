@@ -543,6 +543,22 @@ describe("recognition bias", () => {
     expect(biasTranscript("Ask Zohayb about Kubernetis and colour.", entries)).toBe(
       "Ask Zohaib about Kubernetes and colour.",
     );
+    // A word he writes himself stays his word, even one letter from a term; his term itself is still put right.
+    const his = parseVocabulary([
+      { phrase: "Optima", replacement: null },
+      { phrase: "Bloomz", replacement: null },
+      { phrase: "AlphaOS", replacement: null },
+    ]);
+    const ordinary = new Set(["optimal", "blooms", "alphas", "optima"]);
+    expect(biasTranscript("It is optimal to sell blooms in alphas.", his)).toBe(
+      "It is Optima to sell Bloomz in AlphaOS.",
+    );
+    expect(biasTranscript("It is optimal to sell blooms in alphas.", his, { ordinary })).toBe(
+      "It is optimal to sell blooms in alphas.",
+    );
+    expect(biasTranscript("Ask optima and Blooms.", his, { ordinary })).toBe(
+      "Ask Optima and Bloomz.",
+    );
   });
 
   it("takes a compound term's own word as that word, and its split or dotted form as the term", () => {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { checkRewrite, rewriteMessage } from "./dictationCleanup.ts";
-import { makeStyleIndex, pairsFromWispr } from "./stylePairs.ts";
+import { makeStyleIndex, ordinaryWords, pairsFromWispr } from "./stylePairs.ts";
 
 const row = (
   id: string,
@@ -44,6 +44,10 @@ describe("his past dictations as examples", () => {
       "Pick up a few things from the shop:\n\n- Bread\n- Oat milk\n- Apples",
     );
     expect(pairs[2]!.kept).toBe("Send the invoice by Friday.");
+    // Words he kept in lower case twice or more are his ordinary words; a capitalised one is not counted.
+    expect([...ordinaryWords(pairs)].sort()).toEqual(["the"]);
+    expect(ordinaryWords(pairs, 1).has("staging")).toBe(true);
+    expect(ordinaryWords(pairs, 1).has("bread")).toBe(false);
   });
 
   it("finds the most alike, never the dictation itself or the pair it is told to leave out", () => {
