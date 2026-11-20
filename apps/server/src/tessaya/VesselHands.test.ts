@@ -4,11 +4,13 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import { LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
+import { OPEN_WINDOWS_HEAD } from "@t3tools/tessaya-shared/screenCompanion";
 import { expect } from "vite-plus/test";
 
 import { askHisYes, vesselTools } from "./VesselHands.ts";
 import { Consent, layer as consentLayer } from "./consent.ts";
 import { layerMemory } from "./TessayaDatabase.ts";
+import { TurnLiveContext, layer as liveLayer } from "./TurnLiveContext.ts";
 
 const origin = { label: "desktop", hisVoice: false, member: "owner", assurance: 2, tainted: false };
 
@@ -84,4 +86,35 @@ effectIt.effect(
       // No second box was queued.
       expect(yield* Effect.promise(() => hands.take(1))).toBeNull();
     }),
+);
+
+effectIt.effect(
+  "a read of his windows stays in front of her next turns at that desk: titles and screens, never the controls",
+  () =>
+    Effect.gen(function* () {
+      const hands = createHandsBroker({ now: () => 0, newId: () => "c1" });
+      yield* Effect.promise(() =>
+        hands.take(1, [{ name: "ui_tree", description: "", input_schema: {} }]),
+      );
+      const reading = yield* Effect.forkChild(
+        vesselTools(hands, { ...origin, kind: "desktop", id: "desk" })[0]!.run({}),
+      );
+      const call = (yield* Effect.promise(() => hands.take(1)))!;
+      hands.reply(call.id, {
+        ok: true,
+        text: [
+          "Untitled - Notepad",
+          "[1] document: Text editor (focused) = my bank PIN is 1234",
+          OPEN_WINDOWS_HEAD,
+          "- Untitled - Notepad (screen 1, left)",
+          "- Inbox - Google Chrome (screen 2, right)",
+        ].join("\n"),
+      });
+      yield* Fiber.join(reading);
+      const live = yield* TurnLiveContext;
+      const next = yield* live.take({ vessel: "desk", persona: null, spend: true });
+      expect(next).toContain("Inbox - Google Chrome (screen 2, right)");
+      expect(next).not.toContain("PIN");
+      expect(yield* live.take({ vessel: "phone", persona: null, spend: true })).toBe("");
+    }).pipe(Effect.provide(liveLayer)),
 );

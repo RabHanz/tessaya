@@ -8,6 +8,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
+import { screenGlance } from "@t3tools/tessaya-shared/screenCompanion";
 import {
   createHandsBroker,
   HIS_YES,
@@ -18,11 +19,13 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
 import type { ToolOutcome } from "../home/R1Brain.ts";
 import type { VesselTool } from "./TessayaBrain.ts";
 import type { Consent } from "./consent.ts";
+import { TurnLiveContext } from "./TurnLiveContext.ts";
 /** The turn's origin as `TurnOrigin` and `originOf` carry it. */
 interface TurnOriginValue {
   readonly label: string;
@@ -134,6 +137,27 @@ const NOT_YOURS_TO_SEE =
  * Once he has said Always allow, the desktop looks without asking, so a look passes here only for the grant's holder
  * (grantHolds); with no grant, the desktop's own box asks.
  */
+/**
+ * Screen memory (D-004 step 5): which windows were open, and on which screen, stays in front of her next few turns
+ * at that vessel through the one live context, then is gone. Window titles only, in this server's memory.
+ */
+const rememberGlance = Effect.fn("VesselHands.rememberGlance")(function* (
+  tree: string,
+  origin: TurnOriginValue,
+) {
+  const live = yield* Effect.serviceOption(TurnLiveContext);
+  if (Option.isNone(live) || origin.id === undefined) return;
+  const line = screenGlance(tree);
+  if (line === null) return;
+  yield* live.value.inject({
+    key: "screen-windows",
+    vessel: origin.id,
+    source: "screen",
+    expiresAfterTurns: 4,
+    line,
+  });
+});
+
 export const vesselTools = (
   hands: HandsBroker,
   origin: TurnOriginValue,
@@ -152,7 +176,7 @@ export const vesselTools = (
           !(yield* consent.holds(LOOK_GRANT, { ...origin, kind: origin.kind ?? "" }))
         )
           return { text: NOT_YOURS_TO_SEE, isError: true } satisfies ToolOutcome;
-        return toolOutcome(
+        const outcome = toolOutcome(
           yield* Effect.promise(() =>
             hands.call(
               `turn:${origin.label}`,
@@ -164,5 +188,8 @@ export const vesselTools = (
             ),
           ),
         );
+        if (spec.name === "ui_tree" && !outcome.isError)
+          yield* rememberGlance(outcome.text, origin);
+        return outcome;
       }),
     }));
