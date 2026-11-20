@@ -295,6 +295,30 @@ export const keepAsk = (
   state.answeredAt === null ||
   state.answeredAt < ask.at;
 
+/**
+ * He dismissed the card (its request cancelled, never answered) while the question is still on the pane: Esc closes it
+ * there, once, so the session is free again and the messages held behind it go (M-113). An expired card is ours, not his.
+ */
+export const escOnDismiss = (state: {
+  readonly status: string | null;
+  readonly answered: boolean;
+  readonly escaped: boolean;
+}) => state.status === "cancelled" && !state.answered && !state.escaped;
+
+/** Esc to a Herdr pane: how Stop reaches Claude Code, and how a dismissed question closes. */
+const pressEsc = (paneRef: string): Effect.Effect<boolean> => {
+  const { session, pane } = splitPaneRef(paneRef);
+  const prefix = session === null || session === "default" ? [] : ["--session", session];
+  return Effect.callback<boolean>((resume) => {
+    NodeChildProcess.execFile(
+      "herdr",
+      [...prefix, "agent", "send-keys", pane, "esc"],
+      { timeout: 10_000 },
+      (error) => resume(Effect.succeed(error === null)),
+    );
+  });
+};
+
 /** When the live bridge last finished pressing a card's answer for the session (its `<id>.answered`), or null. */
 const answeredAt = (sessionId: string): number | null => {
   try {
@@ -874,6 +898,8 @@ interface Follow {
     readonly again: boolean;
     /** The session descriptor's time when it was raised. */
     readonly updatedAt: string | null;
+    /** He dismissed its card and Esc went to the pane, once. */
+    escaped?: boolean;
   } | null;
   /** The descriptor time and wall time of the last pane read for a question, so an unchanged one is not re-read every tick. */
   promptRead: { readonly updatedAt: string | null; readonly at: number } | null;
@@ -1712,10 +1738,23 @@ const make = Effect.gen(function* () {
       });
       const again = follow.ask !== null && follow.ask.key === found?.key;
       if (again && follow.ask !== null) {
-        const pending =
-          (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "pending";
+        const status = yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId);
+        const pending = status === "pending";
         const item = pending ? null : yield* engine.turnItem(follow.threadId, follow.ask.itemId);
         const answered = item?.type === "user_input_request" && item.questionAnswer !== undefined;
+        if (
+          session.herdrPane !== null &&
+          escOnDismiss({ status, answered, escaped: follow.ask.escaped === true })
+        ) {
+          follow.ask.escaped = true;
+          const pressed = yield* pressEsc(session.herdrPane);
+          mirrorLog(`dismissed:${session.sessionId}`, {
+            event: "ask-dismissed",
+            sessionId: session.sessionId,
+            pane: session.herdrPane,
+            pressed,
+          });
+        }
         if (
           keepAsk(follow.ask, {
             pending,

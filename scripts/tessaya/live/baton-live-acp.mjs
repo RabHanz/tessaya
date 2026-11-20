@@ -645,6 +645,16 @@ export async function readPanePrompt(paneRef, waiting = false) {
   return read.ok ? (waiting ? parseWaitingScreen : parsePanePrompt)(read.out) : null;
 }
 
+/** Whether a question or a screen waiting on keys shows in the pane; an unreadable pane counts as one, to be safe. */
+export async function questionShows(paneRef) {
+  if (paneRef === null) return true;
+  const read = await run(
+    HERDR,
+    herdrArgs(paneRef, "read", ["--source", "visible", "--lines", "80"]),
+  );
+  return !read.ok || parseWaitingScreen(read.out) !== null;
+}
+
 /**
  * D88: answer the prompt showing in the pane with keystrokes, then wait until it is gone. Returns
  * what to tell the thread, or null when `text` is not an answer to it (nothing was pressed).
@@ -1038,8 +1048,11 @@ async function prompt(params) {
   const turn = { cancelled: false, pane: live.pane };
   turns.set(sessionId, turn);
   try {
+    // Waiting only while a question still shows: a card he dismissed (its Esc sent, M-113) or a question answered in the
+    // terminal leaves the pane at its input box before Claude's own status says so, and his messages go again.
+    const waiting = live.status === "waiting" && (await questionShows(live.pane));
     // A question or approval on the screen takes the message as its answer (D88); a card's answer is never typed.
-    if (live.status === "waiting" || isRefAnswer(promptText(params.prompt))) {
+    if (waiting || isRefAnswer(promptText(params.prompt))) {
       const answered = await answerPrompt(sessionId, live.pane, promptText(params.prompt));
       if (answered !== null) {
         say(sessionId, answered);
@@ -1048,7 +1061,7 @@ async function prompt(params) {
     }
     // Messages already waiting go first: this one joins the end so the order he typed is kept.
     if (
-      live.status === "waiting" ||
+      waiting ||
       serverWaiting(QUEUE_DIR, sessionId) > 0 ||
       readQueue(QUEUE_DIR, sessionId).some((item) => item.kind !== "note")
     ) {
@@ -1058,7 +1071,7 @@ async function prompt(params) {
       });
       say(
         sessionId,
-        live.status === "waiting"
+        waiting
           ? questionWaitingNote((await readPanePrompt(live.pane, true))?.question, count)
           : queuedNote("earlier messages are still waiting.", count),
       );
