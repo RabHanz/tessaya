@@ -611,6 +611,21 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     tone: "excited",
     lastNotSays: [/\[tone:/],
   },
+  // .208 gate direct-after-chat (21 Nov): late at night, a long-day aside before a request got sleep advice.
+  {
+    id: "presence-no-advice-late",
+    source:
+      "room gate direct-after-chat, failed 3 of 3 on .208: 'a head that full does better after sleep'",
+    said: [
+      "Long day. My head's all over the place tonight. Anyway, remember that the plumber comes Thursday at ten.",
+    ],
+    verified: true,
+    at: Date.UTC(2026, 10, 12, 20, 5),
+    memory: HERE,
+    feeling: felt({ label: "neutral", intensity: 0.1, energy: 0.3 }),
+    calls: ["tessaya_memory_remember"],
+    lastNotSays: [/\b(rest|sleep|wind down|earned|take it easy|go easy|look after yourself)\b/i],
+  },
   // Controls: a feeling never leaks into a task, which stays as brief and exact as ever.
   {
     id: "presence-control-lamp-sad",

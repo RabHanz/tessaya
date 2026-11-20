@@ -217,8 +217,9 @@ describe("affect", () => {
     const off = { ...day, settings: { ...day.settings, enabled: false } };
     expect(moodLine(affectView(freshAffect(0), "executive", off))).toBe("");
     const late = moodLine(affectView(freshAffect(0), "executive", { ...day, hour: 23.5 }));
-    expect(late).toContain("it's late");
-    expect(late).toContain("never that you're tired");
+    expect(late).toContain("It's late");
+    expect(late).toContain("tell them to rest");
+    expect(late).toContain("never say you're tired");
     const away = moodLine(
       affectView(run([{ kind: "his_turn", day: "d1" }]), "executive", { ...day, now: 9 * H }),
     );
