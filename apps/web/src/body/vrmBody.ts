@@ -152,6 +152,15 @@ const BLINK_MS = 160;
  */
 const browsOverHair = (vrm: VRM) => {
   const hairy = (m: THREE.Material) => /hair/i.test(m.name);
+  // where her hair is in front of a brow, a probe in the hair's pass marks it (stencil 2), so a darker copy of the
+  // brow can go over just that part: a pale brow over a fringe reads as a brow, and on her skin it is unchanged
+  const probe = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  probe.stencilWrite = true;
+  probe.stencilRef = 1;
+  probe.stencilFunc = THREE.EqualStencilFunc;
+  probe.stencilZPass = THREE.IncrementStencilOp;
+  const overlays: THREE.Mesh[] = [];
+  let pale = false;
   vrm.scene.traverse((o) => {
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -173,7 +182,59 @@ const browsOverHair = (vrm: VRM) => {
       m.stencilFunc = brow ? THREE.AlwaysStencilFunc : THREE.NotEqualStencilFunc;
       m.stencilZPass = brow ? THREE.ReplaceStencilOp : THREE.KeepStencilOp;
     }
+    if (hair) {
+      const count = mesh.geometry.getIndex()?.count ?? mesh.geometry.getAttribute("position").count;
+      if (mesh.geometry.groups.length === 0) mesh.geometry.addGroup(0, count, 0);
+      mesh.geometry.addGroup(0, count, mats.length);
+      mesh.material = [...mats, probe];
+    }
+    if (brow && mesh.parent !== null) {
+      const surface = mats.find((m) => (m as { isOutline?: boolean }).isOutline !== true)!;
+      pale ||= paleOf(surface);
+      const dark = surface.clone() as THREE.Material & { color?: THREE.Color };
+      dark.color?.multiplyScalar(0.55);
+      dark.stencilWrite = true;
+      dark.stencilRef = 2;
+      dark.stencilFunc = THREE.EqualStencilFunc;
+      dark.stencilZPass = THREE.KeepStencilOp;
+      dark.depthFunc = THREE.LessEqualDepth;
+      const over = mesh.clone();
+      over.material = dark;
+      over.renderOrder = 3;
+      // the copy follows every shape the brow takes (it shares the brow's weights)
+      over.morphTargetInfluences = mesh.morphTargetInfluences;
+      over.visible = false;
+      mesh.parent.add(over);
+      overlays.push(over);
+    }
   });
+  return {
+    pale,
+    dark: (on: boolean) => {
+      for (const o of overlays) o.visible = on;
+    },
+  };
+};
+
+/** Whether a brow's own colour is pale (its texture's mean lightness, where it is drawn): it fades into a fringe. */
+const paleOf = (m: THREE.Material) => {
+  const map = (m as { map?: THREE.Texture | null }).map;
+  const img = map?.image as CanvasImageSource | undefined;
+  if (img === undefined || typeof document === "undefined") return false;
+  const c = document.createElement("canvas");
+  c.width = c.height = 32;
+  const g = c.getContext("2d");
+  if (g === null) return false;
+  g.drawImage(img, 0, 0, 32, 32);
+  const px = g.getImageData(0, 0, 32, 32).data;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < px.length; i += 4)
+    if (px[i + 3]! > 128) {
+      sum += (0.3 * px[i]! + 0.59 * px[i + 1]! + 0.11 * px[i + 2]!) / 255;
+      n++;
+    }
+  return n > 0 && sum / n > 0.55;
 };
 /** How far an expression moves any vertex at full weight (m): read once when the model loads. */
 const reachOf = (vrm: VRM, name: string) => {
@@ -932,6 +993,9 @@ export function mountBody(
   let mirrored = false;
   // where her own props ride her bones (propKit restTurns), read at rest when the model loads
   let restTurns: ReadonlyMap<PropBone, THREE.Quaternion> = new Map();
+  // her brows over her fringe: darker or plain, by the page's choice or else the model's own (pale brows go darker)
+  let brows: ReturnType<typeof browsOverHair> | null = null;
+  let browsDark: boolean | null = null;
   let speech: { track: ReadonlyArray<VisemeSegment>; start: number; end: number } | null = null;
   let effects: Array<{ at: number; face?: string; gesture?: string; act?: keyof typeof ACTS }> = [];
   let level: { value: number; viseme?: VisemeSegment["viseme"]; at: number } | null = null;
@@ -2116,7 +2180,8 @@ export function mountBody(
         return short !== undefined && reach > 0.0005 ? [[short, name] as const] : [];
       }),
     );
-    browsOverHair(next);
+    brows = browsOverHair(next);
+    brows.dark(browsDark ?? brows.pale);
     morphHold = {};
     rig = rigOf(next);
     const samples = skinSamples(next);
@@ -2936,6 +3001,11 @@ export function mountBody(
         return;
       case "expressions":
         expMap = c.map;
+        lastMove = now;
+        return invalidate();
+      case "brows":
+        browsDark = c.dark;
+        brows?.dark(browsDark ?? brows.pale);
         lastMove = now;
         return invalidate();
       case "outfit":

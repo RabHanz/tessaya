@@ -458,6 +458,8 @@ export type BodyCue =
   | { readonly kind: "act"; readonly act: Act }
   /** The outfit pieces she has off right now; every other piece is on. */
   | { readonly kind: "outfit"; readonly off: ReadonlyArray<OutfitPiece> }
+  /** Her brows where they show over her fringe: a darker tone (a pale-browed model's default), plain, or the model's own pick (null). */
+  | { readonly kind: "brows"; readonly dark: boolean | null }
   /** A keyframed clip from the owner's extensions (humanoid Euler per bone), played now; held at its end unless it loops. */
   | {
       readonly kind: "clip";
@@ -828,6 +830,10 @@ export const parseCue = (raw: unknown): BodyCue | null => {
       );
       return { kind: "expressions", map };
     }
+    case "brows":
+      return typeof c["dark"] === "boolean" || c["dark"] === null
+        ? { kind: "brows", dark: c["dark"] as boolean | null }
+        : null;
     case "outfit": {
       const pieces = new Set<string>(OUTFIT_PIECES);
       const off = Array.isArray(c["off"])
