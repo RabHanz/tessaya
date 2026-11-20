@@ -4,12 +4,15 @@
  * with the model inspector beside the body, and the pure control language so a page (the owner's playground) can compile
  * moves and scenes for its own body without the server.
  */
+import { bakedClip } from "@t3tools/tessaya-shared/bodyBakedClips";
 import { BODY_CAPABILITIES, decodeBodyMove, moveCues } from "@t3tools/tessaya-shared/bodyControl";
+import { clipCheck, clipsOf, expand } from "@t3tools/tessaya-shared/bodyGrade";
 import { BODY_FACES, GESTURES, lineCues } from "@t3tools/tessaya-shared/bodyCues";
 import { locateOnDesk } from "@t3tools/tessaya-shared/bodyLocomotion";
 import { groupStage, stageOnto } from "@t3tools/tessaya-shared/rooms";
 import { HUMAN_SENSE } from "@t3tools/tessaya-shared/bodySense";
 import { ACT_NAMES } from "@t3tools/tessaya-shared/bodyMotion";
+import { MOTION_LIBRARY } from "@t3tools/tessaya-shared/bodyMotionLibrary";
 import { HAND_PLACES, INVOLUNTARY } from "@t3tools/tessaya-shared/bodyPlanner";
 import { JOINT_LIMITS, REFERENCE_RIG } from "@t3tools/tessaya-shared/bodyRig";
 import {
@@ -63,6 +66,12 @@ const control = {
   TOUCH_ZONES: HUMAN_SENSE.regions.map((r) => r.id),
   HUMAN_SENSE,
   HAND_PLACES,
+  // the playground's clip browser: her library, its physics-trained takes, and each clip checked joint by joint
+  MOTION_LIBRARY,
+  bakedClip,
+  expand,
+  clipsOf,
+  clipCheck,
 };
 
 /** The control language a page drives its own body with (the playground reads it off `window.tessayaBody`). */

@@ -89,9 +89,10 @@ export const channelsOf = (cues: ReadonlyArray<BodyCue>): Set<Channel> => {
   return out;
 };
 
-const clips = (cues: ReadonlyArray<BodyCue>): Array<Extract<BodyCue, { kind: "clip" }>> =>
+/** Every clip a performance plays, through its sequences. */
+export const clipsOf = (cues: ReadonlyArray<BodyCue>): Array<Extract<BodyCue, { kind: "clip" }>> =>
   cues.flatMap((c) =>
-    c.kind === "clip" ? [c] : c.kind === "seq" ? clips(c.steps.flatMap((s) => s.cues)) : [],
+    c.kind === "clip" ? [c] : c.kind === "seq" ? clipsOf(c.steps.flatMap((s) => s.cues)) : [],
   );
 
 /**
@@ -103,7 +104,7 @@ export const validityOf = (
 ): { readonly corrections: number; readonly overSpeed: ReadonlyArray<string> } => {
   let corrections = 0;
   const overSpeed = new Set<string>();
-  for (const clip of clips(cues)) {
+  for (const clip of clipsOf(cues)) {
     let prev: Record<string, ReturnType<typeof qFromEuler>> | null = null;
     for (const frame of clip.frames) {
       corrections += preparePose(REFERENCE_RIG, frame as Record<string, V3>).issues.filter(
@@ -119,6 +120,62 @@ export const validityOf = (
     }
   }
   return { corrections, overSpeed: [...overSpeed] };
+};
+
+/** One joint a clip bends wrong: how (bodyRig's issue kind), the worst the rig corrects it by (rad), in how many frames. */
+export interface JointFault {
+  readonly bone: string;
+  readonly kind: string;
+  readonly by: number;
+  readonly frames: number;
+}
+
+/**
+ * A clip checked the way a person watching would: each joint the rig corrects (more than 0.1 rad, as validityOf counts
+ * them) with what is wrong and how badly, worst first; bones faster than a person's (JOINT_SPEED); and for a loop, the
+ * largest jump from its last frame back to its first (rad).
+ */
+export const clipCheck = (clip: {
+  readonly fps: number;
+  readonly loop?: boolean;
+  readonly frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>>;
+}): {
+  readonly joints: ReadonlyArray<JointFault>;
+  readonly overSpeed: ReadonlyArray<string>;
+  readonly seam: number;
+} => {
+  const faults = new Map<string, { bone: string; kind: string; by: number; frames: number }>();
+  const overSpeed = new Set<string>();
+  const angle = (a: Euler | undefined, b: Euler | undefined) =>
+    a === undefined || b === undefined ? 0 : qAngle(qFromEuler(a as V3), qFromEuler(b as V3));
+  clip.frames.forEach((frame, i) => {
+    for (const x of preparePose(REFERENCE_RIG, frame as Record<string, V3>).issues) {
+      if (x.by <= 0.1) continue;
+      const k = `${x.bone} ${x.kind}`;
+      const was = faults.get(k);
+      faults.set(k, {
+        bone: x.bone,
+        kind: x.kind,
+        by: Math.max(was?.by ?? 0, x.by),
+        frames: (was?.frames ?? 0) + 1,
+      });
+    }
+    const prev = clip.frames[i - 1];
+    if (prev !== undefined)
+      for (const [b, e] of Object.entries(frame) as Array<[PoseBone, Euler]>)
+        if (angle(prev[b], e) * clip.fps > JOINT_SPEED(b)) overSpeed.add(b);
+  });
+  const first = clip.frames[0] ?? {};
+  const last = clip.frames.at(-1) ?? {};
+  const seam =
+    clip.loop === true
+      ? Math.max(0, ...(Object.keys(first) as PoseBone[]).map((b) => angle(first[b], last[b])))
+      : 0;
+  return {
+    joints: [...faults.values()].toSorted((a, b) => b.by - a.by),
+    overSpeed: [...overSpeed],
+    seam,
+  };
 };
 
 const at = (f: Partial<Record<PoseBone, Euler>>, b: PoseBone, k: 0 | 1 | 2) => f[b]?.[k] ?? 0;
