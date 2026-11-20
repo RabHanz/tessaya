@@ -339,6 +339,8 @@ const hostOf = (url: string): string | null => {
 const iso = (ms: number) => new Date(ms).toISOString();
 
 const SETTLE_MS = 3_000;
+/** How far a fan's own speed step may land from the percentage asked (1-6 speed fans step by 16-33). */
+const FAN_STEP_SLACK = 17;
 const SETTLE_STEP_MS = 250;
 /** The state a call should leave its entities in, as a test of one; null where it cannot be told. */
 const expectedAfter = (request: {
@@ -351,10 +353,17 @@ const expectedAfter = (request: {
     (...states: ReadonlyArray<string>) =>
     (e: { s: string }) =>
       states.includes(e.s);
-  if (request.domain === "fan" && request.service === "set_percentage")
-    return (e) =>
-      Number(e.a["percentage"]) === Number(data["percentage"]) ||
-      (data["percentage"] === 0 && e.s === "off");
+  // A fan runs at its own steps (his bedroom fan: asked 30, reports 21) and some never leave state "off" (20 Nov, 07:26):
+  // its percentage near what was asked is the fan doing it.
+  if (request.domain === "fan" && request.service === "set_percentage") {
+    const wanted = Number(data["percentage"]);
+    return (e) => {
+      const now = Number(e.a["percentage"]);
+      return wanted === 0
+        ? e.s === "off" || now === 0
+        : Number.isFinite(now) && now > 0 && Math.abs(now - wanted) <= FAN_STEP_SLACK;
+    };
+  }
   if (request.domain === "climate" && request.service === "set_hvac_mode")
     return is(String(data["hvac_mode"]));
   if (
@@ -1240,7 +1249,7 @@ const make = Effect.gen(function* () {
           return outcome(
             "failed",
             actionId,
-            `Home Assistant took ${line} twice, but ${lagging.map((e) => `${nameOf(e)} is still ${states.get(e)?.s ?? "unknown"}`).join(", ")}. Say so; it may be offline or slow.`,
+            `Home Assistant took ${line} twice, but ${lagging.map((e) => `${nameOf(e)} is still ${states.get(e)?.s ?? "unknown"}${states.get(e)?.a["percentage"] == null ? "" : ` (speed ${String(states.get(e)!.a["percentage"])}%)`}`).join(", ")}. Say so; it may be offline or slow.`,
             undoId,
             ids,
           );

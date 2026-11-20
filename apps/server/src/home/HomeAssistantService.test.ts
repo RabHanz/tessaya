@@ -127,6 +127,16 @@ const makeHouse = () => {
           if (name === "scene.delete") for (const e of ids(m["target"])) remove(e);
           if (name === "scene.turn_on")
             for (const [e, v] of scenes.get(ids(m["target"])[0]!) ?? []) put(e, structuredClone(v));
+          // His bedroom fan: its own speed steps, and a state that stays "off" (20 Nov, 07:26).
+          if (name === "fan.set_percentage")
+            for (const e of ids(m["target"]))
+              put(e, {
+                ...states.get(e)!,
+                a: {
+                  ...states.get(e)!.a,
+                  percentage: Math.round(Number(data["percentage"]) * 0.7),
+                },
+              });
           if (name === "fan.turn_on" || name === "switch.turn_on")
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "on" });
           if (
@@ -986,6 +996,36 @@ it.effect(
         layer.pipe(Layer.provideMerge(ConsentLayer.pipe(Layer.provide(TessayaDatabaseMemory)))),
       ),
     );
+  },
+);
+
+it.effect(
+  'a fan that runs at its own steps and keeps saying off is done, not "still off" (20 Nov, 07:26)',
+  () => {
+    const { house, layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const set = (percentage: number) =>
+        home.call(
+          {
+            domain: "fan",
+            service: "set_percentage",
+            target: { entity_id: "fan.fan" },
+            data: { percentage },
+            why: "x",
+          },
+          assistant,
+        );
+      yield* home.call(
+        { domain: "fan", service: "turn_off", target: { entity_id: "fan.fan" }, why: "x" },
+        assistant,
+      );
+      const forty = yield* set(40);
+      assert.strictEqual(forty.status, "done");
+      assert.strictEqual(house.states.get("fan.fan")?.a["percentage"], 28);
+      yield* TestClock.adjust("2 minutes");
+      assert.strictEqual((yield* set(30)).status, "done");
+    }).pipe(Effect.provide(layer));
   },
 );
 
