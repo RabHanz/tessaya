@@ -168,6 +168,35 @@ export const POSTURES = {
     bones: { ...down, ...soft, spine: [0.06, 0, 0], head: [0.22, 0, 0.16] },
     breathHz: 0.15,
   },
+  angry: {
+    // chin down, shoulders up and squared, arms held stiff at her sides and drawn a little back: braced
+    bones: {
+      leftUpperArm: [0.12, 0, -1.28],
+      rightUpperArm: [0.12, 0, 1.28],
+      leftLowerArm: [0, -0.2, 0],
+      rightLowerArm: [0, 0.2, 0],
+      leftShoulder: [0, 0, 0.14],
+      rightShoulder: [0, 0, -0.14],
+      spine: [0.04, 0, 0],
+      chest: [-0.04, 0, 0],
+      head: [0.09, 0, 0],
+    },
+    breathHz: 0.36,
+  },
+  worried: {
+    // hands held together at her chest, shoulders drawn up, head down a little and to one side; breath quick
+    bones: {
+      leftUpperArm: [0.05, -0.75, -1.05],
+      rightUpperArm: [0.05, 0.75, 1.05],
+      leftLowerArm: [0, -1.6, 0],
+      rightLowerArm: [0, 1.6, 0],
+      leftShoulder: [0, -0.06, 0.1],
+      rightShoulder: [0, 0.06, -0.1],
+      spine: [0.04, 0, 0],
+      head: [0.07, 0.06, 0.06],
+    },
+    breathHz: 0.42,
+  },
   guarded: {
     // arms folded in front, leaning back from him
     bones: {
@@ -265,7 +294,9 @@ const PLAYFUL = new Set(["playful", "giggle", "excited", "laughing"]);
 const HAPPY = new Set(["happy", "delighted", "proud", "amazed", "relieved"]);
 const SHY = new Set(["shy", "embarrassed", "nervous"]);
 const FOND = new Set(["love", "affectionate", "calm", "relaxed", "steady"]);
-const SAD = new Set(["sad", "hurt", "crying", "lonely", "concerned", "worried", "sulky", "putout"]);
+const SAD = new Set(["sad", "hurt", "crying", "lonely", "sulky", "putout"]);
+const ANGRY = new Set(["angry", "annoyed", "frustrated", "grumpy"]);
+const WORRIED = new Set(["worried", "concerned"]);
 const SLEEPY = new Set(["sleepy", "asleep", "bored"]);
 
 /**
@@ -290,6 +321,8 @@ export const postureFor = (affect: {
   if (SHY.has(m)) return "shy";
   if (FOND.has(m)) return affect.intensity >= 0.4 ? "affectionate" : "stand";
   if (SAD.has(m)) return "sad";
+  if (ANGRY.has(m)) return "angry";
+  if (WORRIED.has(m)) return "worried";
   if (SLEEPY.has(m)) return "sleepy";
   return "stand";
 };

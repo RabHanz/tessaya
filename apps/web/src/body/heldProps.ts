@@ -212,9 +212,9 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
       ];
     },
   },
-  // a reading magnifier raised to look through: a wooden handle, a brass ring and its glass
+  // a reading magnifier held up at her side, clear of her face: a wooden handle, a brass ring and its glass
   magnifier: {
-    grip: { at: [0.3, 0.08, -0.06], fingers: [1, 0.2, 0.5], normal: [0, 0, 1], curl: 0.8 },
+    grip: { at: [0.26, 0, -0.2], fingers: [1, 0.25, 0.15], normal: [0, 0, 1], curl: 0.8 },
     make: (look) => {
       const c = 0.07 + 0.045;
       const handle = lathe(

@@ -116,7 +116,12 @@ import {
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { OPENING, recipeWeights, type FaceRecipe } from "@t3tools/tessaya-shared/faceRecipes";
+import {
+  OPENING,
+  recipeWeights,
+  TUNED_REACH,
+  type FaceRecipe,
+} from "@t3tools/tessaya-shared/faceRecipes";
 import { HAT_IDS, wearHat } from "./hats.ts";
 import { gripOf, holdIn, holdPose } from "./heldProps.ts";
 import { frameOn, restTurns as restTurnsOf, type PropBone } from "./propKit.ts";
@@ -191,6 +196,8 @@ const reachOf = (vrm: VRM, name: string) => {
 };
 /** The whole-face mood presets a model's mixed parts stand in for. */
 const MOOD_PRESETS = new Set<string>(["happy", "angry", "sad", "relaxed", "surprised"]);
+/** Low moods: her blinks come seldom and slow. */
+const LOW = new Set(["sad", "hurt", "crying", "lonely", "sleepy"]);
 /** Moods that colour her cheeks, and those that tip her head. */
 const BLUSHING = new Set(["love", "shy", "embarrassed", "affectionate"]);
 const WONDERING = new Set(["curious", "thinking", "searching", "confused"]);
@@ -660,6 +667,8 @@ export function mountBody(
   let recipeTo: FaceRecipe | null = null;
   // the model's VRoid part shapes that move anything, by name without `Fcl_` (read when it loads)
   let fcl = new Map<string, string>();
+  // how far each of them moves her at full weight (m), so a recipe tuned on one model reads the same on another
+  let fclReach = new Map<string, number>();
   let faceAt = 0;
   let look: string | null = null;
   // direct control: where she was asked to look and until when, and the pace a direct pose was asked to arrive at
@@ -674,6 +683,7 @@ export function mountBody(
   let parts: Record<string, number> = {};
   let partsLast: ReadonlyArray<string> = [];
   let tilt = 0;
+  const blinkMs = () => (LOW.has(mood.mood) ? BLINK_MS * 1.8 : BLINK_MS);
   let seqTimers: Array<ReturnType<typeof setTimeout>> = [];
   let settledSent = true;
   // his hand: the last frame from whatever drives it (pointer now; an agent, a tracker or a controller later),
@@ -1269,7 +1279,7 @@ export function mountBody(
     level !== null ||
     gestures.length > 0 ||
     now - faceAt < BLEND_MS ||
-    now - blinkAt < BLINK_MS ||
+    now - blinkAt < blinkMs() ||
     now - lastMove < SETTLE_MS ||
     (touch !== null && now - touch.at < TOUCH_MS) ||
     springing ||
@@ -1661,7 +1671,7 @@ export function mountBody(
 
     // blink: a short close and open, every few seconds
     const b = now - blinkAt;
-    const blink = b < BLINK_MS ? Math.sin((Math.PI * b) / BLINK_MS) : 0;
+    const blink = b < blinkMs() ? Math.sin((Math.PI * b) / blinkMs()) : 0;
 
     // the intimate set eases toward where the layer (or a word-timed face) wants it
     const to = target();
@@ -1834,7 +1844,11 @@ export function mountBody(
       const mixed = fcl.size > 0 && recipeTo !== null;
       if (mixed) {
         const talking = Object.keys(mouth).length > 0;
-        const put = (name: string, w: number) => {
+        const put = (name: string, w0: number) => {
+          // a model whose shape moves further than the one the recipe was tuned on gets less of it
+          const ref = TUNED_REACH[/Fcl_([A-Z]+_\w+)$/.exec(name)?.[1] ?? ""];
+          const reach = fclReach.get(name) ?? 0;
+          const w = ref !== undefined && reach > ref ? (w0 * ref) / reach : w0;
           if (w > 0.005) parts[name] = Math.max(parts[name] ?? 0, Math.min(1, w));
         };
         for (const [key, w0] of Object.entries(recipe)) {
@@ -2024,7 +2038,8 @@ export function mountBody(
         glance = { yaw: (Math.random() - 0.5) * 4, pitch: (Math.random() - 0.5) * 2.5 };
       invalidate();
     };
-    blinkTimer = setTimeout(fire, 2500 + Math.random() * 3500);
+    // sad, she blinks less often and more slowly
+    blinkTimer = setTimeout(fire, (2500 + Math.random() * 3500) * (LOW.has(mood.mood) ? 1.6 : 1));
   };
 
   const setFace = (to: Weights, now = performance.now()) => {
@@ -2089,15 +2104,16 @@ export function mountBody(
         shapeKeys.set(name, [...(shapeKeys.get(name) ?? []), { mesh, i }]);
     });
     // its VRoid part shapes (…Fcl_BRW_Joy), kept where they move a vertex at all: some exports keep empty ones
+    fclReach = new Map();
     fcl = new Map(
       [...shapeKeys].flatMap(([name, at]) => {
         const short = /Fcl_([A-Z]+_\w+)$/.exec(name)?.[1];
-        const moves = at.some(({ mesh, i }) =>
-          (mesh.geometry.morphAttributes["position"]?.[i]?.array ?? []).some(
-            (v) => Math.abs(v) > 0.0005,
-          ),
-        );
-        return short !== undefined && moves ? [[short, name] as const] : [];
+        let reach = 0;
+        for (const { mesh, i } of at)
+          for (const v of mesh.geometry.morphAttributes["position"]?.[i]?.array ?? [])
+            reach = Math.max(reach, Math.abs(v));
+        if (short !== undefined && reach > 0.0005) fclReach.set(name, reach);
+        return short !== undefined && reach > 0.0005 ? [[short, name] as const] : [];
       }),
     );
     browsOverHair(next);
