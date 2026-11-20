@@ -1422,6 +1422,7 @@ export const TessayaMotionSettings = Schema.Struct({
   setdown: Schema.Boolean,
   shaken: Schema.Boolean,
   dropped: Schema.Boolean,
+  flipped: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type TessayaMotionSettings = typeof TessayaMotionSettings.Type;
 export const DEFAULT_TESSAYA_MOTION: TessayaMotionSettings = {
@@ -1430,6 +1431,7 @@ export const DEFAULT_TESSAYA_MOTION: TessayaMotionSettings = {
   setdown: true,
   shaken: true,
   dropped: true,
+  flipped: true,
 };
 
 /** How strongly a Tessel's motor buzzes, and for what; off silences it everywhere. */
@@ -2080,6 +2082,7 @@ export const ServerSettingsPatch = Schema.Struct({
       setdown: Schema.optionalKey(Schema.Boolean),
       shaken: Schema.optionalKey(Schema.Boolean),
       dropped: Schema.optionalKey(Schema.Boolean),
+      flipped: Schema.optionalKey(Schema.Boolean),
     }),
   ),
   tessayaHaptics: Schema.optionalKey(

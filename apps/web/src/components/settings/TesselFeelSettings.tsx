@@ -23,6 +23,7 @@ const MOVED_ROWS = [
     description: "A hard or long shake also speaks during a talk.",
   },
   { key: "dropped", title: "Dropped", description: "A fall that lands; also at night." },
+  { key: "flipped", title: "Upside down", description: "Left the wrong way up; she feels it." },
 ] as const;
 
 /** How a Tessel answers being moved: her eyes, her mood and a line of her own. */

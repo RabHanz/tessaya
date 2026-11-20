@@ -267,7 +267,14 @@ const FELT: Readonly<
 };
 export type FeltTone = "pleasant" | "firm" | "hurt";
 
-export const HANDLED_HOWS = ["lifted", "carried", "setdown", "shaken", "dropped"] as const;
+export const HANDLED_HOWS = [
+  "lifted",
+  "carried",
+  "setdown",
+  "shaken",
+  "dropped",
+  "flipped",
+] as const;
 export type HandledHow = (typeof HANDLED_HOWS)[number];
 const HANDLED: Readonly<
   Record<HandledHow, { readonly change: Partial<Record<AffectDim, number>>; readonly why: string }>
@@ -277,6 +284,7 @@ const HANDLED: Readonly<
   setdown: { change: { arousal: -0.03 }, why: "he put her down" },
   shaken: { change: { arousal: 0.1, valence: -0.06 }, why: "he shook her" },
   dropped: { change: { arousal: 0.12, valence: -0.1 }, why: "he dropped her" },
+  flipped: { change: { arousal: 0.05, valence: -0.04 }, why: "he left her upside down" },
 };
 
 /** How his words treated her, as a model judged them (`tonePrompt`); "none" moves nothing. */

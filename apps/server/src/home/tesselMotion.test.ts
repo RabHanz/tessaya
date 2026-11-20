@@ -33,6 +33,26 @@ describe("motionMoment", () => {
     expect(motionMoment("event/motion", motion("face_down"), seen, 0)).toBeNull();
   });
 
+  it("feels being left upside down (0.3.169 event/orientation), quietly during a talk, and nothing on being righted", () => {
+    const seen = freshSeen();
+    expect(motionMoment("event/orientation", { frame: "flipped", mode: "auto" }, seen, 0)).toEqual({
+      how: "flipped",
+      strong: false,
+      busy: false,
+      live: false,
+    });
+    expect(
+      motionMoment("event/orientation", { frame: "upright", mode: "auto" }, seen, 1),
+    ).toBeNull();
+    motionMoment("state/voice", { ev: "start" }, seen, 2);
+    expect(
+      motionMoment("event/orientation", { frame: "flipped", mode: "auto" }, seen, 3),
+    ).toMatchObject({
+      busy: true,
+      strong: false,
+    });
+  });
+
   it("hears a gentle pick-up in the placement alone, once per handling", () => {
     // 16 Nov 07:30: dock to carried with no lift event.
     const seen = freshSeen();

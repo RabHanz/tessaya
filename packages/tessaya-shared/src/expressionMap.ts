@@ -34,6 +34,7 @@ export const MOMENT_HAPTICS = {
   setdown: null,
   shaken: "giggle",
   dropped: "startle",
+  flipped: null,
   wake: "double_tap",
   note: "nudge",
 } as const satisfies Readonly<Record<HandledHow | "wake" | "note", HapticPattern | null>>;
