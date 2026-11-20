@@ -13,6 +13,7 @@ const setup = () => {
   const rows = new Map<string, TessayaCommitment>();
   const sent: Array<string> = [];
   const commitments = Layer.mock(TessayaCommitmentService)({
+    local: {} as never,
     list: Effect.sync(() => [...rows.values()]),
     upsert: (items) =>
       Effect.sync(() => {
