@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -566,7 +567,7 @@ it.effect(
             ...house.states.get(`automation.${id}`)!,
             a: {
               ...house.states.get(`automation.${id}`)!.a,
-              last_triggered: new Date(now).toISOString(),
+              last_triggered: DateTime.formatIso(DateTime.makeUnsafe(now)),
             },
           }),
         );
