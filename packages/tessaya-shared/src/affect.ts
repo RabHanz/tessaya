@@ -240,6 +240,8 @@ export type AffectEvent =
   | { readonly kind: "close"; readonly warmth: number }
   /** How a touch felt on her skin, as her nerves read it (bodySense.ts feltTone): a quick reaction only. */
   | { readonly kind: "felt"; readonly tone: FeltTone }
+  /** A person's touch, as her nerves read it: the same quick reaction, toward whoever touched her (their row). */
+  | { readonly kind: "touched"; readonly tone: FeltTone }
   /** The conversation's flow as the cheap model read it (`readPrompt`): a person's, or the room's with nobody keyed. */
   | {
       readonly kind: "flow";
@@ -601,9 +603,13 @@ const react = (
         reason: "they corrected her",
       };
     case "felt":
+    case "touched":
       return {
         state: { ...at, reaction: add(at.reaction, FELT[event.tone].change) },
-        reason: FELT[event.tone].why,
+        reason:
+          event.kind === "touched"
+            ? `their ${FELT[event.tone].why.replace(/^a /, "")}`
+            : FELT[event.tone].why,
       };
     case "handled":
       return {
@@ -1164,6 +1170,7 @@ const PERSONAL: ReadonlySet<AffectEvent["kind"]> = new Set([
   "correction",
   "impression",
   "shared",
+  "touched",
   ...HIS_TONES,
 ]);
 

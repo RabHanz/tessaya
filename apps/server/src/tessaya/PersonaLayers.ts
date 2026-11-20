@@ -501,7 +501,7 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
           Effect.flatMap((mood) =>
             Option.isNone(mood)
               ? Effect.void
-              : mood.value.note(turn.persona, { kind: "felt", tone }, OWNER_MEMBER_ID),
+              : mood.value.note(turn.persona, { kind: "touched", tone }, OWNER_MEMBER_ID),
           ),
         ),
       ),

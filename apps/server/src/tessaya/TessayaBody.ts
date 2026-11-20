@@ -31,8 +31,11 @@ import {
   feltWords,
   fire,
   HUMAN_SENSE,
+  MASCOT_SENSE,
   mergeSense,
   NO_SENSE,
+  reflexesOf,
+  type ReflexAction,
   type SenseState,
 } from "@t3tools/tessaya-shared/bodySense";
 import {
@@ -749,7 +752,14 @@ export interface Felt {
   readonly cmPerS?: number | undefined;
   readonly areaCm2?: number | undefined;
   readonly stretch?: number | undefined;
+  /** How long the hand stayed (ms), when the vessel knows. */
+  readonly durationMs?: number | undefined;
   readonly private?: boolean | undefined;
+}
+/** What her nerves made of a touch: its tone for her mood, and the reflexes it set off (strongest first). */
+export interface FeltAnswer {
+  readonly tone: "pleasant" | "firm" | "hurt" | null;
+  readonly reflexes: ReadonlyArray<ReflexAction>;
 }
 const FELT_VERB: Readonly<Record<Felt["kind"], string>> = {
   poke: "poked",
@@ -776,7 +786,8 @@ const WHERE: Readonly<Record<string, string>> = {
 const MOVING: Readonly<Partial<Record<Felt["kind"], number>>> = { stroke: 5, carry: 10, throw: 40 };
 // shortcut: her nerves' state is per process (habituation forgets a restart); move it to a store if that matters
 const senses = new Map<string, SenseState>();
-const SENSE = mergeSense([HUMAN_SENSE], false);
+// the human map with the desk cartoon's form over it (same skin, her own middle): one map for every vessel's touch
+const SENSE = mergeSense([HUMAN_SENSE, MASCOT_SENSE], false);
 /**
  * Her nerves' answer to a touch (bodySense.ts): what it feels like, in words her brain reads, and its tone for her
  * mood. A region only a pack names (the body found it) is felt as everyday skin; all of her ("body") is not a touch.
@@ -816,10 +827,15 @@ const nervesFor = (f: Felt, now: number) => {
   const r = step.rates[f.part];
   return r === undefined || Object.keys(r).length === 0
     ? null
-    : { words: feltWords(f.part, r, step.state, cmPerS), tone: feltTone(r) };
+    : {
+        words: feltWords(f.part, r, step.state, cmPerS),
+        tone: feltTone(r),
+        reflexes: reflexesOf(map, step.levels).map((x) => x.action),
+      };
 };
 
 export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
+  const none: FeltAnswer = { tone: null, reflexes: [] };
   const hand = f.self === true ? "self" : (f.by ?? f.agent);
   const member = hand === undefined ? (f.member ?? (yield* SessionMember)) : null;
   const owner = hand === undefined && (member === null || member === OWNER_MEMBER_ID);
@@ -838,20 +854,31 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
     persona: f.persona ?? null,
     subject: f.part,
     outcome: f.kind,
-    data: { vessel: f.vessel, ...(f.pressure === undefined ? {} : { pressure: f.pressure }) },
+    data: {
+      vessel: f.vessel,
+      ...(f.pressure === undefined ? {} : { pressure: f.pressure }),
+      ...(f.durationMs === undefined ? {} : { durationMs: f.durationMs }),
+    },
     ...(f.private === true ? { private: true } : {}),
   });
-  if (f.private === true) return;
+  if (f.private === true) return none;
   const nerves = nervesFor(f, yield* Clock.currentTimeMillis);
   // how it felt moves her quick reaction (never her mood), keyed to whoever's hand it was; her own is no one's
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (nerves?.tone != null && mood._tag === "Some" && f.self !== true)
-    yield* mood.value.note(f.persona ?? undefined, { kind: "felt", tone: nerves.tone }, member);
+    // a person's touch is toward that person (their row, movable by "that wasn't me"); an agent's or her own is not
+    yield* mood.value.note(
+      f.persona ?? undefined,
+      { kind: member === null ? "felt" : "touched", tone: nerves.tone },
+      member,
+    );
   // his own hand on her is him being with her: when he was last with her, for every body's wishes
   if (owner && f.by === undefined && mood._tag === "Some")
     yield* mood.value.note(f.persona ?? undefined, { kind: "seen" }, OWNER_MEMBER_ID);
+  const answer: FeltAnswer =
+    nerves === null ? none : { tone: nerves.tone, reflexes: nerves.reflexes };
   const live = yield* Effect.serviceOption(TurnLiveContext);
-  if (live._tag === "None") return;
+  if (live._tag === "None") return answer;
   const who =
     f.self === true
       ? "your own hand"
@@ -869,4 +896,5 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
     expiresAfterTurns: 3,
     line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${f.self === true && f.kind === "clap" ? "you clapped your hands" : `${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}`}${nerves === null ? "" : ` (you felt ${nerves.words})`}: mention it only if it fits.`,
   });
+  return answer;
 });
