@@ -546,6 +546,7 @@ import type {
 import { focusedFolder } from "../screen/focusedFolder.ts";
 import { createVoicePill, wantsMoving, type VoicePill } from "./voicePill.ts";
 import type { BodyCue } from "@t3tools/tessaya-shared/bodyCues";
+import { mirrorBody } from "../companion/mirrorBody.ts";
 import { parsePillDesign, parsePillWave, type PillDesign, type PillWave } from "./pillLook.ts";
 import {
   bodyOf,
@@ -1417,28 +1418,6 @@ export interface TrayExtras extends BrainVoiceHook {
 }
 
 /** The mascot's speech, level and mood also go to the 3D body as cues: one source drives both bodies. */
-const mirrorBody = (m: DesktopMascot, cue: ((c: BodyCue) => void) | undefined): DesktopMascot => {
-  if (cue === undefined) return m;
-  let speaking = false;
-  return {
-    ...m,
-    turn: (phase) => {
-      m.turn(phase);
-      if (speaking && phase !== "speaking") cue({ kind: "silent" });
-      speaking = phase === "speaking";
-    },
-    level: (value, shape) => {
-      m.level(value, shape);
-      if (speaking)
-        cue({ kind: "level", value, ...(shape?.viseme ? { viseme: shape.viseme } : {}) });
-    },
-    mood: (label, intensity) => {
-      m.mood(label, intensity);
-      cue({ kind: "mood", mood: label, intensity });
-    },
-  };
-};
-
 export interface DesktopTessayaVoiceInput {
   readonly stateDir: string;
   /** Opens his private chat window; null while no owner-only layer runs on this machine's server. */
@@ -5231,6 +5210,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   const mascot = mirrorBody(
     makeMascot(() => mascotPersonaArg()),
     input.bodyCue,
+    () => mascotPersonaArg().persona,
   );
   input.onMascot?.(mascot);
   /** Her desk body as it is now: on screen or hidden, and the screen it stands on. */

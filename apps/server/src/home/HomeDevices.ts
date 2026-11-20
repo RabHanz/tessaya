@@ -1743,8 +1743,13 @@ const make = Effect.gen(function* () {
     if (!m.strong && now - last.at < 4_000) return;
     const quiet = yield* quietNow(now);
     if (quiet && m.how !== "dropped") return;
-    if (mood._tag === "Some")
-      yield* mood.value.note(undefined, { kind: "handled", how: m.how }, null);
+    if (mood._tag === "Some") {
+      // the persona this body wears, toward whoever its face is for here (one person, else no one in particular)
+      const persona = (cast._tag === "Some" ? yield* cast.value.wearing(id) : null) ?? undefined;
+      const face = yield* mood.value.atDevice(id, persona, undefined);
+      const member = face.faceFor === "room" || face.faceFor === "general" ? null : face.faceFor;
+      yield* mood.value.note(persona, { kind: "handled", how: m.how }, member);
+    }
     // Her next two turns on this body know it just happened; the third never reads it as now (G6).
     if (liveContext._tag === "Some")
       yield* liveContext.value.inject({

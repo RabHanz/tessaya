@@ -3,6 +3,7 @@ import type { R1KeyBinding, R1KeySlot } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
@@ -11,6 +12,8 @@ import { layer as recordLayer } from "../tessaya/TessayaRecordService.ts";
 import { DeviceRegistry, layer as registryLayer } from "./DeviceRegistry.ts";
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { serveDevicesCall } from "./HomeDeviceCalls.ts";
+import { TessayaCast } from "../tessaya/TessayaCast.ts";
+import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import * as HomeDevices from "./HomeDevices.ts";
 import { onAction } from "../provenance/ActionLog.ts";
 import { R1Hub } from "./R1Hub.ts";
@@ -35,7 +38,7 @@ const ID = "r1-3d57b3";
 const root = `freya/r1/${ID}`;
 
 /** `hub`: the device is on this server's own hub, linked to it while `connected` says so. */
-const setup = (hub?: { connected: () => boolean }) => {
+const setup = (hub?: { connected: () => boolean }, extra: Layer.Layer<never> = Layer.empty) => {
   const sent: Array<{ topic: string; payload: unknown; retain?: boolean }> = [];
   const scenes: Array<unknown> = [];
   let record: R1Device | null = {
@@ -105,6 +108,7 @@ const setup = (hub?: { connected: () => boolean }) => {
           } as unknown as R1Hub["Service"]),
     ),
     Layer.provideMerge(TessayaDatabaseMemory),
+    Layer.provideMerge(extra),
   );
   const topics = () => sent.map((s) => s.topic);
   return { sent, scenes, topics, layer, record: () => record, away: () => away };
@@ -2207,6 +2211,35 @@ it.effect("answers being moved on the Tessel's eyes, once per handling, at his s
     assert.deepStrictEqual(sent[0]?.payload, { p: "giggle", lvl: 2 });
   }).pipe(Effect.provide(layer));
 });
+
+it.effect(
+  "being handled moves the mood of the persona the Tessel wears, toward the person its face is for",
+  () => {
+    const noted: Array<[string | undefined, unknown, string | null | undefined]> = [];
+    const mood = Layer.mock(TessayaMood)({
+      changes: () => Stream.empty,
+      atDevice: () => Effect.succeed({ faceFor: "member-sam" } as never),
+      note: (persona, event, member) =>
+        Effect.sync(() => void noted.push([persona, event, member])),
+    });
+    const cast = Layer.mock(TessayaCast)({
+      listen: () => Effect.void,
+      told: () => Effect.succeed(null as never),
+      wearing: () => Effect.succeed("alfred"),
+    });
+    const { layer } = setup(undefined, Layer.mergeAll(mood, cast));
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      yield* devices.receive(`${root}/state/online`, "1");
+      yield* devices.receive(
+        `${root}/event/motion`,
+        JSON.stringify({ kind: "shake", conf: 0.6, intensity: 20, in: { session: false } }),
+      );
+      assert.deepStrictEqual(noted, [["alfred", { kind: "handled", how: "shaken" }, "member-sam"]]);
+    }).pipe(Effect.provide(layer));
+  },
+);
 
 it.effect(
   "starts a talk from a linked phone's headset button only when it is near and the Tessel is not muted",

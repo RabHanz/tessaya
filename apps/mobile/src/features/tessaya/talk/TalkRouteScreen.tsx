@@ -191,7 +191,21 @@ export function TalkRouteScreen() {
 
   const speak = async (text: string) => {
     if (environmentId === null || persona === null || text.trim() === "") return;
-    for (const cue of lineCues({ persona: persona.id, text, mood: "neutral", intensity: 0.4 }))
+    // her body speaks in the brain's one mood for this persona (as every other body does), neutral if unread
+    const read = await voiceCall({
+      environmentId,
+      input: { kind: "read", op: "mood", args: { persona: persona.id } },
+    });
+    const felt =
+      read._tag === "Success"
+        ? ((read.value as TessayaVoiceCallResult).value as {
+            label?: unknown;
+            intensity?: unknown;
+          } | null)
+        : null;
+    const mood = typeof felt?.label === "string" ? felt.label : "neutral";
+    const intensity = typeof felt?.intensity === "number" ? felt.intensity : 0.4;
+    for (const cue of lineCues({ persona: persona.id, text, mood, intensity }))
       post({ type: "cue", cue });
     const reply = await voiceCall({
       environmentId,
