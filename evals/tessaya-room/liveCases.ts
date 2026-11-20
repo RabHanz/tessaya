@@ -511,6 +511,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
         : null,
   },
   {
+    id: "transcript",
+    proves: ["tessaya_transcript"],
+    said: ["What did I ask you earlier today?"],
+    uses: [["tessaya_transcript"]],
+    clean: ["tessaya_transcript"],
+  },
+  {
     id: "record",
     proves: ["tessaya_record"],
     said: ["Check the record: what happened in the last five minutes?"],

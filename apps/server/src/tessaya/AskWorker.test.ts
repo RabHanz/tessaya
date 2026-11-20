@@ -64,6 +64,7 @@ effectIt.effect(
                   begun.push(turn);
                   return {
                     block: "",
+                    feeling: "",
                     ids: [],
                     privateBlock: "",
                     conversation: { key: "household", turns: [] },

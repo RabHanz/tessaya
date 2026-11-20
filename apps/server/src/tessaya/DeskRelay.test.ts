@@ -46,6 +46,7 @@ effectIt.effect(
               begin: () =>
                 Effect.succeed({
                   block: "",
+                  feeling: "",
                   ids: [],
                   privateBlock: "",
                   conversation: { key: "household", turns: [] },

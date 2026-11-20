@@ -169,7 +169,9 @@ describe("affect", () => {
     expect(moodLine(affectView(run([{ kind: "warmth" }]), "companion", day), true)).toContain(
       "[laughs]",
     );
-    expect(moodLine(affectView(freshAffect(0), "executive", day), true)).toBe("");
+    expect(moodLine(affectView(freshAffect(0), "executive", day), true)).not.toMatch(
+      /sighs|laughs/,
+    );
   });
 
   it("grows the bond once a day up to its cap, and it never falls because he is away", () => {
@@ -208,8 +210,12 @@ describe("affect", () => {
     ]);
   });
 
-  it("puts nothing in the line at rest, and says late, never tired", () => {
-    expect(moodLine(affectView(freshAffect(0), "executive", day))).toBe("");
+  it("always gives a feeling, at rest too, none with the setting off, and says late, never tired", () => {
+    expect(moodLine(affectView(freshAffect(0), "executive", day))).toBe(
+      "How you feel right now: at ease, your usual self.",
+    );
+    const off = { ...day, settings: { ...day.settings, enabled: false } };
+    expect(moodLine(affectView(freshAffect(0), "executive", off))).toBe("");
     const late = moodLine(affectView(freshAffect(0), "executive", { ...day, hour: 23.5 }));
     expect(late).toContain("it's late");
     expect(late).toContain("never that you're tired");
@@ -375,7 +381,7 @@ describe("emotional intelligence (MA-021)", () => {
       tentative: true,
       misjudged: null,
     });
-    expect(moodLine(v, false, { name: "Ali" })).toContain("Your impression of Ali (tentative");
+    expect(moodLine(v, false, { name: "Ali" })).toContain("How you see Ali (tentative");
     p = feed(
       [[meet(0.7, "shy, and kind once at ease", "they joked and thanked her"), "person:1"]],
       p,

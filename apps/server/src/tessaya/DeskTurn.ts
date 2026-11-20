@@ -93,6 +93,7 @@ const OWN_MACHINE_TOOLS = [
 const deskData = (input: {
   readonly body: DeskTurnBody;
   readonly memory: string;
+  readonly feeling: string;
   readonly notice: string;
   readonly privateBlock: string;
   readonly owner: string;
@@ -102,6 +103,7 @@ const deskData = (input: {
 }) =>
   [
     input.body.context ?? "",
+    input.feeling,
     input.owner,
     input.notes.work,
     input.notes.brain,
@@ -241,6 +243,7 @@ export const deskTurnStream = (
                     deskData({
                       body,
                       memory: begun.block,
+                      feeling: begun.feeling,
                       notice: begun.notice ?? "",
                       privateBlock: begun.privateBlock,
                       owner: begun.owner ?? "",

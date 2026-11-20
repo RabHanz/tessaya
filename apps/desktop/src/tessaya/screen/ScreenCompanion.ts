@@ -3490,7 +3490,12 @@ export const startScreenCompanion = (input: {
           const reply = await once.say(standingTurnText(job), {
             window: null,
             session: null,
-            persona: { id: job.persona.id, name: job.persona.name, role: job.persona.role },
+            persona: {
+              id: job.persona.id,
+              name: job.persona.name,
+              role: job.persona.role,
+              ...(job.persona.self === undefined ? {} : { self: job.persona.self }),
+            },
           });
           // One model turn, and one more for each tool call it made (the turn record counts them).
           return {
@@ -3706,6 +3711,7 @@ export const startScreenCompanion = (input: {
             id: face.id,
             name: face.name,
             role: face.role,
+            ...(face.self === undefined ? {} : { self: face.self }),
             ...(face.lead ||
             (turnProject !== null && leadsProject(face, turnProject, actions?.projects?.() ?? []))
               ? {}

@@ -1030,16 +1030,18 @@ export const moodLine = (v: AffectView, spoken = false, who: Who = {}): string =
   const r = referTo(who);
   const lean = v.leanings;
   const parts: string[] = [];
+  // Always a feeling, even at rest: a turn with none sounded like a service (presence-diagnosis 20 Nov). A view with
+  // the setting off carries no leanings and stays silent.
   if (v.label !== "neutral")
     parts.push(
-      `Your mood now: ${v.label}${v.intensity < 0.5 ? ", mild" : ""} (a working state: let it shape your tone only; never announce it, and it never changes what you do).`,
+      // The why is the real reasons, so "why are you sulking?" is never answered with invented ones (§7.1).
+      `How you feel right now: ${v.label}${v.intensity < 0.5 ? ", mild" : ""}${v.why.length > 0 ? `, because ${v.why.join("; ")}` : ""}. Let it show in how you talk, and say it in your own words when it fits or ${r.name} asks; it never changes what you do.`,
     );
+  else if (v.leanings !== undefined)
+    parts.push("How you feel right now: at ease, your usual self.");
   // Out loud the mood is heard as well: the shared stage-direction path turns these into real sounds.
   const voice = renderFor(VESSELS.speaker, v.label, v.intensity).voice;
   if (spoken && voice?.sound != null) parts.push(SOUND_LINE[voice.sound]);
-  // What moved it, so "why are you sulking?" is answered from the real reasons, not invented ones (§7.1).
-  if (v.label !== "neutral" && v.why.length > 0)
-    parts.push(`If ${r.name} asks why you feel so: ${v.why.join("; ")}.`);
   if (v.awayHours !== null) {
     const stay =
       (lean?.pressure ?? 0) >= 0.5
@@ -1066,7 +1068,8 @@ export const moodLine = (v: AffectView, spoken = false, who: Who = {}): string =
     parts.push(`${r.Name} ${r.seems} low: be gentle and warm; don't cheer ${r.obj} up by force.`);
   if (v.impression != null)
     parts.push(
-      `Your impression of ${r.name}${v.impression.tentative ? " (tentative: you have only just met)" : ""}: ${v.impression.text}, because ${v.impression.why}. Let it colour your warmth a little, keep an open mind, and never say it.`,
+      // Quoted: the words came from a read of what someone said. Its why reads like a reviewer's, so it stays out.
+      `How you see ${r.name}${v.impression.tentative ? " (tentative: you have only just met)" : ""}: ${JSON.stringify(v.impression.text)}. Let it colour your warmth, keep an open mind, and never recite it.`,
       ...(v.impression.misjudged === null
         ? []
         : [
@@ -1077,11 +1080,7 @@ export const moodLine = (v: AffectView, spoken = false, who: Who = {}): string =
     .filter((m) => m.kind !== "joke" || (lean?.playfulness ?? 0.5) > 0.1)
     .slice(0, 3)
     .map((m) =>
-      m.kind === "joke"
-        ? `a running joke: ${m.text}`
-        : m.kind === "milestone"
-          ? `${m.text}`
-          : m.text,
+      m.kind === "joke" ? `a running joke: ${JSON.stringify(m.text)}` : JSON.stringify(m.text),
     );
   if (story.length > 0)
     parts.push(
