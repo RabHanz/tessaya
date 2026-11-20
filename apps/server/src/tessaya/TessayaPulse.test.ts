@@ -1,10 +1,12 @@
 import { assert, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { BrainUsage } from "./BrainUsage.ts";
-import { beat, dueText, react } from "./TessayaPulse.ts";
+import { beat, dueText, emptyPulseState, react, sense } from "./TessayaPulse.ts";
+import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
@@ -224,3 +226,35 @@ it("says a reminder is late when it came due while her brain was down", () => {
     "Due at 14:00, late because Tessaya was offline then: call the bank",
   );
 });
+
+it.effect(
+  "raises a Tessel gone from its hub for 15 minutes once, and never one asleep as he asked",
+  () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(NOON);
+      const at = (minutesAgo: number) =>
+        DateTime.formatIso(DateTime.makeUnsafe(NOON - minutesAgo * 60_000));
+      const device = (deviceId: string, minutesAgo: number, asleep = false) => ({
+        deviceId,
+        kind: "r1",
+        name: deviceId,
+        firmware: null,
+        via: "mqtt" as const,
+        online: false,
+        lastSeenAt: at(minutesAgo),
+        version: null,
+        items: [],
+        values: [],
+        ...(asleep ? { asleep: true } : {}),
+      });
+      const registry = Layer.mock(DeviceRegistry)({
+        list: Effect.succeed([device("Tumble", 20), device("Dock", 5), device("Nap", 60, true)]),
+      });
+      const state = yield* sense(emptyPulseState(NOON - 60_000)).pipe(Effect.provide(registry));
+      const offline = state.digest.filter((e) => e.id.startsWith("offline:"));
+      assert.deepStrictEqual(
+        offline.map((e) => e.text.replace(/\d\d:\d\d/, "HH:MM")),
+        ["Tumble has been offline since HH:MM"],
+      );
+    }).pipe(Effect.provide(base)),
+);

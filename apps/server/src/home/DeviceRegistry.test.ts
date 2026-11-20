@@ -205,3 +205,83 @@ it.effect("reads and sets only the signed-in member's own preferences over the v
     assert.strictEqual(asked.length, 1);
   }).pipe(Effect.provide(layer)),
 );
+
+it.effect(
+  "a Tessel gone from its hub is offline since it left, not live on its retained readings (20 Nov 20:37)",
+  () =>
+    Effect.gen(function* () {
+      const registry = yield* DeviceRegistry;
+      yield* registry.seen("tumble", true);
+      yield* registry.report("mqtt", "tumble", [{ itemId: "power.charging", value: true }]);
+      yield* TestClock.adjust("1 minute");
+      yield* registry.seen("tumble", false);
+      const left = (yield* registry.get("tumble"))!;
+      assert.isFalse(left.online);
+      assert.deepStrictEqual(left.values, []);
+      // The hub serves her retained readings again hours later: she is still gone since she left.
+      yield* TestClock.adjust("4 hours");
+      yield* registry.seen("tumble", false);
+      yield* registry.report("mqtt", "tumble", [{ itemId: "power.battery_pct", value: 99 }]);
+      assert.strictEqual((yield* registry.get("tumble"))!.lastSeenAt, left.lastSeenAt);
+      assert.strictEqual(Date.parse(left.lastSeenAt!), 60_000);
+      // Says online but has sent nothing for 10 minutes: its session dropped without a word.
+      yield* registry.seen("dock", true);
+      assert.isTrue((yield* registry.get("dock"))!.online);
+      yield* TestClock.adjust("11 minutes");
+      assert.isFalse((yield* registry.get("dock"))!.online);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "a Tessel put to sleep is asleep, not a fault, and a free change waits for her to wake",
+  () =>
+    Effect.gen(function* () {
+      const registry = yield* DeviceRegistry;
+      const sent: Array<string> = [];
+      yield* registry.attachWriter("mqtt", (_id, itemId, value) =>
+        Effect.sync(() => {
+          sent.push(`${itemId}=${String(value)}`);
+          return { ok: true };
+        }),
+      );
+      yield* registry.publish("mqtt", {
+        deviceId: "tumble",
+        kind: "r1",
+        name: "Tumble",
+        schema: 1,
+        items: [
+          {
+            id: "audio.volume",
+            label: "Volume",
+            type: "number",
+            access: "read,write",
+            safety: "free",
+          },
+          {
+            id: "system.reboot",
+            label: "Restart",
+            type: "action",
+            access: "write",
+            safety: "confirm",
+          },
+        ],
+      });
+      yield* registry.seen("tumble", true);
+      // Asleep she stays on the hub: online, asleep, and never "gone" for being quiet.
+      yield* registry.sleeping("tumble", true);
+      yield* TestClock.adjust("30 minutes");
+      const asleep = (yield* registry.get("tumble"))!;
+      assert.isTrue(asleep.asleep);
+      assert.isTrue(asleep.online);
+      const later = yield* registry.write("tumble", "audio.volume", 40);
+      assert.include(later.line, "asleep");
+      assert.deepStrictEqual(sent, []);
+      const ask = yield* registry.write("tumble", "system.reboot", true).pipe(Effect.flip);
+      assert.include(String((ask as { why?: string }).why), "asleep");
+      // She wakes: the change he asked for is sent.
+      yield* registry.sleeping("tumble", false);
+      yield* TestClock.adjust("1 second");
+      assert.deepStrictEqual(sent, ["audio.volume=40"]);
+      assert.isUndefined((yield* registry.get("tumble"))!.asleep);
+    }).pipe(Effect.provide(layer)),
+);

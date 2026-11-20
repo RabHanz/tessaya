@@ -139,6 +139,16 @@ export const readView = (
   id: d.deviceId,
   name: d.name,
   online: d.online,
+  // Gone, its last readings are not its state: say since when, never the old values as now.
+  ...(d.asleep === true
+    ? {
+        asleep: `${d.name} is asleep, as he asked${d.lastSeenAt == null ? "" : `, since ${d.lastSeenAt}`}: screens off, not listening; a press, a touch or her name wakes her.`,
+      }
+    : d.online
+      ? {}
+      : {
+          offline: `${d.name} is offline${d.lastSeenAt == null ? "" : ` since ${d.lastSeenAt}`}; nothing it reported before then is current.`,
+        }),
   values: d.items
     .filter((i) =>
       itemIds === undefined ? accessOf(i).read || accessOf(i).event : itemIds.includes(i.id),

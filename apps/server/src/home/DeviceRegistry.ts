@@ -87,10 +87,15 @@ interface Held {
   live: Map<string, number>;
   /** The member whose session first reported this client vessel; null: a room vessel, or the owner's from before. */
   member: string | null;
+  /** Put to sleep on purpose (state/sleep), since when: screens off, not listening, still on the hub. */
+  asleep?: boolean;
+  asleepAt?: number;
 }
 
 /** A client vessel calls at least every 15 s while it runs. */
 const CLIENT_ONLINE_MS = 45_000;
+/** A broker device that says it is online but has sent nothing for this long is gone (its session dropped unclean). */
+const BROKER_SILENT_MS = 10 * 60_000;
 const ACK_WAIT_MS = 4_000;
 /** A device away this long is shown as gone, with "forget it" offered. */
 const STALE_MS = 14 * 24 * 60 * 60_000;
@@ -111,6 +116,8 @@ export class DeviceRegistry extends Context.Service<
     ) => Effect.Effect<void>;
     /** A broker device's own online flag (its last will). */
     readonly seen: (deviceId: string, online: boolean) => Effect.Effect<void>;
+    /** A broker device says it is going to sleep, or woke (its retained state/sleep). */
+    readonly sleeping: (deviceId: string, asleep: boolean) => Effect.Effect<void>;
     readonly list: Effect.Effect<ReadonlyArray<RegisteredDevice>>;
     readonly get: (deviceId: string) => Effect.Effect<RegisteredDevice | null>;
     /** One value, for code that needs a number now (the R1's volume step). */
@@ -168,6 +175,8 @@ const make = Effect.gen(function* () {
   const writers = new Map<DeviceVia, DeviceWriter>();
   const acks = new Map<string, Deferred.Deferred<{ ok: boolean; error?: string }>>();
   const queued = new Map<string, Array<DeviceWrite>>();
+  /** Free changes asked of a device while it slept, done when it wakes. */
+  const whenAwake = new Map<string, Array<{ itemId: string; value: unknown }>>();
   const wake = new Map<string, Deferred.Deferred<void>>();
   let counter = 0;
   let owned: { items: ReadonlyArray<DeviceItem>; writer: OwnWriter } | null = null;
@@ -248,14 +257,20 @@ const make = Effect.gen(function* () {
       };
       devices.set(deviceId, d);
     }
-    d.lastSeen = now;
+    // A broker device is seen only while it is online: its retained readings, served again after it left, are not
+    // it (20 Nov 20:37: Tumble left, and "charging 99%" read as live for 4 hours).
+    if (d.via !== "mqtt" || d.online === true) d.lastSeen = now;
     return d;
   };
 
   const onlineOf = (d: Held, now: number) =>
     d.via === "client"
       ? d.lastSeen !== null && now - d.lastSeen < CLIENT_ONLINE_MS
-      : d.online === true;
+      : d.online === true &&
+        (d.via !== "mqtt" ||
+          d.asleep === true ||
+          d.lastSeen === null ||
+          now - d.lastSeen < BROKER_SILENT_MS);
 
   const view = (d: Held, now: number): RegisteredDevice => ({
     deviceId: d.deviceId,
@@ -264,14 +279,19 @@ const make = Effect.gen(function* () {
     firmware: d.firmware,
     via: d.via,
     online: onlineOf(d, now),
+    ...(d.asleep === true ? { asleep: true } : {}),
     ...(!onlineOf(d, now) && d.lastSeen !== null && now - d.lastSeen > STALE_MS
       ? { stale: true }
       : {}),
-    lastSeenAt: iso(d.lastSeen),
+    // Asleep, "since" is when she went to sleep.
+    lastSeenAt: iso(d.asleep === true ? (d.asleepAt ?? d.lastSeen) : d.lastSeen),
     version: d.version,
     ...(d.member === null ? {} : { member: d.member }),
     items: [...d.items, ...ownedOf(d)],
-    values: [...d.values].map(([itemId, v]) => ({ itemId, value: v.value, at: iso(v.at)! })),
+    // Offline, its last readings are not given as its state: lastSeenAt says since when it is gone.
+    values: onlineOf(d, now)
+      ? [...d.values].map(([itemId, v]) => ({ itemId, value: v.value, at: iso(v.at)! }))
+      : [],
     live: [...d.live]
       .filter(([, until]) => until > now)
       .map(([itemId, until]) => ({ itemId, until: iso(until)! })),
@@ -342,6 +362,13 @@ const make = Effect.gen(function* () {
     );
   });
 
+  /** Awake and on the hub again: what he asked while she slept is done now. */
+  const doneOnWaking = Effect.fn("DeviceRegistry.doneOnWaking")(function* (deviceId: string) {
+    const waiting = whenAwake.get(deviceId) ?? [];
+    whenAwake.delete(deviceId);
+    for (const w of waiting)
+      yield* write(deviceId, w.itemId, w.value).pipe(Effect.ignore, Effect.forkDetach);
+  });
   const write = Effect.fn("DeviceRegistry.write")(function* (
     deviceId: string,
     itemId: string,
@@ -364,6 +391,16 @@ const make = Effect.gen(function* () {
     // The server's own item is answered here, whether or not the device is online.
     if (own !== undefined && owned !== null)
       return { status: "done", line: yield* owned.writer(deviceId, itemId, checked.value) };
+    if (d.asleep === true) {
+      // Asleep as he asked: a free change waits for her to wake; anything that needs a yes is asked again then.
+      if (item.safety !== "free")
+        return yield* new DeviceRefusedError({
+          why: `${d.name} is asleep. Ask again when she wakes.`,
+        });
+      const list = (whenAwake.get(deviceId) ?? []).filter((w) => w.itemId !== itemId);
+      whenAwake.set(deviceId, [...list, { itemId, value: checked.value }]);
+      return { status: "sent", line: `${d.name} is asleep; it will be done when she wakes.` };
+    }
     if (!onlineOf(d, now))
       return yield* new DeviceRefusedError({ why: yield* offlineWhy(deviceId, d.name) });
     let result: { ok: boolean; error?: string } | null;
@@ -426,8 +463,20 @@ const make = Effect.gen(function* () {
       if (isTestVessel(deviceId)) return;
       const now = yield* Clock.currentTimeMillis;
       const d = devices.get(deviceId) ?? held("mqtt", deviceId, now);
+      // Leaving is the last time it was seen; a retained "0" for one already gone moves nothing.
+      if (online || d.online === true) d.lastSeen = now;
       d.online = online;
-      if (online) d.lastSeen = now;
+      if (online && d.asleep !== true) yield* doneOnWaking(deviceId);
+    }),
+    sleeping: Effect.fn("DeviceRegistry.sleeping")(function* (deviceId: string, asleep: boolean) {
+      if (isTestVessel(deviceId)) return;
+      const now = yield* Clock.currentTimeMillis;
+      const d = devices.get(deviceId) ?? held("mqtt", deviceId, now);
+      // She re-sends it on every reconnect: the first "asleep" is when she went to sleep.
+      if (asleep && d.asleep !== true) d.asleepAt = now;
+      if (d.online === true) d.lastSeen = now;
+      d.asleep = asleep;
+      if (!asleep && onlineOf(d, now)) yield* doneOnWaking(deviceId);
     }),
     list: Effect.map(Clock.currentTimeMillis, (now) =>
       [...devices.values()].map((d) => view(d, now)),

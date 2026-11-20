@@ -69,6 +69,7 @@ import { isBrain } from "./BrainHost.ts";
 import { TessayaRecordService } from "./TessayaRecordService.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
 import { TurnLiveContext } from "./TurnLiveContext.ts";
+import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 
 export const PULSE_STATE_KEY = "pulse.state";
 const DAY = 86_400_000;
@@ -213,6 +214,9 @@ export const patternFact = (p: PulsePattern, now: number) => ({
 });
 
 /** One sense pass: new events into the digest. Code only; never a model call. */
+/** A body offline this long, not just a reboot or a walk out of range, is worth his knowing. */
+const OFFLINE_RAISE_MS = 15 * 60_000;
+
 export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseState) {
   const now = yield* Clock.currentTimeMillis;
   const events: Array<PulseEvent> = [];
@@ -328,6 +332,25 @@ export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseStat
         urgent: false,
         told: false,
       });
+  // A body of hers gone from its hub, unannounced, for a while: raised once per time it went (M-132, 20 Nov 20:37).
+  const registry = yield* Effect.serviceOption(DeviceRegistry);
+  if (Option.isSome(registry))
+    for (const d of yield* registry.value.list) {
+      const since = d.lastSeenAt === null ? Number.NaN : Date.parse(d.lastSeenAt);
+      // Asleep because he asked is never a fault.
+      if (d.via !== "mqtt" || d.online || d.asleep === true || !(now - since > OFFLINE_RAISE_MS))
+        continue;
+      events.push({
+        id: `offline:${d.deviceId}:${since}`,
+        category: "home",
+        text: `${d.name} has been offline since ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone }).format(since)}`,
+        at: since,
+        member: null,
+        weight: 70,
+        urgent: true,
+        told: false,
+      });
+    }
   const commitments = yield* Effect.serviceOption(TessayaCommitmentService);
   if (Option.isSome(commitments))
     for (const c of yield* commitments.value.list)
