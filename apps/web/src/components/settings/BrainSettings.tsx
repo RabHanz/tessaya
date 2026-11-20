@@ -318,6 +318,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const keepTurns = useEnvironmentSettings(environmentId, (s) => s.tessayaTurnCapture);
   const outsideBody = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyOutsideAgents);
   const physicsClips = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyPhysicsClips);
+  const brows = useEnvironmentSettings(environmentId, (s) => s.tessayaBrows);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -373,6 +374,17 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Physics-trained moves"
             checked={physicsClips}
             onCheckedChange={(on) => update({ tessayaBodyPhysicsClips: on })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Brows over her fringe"
+        description="Her eyebrows are drawn a little darker where her fringe covers them, so her expressions read. On by itself only for a model with pale brows."
+        control={
+          <Switch
+            aria-label="Brows over her fringe"
+            checked={brows !== "off"}
+            onCheckedChange={(on) => update({ tessayaBrows: on ? "auto" : "off" })}
           />
         }
       />

@@ -70,7 +70,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { feel, type Felt } from "./TessayaBody.ts";
-import { propStateFor } from "./propState.ts";
+import { browsFor, propStateFor } from "./propState.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
@@ -1142,7 +1142,9 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
           label: felt.label,
           intensity: felt.intensity,
           // what's going on, for the prop her body there holds (renderFor decides, per form)
-          ...(a.value.device === undefined ? {} : { props: yield* propStateFor(a.value.device) }),
+          ...(a.value.device === undefined
+            ? {}
+            : { props: yield* propStateFor(a.value.device), brows: yield* browsFor() }),
           ...(owner ? { why: felt.why, dials: inner.dials } : {}),
           people: inner.people.map((p) => ({
             member: p.member,

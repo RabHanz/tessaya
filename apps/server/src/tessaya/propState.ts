@@ -50,3 +50,15 @@ export const propStateFor = Effect.fn("TessayaProps.stateFor")(function* (vessel
     hour,
   } satisfies PropState;
 });
+
+/** Her brows over her fringe as he set them (`tessayaBrows`), as a body's `brows` cue reads it: null is the model's own. */
+export const browsFor = Effect.fn("TessayaProps.browsFor")(function* () {
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const set = Option.isSome(settings)
+    ? yield* Effect.orElseSucceed(
+        Effect.map(settings.value.getSettings, (s) => s.tessayaBrows),
+        () => "auto" as const,
+      )
+    : "auto";
+  return set === "auto" ? null : set === "on";
+});

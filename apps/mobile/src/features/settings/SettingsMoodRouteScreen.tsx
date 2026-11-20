@@ -183,6 +183,12 @@ function MoodSections(props: {
           onValueChange={(on) => patch({ tessayaBodyPhysicsClips: on })}
         />
         <SettingsSwitchRow
+          label="Brows over her fringe"
+          subtitle="Her eyebrows are drawn a little darker where her fringe covers them, so her expressions read. On by itself only for a model with pale brows."
+          value={settings.tessayaBrows !== "off"}
+          onValueChange={(on) => patch({ tessayaBrows: on ? "auto" : "off" })}
+        />
+        <SettingsSwitchRow
           label="Breath between sentences"
           subtitle="A soft breath before a long sentence of her reply on the Tessel. Off, she pauses instead."
           value={settings.tessayaVoiceBreath}

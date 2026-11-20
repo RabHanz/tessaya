@@ -96,6 +96,9 @@ export const SERVER_SETTINGS_VOICE: {
     'developer feedback loop, problem reports to developers: "off" collects nothing; "silent" sends reports without a word; "developer" also keeps a live dev feed and triage, and she says one line per report',
   ),
   tessayaFeedbackGithub: owner("opening a GitHub issue for each problem report"),
+  tessayaBrows: free(
+    'her eyebrows drawn darker where her fringe covers them, so her expressions read: auto (only on a model with pale brows), on or off ("make her eyebrows stand out" is on)',
+  ),
   tessayaProp: free(
     'a prop she holds or wears on every body until he says otherwise ("hold an umbrella", "wear the party hat"; "put it away" is ""): one of ' +
       PROPS.join(", "),
