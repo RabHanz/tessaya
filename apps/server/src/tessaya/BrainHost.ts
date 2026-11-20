@@ -45,6 +45,8 @@ export const BrainOp = Schema.Literals([
   "privateTier",
   "pronounce",
   "voiceIdGate",
+  // what each Tessel's room loop learnt of his far voice, for Voice ID's status on any server's desktop
+  "voiceLearning",
   "scratchpad",
   "vocabulary",
   "roomLoop",

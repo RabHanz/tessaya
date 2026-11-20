@@ -38,6 +38,7 @@ import {
   type DevicesOverview,
   BT_KINDS,
   type BtKind,
+  VoiceLearningReport,
 } from "@t3tools/tessaya-contracts";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import {
@@ -345,6 +346,8 @@ export interface Heard {
   enrol: EnrolCard | null;
   /** Its room loop's last health report (`state/voicehost`, retained, each minute). */
   voiceHost: VoiceHostReport | null;
+  /** What its room loop has learnt of his far voice (`state/voice/learning`, retained). */
+  voiceLearning: VoiceLearningReport | null;
   /** When its headphones or speaker stopped taking her audio (firmware `event/bt/stall`, lost), newest last. */
   stalls: Array<number>;
   /** Its last turns' Voice ID and recogniser figures, newest last. */
@@ -366,6 +369,7 @@ const blank = (): Heard => ({
   log: [],
   enrol: null,
   voiceHost: null,
+  voiceLearning: null,
   stalls: [],
   turns: [],
 });
@@ -722,6 +726,8 @@ export const privateTargetOf = (
  * what the service must react to: the device coming online (re-arm in-house voice) or a tag tapped. Payloads are the
  * firmware's, so data.
  */
+const decodeLearning = Schema.decodeUnknownOption(VoiceLearningReport);
+
 export const applyMessage = (
   devices: Map<string, Heard>,
   topic: string,
@@ -756,6 +762,10 @@ export const applyMessage = (
   // Retained and repeated each minute: kept for her health model, never logged, and not a sign it is online.
   if (rest === "state/voicehost") {
     d.voiceHost = voiceHostReportOf(body);
+    return done();
+  }
+  if (rest === "state/voice/learning") {
+    d.voiceLearning = Option.getOrNull(decodeLearning(body));
     return done();
   }
   if (rest === "event/bt/stall" && body?.["lost"] === true) {
@@ -1159,6 +1169,7 @@ export class HomeDevices extends Context.Service<
       ReadonlyArray<{
         readonly id: string;
         readonly voiceHost: VoiceHostReport | null;
+        readonly voiceLearning: VoiceLearningReport | null;
         readonly stalls: ReadonlyArray<number>;
         readonly samples: Readonly<Record<string, ReadonlyArray<number>>>;
         readonly turns: ReadonlyArray<VoiceIdTurn>;
@@ -3774,6 +3785,7 @@ const make = Effect.gen(function* () {
       [...heard.entries()].map(([id, d]) => ({
         id,
         voiceHost: d.voiceHost,
+        voiceLearning: d.voiceLearning,
         stalls: d.stalls,
         samples: d.samples,
         turns: d.turns,

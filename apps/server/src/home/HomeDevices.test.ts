@@ -255,6 +255,14 @@ it("folds the firmware's topics into a device, keeping only the times of a voice
   assert.strictEqual(devices.get(ID)!.voiceHost?.host.memPsiFull10, 29);
   assert.strictEqual(devices.get(ID)!.log.length, logged);
   assert.strictEqual(devices.get(ID)!.lastSeen, seenBefore);
+  // What its loop learnt of his far voice is kept the same way; a malformed report clears it rather than lying.
+  const learnt = { roomSamples: 4, farClips: 3, farAt: 9_100, forgotAt: null };
+  fold("state/voice/learning", JSON.stringify(learnt), 9_100);
+  assert.deepStrictEqual<unknown>(devices.get(ID)!.voiceLearning, learnt);
+  fold("state/voice/learning", '{"farClips":"lots"}', 9_200);
+  assert.isNull(devices.get(ID)!.voiceLearning);
+  assert.strictEqual(devices.get(ID)!.log.length, logged);
+  assert.strictEqual(devices.get(ID)!.lastSeen, seenBefore);
   fold("event/audio/stall", "{}", 9_400);
   fold("event/bt/stall", '{"lost":true}', 9_500);
   assert.deepStrictEqual(devices.get(ID)!.stalls, [9_500]);

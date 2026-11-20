@@ -11,6 +11,7 @@ import {
   type DesktopVoiceSettings,
   type DesktopVoiceSettingsPatch,
   type VoiceIdGate,
+  type VoiceLearning,
 } from "@t3tools/tessaya-contracts";
 import * as Schema from "effect/Schema";
 
@@ -235,6 +236,8 @@ export const createRemoteSettings = (input: {
   /** His Voice ID switches here, sent after `shareGate`; `onVoiceIdGate` takes her brain's (the one record). */
   readonly voiceIdGate?: () => VoiceIdGate;
   readonly onVoiceIdGate?: (gate: VoiceIdGate) => void;
+  /** What each Tessel learnt of his far voice, from every sync that carries it. */
+  readonly onVoiceLearning?: (learning: ReadonlyArray<VoiceLearning>) => void;
   readonly now?: () => number;
 }) => {
   let applied = 0;
@@ -271,6 +274,8 @@ export const createRemoteSettings = (input: {
       input.onGrants?.(answer.value.grants);
     if (answer._tag === "Some" && answer.value.pronounce !== undefined)
       input.onPronounce?.(answer.value.pronounce);
+    if (answer._tag === "Some" && answer.value.voiceLearning !== undefined)
+      input.onVoiceLearning?.(answer.value.voiceLearning);
     // Reported again at once, so Coming up shows what the change did.
     if (answer._tag === "Some" && answer.value.standing !== undefined) {
       input.onStanding?.(answer.value.standing);

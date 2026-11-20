@@ -50,6 +50,7 @@ import {
   TONE_LABELS,
   tessayaTargetOf,
   type ToneLabel,
+  type VoiceLearning,
 } from "@t3tools/tessaya-contracts";
 import {
   chooseMode,
@@ -1733,6 +1734,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   const modelsDir = NodePath.join(input.stateDir, "voice", "models");
   // Set once his server's settings sync runs: marks a switch he flipped here for her brain.
   let shareGate = () => {};
+  let voiceLearning: ReadonlyArray<VoiceLearning> = [];
   const voiceId = createVoiceId({
     stateDir: input.stateDir,
     ownerName: () => "You",
@@ -7479,7 +7481,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ...styleControls(styles.read(), settings.dictationCleanup),
       ...insightControls(deepInsights()),
       ...voiceProfileControls(profileValue),
-      ...voiceIdControls(voiceId.view(loop !== null)),
+      ...voiceIdControls({ ...voiceId.view(loop !== null), learning: voiceLearning }),
       {
         id: "d.import",
         section: "Vocabulary files",
@@ -9533,6 +9535,9 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     } else if (id === PALM_RESUME) {
       palmCheck.resetLimit();
       pushHome();
+    } else if (id === "vid.forgetLearning") {
+      save({ voiceId: { ...settings.voiceId, forgetLearningAt: Date.now() } });
+      shareGate();
     } else if (id === "vid.enrol") voiceId.read({ kind: "owner" });
     else if (id === "vid.card:redo") voiceId.card("redo");
     else if (id === "vid.card:close") voiceId.card("close");
@@ -9987,6 +9992,11 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       controls: homeControls,
       ...(input.onGrants === undefined ? {} : { onGrants: input.onGrants }),
       onPronounce: (pronounce) => void (herPronounce = pronounce),
+      onVoiceLearning: (learning) => {
+        if (JSON.stringify(learning) === JSON.stringify(voiceLearning)) return;
+        voiceLearning = learning;
+        pushHome();
+      },
       voiceIdGate: () => gateOf(settings.voiceId),
       // Coming up on his phone and by voice: each job's next run, and its switch or moved run from there.
       standing: () =>

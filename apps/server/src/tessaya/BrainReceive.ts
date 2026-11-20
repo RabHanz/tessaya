@@ -28,7 +28,7 @@ import { memoryAtBrain, ON_BRAIN, TessayaMemoryService } from "./TessayaMemorySe
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
-import { VoiceIdGateChange, voiceIdGateHere } from "./VoiceIdGate.ts";
+import { VoiceIdGateChange, voiceIdGateHere, voiceLearningHere } from "./VoiceIdGate.ts";
 import { TessayaScratchpadAct } from "@t3tools/tessaya-contracts";
 import { scratchpadHere } from "./TessayaScratchpad.ts";
 import { storeStylePairs } from "./stylePairsStore.ts";
@@ -434,6 +434,10 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       return Option.isNone(gate)
         ? refused("Voice ID's switches aren't kept here.")
         : done(gate.value);
+    }
+    case "voiceLearning": {
+      const learnt = yield* voiceLearningHere().pipe(Effect.orElseSucceed(Option.none));
+      return Option.isNone(learnt) ? refused("No Tessels are heard here.") : done(learnt.value);
     }
     case "scratchpad": {
       const act = decodeScratchpad(payload);

@@ -15,7 +15,7 @@ import { activityList, activityWhy } from "../provenance/activity.ts";
 import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
 import { pronunciations } from "./Pronunciations.ts";
-import { voiceIdGate } from "./VoiceIdGate.ts";
+import { voiceIdGate, voiceLearning } from "./VoiceIdGate.ts";
 import { scratchpad } from "./TessayaScratchpad.ts";
 import * as TessayaDatabase from "./TessayaDatabase.ts";
 import {
@@ -802,6 +802,14 @@ export const makeHandlers = Effect.gen(function* () {
             voiceIdGate(input.voiceIdGate === undefined ? {} : { set: input.voiceIdGate }).pipe(
               Effect.orElseSucceed(Option.none),
               Effect.map((g) => (Option.isNone(g) ? answer : { ...answer, voiceIdGate: g.value })),
+            ),
+          ),
+          Effect.flatMap((answer) =>
+            voiceLearning().pipe(
+              Effect.orElseSucceed(Option.none),
+              Effect.map((l) =>
+                Option.isNone(l) ? answer : { ...answer, voiceLearning: l.value.slice(0, 20) },
+              ),
             ),
           ),
           Effect.flatMap((answer) => Effect.map(readGrants, (grants) => ({ ...answer, grants }))),
