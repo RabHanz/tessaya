@@ -288,7 +288,9 @@ describe("the room's live tool suite", () => {
 
   it("has a case for every tool the room can call, so a new tool fails until it has one", async () => {
     const { ROOM_TOOL_SPECS } = await import("../../apps/server/src/home/R1Tools.ts");
-    expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look"])).toEqual([]);
+    expect(uncovered([...ROOM_TOOL_SPECS.map((s) => s.name), "room_look", "house_look"])).toEqual(
+      [],
+    );
     expect(uncovered(["a_new_tool"])).toEqual(["a_new_tool"]);
   });
 

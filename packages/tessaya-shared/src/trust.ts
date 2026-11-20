@@ -138,10 +138,13 @@ const REACH: Readonly<Record<string, ToolReach>> = {
     ].map((t) => [t, "home" as const]),
   ),
   ...Object.fromEntries(
-    ["room_look", "home_automations", "home_automation_save", "home_automation_set"].map((t) => [
-      t,
-      "secure" as const,
-    ]),
+    [
+      "room_look",
+      "house_look",
+      "home_automations",
+      "home_automation_save",
+      "home_automation_set",
+    ].map((t) => [t, "secure" as const]),
   ),
   ...Object.fromEntries(
     [

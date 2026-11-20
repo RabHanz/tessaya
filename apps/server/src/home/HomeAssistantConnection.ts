@@ -53,6 +53,8 @@ export interface HomeLink {
     path: string,
     body?: unknown,
   ) => Effect.Effect<unknown, HomeCallError>;
+  /** A GET whose answer is bytes (a camera's still), never parsed. */
+  readonly image: (path: string) => Effect.Effect<Uint8Array, HomeCallError>;
   /** Completes when the link drops. */
   readonly closed: Effect.Effect<void>;
 }
@@ -211,7 +213,19 @@ const make = Effect.gen(function* () {
       return parsed._tag === "Some" ? parsed.value : text;
     });
 
-    return { command, subscribe, rest, closed: Deferred.await(closed) } satisfies HomeLink;
+    const image = Effect.fn("HomeAssistantConnection.image")(function* (path: string) {
+      const operation = `GET ${path.split("/").slice(0, 4).join("/")}`;
+      const failed = (cause: unknown) =>
+        new HomeCallError({ operation, code: "unreachable", said: "", cause });
+      const response = yield* http
+        .execute(HttpClientRequest.get(`${base}${path}`).pipe(HttpClientRequest.bearerToken(token)))
+        .pipe(Effect.mapError(failed));
+      if (response.status < 200 || response.status >= 300)
+        return yield* new HomeCallError({ operation, code: `http_${response.status}`, said: "" });
+      return new Uint8Array(yield* response.arrayBuffer.pipe(Effect.mapError(failed)));
+    });
+
+    return { command, subscribe, rest, image, closed: Deferred.await(closed) } satisfies HomeLink;
   });
   return HomeAssistantConnection.of({ open });
 });

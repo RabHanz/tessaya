@@ -208,6 +208,10 @@ const makeHouse = () => {
         put(`automation.${id}`, { s: "on", a: { id, friendly_name: config["alias"] } });
         return Effect.succeed({ result: "ok" });
       }),
+    image: (path) =>
+      path === "/api/camera_proxy/camera.front_door"
+        ? Effect.succeed(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))
+        : Effect.fail(new HomeCallError({ operation: "GET", code: "http_404", said: "" })),
     closed: Effect.never,
   };
   const connection = Layer.succeed(HomeAssistantConnection)({
@@ -645,6 +649,14 @@ it.effect(
         ...house.states.get("binary_sensor.front_door_person")!,
         s: "on",
       });
+      // a look at who it is: the camera by its words, a still for this turn only
+      const still = yield* home.snapshot("the front door");
+      assert.deepStrictEqual(
+        [still.camera, still.mediaType, still.data],
+        ["camera.front_door", "image/jpeg", "/9j/4A=="],
+      );
+      assert.strictEqual((yield* home.snapshot(null)).camera, "camera.front_door");
+      assert.include((yield* home.snapshot("garage").pipe(Effect.flip)).why, "Say which camera");
       const seen = yield* PubSub.takeAll(events);
       assert.deepStrictEqual(
         seen.map((e) => [e.entityId, e.kind, e.from, e.to, e.camera, e.area]),

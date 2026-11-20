@@ -17,6 +17,7 @@ import { startTessayaMcp } from "../../apps/desktop/src/tessaya/agent/tessayaMcp
 import { toolUsesOf } from "../../apps/desktop/src/tessaya/screen/claudeVision.ts";
 import {
   calledPersona,
+  HOUSE_LOOK,
   LOOK,
   R1_STREAM_SYSTEM,
   r1Data,
@@ -778,12 +779,12 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   const mcp =
     values.brain === "tools"
       ? await startTessayaMcp({
-          tools: [...ROOM_TOOL_SPECS, LOOK, CONVERSATION_END].map((tool) => ({
+          tools: [...ROOM_TOOL_SPECS, LOOK, HOUSE_LOOK, CONVERSATION_END].map((tool) => ({
             name: tool.name,
             description: tool.description,
             inputSchema: tool.input_schema as Record<string, unknown>,
             run: async (args) =>
-              tool.name === LOOK.name
+              tool.name === LOOK.name || tool.name === HOUSE_LOOK.name
                 ? {
                     text: "The picture the camera just took.",
                     images: [{ data: PICTURE, mimeType: "image/jpeg" }],

@@ -262,6 +262,21 @@ export class HomeAssistantService extends Context.Service<
     readonly removeDevice: (id: string | null) => Effect.Effect<{ readonly configured: boolean }>;
     /** One pass of the sweep and the approval check; the layer runs it on its own clock. */
     readonly tick: Effect.Effect<void>;
+    /**
+     * One still from a house camera (M-114), for the model to see in this turn only: never written anywhere. `camera` is
+     * an entity id or words that name one ("front door"); null picks the only camera.
+     */
+    readonly snapshot: (
+      camera: string | null,
+    ) => Effect.Effect<
+      {
+        readonly camera: string;
+        readonly name: string;
+        readonly mediaType: string;
+        readonly data: string;
+      },
+      HomeRefusedError
+    >;
     /** Who or what arrived, a door, a doorbell, a lock, as the house reports it (M-114): what rules wait on. */
     readonly events: Effect.Effect<PubSub.Subscription<HouseEvent>, never, Scope.Scope>;
   }
@@ -2317,7 +2332,55 @@ const make = Effect.gen(function* () {
     return now - servedAt < PEER_FRESH_MS;
   });
 
+  const snapshot = Effect.fn("HomeAssistant.snapshot")(function* (camera: string | null) {
+    // shortcut: a house on another server is not looked at from here; a peer tool when one is wanted.
+    if (link === null)
+      return yield* new HomeRefusedError({ why: "The house is not connected here." });
+    const cameras = [...states.keys()].filter((id) => id.startsWith("camera."));
+    const words = (camera ?? "")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 1);
+    const score = (id: string) =>
+      words.filter((w) => `${id} ${nameOf(id)} ${areaOf(id) ?? ""}`.toLowerCase().includes(w))
+        .length;
+    const picked =
+      camera !== null && states.has(camera)
+        ? camera
+        : words.length === 0
+          ? cameras.length === 1
+            ? cameras[0]
+            : undefined
+          : cameras.toSorted((a, b) => score(b) - score(a)).find((id) => score(id) > 0);
+    if (picked === undefined || !picked.startsWith("camera."))
+      return yield* new HomeRefusedError({
+        why:
+          cameras.length === 0
+            ? "The house has no camera."
+            : `Say which camera: ${cameras.map(nameOf).join(", ")}.`,
+      });
+    const bytes = yield* link
+      .image(`/api/camera_proxy/${encodeURIComponent(picked)}`)
+      .pipe(
+        Effect.mapError(
+          () => new HomeRefusedError({ why: `The ${nameOf(picked)} camera did not answer.` }),
+        ),
+      );
+    if (bytes.length === 0 || bytes.length > 8 * 1024 * 1024)
+      return yield* new HomeRefusedError({
+        why: `The ${nameOf(picked)} camera sent no usable picture.`,
+      });
+    const mediaType = bytes[0] === 0x89 ? "image/png" : "image/jpeg";
+    return {
+      camera: picked,
+      name: nameOf(picked),
+      mediaType,
+      data: Buffer.from(bytes).toString("base64"),
+    };
+  });
+
   return HomeAssistantService.of({
+    snapshot,
     events: PubSub.subscribe(houseEvents),
     // With no connection here, the house through a linked server is connected (19 Nov 05:20: on a server with no token
     // she told him "the house isn't connected" while every home tool answered through the linked one).
