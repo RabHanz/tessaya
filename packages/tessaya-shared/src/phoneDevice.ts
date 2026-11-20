@@ -61,6 +61,17 @@ export const phoneManifest = (facts: PhoneFacts): DeviceManifest => ({
       description: "whether the phone has motion sensors Tessaya can use",
     },
     {
+      id: "talk.cost",
+      label: "Talk tab cost",
+      type: "string",
+      access: "read",
+      safety: "free",
+      report: "on-change",
+      group: "system",
+      description:
+        "what her body costs the phone: frames drawn a minute and JS-thread busy share over ten minutes on the Talk tab, and ten in the background (D-038)",
+    },
+    {
       id: "body.tags",
       label: "Body tags",
       type: "list",
