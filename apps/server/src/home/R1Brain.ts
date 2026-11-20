@@ -19,7 +19,7 @@ import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import { onSubscription } from "../tessaya/BrainRoutes.ts";
+import { brainConfigDir, onSubscription } from "../tessaya/BrainRoutes.ts";
 import { claudeProgram } from "../tessaya/TessayaOneShot.ts";
 import {
   BrainUsage,
@@ -441,9 +441,14 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
     );
     const path = onSubscription(row);
     if ("refused" in path) return yield* new R1BrainError({ detail: path.refused });
+    // At its limit, the machine login is left alone: this turn's session runs on an account with room.
+    const failover = yield* brainConfigDir().pipe(Effect.orElseSucceed(() => null));
+    if (failover !== null)
+      yield* Effect.logInfo("brain turn on another account", { account: failover.account });
     return {
       role: turn.role ?? "voice",
       model: turn.model ?? path.model,
+      ...(failover === null ? {} : { configDir: failover.dir }),
       ...(turn.feature === undefined ? {} : { feature: turn.feature }),
       effort: row.effort,
       system: turn.system,

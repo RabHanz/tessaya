@@ -71,6 +71,8 @@ export interface SessionSpec {
   /** What its usage rows name it (`ToolTurn.feature`). */
   readonly feature?: string;
   /** Claude Code's own tools for this session, and the folder they work in: his desktop's files on his own machine. */
+  /** Another account's Claude config dir, when the machine login is at its limit (BrainRoutes.failoverDir). */
+  readonly configDir?: string;
   readonly builtins?: {
     readonly tools: ReadonlyArray<string>;
     readonly cwd: string;
@@ -153,6 +155,7 @@ const specKey = (spec: SessionSpec) =>
     spec.system,
     spec.tools.map((t) => t.name),
     spec.builtins ?? null,
+    spec.configDir ?? null,
   ]);
 
 export const createVoiceSessions = (
@@ -212,7 +215,11 @@ export const createVoiceSessions = (
     for (let tries = 1; child === null; tries += 1) {
       const proc = spawn(spec.builtins?.binary ?? "claude", [...sessionArgs(spec, config)], {
         cwd: spec.builtins?.cwd ?? dir,
-        env: { ...env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
+        env: {
+          ...env,
+          CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1",
+          ...(spec.configDir === undefined ? {} : { CLAUDE_CONFIG_DIR: spec.configDir }),
+        },
         stdio: ["pipe", "pipe", "ignore"],
         windowsHide: true,
       });
