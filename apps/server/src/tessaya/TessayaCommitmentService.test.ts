@@ -1,6 +1,14 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
+
+import * as PeerLinks from "../peer/PeerLinks.ts";
+import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
+import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
 
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaCommitmentService, layer as commitmentLayer } from "./TessayaCommitmentService.ts";
@@ -47,3 +55,69 @@ layer("BatonCommitmentService", (it) => {
     }),
   );
 });
+
+it.effect(
+  "one brain (M-103): a worker's reminders land on the brain, what it held moves up, and a brain that moves gets them",
+  () =>
+    Effect.gen(function* () {
+      const brainCtx = yield* Layer.build(
+        commitmentLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+      );
+      const onBrain = Context.get(brainCtx, TessayaCommitmentService);
+      let reachable = true;
+      const workerCtx = yield* Layer.build(
+        commitmentLayer.pipe(
+          Layer.provideMerge(
+            Layer.succeed(PeerLinks.PeerLinks, {
+              enabled: Effect.succeed(true),
+              list: Effect.succeed([
+                { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+              ]),
+            } as never),
+          ),
+          Layer.provideMerge(
+            Layer.succeed(
+              PeerMcpClient.PeerMcpClient,
+              PeerMcpClient.PeerMcpClient.of({
+                call: (input) =>
+                  (reachable
+                    ? receiveAtBrain(
+                        input.arguments["op"] as never,
+                        input.arguments["payload"],
+                      ).pipe(Effect.provideContext(brainCtx))
+                    : Effect.fail("away")) as never,
+              }),
+            ),
+          ),
+          Layer.provideMerge(SqlitePersistenceMemory),
+        ),
+      );
+      const worker = Context.get(workerCtx, TessayaCommitmentService);
+      const sql = Context.get(workerCtx, SqlClient.SqlClient);
+      // made here while this server was her brain, then the brain moved
+      yield* worker.upsert([open("before", 10, 500)]);
+      yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+      yield* worker.upsert([open("after", 10, 600)]);
+      assert.deepStrictEqual(
+        (yield* onBrain.list).map((c) => c.id),
+        ["after", "before"].toSorted(),
+      );
+      assert.deepStrictEqual((yield* worker.list).map((c) => c.id).toSorted(), ["after", "before"]);
+      // the brain away: the write waits in the outbox, then lands once
+      reachable = false;
+      yield* worker.upsert([open("away", 10, 700)]);
+      assert.notInclude(
+        (yield* onBrain.list).map((c) => c.id),
+        "away",
+      );
+      reachable = true;
+      assert.include(
+        (yield* worker.list).map((c) => c.id),
+        "away",
+      );
+      assert.include(
+        (yield* onBrain.list).map((c) => c.id),
+        "away",
+      );
+    }).pipe(Effect.scoped),
+);

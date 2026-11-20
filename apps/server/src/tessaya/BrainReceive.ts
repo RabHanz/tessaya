@@ -7,6 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { CommitmentAsk, TessayaCommitmentService } from "./TessayaCommitmentService.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import { BrainOp as BrainOpSchema, brainOn, type BrainOp } from "./BrainHost.ts";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -170,6 +171,7 @@ const MemoryAsk = Schema.Struct({
   viewer: Schema.Literals(["server", "desktop", "client"]),
 });
 const decodeMemoryAsk = Schema.decodeUnknownOption(MemoryAsk);
+const decodeCommitmentAsk = Schema.decodeUnknownOption(CommitmentAsk);
 const MemorySyncIn = Schema.Struct({
   origin: Schema.String.check(Schema.isMaxLength(200)),
   changes: Schema.Array(Schema.Unknown),
@@ -310,6 +312,18 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
         yield* memoryAtBrain(ask.value.m, ask.value.args, ask.value.viewer).pipe(
           Effect.provideService(TessayaMemoryService, here.value),
         ),
+      );
+    }
+    case "commitments": {
+      const ask = decodeCommitmentAsk(payload);
+      if (Option.isNone(ask)) return refused("Not a reminders ask.");
+      const here = yield* Effect.serviceOption(TessayaCommitmentService);
+      if (Option.isNone(here)) return refused("No reminders here.");
+      const a = ask.value;
+      return done(
+        a.m === "list"
+          ? yield* here.value.local.list
+          : yield* here.value.local.upsert(a.items).pipe(Effect.orElseSucceed(() => 0)),
       );
     }
     case "memorySync": {
