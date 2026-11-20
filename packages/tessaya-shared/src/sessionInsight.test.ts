@@ -16,7 +16,7 @@ const row = (
   account: null,
   state,
   urgent: false,
-  box: "hetzner",
+  box: "studio",
   updatedAt,
   thread: null,
   pane: null,
@@ -42,11 +42,7 @@ describe("what a model may read of it", () => {
   it("marks secrets, leaves out private pack text, and keeps the newest part", () => {
     const pack = "she keeps these words for him alone and never says them to anyone else at all";
     const out = readableExcerpt(
-      [
-        "ran the tests",
-        "token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789",
-        `quoting: ${pack}`,
-      ],
+      ["ran the tests", `token ${"sk-" + "ant-api03-" + "a".repeat(40)}`, `quoting: ${pack}`],
       [pack],
     );
     expect(out).toContain("ran the tests");
@@ -59,12 +55,12 @@ describe("what a model may read of it", () => {
 describe("its pull requests and their state", () => {
   it("finds the newest three links and says each in one line", () => {
     const text = [1, 2, 3, 4, 2]
-      .map((n) => `see https://github.com/RabHanz/tessaya/pull/${n}`)
+      .map((n) => `see https://github.com/acme/tessaya/pull/${n}`)
       .join(" ");
     expect(prUrlsIn(text)).toEqual([
-      "https://github.com/RabHanz/tessaya/pull/2",
-      "https://github.com/RabHanz/tessaya/pull/4",
-      "https://github.com/RabHanz/tessaya/pull/3",
+      "https://github.com/acme/tessaya/pull/2",
+      "https://github.com/acme/tessaya/pull/4",
+      "https://github.com/acme/tessaya/pull/3",
     ]);
     expect(
       prLine({
@@ -79,5 +75,5 @@ describe("its pull requests and their state", () => {
 });
 
 it("says who his steering is from", () => {
-  expect(steerText("Rabee", " rerun the tests ")).toBe("From Rabee, via Tessaya: rerun the tests");
+  expect(steerText("Sam", " rerun the tests ")).toBe("From Sam, via Tessaya: rerun the tests");
 });

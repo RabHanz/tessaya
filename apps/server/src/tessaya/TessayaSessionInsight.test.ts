@@ -41,7 +41,7 @@ const row = (
   account: null,
   state: "working",
   urgent: false,
-  box: "hetzner",
+  box: "studio",
   updatedAt: "2026-11-20T02:00:00Z",
   thread: thread === null ? null : { environmentId: "env-here", threadId: thread },
   pane: pane === null ? null : { environmentId: "env-here", pane },
@@ -56,7 +56,7 @@ const setup = () => {
     Layer.succeed(TessayaSessionsAcross, {
       list: () =>
         Effect.succeed({
-          here: { environmentId: "env-here", label: "hetzner" },
+          here: { environmentId: "env-here", label: "studio" },
           sessions: [
             row("work:env-here:t-build", "Build lane", "t-build"),
             row("work:env-here:j-diary", "Diary notes", "t-diary"),
@@ -72,7 +72,7 @@ const setup = () => {
         { role: "user", text: "rerun the speed tests" },
         {
           role: "assistant",
-          text: "Ran them; opened https://github.com/RabHanz/tessaya/pull/1596. Key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789",
+          text: `Ran them; opened https://github.com/acme/tessaya/pull/1596. Key ${"sk-" + "ant-api03-" + "a".repeat(40)}`,
         },
       ],
     }),
@@ -108,7 +108,7 @@ const setup = () => {
       terms: (id) => Effect.succeed(id === "j-shop" ? ({ phase: "approved" } as never) : null),
     }),
     Layer.mock(TessayaHousehold)({
-      grantsOf: () => Effect.succeed({ role: "owner" as const, machine: false, name: "Rabee" }),
+      grantsOf: () => Effect.succeed({ role: "owner" as const, machine: false, name: "Sam" }),
     }),
     Layer.mock(TessayaOneShot)({
       run: (input) =>
@@ -146,7 +146,7 @@ it.effect(
       const build = yield* insight.insight({ session: "what's the build session doing" });
       assert.strictEqual(build.key, "work:env-here:t-build");
       assert.strictEqual(build.lastStep, "Ran the speed tests");
-      assert.strictEqual(build.prs[0]?.url, "https://github.com/RabHanz/tessaya/pull/1596");
+      assert.strictEqual(build.prs[0]?.url, "https://github.com/acme/tessaya/pull/1596");
       assert.notInclude(prompts.join(""), "sk-ant");
 
       const diary = yield* insight.insight({ session: "diary" });
@@ -171,7 +171,7 @@ it.effect("reads his words back first, then sends them marked as his, and record
     const insight = yield* TessayaSessionInsight;
     const back = yield* insight.steer({ session: "build", text: "rerun the tests" });
     assert.strictEqual(back.status, "read_back");
-    assert.strictEqual(back.text, "From Rabee, via Tessaya: rerun the tests");
+    assert.strictEqual(back.text, "From Sam, via Tessaya: rerun the tests");
     assert.lengthOf(sent, 0);
 
     // A T3 thread takes it as its next message; a terminal pane through weave; a job through job_refine instead.
@@ -179,12 +179,12 @@ it.effect("reads his words back first, then sends them marked as his, and record
     assert.strictEqual(go.status, "sent");
     assert.deepStrictEqual(
       threadSends.map((s) => [s.threadId, s.text]),
-      [["t-build", "From Rabee, via Tessaya: rerun the tests"]],
+      [["t-build", "From Sam, via Tessaya: rerun the tests"]],
     );
     yield* insight.steer({ session: "parity", text: "rebase it", confirmed: true });
     assert.deepStrictEqual(
       sent.map((s) => [s.to, s.text]),
-      [["Parity sync", "From Rabee, via Tessaya: rebase it"]],
+      [["Parity sync", "From Sam, via Tessaya: rebase it"]],
     );
     const job = yield* insight.steer({
       session: "checkout",
@@ -197,7 +197,7 @@ it.effect("reads his words back first, then sends them marked as his, and record
     const rows = yield* (yield* TessayaRecordService).query({ kind: "steer", limit: 5 });
     assert.sameMembers(
       rows.map((r) => r.detail),
-      ["From Rabee, via Tessaya: rerun the tests", "From Rabee, via Tessaya: rebase it"],
+      ["From Sam, via Tessaya: rerun the tests", "From Sam, via Tessaya: rebase it"],
     );
   }).pipe(Effect.provide(layer));
 });
