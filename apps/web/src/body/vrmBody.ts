@@ -2825,6 +2825,8 @@ export function mountBody(
     pressure: number;
     pointers: number;
     done: boolean;
+    /** Her face has already answered this stroke while it goes on. */
+    stroked?: boolean;
     hit: THREE.Intersection;
   } | null = null;
   let taps: number[] = [];
@@ -2832,6 +2834,11 @@ export function mountBody(
   const spreadOf = () => {
     const [a, b] = [...pointers.values()];
     return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+  };
+  /** Her face's own first answer to his hand (local, this frame), before the touch is read or her layer hears it. */
+  const touchGlance = (face: string, intensity: number, now: number) => {
+    override = { face: faceWeights(face, intensity), until: now + 900 };
+    setFace(override.face, now);
   };
   const feel = (kind0: string, intensity: number, speed: number) => {
     if (press === null || press.done) return;
@@ -2854,15 +2861,90 @@ export function mountBody(
       ...(nerveFelt === null ? {} : { felt: nerveFelt }),
     });
   };
+  /**
+   * What of her is drawn under a canvas point, picked on the GPU: one pixel of her own meshes, once with each mesh's
+   * id and once with its depth. Three's raycast re-skins every triangle on the CPU (about 250 ms a touch on a 39k
+   * triangle model) and stalled every touch. Null where float targets can't be drawn (the raycast then stands in).
+   */
+  const pick = {
+    target: null as THREE.WebGLRenderTarget | null,
+    depth: new THREE.MeshDepthMaterial({ side: THREE.DoubleSide }),
+    ids: [] as THREE.MeshBasicMaterial[],
+    px: new Float32Array(4),
+    ok: true,
+  };
+  const pickAt = (ndc: THREE.Vector2): THREE.Intersection | null | undefined => {
+    if (vrm === null || !pick.ok) return undefined;
+    const meshes: THREE.Mesh[] = [];
+    vrm.scene.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh && o.visible) meshes.push(o as THREE.Mesh);
+    });
+    const W = renderer.domElement.width;
+    const H = renderer.domElement.height;
+    const px = Math.max(0, Math.min(W - 1, Math.floor(((ndc.x + 1) / 2) * W)));
+    const py = Math.max(0, Math.min(H - 1, Math.floor(((1 - ndc.y) / 2) * H)));
+    pick.target ??= new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType });
+    const saved = meshes.map((m) => m.material);
+    const before = renderer.getRenderTarget();
+    const clear = renderer.getClearColor(new THREE.Color());
+    const alpha = renderer.getClearAlpha();
+    camera.setViewOffset(W, H, px, py, 1, 1);
+    const read = (material: (i: number) => THREE.Material) => {
+      meshes.forEach((m, i) => (m.material = material(i)));
+      renderer.setRenderTarget(pick.target);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear();
+      renderer.render(vrm!.scene, camera);
+      renderer.readRenderTargetPixels(pick.target!, 0, 0, 1, 1, pick.px);
+      return pick.px;
+    };
+    let hit: THREE.Intersection | null = null;
+    try {
+      // each mesh's index + 1 in its colour, linear, so the float target reads it back exactly
+      const c = read((i) => {
+        const n = i + 1;
+        return (pick.ids[i] ??= new THREE.MeshBasicMaterial({
+          color: new THREE.Color().setRGB(
+            (n & 255) / 255,
+            ((n >> 8) & 255) / 255,
+            0,
+            THREE.LinearSRGBColorSpace,
+          ),
+          side: THREE.DoubleSide,
+        }));
+      });
+      const id = Math.round(c[0]! * 255) + Math.round(c[1]! * 255) * 256;
+      const object = id > 0 ? meshes[id - 1] : undefined;
+      if (object !== undefined) {
+        // MeshDepthMaterial draws 1 - depth; the depth back through the camera is the point on her skin
+        const z = 1 - read(() => pick.depth)[0]!;
+        const point = new THREE.Vector3(ndc.x, ndc.y, z * 2 - 1).unproject(camera);
+        hit = { object, point, distance: point.distanceTo(camera.position) } as THREE.Intersection;
+      }
+    } catch {
+      pick.ok = false;
+    } finally {
+      meshes.forEach((m, i) => (m.material = saved[i]!));
+      camera.clearViewOffset();
+      renderer.setRenderTarget(before);
+      renderer.setClearColor(clear, alpha);
+    }
+    return pick.ok ? hit : undefined;
+  };
   /** The part of her under a point on the canvas, or null (off her, or no model yet). */
   const partAt = (x: number, y: number) => {
     if (vrm === null) return null;
     const r = canvas.getBoundingClientRect();
-    ray.setFromCamera(
-      new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1),
-      camera,
+    const ndc = new THREE.Vector2(
+      ((x - r.left) / r.width) * 2 - 1,
+      -((y - r.top) / r.height) * 2 + 1,
     );
-    const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
+    const picked = pickAt(ndc);
+    ray.setFromCamera(ndc, camera);
+    const hit =
+      picked !== undefined
+        ? (picked ?? undefined)
+        : ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
     if (hit === undefined) return null;
     const where = regionOf(hit);
     return where === null ? null : { hit, where };
@@ -2919,6 +3001,8 @@ export function mountBody(
       done: false,
       hit,
     };
+    // she answers the moment his hand lands, here on this frame; what it was is read as it goes on, her feel after
+    touchGlance(TOUCH_FACE.tap, 0.4, now);
     invalidate();
     if (holdTimer !== null) clearTimeout(holdTimer);
     // a hold is felt while it lasts, not when he lets go
@@ -3036,6 +3120,11 @@ export function mountBody(
     if (Math.abs(dx) > 2 && Math.sign(dx) !== Math.sign(p.dx) && p.dx !== 0) p.reversals++;
     if (Math.abs(dx) > 2) p.dx = dx;
     press.travel += Math.hypot(dx, dy);
+    // a stroke shows on her face while his hand moves, not when he lets go
+    if (!press.done && !press.stroked && press.travel >= 24) {
+      press.stroked = true;
+      touchGlance(TOUCH_FACE.stroke, 0.6, performance.now());
+    }
     press.pressure = Math.max(press.pressure, e.pressure || 0);
     p.x = e.clientX;
     p.y = e.clientY;
