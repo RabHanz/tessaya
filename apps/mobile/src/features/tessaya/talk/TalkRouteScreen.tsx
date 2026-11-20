@@ -303,6 +303,7 @@ export function TalkRouteScreen() {
             label?: unknown;
             intensity?: unknown;
             props?: PropState;
+            brows?: unknown;
           } | null)
         : null;
     const mood = typeof felt?.label === "string" ? felt.label : "neutral";
@@ -317,6 +318,11 @@ export function TalkRouteScreen() {
             : { kind: "prop", id: "state", url: `builtin:${prop}` },
       });
     hat.current = prop;
+    if (felt !== null)
+      post({
+        type: "cue",
+        cue: { kind: "brows", dark: typeof felt.brows === "boolean" ? felt.brows : null },
+      });
     for (const cue of lineCues({ persona: persona.id, text, mood, intensity }))
       post({ type: "cue", cue });
     const reply = await voiceCall({

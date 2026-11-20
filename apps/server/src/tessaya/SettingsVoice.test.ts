@@ -42,6 +42,10 @@ it("finds a setting by his words", () => {
     findSettings("change the speech model").map((s) => s.key),
     "speechModelId",
   );
+  assert.include(
+    findSettings("make her eyebrows stand out").map((s) => s.key),
+    "tessayaBrows",
+  );
 });
 
 it("the model a kind of her work runs on lists the models he can name", () => {

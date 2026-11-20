@@ -1597,6 +1597,10 @@ export const ServerSettings = Schema.Struct({
   ),
   // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
   tessayaCast: TessayaCast.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Tessaya: her brows drawn darker where her fringe covers them: auto (pale-browed models only), on or off.
+  tessayaBrows: Schema.Literals(["auto", "on", "off"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("auto" as const)),
+  ),
   // Tessaya: a prop he pinned for her to hold on every body (tessaya-shared PROPS id); empty lets what's going on choose.
   tessayaProp: Schema.String.check(Schema.isMaxLength(32)).pipe(
     Schema.withDecodingDefault(Effect.succeed("")),
@@ -2098,6 +2102,7 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
   tessayaProp: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(32))),
+  tessayaBrows: Schema.optionalKey(Schema.Literals(["auto", "on", "off"])),
   tessayaMotion: Schema.optionalKey(
     Schema.Struct({
       sensitivity: Schema.optionalKey(TessayaMotionSensitivity),

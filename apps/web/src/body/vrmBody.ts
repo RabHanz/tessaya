@@ -193,13 +193,14 @@ const browsOverHair = (vrm: VRM) => {
       const surface = mats.find((m) => (m as { isOutline?: boolean }).isOutline !== true)!;
       pale ||= paleOf(surface);
       const dark = surface.clone() as THREE.Material & { color?: THREE.Color };
-      dark.color?.multiplyScalar(0.55);
+      dark.color?.multiplyScalar(0.42);
       dark.stencilWrite = true;
       dark.stencilRef = 2;
       dark.stencilFunc = THREE.EqualStencilFunc;
       dark.stencilZPass = THREE.KeepStencilOp;
       dark.depthFunc = THREE.LessEqualDepth;
       const over = mesh.clone();
+      over.geometry = thickerBrows(mesh.geometry, 1.5);
       over.material = dark;
       over.renderOrder = 3;
       // the copy follows every shape the brow takes (it shares the brow's weights)
@@ -215,6 +216,24 @@ const browsOverHair = (vrm: VRM) => {
       for (const o of overlays) o.visible = on;
     },
   };
+};
+
+/**
+ * A brow's geometry with each stroke `k` times as thick: its vertices pushed up and down from the stroke's own centre
+ * line (the mean height of its vertices near the same point along it). Its shape keys still apply on top.
+ */
+const thickerBrows = (g: THREE.BufferGeometry, k: number) => {
+  const out = g.clone();
+  const pos = out.getAttribute("position") as THREE.BufferAttribute;
+  const used = [...new Set(Array.from(out.getIndex()?.array ?? []))];
+  const pts = used.map((i) => [i, pos.getX(i), pos.getY(i)] as const);
+  for (const [i, x, y] of pts) {
+    const near = pts.filter((q) => Math.abs(q[1] - x) < 0.004 && Math.sign(q[1]) === Math.sign(x));
+    const cy = near.reduce((n, q) => n + q[2], 0) / near.length;
+    pos.setY(i, cy + (y - cy) * k);
+  }
+  pos.needsUpdate = true;
+  return out;
 };
 
 /** Whether a brow's own colour is pale (its texture's mean lightness, where it is drawn): it fades into a fringe. */

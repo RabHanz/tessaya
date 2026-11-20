@@ -5323,6 +5323,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     );
     return persona === undefined ? {} : { persona: persona.id };
   };
+  let browsSent: boolean | null = null;
   /** Her mood from the spine (CS6) for her body at rest: read when she appears, after each turn, and every few minutes. */
   const readMood = () => {
     if (!settings.mascot || input.direct === undefined) return;
@@ -5339,8 +5340,16 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       )
       .then((answer) => {
         const felt = (
-          answer as { value?: { label?: unknown; intensity?: unknown; props?: unknown } } | null
+          answer as {
+            value?: { label?: unknown; intensity?: unknown; props?: unknown; brows?: unknown };
+          } | null
         )?.value;
+        // her brows over her fringe as he set them (tessayaBrows), sent to her body only when it changes
+        const brows = typeof felt?.brows === "boolean" ? felt.brows : null;
+        if (felt !== undefined && brows !== browsSent) {
+          browsSent = brows;
+          input.bodyCue?.({ kind: "brows", dark: brows });
+        }
         const props =
           typeof felt?.props === "object" && felt.props !== null
             ? (felt.props as PropState)
