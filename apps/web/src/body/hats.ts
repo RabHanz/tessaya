@@ -304,7 +304,7 @@ const HATS: Readonly<Record<string, Hat>> = {
     const tip = new THREE.CatmullRomCurve3(
       (
         [
-          [0, top - 0.35 * s, -0.05],
+          [0, top - 0.5 * s, -0.05],
           [0.05, top + 0.35 * s, -0.15],
           [0.55, top + 0.55 * s, -0.3],
           [1.15, top + 0.05 * s, -0.35],
@@ -318,7 +318,7 @@ const HATS: Readonly<Record<string, Hat>> = {
     const v = new THREE.Vector3();
     for (let i = 0; i <= 40; i++) {
       const at = tip.getPointAt(i / 40);
-      const k = R * (0.62 * (1 - i / 40) ** 1.2 + 0.08);
+      const k = R * (0.42 * (1 - i / 40) ** 1.2 + 0.08);
       for (let j = 0; j <= 20; j++) {
         const n = i * 21 + j;
         v.fromBufferAttribute(p, n).sub(at).multiplyScalar(k).add(at);
