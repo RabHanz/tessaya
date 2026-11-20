@@ -6,6 +6,7 @@ import { FACE_LIBRARY } from "./expressionMap.ts";
 import {
   BODY_FACES,
   GESTURES,
+  actLevel,
   beastkin,
   faceWeights,
   lineCues,
@@ -53,8 +54,10 @@ describe("body faces", () => {
         0.85,
       );
     }
-    // a yawn's own jaw reaches near full
-    expect(GESTURES["yawn"]?.face?.aa).toBeGreaterThanOrEqual(0.85);
+    // a yawn is the whole face at full reach, and holds near its peak
+    expect(GESTURES["yawn"]?.act).toMatchObject({ face: { aa: 1, blink: 1 } });
+    expect(actLevel(3200, 1000)).toBe(1);
+    expect(actLevel(3200, 0)).toBe(0);
   });
 
   it("has a move for every public gesture but none, and each ends where it began", () => {

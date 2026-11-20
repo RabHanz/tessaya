@@ -7,6 +7,7 @@ import { VRMLoaderPlugin, VRMUtils, type VRM, type VRMHumanBoneName } from "@pix
 import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
 import {
   GESTURES,
+  actLevel,
   INTIMATE_FACES,
   INTIMATE_STATES,
   STILL,
@@ -1298,14 +1299,18 @@ export function mountBody(
       if (now - level.at > LEVEL_HOLD_MS) level = null;
       else mouth = mouthWeights(level.viseme, level.value);
     }
-    // a gesture's own face (a yawn's jaw) rises and falls with it, at its full natural reach
+    // a gesture's whole-face act (a yawn, a laugh) rises and falls with it, at its full natural reach
+    let jawOpen = 0;
     for (const g of gestures) {
-      const shape = GESTURES[g.name]?.face;
-      const ms = GESTURES[g.name]?.ms ?? 0;
-      if (shape === undefined || ms <= 0) continue;
-      const env = Math.sin(Math.PI * Math.min(1, Math.max(0, (now - g.start) / ms)));
-      for (const [k, v] of Object.entries(shape) as Array<[keyof Weights, number]>)
+      const move = GESTURES[g.name];
+      if (move?.act === undefined) continue;
+      const env = actLevel(move.ms, now - g.start);
+      for (const [k, v] of Object.entries(move.act.face) as Array<[keyof Weights, number]>)
         mouth[k] = Math.max(mouth[k] ?? 0, v * env);
+      for (const sh of move.act.shapes)
+        for (const name of shapeKeys.keys())
+          if (sh.match.test(name)) shapes[name] = Math.max(shapes[name] ?? 0, sh.weight * env);
+      jawOpen = Math.max(jawOpen, move.act.jaw * env);
     }
 
     // blink: a short close and open, every few seconds
@@ -1514,6 +1519,8 @@ export function mountBody(
       }
     }
 
+    const jaw = vrm.humanoid.getNormalizedBoneNode("jaw");
+    if (jaw) jaw.rotation.x += jawOpen;
     gestures = gestures.filter((g) => {
       const move = GESTURES[g.name];
       if (move === undefined || now - g.start >= move.ms) return false;
