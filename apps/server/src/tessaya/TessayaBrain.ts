@@ -16,6 +16,8 @@ import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-sha
 import { CONVERSATION_END, REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import { plainExpression } from "@t3tools/tessaya-shared/expression";
 import { clockAsk } from "@t3tools/tessaya-shared/turnTier";
+import { toneOf } from "@t3tools/tessaya-shared/expressionMap";
+import type { AffectVariant } from "@t3tools/tessaya-contracts";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -290,6 +292,8 @@ export interface VesselTurn<E, R> {
   readonly failed?: (detail: string) => void;
   /** She ended the conversation (conversation_end): no filler may come after it, only her goodbye. */
   readonly ended?: () => void;
+  /** Her reply opened in a tone (`toneOf`): the vessel's voice says it in that tone; a vessel without one ignores it. */
+  readonly tone?: (tone: AffectVariant) => void;
 }
 
 /** A brain failure's own words, for the log: the R1BrainError's detail, else the cause as text. */
@@ -417,7 +421,13 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   const clock = yield* Clock.Clock;
   let firstSentenceAt: number | null = null;
   let cueAt: number | null = null;
-  const sentences = speakableSentences((sentence) => {
+  let toolsRun = 0;
+  const sentences = speakableSentences((raw) => {
+    // A tone mark is never said or kept; only one opening her reply sets the tone.
+    const { tone, text: sentence } = toneOf(raw);
+    // Once a tool has run, the reply is a task's: said plainly, whatever the model marked.
+    if (tone !== null && said === "" && toolsRun === 0) vessel.tone?.(tone);
+    if (sentence.trim() === "") return;
     firstSentenceAt ??= clock.currentTimeMillisUnsafe();
     said += sentence;
     say(sentence);
@@ -525,6 +535,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
             });
             if (o.status !== undefined)
               outcomes.push({ ok: !o.isError, status: o.status, line: o.text });
+            toolsRun += 1;
             if (o.isError) failed += 1;
           }),
         ),

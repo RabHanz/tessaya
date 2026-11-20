@@ -9,6 +9,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { AGENT_PROMPT } from "@t3tools/tessaya-shared/agentPrompt";
+import { toneLine } from "@t3tools/tessaya-shared/expressionMap";
+import type { AffectVariant } from "@t3tools/tessaya-contracts";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { templateFrame } from "@t3tools/tessaya-shared/jobTemplates";
 import { assistantFrame } from "@t3tools/tessaya-shared/osPack";
@@ -94,6 +96,7 @@ const deskData = (input: {
   readonly body: DeskTurnBody;
   readonly memory: string;
   readonly feeling: string;
+  readonly tone: AffectVariant | null;
   readonly notice: string;
   readonly privateBlock: string;
   readonly owner: string;
@@ -104,6 +107,7 @@ const deskData = (input: {
   [
     input.body.context ?? "",
     input.feeling,
+    input.tone === null ? "" : toneLine(input.tone),
     input.owner,
     input.notes.work,
     input.notes.brain,
@@ -214,6 +218,8 @@ export const deskTurnStream = (
         brainTurn(
           {
             system: `${AGENT_PROMPT}\n\n${assistantFrame(pack)}${templateFrame(readTemplates(userdata))}`,
+            // Her reply's tone: the desktop says it in that tone of his clone (`lineAffect`), as a layer's.
+            tone: (tone) => Queue.offerUnsafe(queue, { affect: tone }),
             tools,
             device: body.vessel,
             hold: () => (call) => call,
@@ -244,6 +250,7 @@ export const deskTurnStream = (
                       body,
                       memory: begun.block,
                       feeling: begun.feeling,
+                      tone: begun.tone,
                       notice: begun.notice ?? "",
                       privateBlock: begun.privateBlock,
                       owner: begun.owner ?? "",

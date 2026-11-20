@@ -65,6 +65,7 @@ effectIt.effect(
                   return {
                     block: "",
                     feeling: "",
+                    tone: null,
                     ids: [],
                     privateBlock: "",
                     conversation: { key: "household", turns: [] },

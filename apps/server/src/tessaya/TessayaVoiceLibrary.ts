@@ -30,6 +30,7 @@ import {
 } from "@t3tools/tessaya-contracts";
 import { cloneGrant, stands } from "@t3tools/tessaya-shared/consent";
 import { isLineEvent } from "@t3tools/tessaya-shared/expression";
+import { toneStyle } from "@t3tools/tessaya-shared/expressionMap";
 import { touchReaction } from "@t3tools/tessaya-shared/touchReaction";
 import { AffectCause } from "./AffectCause.ts";
 import { setPersonaField } from "@t3tools/tessaya-shared/personaFile";
@@ -376,6 +377,8 @@ const geminiSay = async (
   key: string,
   voice: string,
   text: string,
+  /** How to say it (`speech_metadata` style): her reply's tone, from the expression map. */
+  style?: string,
 ): Promise<{ readonly audio: Buffer; readonly tokens: CallTokens | null }> => {
   const response = await fetch(GEMINI_URL, {
     method: "POST",
@@ -383,7 +386,18 @@ const geminiSay = async (
     headers: { "content-type": "application/json", "x-goog-api-key": key },
     body: JSON.stringify({
       model: GEMINI_MODEL,
-      input: [{ type: "user_input", content: [{ type: "text", text }] }],
+      input: [
+        {
+          type: "user_input",
+          content: [
+            {
+              type: "text",
+              text,
+              ...(style === undefined ? {} : { annotations: [{ type: "speech_metadata", style }] }),
+            },
+          ],
+        },
+      ],
       response_format: { type: "audio" },
       generation_config: { speech_config: [{ voice }] },
     }),
@@ -482,6 +496,8 @@ export class TessayaVoiceLibrary extends Context.Service<
       readonly engine?: SayEngine | undefined;
       readonly voice: string;
       readonly text: string;
+      /** Her reply's tone: a cloud voice takes it as a style; Pocket and a clone without it say it plainly. */
+      readonly tone?: string | undefined;
     }) => Effect.Effect<VoiceClip, VoiceRefusedError>;
     /** A test voice from his clip, on this machine only; his `consent` is required and recorded. */
     readonly cloneVoice: (input: {
@@ -609,7 +625,11 @@ export const make = Effect.gen(function* () {
     } satisfies VoiceLibraryView;
   });
 
-  const gemini = Effect.fn("BatonVoiceLibrary.gemini")(function* (voice: string, text: string) {
+  const gemini = Effect.fn("BatonVoiceLibrary.gemini")(function* (
+    voice: string,
+    text: string,
+    style?: string,
+  ) {
     const key = yield* googleKey;
     if (Option.isNone(key)) {
       return yield* new VoiceRefusedError({
@@ -617,7 +637,7 @@ export const make = Effect.gen(function* () {
       });
     }
     const said = yield* Effect.tryPromise({
-      try: () => geminiSay(key.value, voice, text),
+      try: () => geminiSay(key.value, voice, text, style),
       catch: refuse,
     });
     yield* usage.record({
@@ -668,6 +688,7 @@ export const make = Effect.gen(function* () {
     readonly engine?: SayEngine | undefined;
     readonly voice: string;
     readonly text: string;
+    readonly tone?: string | undefined;
   }) {
     const engine = input.engine ?? "gemini";
     const text = input.text.slice(0, SAY_MAX);
@@ -700,7 +721,7 @@ export const make = Effect.gen(function* () {
           }),
         ),
       );
-    return clip(yield* gemini(input.voice, text));
+    return clip(yield* gemini(input.voice, text, toneStyle(input.tone)));
   });
 
   /** His clip, cleaned, made into a Pocket embedding at `target`; only the embedding is kept, never his recording. */
@@ -1149,6 +1170,7 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
           engine: Schema.optionalKey(Schema.Literals(["pocket", "gemini", "clone"])),
           voice: Text(80),
           text: Text(4_000),
+          tone: Schema.optionalKey(Text(20)),
         }),
       );
       if (Option.isNone(a)) return bad;

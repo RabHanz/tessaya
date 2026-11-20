@@ -359,7 +359,22 @@ const withClone = async (p: RoomPersona, brainUrl: string): Promise<RoomPersona>
   const ok = await fetch(at, { signal: AbortSignal.timeout(5_000) })
     .then(async (r) => (await r.arrayBuffer(), r.ok))
     .catch(() => false);
-  return ok ? { ...p, voice: at.href } : p;
+  if (!ok) return p;
+  // Its recorded tones are on the same loopback route.
+  const local = (path: string) => {
+    const url = new URL(path, brainUrl);
+    url.hostname = "127.0.0.1";
+    return url.href;
+  };
+  const tones =
+    p.cloneTones === undefined
+      ? {}
+      : {
+          cloneTones: Object.fromEntries(
+            Object.entries(p.cloneTones).map(([t, u]) => [t, local(u)]),
+          ),
+        };
+  return { ...p, voice: at.href, ...tones };
 };
 
 /** A word the room listens for; `version` is her signed model's, for a word she trained. */

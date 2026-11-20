@@ -10,7 +10,7 @@ import {
   greetEvent,
   type LineEvent,
 } from "@t3tools/tessaya-shared/expression";
-import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import { effectFor, toneOf, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 import { atSpeakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { speechPieces, type Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
@@ -146,6 +146,8 @@ export interface RoomPersona {
   readonly eyes?: string;
   /** Its saved clone on her server (a path); main.ts makes it the voice when this machine's Pocket can fetch it. */
   readonly cloneUrl?: string;
+  /** That clone's recorded tones (VOXTA G1), each its own embedding (a path, then a URL as `cloneUrl` is). */
+  readonly cloneTones?: Readonly<Record<string, string>>;
 }
 
 /** What a body needs of a persona record, from her server's roster or the default pack. */
@@ -158,6 +160,7 @@ export interface ServedPersona {
   readonly eyes?: string;
   /** Its saved clone's embedding on her server (a path), spoken when this loop's Pocket can fetch it. */
   readonly cloneUrl?: string;
+  readonly cloneTones?: Readonly<Record<string, string>>;
 }
 
 /** The room's roster from her server's personas: the lead first, each called by its wake word or its name. */
@@ -170,6 +173,7 @@ export const roomPersonas = (personas: ReadonlyArray<ServedPersona>): RoomPerson
       voice: p.voice,
       ...(p.eyes === undefined ? {} : { eyes: p.eyes }),
       ...(p.cloneUrl === undefined ? {} : { cloneUrl: p.cloneUrl }),
+      ...(p.cloneTones === undefined ? {} : { cloneTones: p.cloneTones }),
     }));
 
 /** `GET .../personas` as her server answered it, each record checked; null when nothing usable came back. */
@@ -182,6 +186,15 @@ export const servedRoster = (body: unknown): RoomPersona[] | null => {
     if (id === undefined || name === undefined || voice === undefined) return [];
     const eyes = text(p["eyes"]);
     const cloneUrl = text(p["cloneUrl"]);
+    const tones = p["cloneTones"];
+    const cloneTones =
+      cloneUrl !== undefined && typeof tones === "object" && tones !== null
+        ? Object.fromEntries(
+            Object.entries(tones).flatMap(([tone, url]) =>
+              text(url) === undefined ? [] : [[tone, url as string]],
+            ),
+          )
+        : undefined;
     return [
       {
         id,
@@ -191,6 +204,7 @@ export const servedRoster = (body: unknown): RoomPersona[] | null => {
         lead: p["lead"] === true,
         ...(eyes ? { eyes } : {}),
         ...(cloneUrl ? { cloneUrl } : {}),
+        ...(cloneTones ? { cloneTones } : {}),
       },
     ];
   });
@@ -1055,12 +1069,20 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let prefsFor: string | null = null;
     /** In a group turn, the member whose words are being queued now (its voice); null is the session's persona. */
     let groupVoice: RoomPersona | null = null;
-    const voiceNow = () =>
+    /** Her reply's tone (`[tone:x]` from her brain), said in that recorded tone of the speaking persona's clone. */
+    let toneNow: string | null = null;
+    const plainVoice = () =>
       groupVoice !== null
         ? groupVoice.voice
         : persona === lead && memberVoice !== null
           ? memberVoice
           : persona?.voice;
+    const voiceNow = () => {
+      const speaking = groupVoice ?? persona;
+      const toned = toneNow === null ? undefined : speaking?.cloneTones?.[toneNow];
+      // Only the persona's own clone has tones: his chosen voice for her, or a library voice, says it plainly.
+      return toned !== undefined && plainVoice() === speaking?.voice ? toned : plainVoice();
+    };
     /** A recognised member's own defaults: their persona unless he named another, and their voice for her. */
     const applyPrefs = () => {
       const member = recog?.verified === true ? recog.member : null;
@@ -2487,6 +2509,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let groupEyes = false;
       try {
         let buffer = "";
+        toneNow = null;
         let firstSentenceAt: number | null = null;
         let speakingChain = Promise.resolve();
         let lost = false;
@@ -2584,6 +2607,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         for await (const delta of source) {
           brainFirst ??= deps.now() - textAt;
           buffer += delta;
+          const toned = toneOf(buffer);
+          if (toned.tone !== null && said === "") toneNow = toned.tone;
+          buffer = toned.text;
           // Her brain heard him close the conversation: her sign-off plays, then the session rests by itself.
           if (buffer.includes(REST_MARK)) {
             buffer = buffer.replaceAll(REST_MARK, "");

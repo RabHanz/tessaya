@@ -91,6 +91,7 @@ const run = (
                 Effect.as({
                   block: "he likes short answers",
                   feeling: "",
+                  tone: null,
                   ids: [],
                   privateBlock: "",
                   conversation: {

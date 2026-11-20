@@ -100,7 +100,14 @@ import {
 } from "../tessaya/TessayaBrain.ts";
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { eyeClipOf, greetEvent, isLineEvent } from "@t3tools/tessaya-shared/expression";
-import { effectFor, renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import {
+  effectFor,
+  renderFor,
+  toneLine,
+  toneMark,
+  VESSELS,
+} from "@t3tools/tessaya-shared/expressionMap";
+import type { AffectVariant } from "@t3tools/tessaya-contracts";
 import { propStateFor } from "../tessaya/propState.ts";
 import {
   EXPRESSION_MOODS,
@@ -504,6 +511,8 @@ export interface R1Context {
   readonly feeling?: string;
   /** Who the answering persona is as a person (`Persona.self`; the lead's when none was called). */
   readonly self?: string;
+  /** The tone her voice may take (`TurnContext.tone`): offered as `toneLine`, null or absent says it plainly. */
+  readonly tone?: AffectVariant | null;
   /** What to tell the speaker now (messages that waited), as her own instruction (`TessayaTurn.begin`'s notice). */
   readonly notice?: string;
   /** How the person speaking likes things (their own preferences; empty for a guest). */
@@ -662,6 +671,7 @@ export const roomData = (input: R1Context) =>
     ...personaLine(input.persona, input.switched),
     ...(input.self === undefined || input.self === "" ? [] : [input.self]),
     ...(input.feeling === undefined || input.feeling === "" ? [] : [input.feeling]),
+    ...(input.tone === undefined || input.tone === null ? [] : [toneLine(input.tone)]),
     ...(input.owner === undefined || input.owner === "" ? [] : [input.owner]),
     `Now, on the house's clock: ${input.now}.`,
     `Who else he can talk to here, by saying their name: ${input.roster}.`,
@@ -1246,6 +1256,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     ? {
         block: "",
         feeling: "",
+        tone: null,
         ids: [],
         privateBlock: "",
         conversation: { key: "household", turns: [] },
@@ -1286,6 +1297,8 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     automations,
     memory: begun.block,
     feeling: begun.feeling,
+    // Several voices: the room hears one plain voice.
+    tone: people.length > 0 ? null : begun.tone,
     // Messages that waited are one person's: not told to a room of several voices.
     ...(people.length > 0 || begun.notice === undefined ? {} : { notice: begun.notice }),
     preferences: people.length > 0 ? {} : begun.preferences,
@@ -1682,7 +1695,7 @@ export const roomLook = Effect.fn("R1Device.look")(function* (
 const r1Vessel = (
   input: R1Heard,
   tools: RoomToolSet,
-  hooks?: Pick<VesselTurn<never, never>, "failed" | "ended">,
+  hooks?: Pick<VesselTurn<never, never>, "failed" | "ended" | "tone">,
   /** In a group: who speaks, whether first, and what it is told of the others (`groupLine`). */
   group?: { readonly name: string; readonly first: boolean; readonly line: string },
 ) => ({
@@ -1749,7 +1762,8 @@ export const r1TurnStream = (
       const failed = (detail: string) => {
         limited ??= limitResets(detail);
       };
-      const hooks = { failed };
+      // Her reply's tone reaches the loop in line, before its words: it says them in that tone of his clone.
+      const hooks = { failed, tone: (tone: AffectVariant) => say(toneMark(tone)) };
       // Out of capacity: one honest line from her pool, not the other routes on the same spent login.
       const outOfCapacity = Effect.gen(function* () {
         const line = yield* expressOr("err.limit", {
@@ -2191,8 +2205,17 @@ export const routes = HttpRouter.use((router) =>
       const clones = Option.isNone(voices) ? [] : ((yield* voices.value.library).clones ?? []);
       return HttpServerResponse.jsonUnsafe({
         personas: personas.map((p) => {
-          const clone = clones.find((c) => c.id === p.cloneVoice)?.embedding;
-          return clone === undefined ? p : { ...p, cloneUrl: clone };
+          const clone = clones.find((c) => c.id === p.cloneVoice);
+          if (clone?.embedding === undefined) return p;
+          const embedding = clone.embedding;
+          // Each recorded tone is its own embedding beside the clone's (TessayaVoiceLibrary's affectOf).
+          const tones = Object.fromEntries(
+            (clone.affects ?? []).map((a) => [
+              a,
+              embedding.replace(/\.safetensors$/, `.affect-${a}.safetensors`),
+            ]),
+          );
+          return { ...p, cloneUrl: embedding, cloneTones: tones };
         }),
       });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));

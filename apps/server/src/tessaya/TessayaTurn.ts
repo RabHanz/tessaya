@@ -87,7 +87,13 @@ import { ownerLineFor, personasList } from "./OperatingSystemPack.ts";
 import { TessayaJobService } from "./TessayaJobService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 import { leadFitLine } from "@t3tools/tessaya-shared/jobs";
-import type { InputQuality, RegisteredDevice, TessayaVoicePrint } from "@t3tools/tessaya-contracts";
+import type {
+  AffectVariant,
+  InputQuality,
+  RegisteredDevice,
+  TessayaVoicePrint,
+} from "@t3tools/tessaya-contracts";
+import { toneFor } from "@t3tools/tessaya-shared/expressionMap";
 
 export { TurnOrigin, type VesselKind } from "./TurnOrigin.ts";
 
@@ -341,6 +347,8 @@ export interface TurnContext {
    * vessel puts it as her own line, not inside the quoted memory. "" when the mood is off or nobody is addressed.
    */
   readonly feeling: string;
+  /** The tone her voice may take for this reply (`toneFor` her feeling), offered to a speaking vessel; null is plain. */
+  readonly tone: AffectVariant | null;
   /** The ids matched to this sentence, best first: the same for every vessel given the same words and persona. */
   readonly ids: ReadonlyArray<string>;
   /** The speaker's own private memories, only when the gate allows it; else "". */
@@ -1405,6 +1413,7 @@ export const make = Effect.gen(function* () {
       return {
         block: "",
         feeling: "",
+        tone: null,
         ids: [],
         privateBlock: "",
         conversation,
@@ -1479,7 +1488,7 @@ export const make = Effect.gen(function* () {
       ? { name: preferences.name ?? (yield* memberName(member)), pronouns: preferences.pronouns }
       : { name: person?.name ?? null };
     const here = yield* hereFor(turn, member);
-    const feeling = yield* moodFor(turn, person?.id ?? null, who).pipe(
+    const felt = yield* moodFor(turn, person?.id ?? null, who).pipe(
       Effect.provideService(AffectCause, yield* causeOf(turn)),
     );
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
@@ -1507,7 +1516,8 @@ export const make = Effect.gen(function* () {
       ]
         .filter((l) => l !== "")
         .join(" "),
-      feeling: [feeling, since].filter((l) => l !== "").join(" "),
+      feeling: [felt.line, since].filter((l) => l !== "").join(" "),
+      tone: felt.tone,
       block: [
         here,
         live,
@@ -1595,7 +1605,7 @@ export const make = Effect.gen(function* () {
     who: Who,
   ) {
     const mood = yield* Effect.serviceOption(TessayaMood);
-    if (Option.isNone(mood) || turn.rehearsal === true) return "";
+    if (Option.isNone(mood) || turn.rehearsal === true) return { line: "", tone: null };
     const member = moodMember(turn) ?? (turn.addressed === false ? null : person);
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
     const spoken = turn.vessel.kind === "device";
@@ -1630,7 +1640,7 @@ export const make = Effect.gen(function* () {
     const understanding = yield* Effect.serviceOption(TessayaUnderstanding);
     const self = yield* understood({ about: "self", persona: turn.persona });
     if (member === null) {
-      if (turn.addressed === false) return "";
+      if (turn.addressed === false) return { line: "", tone: null };
       // Likely them (their voice carried over, not yet verified): only that they were around, as presence would say.
       // Nothing else is written under them below the bar: no bond, no return, no opinion (voice ID is the guard).
       const likely = turnIdentity(turn);
@@ -1645,14 +1655,17 @@ export const make = Effect.gen(function* () {
         room.here.length > 1
           ? yield* mood.value.roomView(turn.persona, room.here, zone)
           : yield* mood.value.view(turn.persona, zone);
-      return [
-        moodLine(privateOut(view), spoken),
-        self,
-        roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }),
-        yield* face("", null),
-      ]
-        .filter((l) => l !== "")
-        .join(" ");
+      return {
+        line: [
+          moodLine(privateOut(view), spoken),
+          self,
+          roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }),
+          yield* face("", null),
+        ]
+          .filter((l) => l !== "")
+          .join(" "),
+        tone: toneFor(view.label, view.intensity),
+      };
     }
     // How they sound moves her before this turn's line is read, so her answer already meets it.
     if (turn.emotion !== undefined)
@@ -1681,15 +1694,18 @@ export const make = Effect.gen(function* () {
     yield* mood.value.heard(turn.persona, zone, member);
     // Her understanding of them is theirs alone: on their own turn, never with anyone else here.
     const theirs = others ? "" : yield* understood({ about: "person", id: member }, who.name);
-    return [
-      line,
-      theirs,
-      self,
-      others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : "",
-      yield* face(view.label, member),
-    ]
-      .filter((l) => l !== "")
-      .join(" ");
+    return {
+      line: [
+        line,
+        theirs,
+        self,
+        others ? roomLine({ ...room, drawIn: view.leanings?.drawIn ?? 0.6 }) : "",
+        yield* face(view.label, member),
+      ]
+        .filter((l) => l !== "")
+        .join(" "),
+      tone: toneFor(view.label, view.intensity),
+    };
   });
 
   /** Her standing understanding of a person or of herself as the turn's line, "" when there is none. */
