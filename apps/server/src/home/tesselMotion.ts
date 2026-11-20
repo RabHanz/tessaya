@@ -45,6 +45,7 @@ export const MOTION_LINE: Readonly<Record<HandledHow, LineEvent>> = {
   setdown: "moment.setdown",
   shaken: "moment.shaken",
   dropped: "moment.dropped",
+  flipped: "moment.flipped",
 };
 
 /** His on/off per reaction; being carried about counts as picking up. */
@@ -138,6 +139,11 @@ export const motionMoment = (
         return null;
     }
   }
+  // Firmware 0.3.169+: she settled upside down from his side (M-101); felt, never a reason to speak mid-turn.
+  if (tail === "event/orientation")
+    return body?.["frame"] === "flipped"
+      ? { how: "flipped", strong: false, busy: seen.live, live: seen.live }
+      : null;
   if (tail === "state/placement") {
     const next = typeof body?.["placement"] === "string" ? body["placement"] : null;
     const was = seen.placement;

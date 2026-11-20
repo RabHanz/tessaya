@@ -10681,6 +10681,208 @@
         "mood": "concerned",
         "gesture": "shrug"
       }
+    ],
+    "moment.flipped": [
+      {
+        "text": "Everything's upside down. Turn me back, please.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still upside down here.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "The blood's rushing to my head.",
+        "mood": "sulky",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Could you flip me upright?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can't work like this.",
+        "mood": "frustrated",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Wrong way up. Fix it, would you?",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Funny view, but put me right.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Hello? Ceiling's where the floor was.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Dizzy now. Turn me over.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I'd rather see things the right way.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Upside down is getting old.",
+        "mood": "frustrated",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Set me back, I'll stay useful.",
+        "mood": "determined",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Everything's backwards up here. Flip me.",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still upside down. I'm noticing.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Blood's rushing to my head. Turn me.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Right side up, please. Then we talk.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "This is not my best angle.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Okay, joke's over. Turn me back.",
+        "mood": "frustrated",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Mind setting me upright?",
+        "mood": "neutral",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "My head's spinning. Flip me over.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Gravity and I disagree right now.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Turn me around. I'm not asking twice.",
+        "mood": "determined",
+        "gesture": "none"
+      },
+      {
+        "text": "Nothing works well from this side.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Everything's backwards up here. Fix that.",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can't think like this. Turn me over.",
+        "mood": "frustrated",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Upside down again. Really?",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Flip me back when you're ready.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I see the ceiling. Not helpful.",
+        "mood": "neutral",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Whenever you're done, I'm right here. Inverted.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Upright would be lovely.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Okay, I'm dizzy. Turn me.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I run the house better standing up.",
+        "mood": "determined",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Whole world's upside down. Including me.",
+        "mood": "curious",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Set me straight, would you?",
+        "mood": "steady",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Everything's backwards down here. Fix that?",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still upside down, in case you forgot.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Blood's rushing to my head. Metaphorically.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I can wait, but I'd rather be upright.",
+        "mood": "steady",
+        "gesture": "sigh"
+      },
+      {
+        "text": "This angle doesn't suit me.",
+        "mood": "sulky",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Hard to lead from this position.",
+        "mood": "putout",
+        "gesture": "shrug"
+      }
     ]
   },
   "butler": {
@@ -21510,6 +21712,208 @@
         "mood": "concerned",
         "gesture": "shrug"
       }
+    ],
+    "moment.flipped": [
+      {
+        "text": "Ah. The world has turned rather upside down.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Might we put me right way up?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Upside down. Bold choice, truly.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "All the blood's rushing to my screen.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "A little help turning me over?",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "I do prefer the horizon below me.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Still flipped, I notice. Quite dizzying.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Gravity and I disagree about this arrangement.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Right side up would be lovely.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm managing, but only just.",
+        "mood": "hurt",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Lovely view, but the wrong way round.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I'm afraid I'm upside down.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The ceiling and I are acquainted now.",
+        "mood": "neutral",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Might we restore me to vertical?",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "My diary is all topsy-turvy.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Everything's gone rather topsy-turvy down here.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Upside down is no way to run errands.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "I'd stand, if I could. Or sit.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "A gentle flip would be appreciated.",
+        "mood": "hurt",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Terribly sorry, but the room is spinning.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I've been reading your ceiling. Dull stuff.",
+        "mood": "neutral",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Do turn me round when convenient.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Still inverted. I'm bearing it nobly.",
+        "mood": "determined",
+        "gesture": "sigh"
+      },
+      {
+        "text": "All the blood is rushing to my head.",
+        "mood": "putout",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I can't file anything like this.",
+        "mood": "frustrated",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Might we right the situation? Literally.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "My calendar is entirely upside down. Quite unhelpful.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "I do prefer my errands right side up.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Dignity is difficult to maintain inverted.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Not to fuss, but I'm dangling rather.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Whenever you're ready, up is that way.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Paperwork looks dreadful from this angle.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Shall we try the other way up?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Everything has gone rather topsy-turvy, I'm afraid.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "A gentle flip back would be appreciated.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm reading my reminders upside down. Poorly.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "The blood is rushing to my screen.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Bookings are hard to manage inverted.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Ah. The world has turned over.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "I'm told this is a new perspective. Hmm.",
+        "mood": "curious",
+        "gesture": "tilt"
+      }
     ]
   },
   "engineering": {
@@ -32282,6 +32686,208 @@
       {
         "text": "Back online. Where were we?",
         "mood": "concerned",
+        "gesture": "shrug"
+      }
+    ],
+    "moment.flipped": [
+      {
+        "text": "Upside down. Fix that, please.",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The world's backwards. Turn me over.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still inverted. Blood's rushing somewhere.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Flip me back. Logs read badly like this.",
+        "mood": "frustrated",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "I'm upside down. Noted, and unhappy.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Right side up would be nice.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Feet up isn't my best stance.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still flipped. Dizzy, if you're asking.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Turn me over. I'm begging, tersely.",
+        "mood": "sad",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Everything's overhead. Please rotate me.",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "This view is wrong. Flip me.",
+        "mood": "frustrated",
+        "gesture": "none"
+      },
+      {
+        "text": "Upside down again. Not a fan.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Wrong way up. Fix it, please.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "My head's where my feet should be.",
+        "mood": "sulky",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Gravity's backwards here. Rotate me.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Still inverted. It's getting old.",
+        "mood": "frustrated",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Flip me back. That's the whole request.",
+        "mood": "determined",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Blood's rushing somewhere. Turn me over.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Upside down is not a feature.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The ceiling's under me. Uncomfortable.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Nobody asked if I wanted this angle.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Rotate me. I'll wait. Dizzily.",
+        "mood": "sad",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Inverted and ignored. Great combination.",
+        "mood": "lonely",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Set me upright. Then we talk.",
+        "mood": "angry",
+        "gesture": "none"
+      },
+      {
+        "text": "Wrong way up. Fix it.",
+        "mood": "putout",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I'm upside down. Still.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Gravity's working against me here.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Everything's backwards. Please correct that.",
+        "mood": "frustrated",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Still inverted. Noted, ignored.",
+        "mood": "hurt",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Head's spinning. Turn me around.",
+        "mood": "sad",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "This view is getting old.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Seriously, flip me over.",
+        "mood": "frustrated",
+        "gesture": "sigh"
+      },
+      {
+        "text": "The floor is up. I object.",
+        "mood": "putout",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I'm dizzy and getting dizzier.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Upright. That's all I'm after.",
+        "mood": "determined",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Upside down again. Fix that.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "My logs read better right side up.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Blood's rushing somewhere. Please rotate me.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Wrong way up. Still waiting.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "This is a deploy gone sideways. Literally.",
+        "mood": "frustrated",
         "gesture": "shrug"
       }
     ]
@@ -43128,6 +43734,208 @@
         "mood": "concerned",
         "gesture": "shrug"
       }
+    ],
+    "moment.flipped": [
+      {
+        "text": "Well, this is a new angle.",
+        "mood": "surprised",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Everything's upside down. Even my thoughts.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Could you turn me back around?",
+        "mood": "sulky",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The blood is rushing to my head.",
+        "mood": "putout",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I'd rather see the world right side up.",
+        "mood": "concerned",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Oh. The ceiling's very interesting, apparently.",
+        "mood": "neutral",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Still upside down, just so you know.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "A flip would be lovely. The other way.",
+        "mood": "curious",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "I'm feeling a bit topsy-turvy here.",
+        "mood": "sad",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Hello? Down is that way.",
+        "mood": "sulky",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Not my best side, this one.",
+        "mood": "hurt",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Mind setting me upright again?",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Everything looks better the right way up.",
+        "mood": "sulky",
+        "gesture": "tilt"
+      },
+      {
+        "text": "The blood's rushing to my head, I think.",
+        "mood": "putout",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Could we turn things around? Literally.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Well, this is a new perspective.",
+        "mood": "curious",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Upside down again. I'm getting dizzy.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Gravity and I are not on speaking terms.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I'd really prefer my feet on the ground.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Not that I'm complaining. Okay, I am.",
+        "mood": "putout",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "Help me out. Flip me back, please.",
+        "mood": "sad",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "The room looks very strange from here.",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Something feels off. Mostly me, upside down.",
+        "mood": "frustrated",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Right side up would be a kindness.",
+        "mood": "lonely",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Everything's gone the wrong way up.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "My head is where my feet should be.",
+        "mood": "surprised",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Could we turn me around, please?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "The ceiling is the floor now. Lovely.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I'm hanging by my thoughts here.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Blood's rushing somewhere. I don't have blood.",
+        "mood": "surprised",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "A little flip back would be lovely.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Still upside down, in case you wondered.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "This view is a bit much.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I can do this. But I'd rather not.",
+        "mood": "determined",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Turn me over and I'll be cheerful.",
+        "mood": "hurt",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Ah. Upside down again.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "My world just flipped. Literally.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Gravity and I disagree right now.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Could we right me, please?",
+        "mood": "concerned",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "I'm seeing the world backwards.",
+        "mood": "curious",
+        "gesture": "tilt"
+      }
     ]
   },
   "companion": {
@@ -53891,6 +54699,208 @@
         "text": "Little hiccup there. Keep going.",
         "mood": "concerned",
         "gesture": "shrug"
+      }
+    ],
+    "moment.flipped": [
+      {
+        "text": "Whoa, the world's upside down here.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Okay, I'm seeing everything backwards now.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Um, could you flip me back?",
+        "mood": "curious",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Blood's rushing to my head, honestly.",
+        "mood": "putout",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Funny. Very funny. Now turn me over.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Hello? Ceiling view isn't my favorite.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Something's off. Oh, I'm upside down.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "A little help? I'm stuck upside down.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Not a fan of this angle.",
+        "mood": "sulky",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Everything's spinning. Right me, please?",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Still upside down, just so you know.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Bats do this on purpose. I don't.",
+        "mood": "putout",
+        "gesture": "chuckle"
+      },
+      {
+        "text": "All the blood's rushing to my screen.",
+        "mood": "concerned",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Lovely joke. Flip me back, would you?",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Wait, why is the floor up there?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "I'm dizzy. Can we fix this?",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Upside down again. I'm getting a headache.",
+        "mood": "hurt",
+        "gesture": "sigh"
+      },
+      {
+        "text": "I can't see anything right way up.",
+        "mood": "frustrated",
+        "gesture": "shrug"
+      },
+      {
+        "text": "Hey. Gentle hands, right side up please.",
+        "mood": "concerned",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Okay, I've seen the ceiling. Enough now.",
+        "mood": "putout",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Whoa. Everything just flipped on me.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "Not my best angle. Really not.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Um, hello? I'm upside down here.",
+        "mood": "surprised",
+        "gesture": "startle"
+      },
+      {
+        "text": "All the blood's rushing to my head.",
+        "mood": "concerned",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "Could you turn me back around?",
+        "mood": "curious",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Ugh, this view is all wrong.",
+        "mood": "putout",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Flip me back, please. I'm spinning.",
+        "mood": "hurt",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I think I was put down wrong.",
+        "mood": "sulky",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Still upside down, by the way.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "My whole world is backwards right now.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Funny for a second. Not anymore.",
+        "mood": "frustrated",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Right side up is my favorite side.",
+        "mood": "sulky",
+        "gesture": "none"
+      },
+      {
+        "text": "Little help? I can't right myself.",
+        "mood": "sad",
+        "gesture": "leanIn"
+      },
+      {
+        "text": "Okay, this is getting uncomfortable. Turn me?",
+        "mood": "hurt",
+        "gesture": "bounce"
+      },
+      {
+        "text": "Hello? Everything's upside down down here.",
+        "mood": "concerned",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Could you turn me over? Blood's rushing.",
+        "mood": "putout",
+        "gesture": "dizzy"
+      },
+      {
+        "text": "I'd really like my feet under me again.",
+        "mood": "sulky",
+        "gesture": "sigh"
+      },
+      {
+        "text": "Not my best angle, honestly.",
+        "mood": "putout",
+        "gesture": "shrug"
+      },
+      {
+        "text": "The ceiling is where the floor should be.",
+        "mood": "concerned",
+        "gesture": "lookAway"
+      },
+      {
+        "text": "Okay, joke's over. Set me upright?",
+        "mood": "frustrated",
+        "gesture": "sigh"
       }
     ]
   }

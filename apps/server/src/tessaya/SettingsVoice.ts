@@ -77,7 +77,7 @@ export const SERVER_SETTINGS_VOICE: {
     'how proactive she is, how much is said and done unprompted: lively ("be more proactive"), calm, or important only ("be less proactive", less chatter)',
   ),
   tessayaMotion: free(
-    'how the Tessel reacts when picked up, put down, shaken or dropped: each on or off, and how hard a move must be (sensitivity low, normal or high). Its value is an object: {"sensitivity": "normal", "lifted": true, "setdown": true, "shaken": true, "dropped": true}',
+    'how the Tessel reacts when picked up, put down, shaken, dropped or left upside down: each on or off, and how hard a move must be (sensitivity low, normal or high). Its value is an object: {"sensitivity": "normal", "lifted": true, "setdown": true, "shaken": true, "dropped": true, "flipped": true}',
   ),
   tessayaHaptics: free(
     'the Tessel\'s vibration (buzzing): how strong (intensity off, low, normal or high; "stop buzzing" is off, "vibrate softer" one step down) and what may buzz: reactions to being moved, moods, wake confirmation, reminders. Its value is an object: {"intensity": "normal", "reactions": true, "moods": true, "wake": true, "reminders": true}',

@@ -1100,9 +1100,16 @@ const HANDLED_WORDS = {
   setdown: "set down",
   shaken: "shaken",
   dropped: "dropped",
+  flipped: "left upside down",
 } as const satisfies Readonly<Record<HandledHow, string>>;
 
-const HANDLED = new Set(["event/motion", "event/wake/lifted", "event/touch", "event/key"]);
+const HANDLED = new Set([
+  "event/motion",
+  "event/wake/lifted",
+  "event/touch",
+  "event/key",
+  "event/orientation",
+]);
 const SUBSCRIBE = ["freya/r1/+/state/#", "freya/r1/+/event/#", "freya/r1/+/voice/stepup/done"];
 
 export const brokerLayer = Layer.effect(

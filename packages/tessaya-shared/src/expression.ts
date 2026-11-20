@@ -355,6 +355,12 @@ export const LINE_EVENTS = {
     mood: "hurt",
     gesture: "startle",
   }),
+  "moment.flipped": spec("", "Her device was turned upside down and left that way; she feels it.", {
+    priority: "ambient",
+    maxWords: 8,
+    mood: "putout",
+    gesture: "dizzy",
+  }),
   "moment.poked": spec("", "He poked her on his desktop with the mouse, a quick tap on her body.", {
     priority: "ambient",
     maxWords: 6,
