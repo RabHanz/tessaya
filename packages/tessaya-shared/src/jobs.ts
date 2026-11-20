@@ -253,7 +253,7 @@ export const trackOf = (
 
 /** Where a job stands, in the words the Record keeps. */
 const jobOutcome = (j: Pick<TessayaJob, "phase" | "group" | "limitReached">): string =>
-  j.phase === "drafting_plan"
+  j.phase === "drafting_plan" && j.group !== "needs_you"
     ? "writing its plan"
     : j.phase === "awaiting_agreement"
       ? "plan waits for his OK"
@@ -296,7 +296,8 @@ export const jobMoment = (
 
 /**
  * The jobs whose standing changed since `seen`, which is updated in place. A job seen for the first
- * time is only remembered: a restart must not announce every job again.
+ * time counts: one held up for him seconds after it started is otherwise never said. The server seeds
+ * `seen` with the jobs it starts with, so a restart does not announce them again.
  */
 export const jobChanges = <
   J extends Pick<TessayaJob, "workSessionId" | "phase" | "group" | "limitReached">,
@@ -308,7 +309,7 @@ export const jobChanges = <
     const outcome = jobOutcome(job);
     const was = seen.get(job.workSessionId);
     seen.set(job.workSessionId, outcome);
-    return was === undefined || was === outcome ? [] : [{ job, outcome }];
+    return was === outcome ? [] : [{ job, outcome }];
   });
 
 /**

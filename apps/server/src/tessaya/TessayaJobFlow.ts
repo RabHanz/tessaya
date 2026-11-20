@@ -1188,6 +1188,15 @@ export const jobRecordSeed = Effect.fn("BatonJobFlow.jobRecordSeed")(function* (
   // Newest first, so the first row per job is where it stands.
   for (const row of yield* record.value.query({ kind: "job", limit: 500 }))
     if (row.ref !== null && !seen.has(row.ref)) seen.set(row.ref, row.outcome);
+  // The jobs there now and never recorded are not new: only those that start from here on are said.
+  yield* Effect.gen(function* () {
+    const { entries } = yield* FleetQuery.getFleet({});
+    const jobs = yield* (yield* TessayaJobService).view({ entries });
+    jobChanges(
+      jobs.filter((job) => !seen.has(job.workSessionId)),
+      seen,
+    );
+  }).pipe(Effect.ignoreCause({ log: true }));
   return seen;
 });
 

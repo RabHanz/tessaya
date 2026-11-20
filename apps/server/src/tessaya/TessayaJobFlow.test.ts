@@ -693,7 +693,7 @@ layer("BatonJobFlow", (it) => {
           const rows = yield* (yield* TessayaRecordService).query({ kind: "job" });
           assert.deepEqual(
             rows.filter((r) => r.ref === part).map((r) => r.actor),
-            ["Sebastian"],
+            ["Sebastian", "Sebastian"],
           );
         } finally {
           NodeFS.rmSync(dir, { recursive: true, force: true });
