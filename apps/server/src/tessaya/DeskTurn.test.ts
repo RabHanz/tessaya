@@ -283,7 +283,7 @@ effectIt.effect(
       expect(moods).toEqual([
         [undefined, "heard", "owner"],
         [undefined, { kind: "close", warmth: 0.8 }, "owner"],
-        [undefined, { kind: "felt", tone: "pleasant" }, "owner"],
+        [undefined, { kind: "touched", tone: "pleasant" }, "owner"],
       ]);
       expect(asked).toEqual([
         { role: "voice", feature: "private-turn", model: "claude-sonnet-5-5" },

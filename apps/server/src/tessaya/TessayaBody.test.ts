@@ -525,8 +525,8 @@ describe("TessayaBody", () => {
           Effect.provideService(TessayaMood, mood),
         );
         expect(noted).toEqual([
-          [{ kind: "felt", tone: "firm" }, "member-sam"],
-          [{ kind: "felt", tone: "hurt" }, "member-sam"],
+          [{ kind: "touched", tone: "firm" }, "member-sam"],
+          [{ kind: "touched", tone: "hurt" }, "member-sam"],
         ]);
         // an agent's hand through a move is felt the same way, named as the agent
         yield* moveBody({ touch: { part: "arm", motion: "stroke" } }, her).pipe(

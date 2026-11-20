@@ -250,7 +250,7 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
           assert.strictEqual((low.value as { text: string }).text, "That helps.");
           assert.deepStrictEqual(said, ["moment.petted"]);
           // her nerves' tone reached her affect, and his hand counts as him being with her
-          assert.deepInclude(notes, { kind: "felt", tone: "pleasant" });
+          assert.deepInclude(notes, { kind: "touched", tone: "pleasant" });
           assert.deepInclude(notes, { kind: "seen" });
           // the same stroke a moment later, glad now: a different face, and no words (they had their turn)
           label = "happy";

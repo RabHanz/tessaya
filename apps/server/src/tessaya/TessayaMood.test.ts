@@ -212,6 +212,24 @@ it.effect(
       assert.deepStrictEqual(people[OWNER_MEMBER_ID]!.mood, {});
       assert.notDeepEqual(people["sara"]!.mood, {});
       assert.strictEqual(yield* mood.reassign({ from: "sara", to: null, ref: "touch-2" }), 1);
+      // a rough hand on her desk body, assumed his: "that wasn't me" puts his row back as it was
+      const feelings = (r: { mood: object; reaction?: object; bond: number }) => ({
+        mood: r.mood,
+        reaction: r.reaction,
+        bond: r.bond,
+      });
+      const beforeRough = feelings((yield* rowOf)[OWNER_MEMBER_ID]!);
+      yield* mood
+        .note("companion", { kind: "touched", tone: "hurt" }, OWNER_MEMBER_ID)
+        .pipe(
+          Effect.provideService(AffectCause, { ref: "touch-3", vessel: "desktop", assumed: true }),
+        );
+      assert.notDeepEqual(feelings((yield* rowOf)[OWNER_MEMBER_ID]!), beforeRough);
+      assert.strictEqual(
+        yield* mood.reassign({ from: OWNER_MEMBER_ID, to: null, ref: "touch-3" }),
+        1,
+      );
+      assert.deepStrictEqual(feelings((yield* rowOf)[OWNER_MEMBER_ID]!), beforeRough);
     }).pipe(Effect.provide(setup())),
 );
 

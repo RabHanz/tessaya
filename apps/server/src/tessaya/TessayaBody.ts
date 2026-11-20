@@ -866,7 +866,12 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
   // how it felt moves her quick reaction (never her mood), keyed to whoever's hand it was; her own is no one's
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (nerves?.tone != null && mood._tag === "Some" && f.self !== true)
-    yield* mood.value.note(f.persona ?? undefined, { kind: "felt", tone: nerves.tone }, member);
+    // a person's touch is toward that person (their row, movable by "that wasn't me"); an agent's or her own is not
+    yield* mood.value.note(
+      f.persona ?? undefined,
+      { kind: member === null ? "felt" : "touched", tone: nerves.tone },
+      member,
+    );
   // his own hand on her is him being with her: when he was last with her, for every body's wishes
   if (owner && f.by === undefined && mood._tag === "Some")
     yield* mood.value.note(f.persona ?? undefined, { kind: "seen" }, OWNER_MEMBER_ID);

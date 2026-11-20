@@ -31,6 +31,7 @@ import {
 import { cloneGrant, stands } from "@t3tools/tessaya-shared/consent";
 import { isLineEvent } from "@t3tools/tessaya-shared/expression";
 import { touchReaction } from "@t3tools/tessaya-shared/touchReaction";
+import { AffectCause } from "./AffectCause.ts";
 import { setPersonaField } from "@t3tools/tessaya-shared/personaFile";
 import { pronounce } from "@t3tools/tessaya-shared/pronounce";
 import {
@@ -975,6 +976,7 @@ const TOUCH_EVENT = {
 } as const;
 // shortcut: when each persona last said something about a touch, per process; a restart may let one more line through
 const touchWordsAt = new Map<string, number>();
+let touchCauses = 0;
 export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
   input: TessayaVoiceCallInput,
 ) {
@@ -1039,6 +1041,7 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
       if (Option.isNone(a)) return bad;
       const t = a.value;
       // her nerves first (reflexes and how it felt, into her affect toward him), then her mood as it now stands
+      // whoever is at this desk, assumed: one cause per touch, so "that wasn't me" moves what it did to him
       const felt = yield* feel({
         vessel: "desktop",
         part: t.part,
@@ -1047,7 +1050,13 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
         cmPerS: t.cmPerS,
         durationMs: t.durationMs,
         persona: t.persona,
-      });
+      }).pipe(
+        Effect.provideService(AffectCause, {
+          ref: `touch-${yield* Clock.currentTimeMillis}-${++touchCauses}`,
+          vessel: "desktop",
+          assumed: true,
+        }),
+      );
       const mood = yield* Effect.serviceOption(TessayaMood);
       const view = Option.isNone(mood)
         ? { label: "neutral", intensity: 0.5 }
