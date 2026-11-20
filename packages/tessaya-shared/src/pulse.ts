@@ -125,7 +125,18 @@ export const eventFromRecord = (row: PulseRecordRow): PulseEvent | null => {
       return row.outcome === "failed"
         ? event(row, "jobs", 60, `Standing job "${row.subject}" failed`)
         : null;
-    case "device":
+    case "device": {
+      // Left upside down a while (HomeDevices, M-101): a mood worth raising, more so the longer it lasts.
+      const flip = /^moved: flipped for (\d+) min$/.exec(row.subject);
+      if (flip !== null)
+        return event(
+          row,
+          "mood",
+          Math.min(60, 25 + Number(flip[1]) / 2),
+          `Her body has been upside down for ${flip[1]} min`,
+        );
+      return event(row, "home", 25, `${row.subject}: ${row.outcome}`);
+    }
     case "home":
       return event(row, "home", 25, `${row.subject}: ${row.outcome}`);
     case "cloud":

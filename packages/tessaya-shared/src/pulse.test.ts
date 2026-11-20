@@ -77,6 +77,20 @@ describe("digest", () => {
       told: true,
     });
     expect(eventFromRecord(row("job", "running"))).toBeNull();
+    // A long flip is her mood, weightier the longer it lasts, never urgent.
+    expect(
+      eventFromRecord(row("device", "her eyes answered", "moved: flipped for 30 min")),
+    ).toMatchObject({
+      category: "mood",
+      weight: 40,
+      urgent: false,
+    });
+    expect(
+      eventFromRecord(row("device", "her eyes answered", "moved: flipped for 120 min"))?.weight,
+    ).toBe(60);
+    expect(eventFromRecord(row("device", "her eyes answered", "moved: lifted"))?.category).toBe(
+      "home",
+    );
     // The server's watch lands under the desktop trigger's id, so the same finding is one event.
     expect(eventFromRecord({ ...row("watch", "unanswered"), ref: "ws1" })).toMatchObject({
       id: "wait:ws1",
