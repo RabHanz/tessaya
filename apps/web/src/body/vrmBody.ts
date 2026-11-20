@@ -961,6 +961,33 @@ export function mountBody(
    * (a pat lifts between pats), her trunk leaning and her shoulder going with the reach, more the further it is.
    * Returns whether she is moving for it.
    */
+  const stepFrom = new THREE.Vector3();
+  const stepAhead = new THREE.Vector3();
+  /** She turns to a point on the floor and walks `metres` toward it (her own steps, as a walk cue's). */
+  const approach = (to: THREE.Vector3, metres: number) => {
+    const hips = vrm?.humanoid.getRawBoneNode("hips");
+    const l = vrm?.humanoid.getRawBoneNode("leftUpperArm");
+    const r = vrm?.humanoid.getRawBoneNode("rightUpperArm");
+    if (!hips || !l || !r) return;
+    hips.getWorldPosition(stepFrom);
+    // the way she faces now: her left × up
+    l.getWorldPosition(stepAhead).sub(r.getWorldPosition(reachB)).cross(UP).setY(0).normalize();
+    const dx = to.x - stepFrom.x;
+    const dz = to.z - stepFrom.z;
+    const turn = Math.atan2(stepAhead.z * dx - stepAhead.x * dz, stepAhead.x * dx + stepAhead.z * dz);
+    const now = performance.now();
+    startTurn(facing + turn, undefined, now);
+    if (metres > 0.05 && loco !== null)
+      loco.walk = {
+        gait: gaitOf(stepRig(), 0.7, "stroll"),
+        metres,
+        start: now + (loco.clip !== null ? loco.ms - LOCO_BLEND_MS : loco.ms * 0.6),
+        travelled: 0,
+        last: now + (loco.clip !== null ? loco.ms - LOCO_BLEND_MS : loco.ms * 0.6),
+        phase: 0,
+      };
+    invalidate();
+  };
   const reachOut = (dt: number): boolean => {
     if (arms === null || vrm === null || shared === undefined) return false;
     const c = shared.stage.touchOf(shared.id);
@@ -983,14 +1010,7 @@ export function mountBody(
       arm0.upper.getWorldPosition(reachA).distanceTo(arm0.lower.getWorldPosition(reachB)) +
       reachB.distanceTo(arm0.end.getWorldPosition(reachP));
     const far = c !== null && reachA.distanceTo(reachTo) > 1.05 * span;
-    if (far && loco === null && reaching.k === 0)
-      cue({
-        kind: "walk",
-        to: { kind: "persona", id: c.who },
-        speed: 0.7,
-        style: "stroll",
-        stop: 0.32,
-      });
+    if (far && loco === null && reaching.k === 0) approach(reachTo, reachA.distanceTo(reachTo) - 0.85 * span);
     const stepping = loco?.walk != null;
     reaching.k = Math.max(
       0,
