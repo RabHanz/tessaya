@@ -12,7 +12,7 @@ import { PROPS, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 import { describe, expect, it } from "vite-plus/test";
 
 import { HAT_IDS } from "./hats.ts";
-import { gripOf, heldFor, HELD_IDS, holdPose } from "./heldProps.ts";
+import { colliderGap, gripOf, heldFor, HELD_IDS, holdPose, settleScale } from "./heldProps.ts";
 
 const stand = POSTURES.stand.bones as Partial<Record<PoseBone, Euler>>;
 const bones = (p: Partial<Record<string, Euler>>) =>
@@ -51,6 +51,8 @@ describe("props her hands hold", () => {
         expect(worst).toBeLessThan(0.1);
       }
       expect(heldFor(id)?.children.length).toBeGreaterThan(0);
+      // the hand closes where the prop is: its grip point lies on its collider's axis
+      expect(colliderGap(grip.collider, [0, 0, 0])).toBeLessThanOrEqual(0.003 - grip.collider.r);
     },
   );
 
@@ -60,5 +62,27 @@ describe("props her hands hold", () => {
     );
     for (const id of HELD_IDS) expect(PROPS).toContain(id);
     expect(heldFor("rocket")).toBeNull();
+  });
+});
+
+describe("a finger closing onto what she holds", () => {
+  it("measures the gap to a grip's surface, below zero inside it", () => {
+    const c = { from: [0, -0.03, 0], to: [0, 0.03, 0], r: 0.005 } as const;
+    expect(colliderGap(c, [0.02, 0, 0])).toBeCloseTo(0.015, 6);
+    expect(colliderGap(c, [0, 0.05, 0])).toBeCloseTo(0.015, 6);
+    expect(colliderGap(c, [0.002, 0.01, 0])).toBeLessThan(0);
+  });
+
+  it("closes until the skin meets the surface: within 2 mm, never inside", () => {
+    // a finger whose skin gap shrinks as it closes, meeting the handle at 1.37 times its table pose
+    const gapAt = (s: number) => 0.03 * (1.37 - s);
+    const s = settleScale(gapAt);
+    expect(Math.abs(gapAt(s))).toBeLessThanOrEqual(0.002);
+    // one already inside opens until it rests on the surface
+    const inside = (s: number) => 0.03 * (0.82 - s);
+    expect(Math.abs(inside(settleScale(inside)))).toBeLessThanOrEqual(0.002);
+    // the data's own pose, already touching, is kept; one that can never reach closes fully
+    expect(settleScale(() => 0)).toBe(1);
+    expect(settleScale(() => 0.05)).toBe(2);
   });
 });

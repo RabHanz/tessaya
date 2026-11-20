@@ -116,7 +116,6 @@ import {
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { MeshBVH } from "three-mesh-bvh";
 import {
   OPENING,
   recipeWeights,
@@ -124,7 +123,15 @@ import {
   type FaceRecipe,
 } from "@t3tools/tessaya-shared/faceRecipes";
 import { HAT_IDS, wearHat } from "./hats.ts";
-import { gripOf, holdIn, holdPose } from "./heldProps.ts";
+import {
+  colliderGap,
+  FINGER_HALF,
+  gripOf,
+  holdIn,
+  holdPose,
+  settleScale,
+  type Collider,
+} from "./heldProps.ts";
 import { frameOn, restTurns as restTurnsOf, type PropBone } from "./propKit.ts";
 
 import {
@@ -177,33 +184,23 @@ const browsOverHair = (vrm: VRM) => {
   });
 };
 /**
- * A grip from grasp data closed onto a held prop: each finger's table pose scaled (0.7 to 2) to where it first meets
- * the prop's surface (three-mesh-bvh), so it rests on it rather than in it or short of it. Once, when the prop goes on:
- * the prop rides her hand, so the fit holds however she moves.
+ * A grip from grasp data closed onto a held prop: each finger's table pose scaled to where its skin meets the prop's
+ * grip collider (settleScale), neither short of it nor in it. Once, when the prop goes on: the prop rides her hand, so
+ * the fit holds however she moves.
  */
 const settleGrip = (
   vrm: VRM,
   side: "left" | "right",
   table: Readonly<Record<string, Euler>>,
   prop: THREE.Object3D,
+  collider: Collider,
   mirrored: boolean,
 ): Record<string, Euler> => {
-  const surfaces: Array<{ mesh: THREE.Mesh; bvh: MeshBVH }> = [];
-  prop.traverse((o) => {
-    const m = o as THREE.Mesh;
-    // the hair mask and other unseen helpers are no surface
-    if (m.isMesh && (m.material as THREE.Material).colorWrite !== false)
-      surfaces.push({ mesh: m, bvh: new MeshBVH(m.geometry) });
-  });
-  const local = new THREE.Vector3();
-  const gap = (p: THREE.Vector3) => {
-    let d = Infinity;
-    for (const { mesh, bvh } of surfaces) {
-      local.copy(p).applyMatrix4(mesh.matrixWorld.clone().invert());
-      const hit = bvh.closestPointToPoint(local);
-      if (hit) d = Math.min(d, hit.point.applyMatrix4(mesh.matrixWorld).distanceTo(p));
-    }
-    return d;
+  const toProp = new THREE.Matrix4();
+  const at = new THREE.Vector3();
+  const skinGap = (p: THREE.Vector3) => {
+    at.copy(p).applyMatrix4(toProp);
+    return colliderGap(collider, [at.x, at.y, at.z]) - FINGER_HALF;
   };
   const out: Record<string, Euler> = { ...table };
   for (const finger of ["Thumb", "Index", "Middle", "Ring", "Little"]) {
@@ -220,8 +217,7 @@ const settleGrip = (
       bones.some((b) => !table[b])
     )
       continue;
-    let fit = 1;
-    for (let s = 0.7; s <= 2.0001; s += 0.1) {
+    const gapAt = (s: number) => {
       bones.forEach((b, i) =>
         nodes[i]!.rotation.set(...(table[b]!.map((v) => v * s) as [number, number, number])),
       );
@@ -229,14 +225,13 @@ const settleGrip = (
       vrm.humanoid.update();
       if (mirrored) flipVrm0(vrm);
       vrm.scene.updateMatrixWorld(true);
+      toProp.copy(prop.matrixWorld).invert();
       const [, mid, end] = raws.map((r) => r!.getWorldPosition(new THREE.Vector3()));
       const tip = end!.clone().add(end!.clone().sub(mid!).multiplyScalar(0.75));
-      // a joint sits inside its finger, about a centimetre in from the skin that would touch
-      if (Math.min(gap(tip), gap(end!), gap(mid!.clone().lerp(end!, 0.5))) < 0.011) {
-        fit = s;
-        break;
-      }
-    }
+      // the fingertip and last pad are what meet a handle
+      return Math.min(skinGap(tip), skinGap(end!));
+    };
+    const fit = settleScale(gapAt);
     for (const b of bones)
       out[b] = table[b]!.map((v) => Math.round(v * fit * 1000) / 1000) as unknown as Euler;
   }
@@ -722,6 +717,8 @@ export function mountBody(
     readonly side: "left" | "right";
     readonly type: string;
     readonly object: THREE.Object3D;
+    readonly prop: string;
+    readonly collider: Collider;
   } | null = null;
   // finger poses per grip type from real grasp data (a `grips` cue), and the held prop's settled onto it
   let gripTable: Readonly<Record<string, Readonly<Record<string, Euler>>>> = {};
@@ -731,7 +728,14 @@ export function mountBody(
     heldFingers =
       holding === null || table === undefined || vrm === null
         ? null
-        : settleGrip(vrm, holding.side, table, holding.object, mirrored);
+        : settleGrip(
+            vrm,
+            holding.side,
+            table,
+            holding.object.getObjectByName(`held:${holding.prop}`) ?? holding.object,
+            holding.collider,
+            mirrored,
+          );
   };
 
   // what is showing and where it is heading
@@ -2303,6 +2307,8 @@ export function mountBody(
           side,
           type: grip.type,
           object: frame,
+          prop: id,
+          collider: grip.collider,
         };
         settleHeld();
       }

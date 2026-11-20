@@ -23,7 +23,61 @@ export interface Grip {
   readonly thumb?: number;
   /** Its grasp, for a grip table from real grasp data (a `grips` cue): handle, power or tool. */
   readonly type: "handle" | "power" | "tool";
+  /** What the hand closes on, in the prop's grip frame. */
+  readonly collider: Collider;
 }
+
+/** The part of a prop a hand closes on, in its grip's frame before it is sized to her hand: a capsule, end to end. */
+export interface Collider {
+  readonly from: V3;
+  readonly to: V3;
+  readonly r: number;
+}
+
+/** How far a point (the prop's grip frame) is from a collider's surface; below 0 is inside it. */
+export const colliderGap = (c: Collider, p: V3) => {
+  const d = [c.to[0] - c.from[0], c.to[1] - c.from[1], c.to[2] - c.from[2]] as const;
+  const w = [p[0] - c.from[0], p[1] - c.from[1], p[2] - c.from[2]] as const;
+  const len = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+  const t =
+    len === 0 ? 0 : Math.max(0, Math.min(1, (w[0] * d[0] + w[1] * d[1] + w[2] * d[2]) / len));
+  return Math.hypot(w[0] - t * d[0], w[1] - t * d[1], w[2] - t * d[2]) - c.r;
+};
+
+/** Half a finger's thickness at the reference hand: a joint sits this far in from the skin that touches. */
+export const FINGER_HALF = 0.0075;
+
+/**
+ * How far to close a finger on its table pose (a scale on it, the data's own pose at 1) so its skin meets the
+ * collider: `gapAt(s)` is the skin's gap at scale s. From the data's pose it closes further while short of the surface,
+ * or opens while inside it, then halves the last step until the skin is within `tol` of the surface. A finger that
+ * can't reach it within `lo`..`hi` stays at that limit.
+ */
+export const settleScale = (gapAt: (s: number) => number, lo = 0.6, hi = 2, tol = 0.002) => {
+  const g1 = gapAt(1);
+  if (Math.abs(g1) <= tol) return 1;
+  const step = g1 > 0 ? 0.1 : -0.1;
+  let prev = 1;
+  for (let s = 1 + step; s >= lo - 1e-9 && s <= hi + 1e-9; s += step) {
+    const g = gapAt(s);
+    if (Math.abs(g) <= tol) return s;
+    if (g > 0 === g1 > 0) {
+      prev = s;
+      continue;
+    }
+    // the surface lies between the last two steps
+    let [a, b] = [prev, s];
+    for (let k = 0; k < 16; k++) {
+      const m = (a + b) / 2;
+      const gm = gapAt(m);
+      if (Math.abs(gm) <= tol) return m;
+      if (gm > 0 === g1 > 0) a = m;
+      else b = m;
+    }
+    return (a + b) / 2;
+  }
+  return g1 > 0 ? hi : lo;
+};
 
 /** A prop in its grip's frame: y along the thumb, z out of the palm, origin where the hand closes round it. */
 type Make = (look: Look) => THREE.Object3D[];
@@ -119,6 +173,7 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   // a morning mug of coffee, held by its handle at her middle
   coffee: {
     grip: {
+      collider: { from: [0, -0.028, -0.002], to: [0, 0.028, -0.002], r: 0.0055 },
       type: "handle",
       at: [0.28, -0.06, -0.1],
       fingers: [1, 0, 0.35],
@@ -141,6 +196,7 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   // an evening cup of tea: a flared cup with a gold rim, held a little closer and lighter
   tea: {
     grip: {
+      collider: { from: [0, -0.017, -0.002], to: [0, 0.017, -0.002], r: 0.0055 },
       type: "handle",
       at: [0.27, -0.03, -0.08],
       fingers: [1, 0.1, 0.45],
@@ -163,6 +219,7 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   // an umbrella over her head: a J handle in her fist, the shaft up past her head, eight panels
   umbrella: {
     grip: {
+      collider: { from: [0, -0.06, 0], to: [0, 0.25, 0], r: 0.008 },
       type: "power",
       at: [0.24, -0.08, -0.14],
       fingers: [1, 0, 0.2],
@@ -225,6 +282,7 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   // a reading magnifier held up at her side, clear of her face: a wooden handle, a brass ring and its glass
   magnifier: {
     grip: {
+      collider: { from: [0, -0.05, 0], to: [0, 0.06, 0], r: 0.011 },
       type: "tool",
       at: [0.26, 0, -0.2],
       fingers: [1, 0.25, 0.15],
@@ -269,6 +327,7 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   // a spanner for when the agents are building: an open jaw above the fist
   wrench: {
     grip: {
+      collider: { from: [0, -0.07, 0], to: [0, 0.08, 0], r: 0.007 },
       type: "power",
       at: [0.28, -0.1, -0.14],
       fingers: [1, -0.2, 0.3],
