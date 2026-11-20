@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -9,6 +12,8 @@ import {
   clipFor,
   effectFor,
   faceFor,
+  PROPS,
+  propTagOf,
   renderFor,
 } from "./expressionMap.ts";
 
@@ -37,9 +42,10 @@ describe("clips by name", () => {
 
 describe("the expression map", () => {
   it("every emotion's kin and props name something real, so a new row cannot point at nothing", () => {
-    const props = new Set<string>(
-      Object.values(VESSELS).flatMap((v) => ("props" in v ? v.props : [])),
-    );
+    // a mood's props, and every vessel's, are the vocabulary's (props.js), so none is lost to a name mismatch
+    const props = new Set<string>(PROPS);
+    for (const v of Object.values(VESSELS))
+      for (const p of "props" in v ? v.props : []) expect(props, `${v.id} prop ${p}`).toContain(p);
     const names = new Set<string>([
       ...Object.values(VESSELS).flatMap((v) => ("face" in v ? v.face : [])),
       ...Object.keys(EMOTIONS),
@@ -79,6 +85,8 @@ describe("the expression map", () => {
     // The Tessel has no crown; focused falls to its next prop, reading.
     expect(renderFor(VESSELS.tessel, "proud", 1).prop).toBeNull();
     expect(renderFor(VESSELS.tessel, "focused", 1).prop).toBe("reading");
+    // sleepy reaches the Tessel's mask by its own name (it was lost to "mask" against props.js's "sleepmask")
+    expect(renderFor(VESSELS.tessel, "sleepy", 1).prop).toBe("mask");
     // A motor buzzes the mood's own pattern; a mood without one stays still.
     expect(renderFor(VESSELS.tessel, "sulky", 0.3).haptic).toBe("thump");
     expect(renderFor(VESSELS.tessel, "focused", 1).haptic).toBeNull();
@@ -96,5 +104,40 @@ describe("the expression map", () => {
         voice: { style: "warm, quietly pleased", sound: "laugh", blocks: [] },
       },
     );
+  });
+});
+
+describe("props from what is going on", () => {
+  it("every prop in the vocabulary is the Character Studio's, and every one is reachable on her cartoon", () => {
+    const studio = [
+      ...NodeFS.readFileSync(
+        new URL("../../../apps/web/public/companion/props.js", import.meta.url),
+        "utf8",
+      ).matchAll(/\badd\("([a-z0-9]+)"/g),
+    ].map((m) => m[1]);
+    expect(PROPS).toEqual(studio);
+    for (const p of PROPS) expect(renderFor(VESSELS.mascot, "neutral", 0, { tag: p }).prop).toBe(p);
+  });
+
+  it("puts what he pinned first, then the line's tag, then the house, then the mood", () => {
+    const busy = { building: true, hour: 23 } as const;
+    expect(renderFor(VESSELS.mascot, "proud", 1, busy).prop).toBe("hardhat");
+    expect(renderFor(VESSELS.mascot, "proud", 1, { ...busy, tag: "rocket" }).prop).toBe("rocket");
+    expect(
+      renderFor(VESSELS.mascot, "proud", 1, { ...busy, tag: "rocket", pinned: "umbrella" }).prop,
+    ).toBe("umbrella");
+    expect(renderFor(VESSELS.mascot, "proud", 1, { hour: 14 }).prop).toBe("crown");
+    expect(renderFor(VESSELS.mascot, "neutral", 0, { hour: 23 }).prop).toBe("nightcap");
+    expect(renderFor(VESSELS.mascot, "neutral", 0, { weather: "rain" }).prop).toBe("umbrella");
+    expect(propTagOf("Bring a coat [prop:umbrella] today")).toBe("umbrella");
+  });
+
+  it("names a prop as each form calls it, and leaves the Tessel to its own when it has no such prop", () => {
+    // the Tumble firmware lane's table (eye.accessory): party, mask, reading, sun, magnifier
+    expect(renderFor(VESSELS.tessel, "neutral", 0, { release: true }).prop).toBe("party");
+    expect(renderFor(VESSELS.tessel, "neutral", 0, { weather: "sun" }).prop).toBe("sun");
+    expect(renderFor(VESSELS.tessel, "neutral", 0, { tag: "magnifier" }).prop).toBe("magnifier");
+    // no hard hat on Tumble: unset (its firmware's auto), never "none"
+    expect(renderFor(VESSELS.tessel, "neutral", 0, { building: true }).prop).toBeNull();
   });
 });

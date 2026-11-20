@@ -2,6 +2,7 @@
  * Every setting by voice, in plain words with a safety class (free: at once; confirm and owner: his yes on his phone;
  * never: refused, with why). Typed over the schemas' fields: a setting without a voice path does not compile.
  */
+import { PROPS } from "@t3tools/tessaya-shared/expressionMap";
 import { TEMPERAMENT_DIALS, TRAITS } from "@t3tools/tessaya-shared/affect";
 import { type DesktopSettingsControl, DesktopVoiceSettingsPatch } from "@t3tools/tessaya-contracts";
 import { ServerSettings, ServerSettingsPatch } from "@t3tools/contracts";
@@ -89,6 +90,10 @@ export const SERVER_SETTINGS_VOICE: {
     'developer feedback loop, problem reports to developers: "off" collects nothing; "silent" sends reports without a word; "developer" also keeps a live dev feed and triage, and she says one line per report',
   ),
   tessayaFeedbackGithub: owner("opening a GitHub issue for each problem report"),
+  tessayaProp: free(
+    'a prop she holds or wears on every body until he says otherwise ("hold an umbrella", "wear the party hat"; "put it away" is ""): one of ' +
+      PROPS.join(", "),
+  ),
   tessayaCast: free(
     'the cast: which persona lives on each Tessel and whether it follows; tessaya_cast does this. Its value is an object by device id: {"<device id>": {"home": "<persona>", "follows": false, "crew": [], "form": "cartoon" or "human"}}',
   ),

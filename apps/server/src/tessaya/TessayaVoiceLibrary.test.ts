@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+import { onAction } from "../provenance/ActionLog.ts";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -260,6 +261,12 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
           const glad = yield* touch(stroke);
           assert.deepInclude(glad.value as object, { face: "happy", gesture: "leanIn", text: "" });
           assert.deepStrictEqual(said, ["moment.petted"]);
+          // a finger on her body on the phone takes the same path, felt as that phone's
+          const felt: Array<unknown> = [];
+          const off = onAction((e) => void (e.kind === "body.felt" && felt.push(e.data)));
+          yield* touch({ ...stroke, kind: "pat", device: "phone-1" });
+          off();
+          assert.deepStrictEqual(felt, [{ vessel: "phone-1", pressure: 0.15, durationMs: 1500 }]);
           // not a touch she knows
           assert.isFalse((yield* touch({ ...stroke, kind: "slap" })).ok);
           assert.isFalse((yield* touch({ ...stroke, pressure: 3 })).ok);

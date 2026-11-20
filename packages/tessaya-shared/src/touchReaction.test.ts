@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { FACE_LIBRARY } from "./expressionMap.ts";
-import { TOUCH_WORDS_GAP_MS, touchReaction } from "./touchReaction.ts";
+import { TOUCH_KINDS } from "./bodyMotion.ts";
+import { TOUCH_WORDS_GAP_MS, touchOpKind, touchReaction } from "./touchReaction.ts";
 
 const stroke = (label: string, over: Partial<Parameters<typeof touchReaction>[0]> = {}) =>
   touchReaction({
@@ -12,6 +13,27 @@ const stroke = (label: string, over: Partial<Parameters<typeof touchReaction>[0]
     sinceWordsMs: Infinity,
     ...over,
   });
+
+describe("touchOpKind", () => {
+  it("takes every full-body touch onto the one touch path, and none the page's own choice makes", () => {
+    expect(TOUCH_KINDS.map((k) => [k, touchOpKind(k)])).toEqual([
+      ["tap", "poke"],
+      ["poke", "poke"],
+      ["pat", "pat"],
+      ["stroke", "stroke"],
+      ["caress", "stroke"],
+      ["rub", "stroke"],
+      ["tickle", "stroke"],
+      ["hold", "hold"],
+      ["squeeze", "squeeze"],
+      ["grab", "hold"],
+      ["pinch", "poke"],
+      ["kiss", null],
+      ["hug", "hold"],
+      ["trace", "stroke"],
+    ]);
+  });
+});
 
 describe("touchReaction", () => {
   it("answers the same stroke differently as she feels, always with faces her rig can draw", () => {

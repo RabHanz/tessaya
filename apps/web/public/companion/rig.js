@@ -1239,7 +1239,8 @@
    if (pr.held.both) { const sp = spot("both", 1, B, F, ch), heavy = bothG && bothG.weight === "heavy", mb = F.cy + F.mY + F.mw * .35 + 4; const shY0 = -B.h * (LS.shoulderY || .58), reachY = floatMode ? -B.h * .2 : Math.min(-14, shY0 + Lfull * .9), top = (bothG && bothG.top) || 40;
     bothPos = [0, Math.min(reachY, Math.max(sp[1] + (heavy ? 8 : 0), mb + top * 1.12))]; bothPos.s = clamp((bothPos[1] - mb) / top, .38, 1.12);
     // short arms (a stub, a low face): the object stays below the mouth and the hands hold it as low as they can reach
-    if (bothPos.s < .65) { bothPos[1] = Math.min(-6, mb + top * .65); bothPos.s = .65; }
+    // there it is held in front of her hands (see L.hd), big enough to read, its top still clear of the mouth
+    if (bothPos.s < .65) { bothPos.small = true; bothPos.s = 1.05; bothPos[1] = Math.min(4, mb + top * bothPos.s); }
     if (besideBody) { bothPos[0] = B.hw + top * .45; bothPos[1] = Math.min(-8, B.cy + B.h * .35); bothPos.s = .75; } }
    const zoneOf = (n) => /^(chin|mouth|sip|snack|cheek|ear|eye|face|bridge|temple|monocleRim|monoKey|underChin|wag)$/.test(n) ? "face" : /^(head|up|overhead|raise)$/.test(n) ? "head" : "chest";
    const lean = {v: 0};
@@ -1431,7 +1432,8 @@
    }
    put(L.wn, pr.worn + pr.float);
    put(L.bk, back + (backHands || ""));
-   put(L.hd, pr.front + both + hs + overs);
+   // a two-handed prop on a short body (little room under the mouth) would vanish under her hands: it goes in front of them
+   put(L.hd, pr.front + (bothPos && bothPos.small ? hs + both : both + hs) + overs);
    if (L.rc) put(L.rc, rimCut);
    if (pr.moving) moving = true;
    // effects

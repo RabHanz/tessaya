@@ -5,7 +5,7 @@
  */
 import type { TessayaSessionState } from "@t3tools/tessaya-contracts";
 
-import { faceFor, renderFor, VESSELS } from "./expressionMap.ts";
+import { faceFor, renderFor, VESSELS, type PropState } from "./expressionMap.ts";
 import type { TurnPhase } from "./voiceTurn.ts";
 
 /** Lively: every reaction and an occasional wander. Calm (default): reactions without the extra acts. Important
@@ -54,19 +54,24 @@ const MOOD_SHOWN = 0.2;
 
 /**
  * Her spine mood (TessayaMood's label and intensity) as her face at rest: a mild mood shows mild, a strong one in full.
- * Steps of a tenth, so a small drift between turns redraws nothing. Null is her plain rest.
+ * Steps of a tenth, so a small drift between turns redraws nothing. What's going on (`state`) may bring a prop to any
+ * face, her plain one too. Null is her plain rest with nothing to hold.
  */
 export const restFaceOf = (
   label: string,
   intensity: number,
+  state: PropState = {},
 ): {
   readonly expression: string;
   readonly intensity: number;
   /** The prop the mood brings (expressionMap.ts), null to put a mood's prop away. */
   readonly prop: string | null;
 } | null => {
-  if (!/^[a-z]{2,20}$/.test(label) || label === "neutral" || intensity < MOOD_SHOWN) return null;
-  const shown = renderFor(VESSELS.mascot, label, intensity);
+  if (!/^[a-z]{2,20}$/.test(label) || label === "neutral" || intensity < MOOD_SHOWN) {
+    const prop = renderFor(VESSELS.mascot, "neutral", 0, state).prop ?? null;
+    return prop === null ? null : { expression: "neutral", intensity: 0.85, prop };
+  }
+  const shown = renderFor(VESSELS.mascot, label, intensity, state);
   return {
     expression: shown.face ?? rigMoodOf(label),
     intensity: Math.round((0.45 + 0.55 * Math.min(1, intensity)) * 10) / 10,
