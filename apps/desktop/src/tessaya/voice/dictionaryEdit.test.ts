@@ -122,8 +122,9 @@ describe("the vocabulary", () => {
 
   it("shows her everyday form unless he turned it off himself", () => {
     const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "voice-settings-"));
+    let n = 0;
     const at = (saved: object) => {
-      const file = NodePath.join(dir, `${Math.random()}.json`);
+      const file = NodePath.join(dir, `${++n}.json`);
       NodeFS.writeFileSync(file, JSON.stringify(saved));
       return readSettings(file).mascot;
     };
