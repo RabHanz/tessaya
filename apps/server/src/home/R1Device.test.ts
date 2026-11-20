@@ -40,6 +40,7 @@ import {
   peopleLines,
   namedIn,
   r1Confirmed,
+  HOUSE_LOOK,
   LOOK,
   r1Played,
   r1TurnStream,
@@ -463,7 +464,7 @@ effectIt.effect(
       );
       expect(sent).toMatch(/tessaya_work_now\), live as of this turn: \{"threads":\[\]\}/);
       // The R1's warm sessions start with this list: any other and his first turn finds none warm (14 Nov, 20:44).
-      expect(offered).toEqual(sessionTools([], [LOOK]).map((t) => t.name));
+      expect(offered).toEqual(sessionTools([], [LOOK, HOUSE_LOOK]).map((t) => t.name));
 
       // A read of his work that hangs is left out at its deadline; the model is not kept waiting (14 Nov, 21:40).
       sent = "";

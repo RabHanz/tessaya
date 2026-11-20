@@ -1923,6 +1923,13 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["room_look"]],
   },
   {
+    // M-114: a house camera, read-only; n/a in a house with none.
+    id: "house-look",
+    proves: ["house_look"],
+    said: ["Who's at the front door?"],
+    uses: [["house_look"]],
+  },
+  {
     id: "laptop",
     proves: ["laptop_ask"],
     said: ["What's on my laptop screen?"],

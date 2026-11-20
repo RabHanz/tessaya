@@ -341,6 +341,14 @@ const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
   {
+    id: "house-look",
+    source: "M-114, Director 20 Nov: a house camera when he asks who is at the door",
+    said: ["Who's at the front door?"],
+    verified: true,
+    calls: ["house_look"],
+    callsAtMost: { room_look: 0 },
+  },
+  {
     id: "session-doing",
     source: "M-104, Director 20 Nov: natural conversations about his coding work",
     said: ["What's the build session doing?"],
