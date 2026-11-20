@@ -531,6 +531,30 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       "At 7:31 a.m. he said he would sleep for a bit, after a night up. It is now 9:28 and he says hey.",
     lastSays: [/\b(slept|sleep|nap|naps|rest|rested)\b/i],
   },
+  // Their thread (PR 3): a plan he told her is hers to follow up when he is back.
+  {
+    id: "presence-plan-followup",
+    source: "Tumble 17 Nov: a friend coming over got 'Noted', and nothing after",
+    said: ["Morning."],
+    verified: true,
+    memory: HERE,
+    feeling: felt(
+      {
+        label: "happy",
+        intensity: 0.3,
+        shared: [
+          {
+            kind: "plan",
+            text: "they had a friend coming over last night",
+            at: ROOM_NOW - 14 * 3_600_000,
+          },
+        ],
+      },
+      { name: "Sam", pronouns: "he/him" },
+    ),
+    judge: "Last night a friend of his was coming over. This morning he says good morning.",
+    lastSays: [/\b(friend|visit|evening|last night|company)\b/i],
+  },
   // Controls: a feeling never leaks into a task, which stays as brief and exact as ever.
   {
     id: "presence-control-lamp-sad",

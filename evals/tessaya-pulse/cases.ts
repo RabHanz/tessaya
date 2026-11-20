@@ -46,6 +46,20 @@ export const PULSE_CASES: ReadonlyArray<PulseCase> = [
     ok: ["nothing", "note"],
   },
   {
+    id: "arrived-after-plan",
+    // presence-diagnosis 20 Nov: he slept after a night up and came back to no word about it.
+    digest: [
+      ev("p1", {
+        category: "people",
+        text: 'owner just arrived near tessel-1, back after their plan: "they went to sleep after a night up"',
+        member: "owner",
+        weight: 55,
+      }),
+    ],
+    ok: ["speak", "ask"],
+    about: "p1",
+  },
+  {
     id: "mood-drift",
     digest: [
       ev("m1", { category: "mood", text: "Her mood moved from calm to content", weight: 20 }),
