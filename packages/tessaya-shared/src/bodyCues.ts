@@ -370,7 +370,8 @@ export const GESTURES: Readonly<
       { bone: "leftShoulder", axis: "z", rad: 0.06, cycles: 4 },
       { bone: "rightShoulder", axis: "z", rad: -0.06, cycles: 4 },
     ],
-    act: { face: { happy: 1, aa: 0.8 }, shapes: [EYES_JOY], jaw: 0.3 },
+    // eyes half shut whatever the model's joy shapes draw (some models leave them empty)
+    act: { face: { happy: 1, aa: 0.8, blink: 0.55 }, shapes: [EYES_JOY], jaw: 0.3 },
   },
   gasp: {
     ms: 1100,
