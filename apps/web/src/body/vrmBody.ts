@@ -2700,8 +2700,10 @@ export function mountBody(
     const at = a.hit
       .clone()
       .addScaledVector(a.along, h.along * 0.05 * (rig?.height ?? 1.6))
-      .applyMatrix4(follow)
-      .addScaledVector(normal, a.lift);
+      .applyMatrix4(follow);
+    // a persona's real hand lands on her surface itself; the drawn hand sits a little off a curved part
+    landedOn = [at.x, at.y, at.z];
+    at.addScaledVector(normal, a.lift);
     handFrame = pointerHand({
       at: now,
       hit: [at.x, at.y, at.z],
@@ -2722,11 +2724,12 @@ export function mountBody(
   };
   let handLift = 0;
   /** For the stage: the hand persona `id` lays on her now, if any. */
+  let landedOn: V3 = [0, 0, 0];
   const touchedBy = (id: string): Contact | null =>
     agentTouch === null || agentTouch.by !== id || handFrame === null
       ? null
       : {
-          palm: handFrame.palm,
+          palm: landedOn,
           normal: handFrame.normal,
           pressure: handHeld ? handFrame.pressure : 0,
           lift: handHeld ? handLift : 0.06,
