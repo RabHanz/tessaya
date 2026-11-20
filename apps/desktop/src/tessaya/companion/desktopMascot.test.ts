@@ -43,6 +43,10 @@ describe("her private body on the desk", () => {
     expect(readBodyAsk('tessaya-body:{"shown":false,"n":3}')).toEqual({ shown: false });
     expect(readBodyAsk('tessaya-body:{"grow":40}')).toEqual({ grow: 40 });
     expect(readBodyAsk('tessaya-body:{"done":true}')).toEqual({ done: true });
+    // her full body has her character's right-click menu and is carried the same way
+    expect(readBodyAsk('tessaya-body:{"menu":true,"n":4}')).toEqual({ menu: true });
+    expect(readBodyAsk('tessaya-body:{"carry":true}')).toEqual({ carry: true });
+    expect(readBodyAsk('tessaya-body:{"carry":false}')).toEqual({ carry: false });
     expect(readBodyAsk("Tessaya")).toBeNull();
     expect(readBodyAsk('tessaya-body:{"move":[1e9,0]}')).toBeNull();
     expect(readBodyAsk("tessaya-body:{nope")).toBeNull();
