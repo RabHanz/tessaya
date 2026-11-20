@@ -53,7 +53,22 @@ export const calledName = (text: string, names: ReadonlyArray<string>): string |
     .trim();
   if ((TESSAYA_ALONE.test(plain) || TESSAYA_LEAD.test(text.trim())) && names[0] !== undefined)
     return names[0];
-  return names.find((n) => wakeWordHeard(text, n)) ?? null;
+  // A name closing the sentence is her only as a call ("thanks, Freya"), never as a thing named in it: "decrease your
+  // screen brightness on the Tesla?" switched him from Freya to Tessaya (20 Nov, 07:29 GMT+5).
+  return mentionedOnly(words) ? null : (names.find((n) => wakeWordHeard(text, n)) ?? null);
+};
+
+/** Words that make a closing name part of the sentence ("on the Tesla", "about Alfred"), not a call. */
+const BEFORE_A_THING =
+  /^(?:the|a|an|my|your|his|her|their|our|this|that|on|in|to|at|with|from|for|of|about|by|into|onto|via)$/i;
+/** His device and the car it is heard as: never her name. */
+const NOT_HER = /^(?:tessels?|tesla'?s?)$/i;
+const mentionedOnly = (words: ReadonlyArray<string>): boolean => {
+  const bare = words.map((w) => w.replace(/[^\p{L}']/gu, ""));
+  const last = bare.at(-1) ?? "";
+  if (NOT_HER.test(last)) return true;
+  // A name right after "the", "on", "about"...: a thing in the sentence, not a call.
+  return bare.length > 2 && BEFORE_A_THING.test(bare.at(-2)!);
 };
 
 /**
