@@ -244,6 +244,23 @@ describe("the assistant's tool table", () => {
     expect(asked).toEqual(["press", "press"]);
   });
 
+  it("points at a tree line by its number with no screenshot, or at a screenshot's point", async () => {
+    const pointed: unknown[] = [];
+    const tools = new Map(
+      buildTessayaTools({
+        ...host([]),
+        point: async (a) => (pointed.push(a), "Pointing."),
+      }).map((t) => [t.name, t]),
+    );
+    await tools.get("point_at")!.run({ id: 4, label: "Save" });
+    await tools.get("point_at")!.run({ x: 10, y: 20, screen: 2 });
+    await expect(tools.get("point_at")!.run({ label: "where" })).rejects.toThrow();
+    expect(pointed).toEqual([
+      { id: 4, label: "Save" },
+      { x: 10, y: 20, screen: 2 },
+    ]);
+  });
+
   it("clicks a tree line by its number and says when the tree was cut", async () => {
     const log: string[] = [];
     const tools = new Map(buildTessayaTools(host(log)).map((t) => [t.name, t]));
