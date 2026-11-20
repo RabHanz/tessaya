@@ -110,7 +110,7 @@ describe("the site a browser window is on", () => {
       addressBarHost(['[3] edit: Address and search bar = "https://Shop.Example.com/a"']),
     ).toBe("shop.example.com");
     expect(addressBarHost(["[1] edit: Address and search bar"])).toBeNull();
-    expect(addressBarHost(['[1] edit: Address = "C:\\Users\\rabee"'])).toBeNull();
+    expect(addressBarHost(['[1] edit: Address = "C:\\Users\\someone"'])).toBeNull();
     expect(addressBarHost(['[1] edit: Search = "github.com"'])).toBeNull();
   });
 });
