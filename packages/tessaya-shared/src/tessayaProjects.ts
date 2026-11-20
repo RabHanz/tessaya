@@ -13,11 +13,13 @@ import type {
   AdoptedSessionCandidate,
   TessayaSessionSummary,
   TessayaFleetEntry,
+  TessayaFleetPlainThread,
   TessayaProjectRef,
   ClaudeLiveSession,
   EnvironmentId,
   ProjectId,
 } from "@t3tools/tessaya-contracts";
+import { tessayaStateNeedsUser } from "@t3tools/tessaya-contracts";
 
 export interface EnvironmentLive {
   readonly environmentId: EnvironmentId;
@@ -25,6 +27,8 @@ export interface EnvironmentLive {
   readonly entries: ReadonlyArray<TessayaFleetEntry>;
   readonly herdr: ReadonlyArray<AdoptedSessionCandidate>;
   readonly claude: ReadonlyArray<ClaudeLiveSession>;
+  /** T3 threads in no work session; absent from older servers. */
+  readonly plain?: ReadonlyArray<TessayaFleetPlainThread>;
 }
 
 export type TessayaSessionRow =
@@ -54,6 +58,19 @@ export type TessayaSessionRow =
       readonly pane: string | null;
       readonly sessionId: string;
       readonly prompt: string | null;
+    }
+  | {
+      /** A T3 thread in no work session: his words to it are its next message. */
+      readonly kind: "thread";
+      readonly key: string;
+      readonly environmentId: EnvironmentId;
+      readonly box: string;
+      readonly title: string;
+      readonly state: string;
+      readonly urgent: boolean;
+      readonly updatedAt: string | null;
+      readonly threadId: string;
+      readonly pane: null;
     }
   | {
       readonly kind: "pane";
@@ -115,6 +132,27 @@ export function buildTessayaProjects(input: {
         updatedAt: entry.updatedAt,
         entry,
       });
+    }
+    for (const thread of env.plain ?? []) {
+      add(
+        input.resolveWorkProject(env.environmentId, thread.projectId) ??
+          thread.project ?? {
+            key: `t3:${env.environmentId}:${thread.projectId}`,
+            label: thread.title,
+          },
+        {
+          kind: "thread",
+          key: `thread:${env.environmentId}:${thread.threadId}`,
+          environmentId: env.environmentId,
+          box: env.environmentLabel,
+          title: thread.title,
+          state: thread.state,
+          urgent: tessayaStateNeedsUser(thread.state),
+          updatedAt: thread.lastActivityAt,
+          threadId: thread.threadId,
+          pane: null,
+        },
+      );
     }
     const hosted = new Set<string>();
     for (const session of env.claude) {
@@ -226,7 +264,9 @@ export function tessayaSessionSummaries(
       const threadId =
         row.kind === "work"
           ? (row.entry.activeThreadId ?? row.entry.threads[0]?.threadId ?? null)
-          : null;
+          : row.kind === "thread"
+            ? row.threadId
+            : null;
       return {
         key: row.key,
         project: group.label,
@@ -243,7 +283,7 @@ export function tessayaSessionSummaries(
         updatedAt: row.updatedAt,
         thread: threadId === null ? null : { environmentId: row.environmentId, threadId },
         pane:
-          row.kind === "work" || row.pane === null
+          row.kind === "work" || row.kind === "thread" || row.pane === null
             ? null
             : { environmentId: row.environmentId, pane: row.pane },
       };

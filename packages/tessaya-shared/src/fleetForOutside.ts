@@ -68,5 +68,18 @@ export const fleetForOutside = (
             };
           }),
         }),
+    ...(fleet.plainThreads === undefined
+      ? {}
+      : {
+          plainThreads: fleet.plainThreads.map((thread) => {
+            const project = projectTitle(thread.projectId);
+            const ref = linked?.project(thread.projectId) ?? null;
+            return {
+              ...thread,
+              title: walled(project) && project !== null ? project : thread.title,
+              ...(ref === null ? {} : { project: ref }),
+            };
+          }),
+        }),
   };
 };

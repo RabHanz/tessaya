@@ -1052,8 +1052,19 @@ export const layer = McpToolAccess.toLayer(
       tessaya_session_insight: McpToolAccess.reads((input) =>
         call(withInsight((insight) => insight.insight(input))),
       ),
-      tessaya_session_steer: McpToolAccess.writes((input) =>
-        call(withInsight((insight) => insight.steer(input))),
+      // A linked server of his sends his words to one of this server's own threads, read back to him there first.
+      tessaya_session_steer: McpToolAccess.writes(
+        (input) =>
+          McpInvocationContext.McpInvocationContext.pipe(
+            Effect.flatMap((scope) =>
+              call(
+                withInsight((insight) =>
+                  insight.steer(scope.client?.linked === true ? { ...input, here: true } : input),
+                ),
+              ),
+            ),
+          ),
+        { linkedCallers: "allowed" },
       ),
       // A linked server may ask too (the R1 asking his laptop): it is a device's words, which the gate asks him to act on.
       tessaya_ask: McpToolAccess.writes(

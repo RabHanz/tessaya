@@ -200,3 +200,39 @@ describe("the sessions Tessaya's own window lists", () => {
     expect(groups.map((group) => group.label)).toEqual(["Shop"]);
   });
 });
+
+describe("plain threads among the sessions", () => {
+  it("lists a linked server's plain thread under its project, with the thread to send to", () => {
+    const groups = buildTessayaProjects({
+      environments: [
+        env("env-laptop", "Laptop", {
+          plain: [
+            {
+              threadId: "t-print",
+              projectId: "p-print",
+              title: "V-Minion builds",
+              state: "needs_approval",
+              lastActivityAt: "2026-11-20T22:37:00.000Z",
+              project: { key: "folder:3D-Printer", label: "3D-Printer" },
+            },
+          ] as never,
+        }),
+      ],
+      resolveWorkProject: () => null,
+    });
+    expect(tessayaSessionSummaries(groups, () => null)).toEqual([
+      {
+        key: "thread:env-laptop:t-print",
+        project: "3D-Printer",
+        session: "V-Minion builds",
+        account: null,
+        state: "waiting",
+        urgent: true,
+        box: "Laptop",
+        updatedAt: "2026-11-20T22:37:00.000Z",
+        thread: { environmentId: "env-laptop", threadId: "t-print" },
+        pane: null,
+      },
+    ]);
+  });
+});

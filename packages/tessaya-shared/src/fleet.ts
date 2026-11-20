@@ -25,6 +25,7 @@ import {
   type TessayaFleetEntry,
   type TessayaFleetAdopted,
   type TessayaFleetThread,
+  type TessayaFleetPlainThread,
   type TessayaSessionState,
   type WorkSession,
 } from "@t3tools/tessaya-contracts";
@@ -51,7 +52,15 @@ export interface FleetThreadInput {
   readonly latestTurnState: "running" | "interrupted" | "completed" | "error" | null;
   readonly latestTurnCompletedAt: string | null;
   readonly updatedAt: string;
+  /** For a thread in no work session (the fleet's plain threads): its project, and whether it is listed at all. */
+  readonly projectId?: string;
+  /** Archived, or a child another thread started: never a plain thread of its own. */
+  readonly hidden?: boolean;
 }
+
+/** Plain threads: active in the last two weeks, newest first, a few at most so the fleet stays small. */
+const PLAIN_RECENT_MS = 14 * 24 * 60 * 60_000;
+const PLAIN_MAX = 40;
 
 export interface FleetInput {
   readonly workSessions: ReadonlyArray<WorkSession>;
@@ -138,7 +147,43 @@ export function buildTessayaFleet(input: FleetInput): TessayaFleet {
   }
 
   entries.sort((left, right) => compareFleetEntries(left, right, BATON_STATE_PRIORITY));
-  return { entries, observedAt: input.observedAt };
+  const attached = new Set(
+    input.workSessions.flatMap((w) => w.providerSessions.map((p) => p.threadId as string)),
+  );
+  const since = Date.parse(input.observedAt) - PLAIN_RECENT_MS;
+  const plainThreads = [...input.threads.values()]
+    .filter(
+      (t) =>
+        t.projectId !== undefined &&
+        t.hidden !== true &&
+        !attached.has(t.threadId) &&
+        Date.parse(t.updatedAt) >= since,
+    )
+    .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, PLAIN_MAX)
+    .map((t) => ({
+      threadId: t.threadId as TessayaFleetPlainThread["threadId"],
+      projectId: t.projectId as TessayaFleetPlainThread["projectId"],
+      title: (t.title.trim() || "Untitled") as TessayaFleetPlainThread["title"],
+      state: deriveTessayaSessionState({
+        environmentOnline: input.environmentOnline,
+        hasPendingApprovals: t.hasPendingApprovals,
+        hasPendingUserInput: t.hasPendingUserInput,
+        sessionStatus: t.sessionStatus,
+        sessionLastError: t.sessionLastError,
+        backgroundLiveness: t.backgroundLiveness,
+        latestTurnState: t.latestTurnState,
+        latestTurnCompletedAt: t.latestTurnCompletedAt,
+        lastVisitedAt: input.lastVisitedAt(t.threadId),
+        providerQuotaExhausted: false,
+      }),
+      lastActivityAt: t.updatedAt as TessayaFleetPlainThread["lastActivityAt"],
+    }));
+  return {
+    entries,
+    observedAt: input.observedAt,
+    ...(plainThreads.length === 0 ? {} : { plainThreads }),
+  };
 }
 
 export const filterFleetNeedsUser = (fleet: TessayaFleet): TessayaFleet => ({
