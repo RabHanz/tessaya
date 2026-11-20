@@ -162,6 +162,47 @@ describe("packs", () => {
     };
     expect(claimedRegion(tail, [0, 0.9, -0.26], (b) => bones[b])).toBe("tail");
     expect(claimedRegion(tail, [0, 1.5, 0.2], (b) => bones[b])).toBeNull();
+    // regions sharing one bone, told apart by an offset ellipsoid in its frame (here turned a quarter about y)
+    const hips = mergeSense(
+      [
+        zonesPack([
+          {
+            id: "front",
+            bone: "hips",
+            radius: 0.06,
+            offset: [0, 0, 0.1],
+            radii: [0.12, 0.06, 0.04],
+          },
+          { id: "side", bone: "hips", radius: 0.06, offset: [0.15, 0, 0] },
+          { id: "whole", bone: "hips", radius: 0.2 },
+        ]),
+      ],
+      false,
+    );
+    const turned = (_: string, p: readonly [number, number, number]) =>
+      [p[2], p[1] - 1, -p[0]] as const;
+    const at = (b: string) => (b === "hips" ? ([0, 1, 0] as const) : undefined);
+    expect(claimedRegion(hips, [-0.1, 1, 0.02], at, turned)).toBe("front");
+    expect(claimedRegion(hips, [0.01, 1, 0.15], at, turned)).toBe("side");
+    expect(claimedRegion(hips, [0.12, 1, 0.1], at, turned)).toBe("whole");
+    expect(claimedRegion(hips, [-0.1, 1, 0.02], at)).toBe("whole");
+    expect(
+      decodeSensePack({
+        version: 1,
+        id: "p",
+        regions: [
+          {
+            id: "r",
+            anchor: { bone: "hips", offset: [0, 0.9, 0], radii: [0, 1] },
+            twoPointMm: 30,
+            hairy: true,
+          },
+        ],
+      }),
+    ).toMatchObject({
+      ok: false,
+      errors: [expect.stringContaining("offset"), expect.stringContaining("radii")],
+    });
     expect(zonesPack([{ id: "earlobe", bone: "head", radius: 0.03 }]).regions[0]).toMatchObject({
       id: "earlobe",
       anchor: { bone: "head", radius: 0.03 },

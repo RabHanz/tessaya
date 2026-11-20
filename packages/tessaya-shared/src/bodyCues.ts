@@ -464,6 +464,9 @@ export type BodyCue =
         readonly id: string;
         readonly bone: string;
         readonly radius: number;
+        /** Centre and ellipsoid radii (m) in the bone's frame (bodySense SenseRegion.anchor). */
+        readonly offset?: readonly [number, number, number];
+        readonly radii?: readonly [number, number, number];
       }>;
       /** Regions past MAX_ZONES that were not kept (the body warns), so a large pack never loses some silently. */
       readonly dropped?: number;
@@ -719,7 +722,25 @@ export const parseCue = (raw: unknown): BodyCue | null => {
         const id = str(r["id"], 40);
         const bone = str(r["bone"], 40);
         const radius = num(r["radius"], 0.01, 0.3);
-        return id && bone && radius !== null ? [{ id, bone, radius }] : [];
+        const triple = (v: unknown, lo: number, hi: number) => {
+          const t = Array.isArray(v) && v.length === 3 ? v.map((x) => num(x, lo, hi)) : [];
+          return t.length === 3 && t.every((x) => x !== null)
+            ? (t as unknown as readonly [number, number, number])
+            : undefined;
+        };
+        const offset = triple(r["offset"], -0.5, 0.5);
+        const radii = triple(r["radii"], 0.01, 0.3);
+        return id && bone && radius !== null
+          ? [
+              {
+                id,
+                bone,
+                radius,
+                ...(offset === undefined ? {} : { offset }),
+                ...(radii === undefined ? {} : { radii }),
+              },
+            ]
+          : [];
       });
       return {
         kind: "zones",
