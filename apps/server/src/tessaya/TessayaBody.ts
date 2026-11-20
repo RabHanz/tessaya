@@ -502,7 +502,11 @@ export const moveBody = Effect.fn("TessayaBody.move")(function* (raw: unknown, c
   if (answer.ok && other !== undefined && move.touch !== undefined)
     yield* route(
       {
-        cues: moveCues({ touch: move.touch }, `t${(yield* Clock.currentTimeMillis).toString(36)}`),
+        // whose hand it is, so on a stage they share her arm is the one that reaches
+        cues: moveCues(
+          { touch: move.touch },
+          `t${(yield* Clock.currentTimeMillis).toString(36)}`,
+        ).map((c) => (c.kind === "hand" ? { ...c, by: caller.persona! } : c)),
         privateMove,
         acts: [],
         desk: [],

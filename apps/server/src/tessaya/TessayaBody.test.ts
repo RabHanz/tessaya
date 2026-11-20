@@ -542,6 +542,12 @@ describe("TessayaBody", () => {
           { ...her, persona: "sebastian" },
         ).pipe(Effect.provideService(PersonaLayers, { all: [openLayer(shown as Array<unknown>)] }));
         expect(shown.find((m) => m.persona === "freya")?.cues.map((c) => c.kind)).toContain("hand");
+        // named as his, so on a stage they share his own arm is the one that reaches her
+        expect(
+          shown
+            .find((m) => m.persona === "freya")
+            ?.cues.find((c): c is { kind: string; by?: string } => c.kind === "hand")?.by,
+        ).toBe("sebastian");
         expect(
           shown.find((m) => m.persona === undefined)?.cues.some((c) => c.kind === "hand"),
         ).toBe(false);

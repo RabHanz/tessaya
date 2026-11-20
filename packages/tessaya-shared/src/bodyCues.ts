@@ -488,6 +488,8 @@ export type BodyCue =
       readonly motion: HandMotion;
       readonly pressure: number;
       readonly ms: number;
+      /** The persona whose hand it is: on a stage they share, that one's own arm reaches her. */
+      readonly by?: string;
     }
   /** The model's own shape keys by name (0..1), held until set again; 0 lets one go. */
   | { readonly kind: "morphs"; readonly weights: Readonly<Record<string, number>> }
@@ -867,6 +869,7 @@ export const parseCue = (raw: unknown): BodyCue | null => {
           ? ([p[0], p[1], p[2]] as const)
           : null;
       if (!(HAND_MOTIONS as ReadonlyArray<unknown>).includes(motion)) return null;
+      const by = str(c["by"], 64);
       return {
         kind: "hand",
         part,
@@ -874,6 +877,7 @@ export const parseCue = (raw: unknown): BodyCue | null => {
         pressure: num(c["pressure"], 0, 1) ?? 0.4,
         ms: num(c["ms"], 150, 10_000) ?? 1500,
         ...(pull === null ? {} : { pull }),
+        ...(by ? { by } : {}),
       };
     }
     case "gaze": {
