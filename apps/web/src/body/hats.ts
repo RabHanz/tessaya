@@ -162,19 +162,19 @@ const dome = (
       for (let k = 1; k <= 10; k++) {
         const y = y0 + ((f.top - y0) * k) / 10;
         const t = (y - y0) / (f.top + h - y0);
-        if (r0 * (1 - t * t) ** 0.25 < need(f, i / nu, y0, y, clear)) return false;
+        if (r0 * (1 - t * t) ** FULL < need(f, i / nu, y0, y, clear)) return false;
       }
       return true;
     });
   let h = lift;
-  while (h < lift + 0.25 * (f.top - f.brow) && !holds(h)) h += 0.004;
+  while (h < lift + 0.18 * (f.top - f.brow) && !holds(h)) h += 0.004;
   return sheet(
     nu,
     28,
     (u, v) => {
       const y0 = seat(u);
       const a = v * (Math.PI / 2);
-      const r = v >= 1 ? 0 : base[Math.round(u * nu) % nu]! * Math.cos(a) ** 0.5;
+      const r = v >= 1 ? 0 : base[Math.round(u * nu) % nu]! * Math.cos(a) ** (2 * FULL);
       // detail only ever stands out from the shell, never into her hair
       return ring(
         f,
@@ -189,6 +189,9 @@ const dome = (
     tone,
   );
 };
+
+/** How full a crown is: a hat holds a broad head of hair by its shape, not by rising tall over it. */
+const FULL = 0.2;
 
 /** A fold of cloth (a cuff) round her head, `tall` metres up from its seat line and `thick` deep, over her hair. */
 const band = (
@@ -296,14 +299,16 @@ const HATS: Readonly<Record<string, Hat>> = {
     const R = (f.rx + f.rz) / 2;
     const folds = (u: number, v: number) => 0.006 * Math.sin(u * Math.PI * 2 * 5 + v * 4) * v;
     const crown = dome(f, seat, 0.06 * s, 1.03, folds);
+    crown.computeBoundingBox();
+    const top = crown.boundingBox!.max.y;
     const tip = new THREE.CatmullRomCurve3(
       (
         [
-          [0, f.top - 0.35 * s, -0.05],
-          [0.05, f.top + 0.35 * s, -0.15],
-          [0.55, f.top + 0.55 * s, -0.3],
-          [1.15, f.top + 0.05 * s, -0.35],
-          [1.35, f.top - 0.6 * s, -0.25],
+          [0, top - 0.35 * s, -0.05],
+          [0.05, top + 0.35 * s, -0.15],
+          [0.55, top + 0.55 * s, -0.3],
+          [1.15, top + 0.05 * s, -0.35],
+          [1.35, top - 0.6 * s, -0.25],
         ] as const
       ).map(([x, y, z]) => new THREE.Vector3(f.cx + x * R, y, f.cz + z * R)),
     );
