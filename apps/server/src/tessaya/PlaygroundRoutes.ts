@@ -16,7 +16,6 @@ import type * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import { BUS_ID, pollBus, reportBus, watchBus } from "./BodyPlayground.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
-import { everydayBody } from "./PlaygroundAsset.ts";
 import {
   DIRECT_MODELS,
   directBody,
@@ -106,7 +105,7 @@ export const playgroundCall = Effect.fn("PlaygroundRoutes.call")(function* (
       const layers = yield* Effect.serviceOption(PersonaLayers);
       const all = layers._tag === "Some" ? layers.value.all : [];
       return {
-        // his own models in his layer's order; the page falls back to the CC0 Everyday only when this is empty
+        // his own models in his layer's order; with none, the page asks for a model to be dropped
         models: all.flatMap((l) => l.playgroundModels?.(who.member) ?? []).slice(0, 12),
       };
     }
@@ -213,20 +212,6 @@ export const playgroundRoutes = Effect.fn("PlaygroundRoutes.mount")(function* (
     "GET",
     "/tessaya/playground/start.js",
     page(PLAYGROUND_START, "text/javascript; charset=utf-8"),
-  );
-  yield* router.add(
-    "GET",
-    "/tessaya/playground/everyday.vrm",
-    Effect.gen(function* () {
-      if ((yield* whoOf) === null) return json({ message: "Not paired." }, 401);
-      const bytes = yield* Effect.promise(() => everydayBody(userdata));
-      return bytes === null
-        ? json({ message: "The default body couldn't be fetched. Drop a model instead." }, 503)
-        : HttpServerResponse.uint8Array(bytes, {
-            contentType: "model/gltf-binary",
-            headers: { ...HEADERS, "cache-control": "private, max-age=86400" },
-          });
-    }),
   );
   // The page's bus as a socket: nothing runs while nothing is published.
   yield* router.add(
