@@ -132,7 +132,11 @@ export type BodyAsk =
   | { readonly grow: number }
   | { readonly done: true }
   /** Her body stands on the page (true) or is gone from it (false): the character under it hides or comes back. */
-  | { readonly shown: boolean };
+  | { readonly shown: boolean }
+  /** He right-clicked her: the same menu as her character's. */
+  | { readonly menu: true }
+  /** He picked her up (true) or put her down (false): her window follows his cursor between, as her character's does. */
+  | { readonly carry: boolean };
 /**
  * Her page's shape (CSS px) as the window takes it: setShape counts the screen's own pixels, so at 175% scaling an
  * unscaled shape showed only the top 57% of her and cut off her legs and feet. Outside the shape nothing draws.
@@ -174,6 +178,8 @@ export const readBodyAsk = (title: string): BodyAsk | null => {
     return { move: [Math.round(m[0]), Math.round(m[1])] };
   if (n(v["grow"])) return { grow: Math.round(v["grow"] as number) };
   if (typeof v["shown"] === "boolean") return { shown: v["shown"] };
+  if (v["menu"] === true) return { menu: true };
+  if (typeof v["carry"] === "boolean") return { carry: v["carry"] };
   return v["done"] === true ? { done: true } : null;
 };
 
@@ -607,9 +613,26 @@ export const createDesktopMascot = (input: {
       bodies: { ...saved.bodies, [String(d.id)]: bodyPlaceOf(d.workArea, veil.getBounds()) },
     });
   };
+  let carrying: ReturnType<typeof setInterval> | null = null;
+  const putDown = () => {
+    if (carrying === null) return;
+    clearInterval(carrying);
+    carrying = null;
+    keepVeil();
+  };
   const askVeil = (target: Electron.BrowserWindow, ask: BodyAsk) => {
     const b = target.getBounds();
-    if ("shown" in ask) call(`document.body.style.opacity = ${ask.shown ? '"0"' : '""'}`);
+    if ("menu" in ask) menu();
+    else if ("carry" in ask) {
+      putDown();
+      if (!ask.carry) return;
+      const from = Electron.screen.getCursorScreenPoint();
+      carrying = setInterval(() => {
+        if (target.isDestroyed()) return putDown();
+        const at = Electron.screen.getCursorScreenPoint();
+        target.setBounds({ ...b, x: b.x + at.x - from.x, y: b.y + at.y - from.y });
+      }, DRAG_MS);
+    } else if ("shown" in ask) call(`document.body.style.opacity = ${ask.shown ? '"0"' : '""'}`);
     else if ("shape" in ask) {
       // Windows and Linux shape a window; macOS has no setShape, and there her whole box takes clicks
       if (typeof target.setShape === "function")
@@ -659,6 +682,7 @@ export const createDesktopMascot = (input: {
       .catch(() => undefined);
   };
   const dropVeil = () => {
+    putDown();
     if (placesTimer !== null) clearInterval(placesTimer);
     placesTimer = null;
     if (veil !== null && !veil.isDestroyed()) veil.destroy();
@@ -946,10 +970,24 @@ export const createDesktopMascot = (input: {
   const menu = () => {
     const many = Electron.screen.getAllDisplays().length > 1;
     const chat = input.privateChat?.() ?? null;
+    const body = veil !== null && !veil.isDestroyed() ? veil : null;
+    // her full body on the desk is sized here, the way he moves the rest of her
+    const grow = (by: number) => () => {
+      if (body === null || body.isDestroyed()) return;
+      askVeil(body, { grow: Math.round(body.getBounds().height * by) });
+      keepVeil();
+    };
     const items: Electron.MenuItemConstructorOptions[] = [
       ...(chat === null
         ? []
         : [{ label: "Private chat", click: chat }, { type: "separator" as const }]),
+      ...(body === null
+        ? []
+        : [
+            { label: "Make her bigger", click: grow(0.15) },
+            { label: "Make her smaller", click: grow(-0.15) },
+            { type: "separator" as const },
+          ]),
       snoozed()
         ? { label: "End the snooze", click: () => (save({ snoozeUntil: 0 }), apply()) }
         : {
