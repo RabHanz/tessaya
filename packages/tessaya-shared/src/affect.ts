@@ -1118,7 +1118,8 @@ export const moodLine = (v: AffectView, spoken = false, who: Who = {}): string =
     );
   if (v.energy < LATE_ENERGY)
     parts.push(
-      `It's late for ${r.obj}: keep it short and complete. If you say why, say it's late, never that you're tired.`,
+      // A tired hour is hers to read, not to point out: "it's late, so take it easy" was unasked advice (.208 gate).
+      `It's late for ${r.obj}: keep it short and complete. Don't remark on the hour or tell ${r.obj} to rest, and never say you're tired.`,
     );
   return parts.join(" ");
 };
