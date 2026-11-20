@@ -19,6 +19,7 @@ import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
 import {
   askQuestion,
   askRunId,
+  escOnDismiss,
   keepAsk,
   promptReadDue,
   parsePanePrompt,
@@ -95,6 +96,16 @@ describe("a terminal permission prompt's card", () => {
     expect(keepAsk(again, { ...answered, answeredAt: 9_000 })).toBe(true);
     // The session wrote its descriptor since: the same command asking again is a new ask and gets its card.
     expect(keepAsk(again, { ...answered, answeredAt: 9_000, updatedAt: "t2" })).toBe(false);
+  });
+
+  it("a card he dismissed closes its question in the pane with Esc, once, so his held messages go (M-113)", () => {
+    const dismissed = { status: "cancelled", answered: false, escaped: false };
+    expect(escOnDismiss(dismissed)).toBe(true);
+    expect(escOnDismiss({ ...dismissed, escaped: true })).toBe(false);
+    // Answered on the card: its keys are the bridge's. Expired: the mirror's own close, never his.
+    expect(escOnDismiss({ ...dismissed, answered: true })).toBe(false);
+    expect(escOnDismiss({ ...dismissed, status: "expired" })).toBe(false);
+    expect(escOnDismiss({ ...dismissed, status: "pending" })).toBe(false);
   });
 
   it("an answer the bridge finished makes the next tick read the pane, so a card whose prompt is gone closes", () => {

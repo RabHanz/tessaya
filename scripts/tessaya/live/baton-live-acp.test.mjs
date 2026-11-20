@@ -278,6 +278,83 @@ NodeTest.test(
   },
 );
 
+NodeTest.test(
+  "a question he dismissed holds nothing back: once the pane is back at its input box his message goes (M-113)",
+  async () => {
+    const dir = NodeFS.mkdtempSync(
+      NodePath.join(process.env.TMPDIR ?? NodeOS.tmpdir(), "baton-live-acp-"),
+    );
+    const sessions = NodePath.join(dir, "sessions");
+    const cwd = NodePath.join(dir, "work");
+    NodeFS.mkdirSync(sessions);
+    NodeFS.mkdirSync(cwd);
+    const log = NodePath.join(dir, "herdr.log");
+    const screen = NodePath.join(dir, "screen.txt");
+    const herdr = NodePath.join(dir, "herdr");
+    NodeFS.writeFileSync(
+      herdr,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> ${log}\ncase "$*" in *" read "*) cat ${screen};; esac\n`,
+      { mode: 0o755 },
+    );
+    const sid = "11111111-2222-4333-8444-777777777777";
+    // Claude Code's own status still says waiting: it lags the pane
+    NodeFS.writeFileSync(
+      NodePath.join(sessions, `${process.pid}.json`),
+      JSON.stringify({
+        pid: process.pid,
+        sessionId: sid,
+        cwd,
+        kind: "interactive",
+        status: "waiting",
+      }),
+    );
+    const child = NodeChildProcess.spawn(process.execPath, [AGENT], {
+      env: {
+        ...process.env,
+        BATON_CLAUDE_SESSIONS_DIR: sessions,
+        BATON_HERDR_BIN: herdr,
+        BATON_TEST_HERDR_PANE: "p1",
+        T3CODE_THREAD_ID: "",
+        BATON_LIVE_POLL_MS: "50",
+        BATON_LIVE_PROMPT_CLEAR_TRIES: "1",
+        BATON_LIVE_QUEUE_DIR: NodePath.join(dir, "queue"),
+      },
+      stdio: ["pipe", "pipe", "inherit"],
+    });
+    const replies = new Map();
+    const said = [];
+    NodeReadline.createInterface({ input: child.stdout }).on("line", (line) => {
+      const message = JSON.parse(line);
+      if (message.id !== undefined) replies.get(message.id)?.(message);
+      const text = message.params?.update?.content?.text;
+      if (typeof text === "string") said.push(text);
+    });
+    const call = (id, method, params) =>
+      new Promise((resolve) => {
+        replies.set(id, resolve);
+        child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      });
+    const send = (id, text) =>
+      call(id, "session/prompt", { sessionId: sid, prompt: [{ type: "text", text }] });
+    try {
+      await call(1, "initialize", { protocolVersion: 2 });
+      await call(2, "session/resume", { sessionId: sid, cwd, mcpServers: [] });
+      // The question still up: his message waits behind it.
+      NodeFS.writeFileSync(screen, fixture("pane-question.txt"));
+      await send(3, "first");
+      NodeAssert.ok(said.some((t) => /A question is waiting/.test(t)));
+      // He dismissed the card and its Esc closed the question: the next message is typed, with the held one first.
+      NodeFS.writeFileSync(screen, "● Done.\n\n──────────\n❯ \n──────────\n  ? for shortcuts");
+      said.length = 0;
+      await send(4, "second");
+      NodeAssert.ok(!said.some((t) => /A question is waiting/.test(t)), said.join(" | "));
+    } finally {
+      child.kill();
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);
+
 NodeTest.test("unnumbered options are read too, and a plain screen has no prompt", () => {
   const trust = parsePanePrompt(fixture("pane-trust.txt"));
   NodeAssert.deepEqual(
