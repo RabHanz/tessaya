@@ -48,6 +48,8 @@ const makeHouse = () => {
   ]);
   const scenes = new Map<string, Map<string, Entity>>();
   const calls: Array<string> = [];
+  /** The house going down just as a missed run is made up. */
+  const down = { trigger: false };
   const logbook: Array<string> = [];
   let onDiff: ((e: unknown) => void) | null = null;
   let onDone: ((e: unknown) => void) | null = null;
@@ -133,6 +135,13 @@ const makeHouse = () => {
             name === "automation.turn_off"
           )
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "off" });
+          if (name === "automation.trigger" && down.trigger)
+            return Effect.fail(
+              new HomeCallError({ operation: "call_service", code: "unreachable", said: "down" }),
+            );
+          if (name === "automation.trigger")
+            for (const e of ids(m["target"]))
+              put(e, { ...states.get(e)!, a: { ...states.get(e)!.a, last_triggered: "now" } });
           if (name === "automation.turn_on")
             for (const e of ids(m["target"])) put(e, { ...states.get(e)!, s: "on" });
           if (name === "lock.unlock")
@@ -193,6 +202,7 @@ const makeHouse = () => {
     put,
     remove,
     fireDone: (id: string) => onDone?.({ data: { id } }),
+    down,
   };
 };
 
@@ -524,6 +534,78 @@ it.effect(
         assistant,
       );
       assert.strictEqual(risky.status, "asked");
+    }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "a timer the house was down for runs late within 10 minutes, else is kept as missed to move; one heard nowhere is finished",
+  () => {
+    const { house, layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const timer = (alias: string, runInMinutes: number) =>
+        Effect.map(
+          home.saveAutomation(
+            {
+              alias,
+              kind: "temporary",
+              runInMinutes,
+              actions: [{ action: "light.turn_off", target: { entity_id: "light.study" } }],
+              request: `${alias} in ${runInMinutes}`,
+            },
+            assistant,
+          ),
+          (o) => o.id!,
+        );
+      const statusOf = (id: string) =>
+        Effect.map(home.automations({}), (rows) => rows.find((r) => r.id === id)?.status);
+      const ranAt = (id: string) =>
+        Effect.map(Clock.currentTimeMillis, (now) =>
+          house.put(`automation.${id}`, {
+            ...house.states.get(`automation.${id}`)!,
+            a: {
+              ...house.states.get(`automation.${id}`)!.a,
+              last_triggered: new Date(now).toISOString(),
+            },
+          }),
+        );
+      // The house's real "now" stamp, as HA writes it once a made-up run goes.
+      const stamp = (id: string) =>
+        house.states.get(`automation.${id}`)?.a["last_triggered"] === "now"
+          ? ranAt(id)
+          : Effect.void;
+
+      const late = yield* timer("Study light off", 20);
+      yield* TestClock.adjust("25 minutes");
+      yield* home.tick;
+      assert.include(house.calls, "automation.trigger");
+      yield* stamp(late);
+      yield* home.tick;
+      assert.strictEqual(yield* statusOf(late), "finished");
+
+      const missed = yield* timer("Study light off later", 20);
+      house.down.trigger = true;
+      yield* TestClock.adjust("35 minutes");
+      yield* home.tick;
+      house.down.trigger = false;
+      assert.strictEqual(yield* statusOf(missed), "missed");
+      const triggers = house.calls.filter((c) => c === "automation.trigger").length;
+      assert.strictEqual(
+        (yield* home.moveAutomation({ id: missed, runInMinutes: 5 }, assistant)).status,
+        "done",
+      );
+      assert.strictEqual(yield* statusOf(missed), "active");
+      yield* home.setAutomation({ id: missed, op: "delete" }, assistant);
+
+      // HA ran it on time while this server was down, so its done event was never heard.
+      const unheard = yield* timer("Fan off", 10);
+      yield* TestClock.adjust("10 minutes");
+      yield* ranAt(unheard);
+      yield* TestClock.adjust("2 minutes");
+      yield* home.tick;
+      assert.strictEqual(yield* statusOf(unheard), "finished");
+      assert.strictEqual(house.calls.filter((c) => c === "automation.trigger").length, triggers);
     }).pipe(Effect.provide(layer));
   },
 );

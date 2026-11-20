@@ -17,7 +17,7 @@ import type {
 import { PROMPT_TTL_MS } from "@t3tools/tessaya-shared/phoneRelay";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { isDeviceRule } from "@t3tools/tessaya-shared/deviceRules";
-import { nextDailyAt } from "@t3tools/tessaya-shared/upcoming";
+import { nextDailyAt, timedRunFate } from "@t3tools/tessaya-shared/upcoming";
 import {
   actionCalls,
   higherTier,
@@ -305,6 +305,7 @@ interface AutomationRowDb {
   readonly previous: string | null;
   readonly last_op: string;
   readonly status: string;
+  readonly updated_at: number;
 }
 /** What an approval runs on his yes. */
 type Later =
@@ -1340,13 +1341,16 @@ const make = Effect.gen(function* () {
       hourCycle: "h23",
     }).format(new Date(ms));
   /** When a saved config's time-of-day trigger next fires, or null for any other trigger or one past its end. */
-  const runsAtOf = (config: string, expiresAt: number | null, now: number): string | null => {
+  const nextRunOf = (config: string, now: number): number | null => {
     const triggers = asRecord(JSON.parse(config))["triggers"];
     if (!Array.isArray(triggers) || triggers.length !== 1) return null;
     const t = asRecord(triggers[0]);
     if (t["trigger"] !== "time" || typeof t["at"] !== "string") return null;
     const [h, m, sec] = clockTime(now).split(":").map(Number);
-    const next = nextDailyAt(t["at"], h! * 3600 + m! * 60 + sec!, now);
+    return nextDailyAt(t["at"], h! * 3600 + m! * 60 + sec!, now);
+  };
+  const runsAtOf = (config: string, expiresAt: number | null, now: number): string | null => {
+    const next = nextRunOf(config, now);
     return next === null || (expiresAt !== null && next > expiresAt) ? null : iso(next);
   };
   const localTime = (ms: number) =>
@@ -1571,7 +1575,8 @@ const make = Effect.gen(function* () {
 
   const removeAutomation = Effect.fn("HomeAssistant.removeAutomation")(function* (
     id: string,
-    status: "deleted" | "expired" | "finished",
+    status: "deleted" | "expired" | "finished" | "missed",
+    detail?: string,
   ) {
     const previous = yield* readConfig(id);
     yield* rest("DELETE", `/api/config/automation/config/${encodeURIComponent(id)}`, undefined, [
@@ -1591,6 +1596,7 @@ const make = Effect.gen(function* () {
         ref: id,
         subject: `removed automation ${id}`,
         outcome: status,
+        ...(detail === undefined ? {} : { detail }),
       });
   });
 
@@ -1840,7 +1846,7 @@ const make = Effect.gen(function* () {
   ) {
     // shortcut: a house on a linked server is not moved from here; it needs a peer tool, added when one is wanted.
     const [row] = yield* sql<AutomationRowDb>`
-      SELECT * FROM fabric_home_automations WHERE id = ${input.id} AND status IN ('active', 'paused')
+      SELECT * FROM fabric_home_automations WHERE id = ${input.id} AND status IN ('active', 'paused', 'missed')
     `.pipe(Effect.orDie);
     if (row === undefined) return yield* new HomeRefusedError({ why: "That timer is gone." });
     const config = asRecord(JSON.parse(row.config));
@@ -1945,6 +1951,67 @@ const make = Effect.gen(function* () {
     );
   });
 
+  // shortcut: in memory, so a restart may record a missed daily run once more; persist it if that is ever noisy.
+  const caughtUp = new Set<string>();
+  /** A timed run Home Assistant or this server was down for: made up within 10 minutes, else reported missed. */
+  const catchUp = Effect.fn("HomeAssistant.catchUp")(function* (row: AutomationRowDb, now: number) {
+    const entityId = automationEntity(row.id);
+    const cached = entityId === null ? undefined : states.get(entityId);
+    const next = nextRunOf(row.config, now);
+    if (cached === undefined || cached.s !== "on" || next === null) return;
+    const dueAt = next - 86_400_000;
+    const triggered = Date.parse(String(cached.a["last_triggered"] ?? ""));
+    const fate = timedRunFate({
+      dueAt,
+      setAt: row.updated_at,
+      lastTriggered: Number.isNaN(triggered) ? null : triggered,
+      expiresAt: row.expires_at,
+      now,
+    });
+    if (fate === "ran" && row.once === 1) {
+      // Its done event came while this server was down.
+      finished.delete(row.id);
+      return yield* removeAutomation(row.id, "finished");
+    }
+    const key = `${row.id}@${dueAt}`;
+    if ((fate !== "late" && fate !== "missed") || caughtUp.has(key)) return;
+    caughtUp.add(key);
+    const name = nameOf(entityId!);
+    const when = `It was due at ${localTime(dueAt)}, while the house or Tessaya's server was down.`;
+    if (fate === "late") {
+      const ran = yield* command({
+        type: "call_service",
+        domain: "automation",
+        service: "trigger",
+        target: { entity_id: entityId },
+        service_data: { skip_condition: false },
+      }).pipe(Effect.result);
+      if (ran._tag === "Success") {
+        if (record._tag === "Some")
+          yield* record.value.append({
+            kind: "home",
+            actor: "tessaya",
+            ref: row.id,
+            subject: `ran ${name} late`,
+            outcome: "late",
+            detail: `Ran late at ${localTime(now)}. ${when}`,
+          });
+        return;
+      }
+    }
+    const missed = `Missed. ${when} Move it to run it, or cancel it.`;
+    if (row.once === 1) return yield* removeAutomation(row.id, "missed", missed);
+    if (record._tag === "Some")
+      yield* record.value.append({
+        kind: "home",
+        actor: "tessaya",
+        ref: row.id,
+        subject: `missed ${name}`,
+        outcome: "missed",
+        detail: `Missed its run. ${when} It runs again at its next time.`,
+      });
+  });
+
   const tick = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     // Undo snapshots past their day: his scene list is his (13 Nov: six of his six scenes were these).
@@ -1976,6 +2043,12 @@ const make = Effect.gen(function* () {
       UPDATE fabric_home_automations SET status = 'expired', updated_at = ${now}
       WHERE id LIKE 'tessaya_device_%' AND status IN ('active', 'paused') AND expires_at IS NOT NULL AND expires_at <= ${now}
     `.pipe(Effect.orDie);
+    if (link !== null) {
+      const timed = yield* sql<AutomationRowDb>`
+        SELECT * FROM fabric_home_automations WHERE status = 'active' AND kind != 'his' AND id NOT LIKE 'tessaya_device_%'
+      `.pipe(Effect.orDie);
+      for (const row of timed) yield* catchUp(row, now).pipe(Effect.ignore);
+    }
     // Temporary and scratch automations past their end.
     if (link !== null) {
       const due = yield* sql<{ id: string }>`

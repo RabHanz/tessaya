@@ -1,7 +1,7 @@
 import type { UpcomingItem } from "@t3tools/tessaya-contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { countdownText, nextDailyAt, nextTickMs, orderUpcoming } from "./upcoming.ts";
+import { countdownText, nextDailyAt, nextTickMs, orderUpcoming, timedRunFate } from "./upcoming.ts";
 
 const NOW = Date.UTC(2026, 10, 19, 10, 0, 0);
 const MIN = 60_000;
@@ -70,5 +70,29 @@ describe("a house time trigger's next run", () => {
     expect(nextDailyAt("09:00", clock, NOW)).toBe(NOW + 23 * 60 * MIN);
     expect(nextDailyAt("10:00:00", clock, NOW)).toBe(NOW + 24 * 60 * MIN);
     expect(nextDailyAt("sunset", clock, NOW)).toBeNull();
+  });
+});
+
+describe("what became of a timer's due run", () => {
+  it("waits, sees it ran, makes up a short gap, and calls a long one missed", () => {
+    const due = NOW;
+    const fate = (now: number, lastTriggered: number | null, expiresAt: number | null = null) =>
+      timedRunFate({ dueAt: due, setAt: due - 20 * MIN, lastTriggered, expiresAt, now });
+    expect(fate(due + 30_000, null)).toBe("waiting");
+    expect(fate(due + 2 * MIN, due)).toBe("ran");
+    // The house or this server was down at its time.
+    expect(fate(due + 2 * MIN, due - 24 * 60 * MIN)).toBe("late");
+    expect(fate(due + 11 * MIN, null)).toBe("missed");
+    expect(fate(due + 5 * MIN, null, due + 4 * MIN)).toBe("missed");
+    // Set after its clock time last came: today's run is still ahead.
+    expect(
+      timedRunFate({
+        dueAt: due,
+        setAt: due + MIN,
+        lastTriggered: null,
+        expiresAt: null,
+        now: due + 5 * MIN,
+      }),
+    ).toBe("waiting");
   });
 });

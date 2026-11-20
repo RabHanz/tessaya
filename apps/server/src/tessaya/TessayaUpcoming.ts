@@ -46,8 +46,20 @@ const can = (cancel: boolean, pause: boolean, move: boolean) => ({ cancel, pause
 
 export const houseItems = (rows: ReadonlyArray<HomeAutomationRow>): ReadonlyArray<UpcomingItem> =>
   rows
-    .filter((r) => r.mine && r.status === "active")
+    .filter((r) => r.mine && (r.status === "active" || r.status === "missed"))
     .map((r) => {
+      if (r.status === "missed")
+        return {
+          id: `house:${r.id}`,
+          source: "house",
+          title: short(r.alias, 200),
+          line: "Missed: the house or Tessaya's server was down at its time.",
+          at: null,
+          condition: "Missed. Move it to run it, or cancel it",
+          repeats: null,
+          paused: false,
+          can: can(true, false, true),
+        };
       const at = r.runsAt == null ? null : Date.parse(r.runsAt);
       const rule = isDeviceRule(r.id);
       return {

@@ -44,6 +44,20 @@ const setup = (homeOverride?: Layer.Layer<HomeAssistantService>) => {
       request: null,
       entityId: null,
     },
+    // HA was down at its time: kept in view to move or cancel. One that ran is gone.
+    ...(["missed", "finished"] as const).map((status) => ({
+      id: `tessaya_temporary_${status}`,
+      alias: "Fan off",
+      kind: "temporary",
+      mine: true,
+      expiresAt: null,
+      once: true,
+      paused: false,
+      status,
+      request: "fan off in ten",
+      entityId: null,
+      runsAt: null,
+    })),
   ];
   const home =
     homeOverride ??
@@ -202,6 +216,7 @@ it.effect("lists every source in one order, soonest first, then what waits on so
         ["task:ci", 170],
         ["task:once", 300],
         ["standing:morning_brief", 780],
+        ["house:tessaya_temporary_missed", null],
         ["move:thread:t1", null],
         ["house:tessaya_device_2", null],
         ["rule:rule-1", null],

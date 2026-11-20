@@ -250,13 +250,19 @@ describe("standing jobs", () => {
     const back = await runStandingJobs(input({ hour: 9 }), once.ops);
     await runStandingJobs(input({ state: back.state, hour: 10 }), once.ops);
     expect(once.log.briefs).toBe(1);
+    expect(back.did.find((d) => d.id === "morning_brief")?.text).toBe(
+      "Ran late: Tessaya was off at 6:00. Built the morning brief.",
+    );
     const skip = fakes();
     const skipping: StandingState = {
       ...allOn,
       missed: { morning_brief: "skip", nightly_learning: "skip" },
     };
-    await runStandingJobs(input({ state: skipping, hour: 9 }), skip.ops);
+    const skipped = await runStandingJobs(input({ state: skipping, hour: 9 }), skip.ops);
     expect(skip.log.briefs).toBe(0);
+    expect(skipped.did.find((d) => d.id === "morning_brief")?.text).toBe(
+      "Missed: Tessaya was off at 6:00, and this job skips a missed day.",
+    );
     expect(skip.log.learned).toBe(0);
     expect(missedRunOf(allOn, "morning_brief")).toBe("once");
   });
