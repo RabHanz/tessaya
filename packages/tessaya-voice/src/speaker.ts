@@ -660,9 +660,15 @@ export const memberByVoice = (
   seconds: number,
   /** His session holds recent evidence: her voice in the mix lowers his (12:36Z, 16 Nov: 0.33); strangers 1-2 s >= 0.30: 0.6%. */
   held = false,
+  /**
+   * He opened this session (her name or S2): a voice over hers is his until surely not. Under her own audio his 0.6 s
+   * scored 0.03 and 0.01 and she went on over him (20 Nov 17:15); so "other" waits for 2 s and a score under 0.2.
+   */
+  his = false,
 ): "member" | "other" | "unsure" => {
-  if (!Number.isFinite(best)) return "other";
+  if (!Number.isFinite(best)) return his ? "unsure" : "other";
   if (best >= (seconds < 1.25 ? 0.4 : 0.36) - (held ? 0.06 : 0)) return "member";
+  if (his) return seconds >= 2 && best < 0.2 ? "other" : "unsure";
   // Early only when plainly someone else: his own first half second can score low in a loud room (bench, 14 Nov).
   if (seconds >= 2 || (seconds >= 1 && best < 0.2) || best < 0.1) return "other";
   return "unsure";

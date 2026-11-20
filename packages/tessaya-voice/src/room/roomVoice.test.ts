@@ -2487,10 +2487,11 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     expect((await run("open", false)).flushed).toBe(false);
     // Someone not in the household, or her echo in a case (18 Nov, 03:23 GMT+5): her feed pauses without a flush,
     // which would drop what the R1 holds and skip her speech, then goes on from the next sample; not answered.
-    expect(await run("open", true, 0.05)).toEqual({
+    // In a session he opened (S2 here) she stays paused until that voice stops or 2 s of it is surely not his (20 Nov
+    // 17:15), so a long pause goes on from her sentence's start.
+    expect(await run("open", true, 0.05)).toMatchObject({
       flushed: false,
       asked: ["What time is it?"],
-      sentOnce: true,
       paused: true,
       stopped: 0,
     });

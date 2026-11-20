@@ -383,6 +383,18 @@ describe("the speaker identity", () => {
     expect(memberByVoice(0.33, 2)).toBe("other");
     expect(memberByVoice(0.33, 2, true)).toBe("member");
     expect(memberByVoice(0.25, 2, true)).toBe("other");
+    // 20 Nov 17:15, a session he opened by her name: his 0.6 s under her audio scored 0.03 and 0.01, and she went on
+    // over him. She stays paused until it is surely someone else; his 0.30 at 1.8 s stops her.
+    for (const [best, seconds] of [
+      [0.03, 0.6],
+      [0.01, 0.6],
+      [0.15, 0.6],
+      [0.21, 1.2],
+      [0.25, 2],
+    ] as const)
+      expect(memberByVoice(best, seconds, false, true)).toBe("unsure");
+    expect(memberByVoice(0.3, 1.8, true, true)).toBe("member");
+    expect(memberByVoice(0.1, 2, false, true)).toBe("other");
   });
 
   it("takes a loudspeaker for a guest and never verifies a turn the replay check could not judge", () => {
