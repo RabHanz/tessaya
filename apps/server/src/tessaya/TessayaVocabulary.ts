@@ -337,7 +337,11 @@ export const make = Effect.gen(function* () {
 export const layer = Layer.effect(TessayaVocabulary, make);
 
 /** What a worker sends her brain (`tessaya_brain` op `vocabulary`), and what the brain answers. */
-export const VocabularyAtBrain = Schema.Struct({ change: Schema.NullOr(VocabularyChangeSchema) });
+export const VocabularyAtBrain = Schema.Struct({
+  change: Schema.NullOr(VocabularyChangeSchema),
+  /** Style pairs a worker took from a desktop, for her brain's copy (`stylePairsStore.ts`). */
+  pairs: Schema.optionalKey(Schema.Array(Schema.Unknown).check(Schema.isMaxLength(2_000))),
+});
 const decodeAtBrain = Schema.decodeUnknownOption(
   Schema.Struct({ stored: Schema.Array(Schema.Unknown), all: Schema.Array(Schema.Unknown) }),
 );

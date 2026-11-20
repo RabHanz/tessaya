@@ -16,6 +16,7 @@ import * as ServerConfig from "../config.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
+import { ordinaryHere } from "./stylePairsStore.ts";
 import * as Context from "effect/Context";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -51,7 +52,7 @@ const withStore = <A, E>(
     return yield* body(file).pipe(
       Effect.provide(
         Layer.mergeAll(
-          Vocabulary.layer.pipe(Layer.provideMerge(settings), Layer.provide(config)),
+          Vocabulary.layer.pipe(Layer.provideMerge(settings), Layer.provideMerge(config)),
           // The door's dictionary ops never touch the voices.
           Layer.mock(TessayaVoiceLibrary)({}),
         ),
@@ -136,6 +137,51 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         expect(bad.ok).toBe(false);
       }),
     ),
+  );
+
+  it.effect(
+    "keeps his style pairs from the desktop and a worker, for every vessel's plain words",
+    () =>
+      withStore((file) =>
+        Effect.gen(function* () {
+          const pair = (id: string, raw: string, kept: string) => ({
+            id,
+            raw,
+            kept,
+            mode: "default",
+          });
+          const sent = yield* serveVoiceCall({
+            kind: "act",
+            op: "stylePairs",
+            args: {
+              pairs: [
+                pair("a", "it is optimal to ship it friday", "It is optimal to ship it Friday."),
+                pair(
+                  "b",
+                  "the optimal plan is the cheap one",
+                  "The optimal plan is the cheap one.",
+                ),
+                { raw: 1, kept: "not a pair" },
+              ],
+            },
+          });
+          expect(sent).toEqual({ ok: true, value: 2 });
+          expect((yield* ordinaryHere).has("optimal")).toBe(true);
+          // A worker's pairs reach her brain the same way; the same id replaces the older pair.
+          expect(
+            (yield* receiveAtBrain("vocabulary", {
+              change: null,
+              pairs: [
+                pair("b", "send the invoice to the client", "Send the invoice to the client."),
+              ],
+            })).ok,
+          ).toBe(true);
+          expect((yield* ordinaryHere).has("optimal")).toBe(false);
+          // His own words: only he can read the file.
+          const pairsFile = NodePath.join(NodePath.dirname(file), "style-pairs.json");
+          expect(NodeFS.statSync(pairsFile).mode & 0o077).toBe(0);
+        }),
+      ),
   );
 
   it.effect(

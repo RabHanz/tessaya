@@ -1147,6 +1147,18 @@ export const applyCalledNames = (said: string, names: ReadonlyArray<string>): st
   return out + text.slice(from);
 };
 
+/** Words he kept in lower case at least twice in his own text: ordinary words to him, never taken for one of his terms. */
+export const ordinaryWords = (
+  pairs: ReadonlyArray<{ readonly kept: string }>,
+  min = 2,
+): ReadonlySet<string> => {
+  const seen = new Map<string, number>();
+  for (const p of pairs)
+    for (const w of p.kept.match(/(?<![\p{L}\p{N}'’-])\p{Ll}[\p{Ll}'’-]*/gu) ?? [])
+      seen.set(w, (seen.get(w) ?? 0) + 1);
+  return new Set([...seen].filter(([, n]) => n >= min).map(([w]) => w));
+};
+
 export const biasTranscript = (
   heardText: string,
   entries: ReadonlyArray<VocabularyEntry>,
@@ -1154,6 +1166,8 @@ export const biasTranscript = (
     readonly screen?: ReadonlyArray<string>;
     /** The personas he can call, when these words were said to her (a voice turn), not dictated. */
     readonly names?: ReadonlyArray<string>;
+    /** Words he has kept as written, in lower case, in his own text (`ordinaryWords`): his words, not near-misses. */
+    readonly ordinary?: ReadonlySet<string>;
   } = {},
 ): string => {
   const text = applyKnownNames(
@@ -1184,6 +1198,9 @@ export const biasTranscript = (
       // is never AlphaOS, though "alphas" still is. A clipped spelling ("claud" for Claude) is not a part.
       const w = word.toLowerCase();
       const bare = term.toLowerCase();
+      // A word he writes himself ("optimal", "blooms") is not a near-miss of a term (Optima, Bloomz): this rule alone
+      // put a term into 1 in 100 of a user's held-out dictations that never had it (ML-015).
+      if (word === w && w !== bare && context.ordinary?.has(w) === true) continue;
       const boundary = (at: number) =>
         at > 0 && at < term.length && /[\p{Lu}\p{N}]/u.test(term[at]!);
       if (

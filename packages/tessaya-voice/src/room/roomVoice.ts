@@ -3151,8 +3151,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       },
       /** Tessaya says this in the room now (an agent, a reminder or the Devices page), cutting off whatever she was saying. */
       /** A line in a session the R1 opened only for it: said, then that session ends. */
-      sayOnly: (text: string, mood?: string | null) => {
+      sayOnly: (text: string, mood?: string | null, tone?: string | null) => {
         if (mood) face(mood);
+        toneNow = tone ?? null;
         speakNow(text);
         stopAfterSaid();
       },
@@ -3166,9 +3167,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** Back after the R1 rebooted mid-conversation: one short line, and the session stays open for him to go on. */
       restarted: () => speakNow(own("err.restart", "Sorry, I just restarted. Go on.")),
       /** `mood` is the eyes' look for her own words (the brain's expression); none keeps the eyes as they are. */
-      say: (text: string, mood?: string | null) => {
+      say: (text: string, mood?: string | null, tone?: string | null) => {
         if (reply !== null) interrupt("a line of hers from the server");
         if (mood) face(mood);
+        // Her server's tone for a line of her own (the pulse's welcome back): that tone of the clone, else plain.
+        toneNow = tone ?? null;
         speakNow(text);
       },
       /** One of her cues on the downlink, paced like speech so the echo guard knows it; a second wake cue within 1.5 s is dropped. */
@@ -3726,9 +3729,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (typeof text === "string" && text.trim() !== "") {
           const open = sessions.get(id);
           const mood = eyeClipOf(String(json()["mood"] ?? ""));
+          const tone = typeof json()["tone"] === "string" ? String(json()["tone"]) : null;
           // The R1 plays her voice only inside its own session (r1bt_voice_play drops it otherwise, 13 Nov).
-          if (open !== undefined) open.say(text.trim().slice(0, 500), mood);
-          else startOnR1(id, (s) => s.sayOnly(text.trim().slice(0, 500), mood));
+          if (open !== undefined) open.say(text.trim().slice(0, 500), mood, tone);
+          else startOnR1(id, (s) => s.sayOnly(text.trim().slice(0, 500), mood, tone));
         }
       } else if (tail === "voice/persona") {
         const name = json()["name"];

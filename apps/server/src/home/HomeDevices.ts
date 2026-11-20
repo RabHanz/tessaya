@@ -158,7 +158,12 @@ export type DeviceCommand =
       /** Quiet hours already judged by the caller (a note that may break them); else read here. */
       readonly quiet?: boolean;
     }
-  | { readonly op: "say"; readonly text: string }
+  | {
+      readonly op: "say";
+      readonly text: string;
+      /** Her tone for it (`toneFor`): a loop with that recorded tone of the clone says it so, any other plainly. */
+      readonly tone?: string;
+    }
   | { readonly op: "mute"; readonly muted: boolean }
   | { readonly op: "earcons"; readonly on: boolean }
   | { readonly op: "eyeStyle"; readonly style: R1EyeStyle }
@@ -2873,7 +2878,10 @@ const make = Effect.gen(function* () {
       }
       case "say":
         yield* routeReply(id, "alerts", false);
-        yield* publish(id, "voice/say", { text: recordText(c.text, 400) });
+        yield* publish(id, "voice/say", {
+          text: recordText(c.text, 400),
+          ...(c.tone === undefined ? {} : { tone: c.tone }),
+        });
         return done("Sent to the device to say.");
       case "mute":
         yield* change((s) => {
