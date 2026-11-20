@@ -14,6 +14,7 @@ import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
 import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/tessaya-shared/operator";
+import { OPEN_WINDOWS_HEAD } from "@t3tools/tessaya-shared/screenCompanion";
 import { TESSAYA_PAGES, TESSAYA_PLACES } from "@t3tools/tessaya-contracts";
 
 import type { TessayaTool, ToolOutput } from "./tessayaMcp.ts";
@@ -345,7 +346,7 @@ export const treeText = (tree: {
     tree.windows === undefined || tree.windows.length === 0
       ? []
       : [
-          "Open windows, front first (ui_tree with window reads one without bringing it forward):",
+          OPEN_WINDOWS_HEAD,
           ...tree.windows.map((w) => {
             const at = where(w);
             return `- ${w.title}${at === null ? "" : ` (${at})`}`;

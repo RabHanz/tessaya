@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   rememberOutside,
   screenLabel,
+  screenGlance,
+  OPEN_WINDOWS_HEAD,
   screenOfBox,
   screenPlaces,
   teachShouldLook,
@@ -224,6 +226,21 @@ describe("capture sources for two displays", () => {
       place: "right",
     });
     expect(screenOfBox({ x: -32000, y: -32000, width: 160, height: 28 }, [right, left])).toBeNull();
+    // What a later turn keeps of a read: the window and the open windows, never a control or its value.
+    const glance = screenGlance(
+      [
+        "Notes",
+        "[1] edit: Find = secret",
+        OPEN_WINDOWS_HEAD,
+        "- Notes (screen 1, left)",
+        "- Mail (minimised)",
+      ].join("\n"),
+    );
+    expect(glance).toContain(
+      "Notes had the keyboard; open were Notes (screen 1, left); Mail (minimised)",
+    );
+    expect(glance).not.toContain("secret");
+    expect(screenGlance("Notes\n[1] edit: Find")).toBeNull();
     // A screen left of the main one has negative x; stacked screens go top to bottom; three get a middle.
     expect(screenPlaces([left, { ...left, x: -1280, width: 1280 }]).map((p) => p.screen)).toEqual([
       2, 1,
