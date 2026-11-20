@@ -271,22 +271,73 @@ unsafe fn at_point(automation: &IUIAutomation, label: &str, x: i32, y: i32) -> w
     Ok(None)
 }
 
-/// The name of what is on top at the element's centre when that is not the element or inside it; None when a click
-/// there reaches the element (or the hit test cannot tell, which counts as reachable).
-unsafe fn covered_by(automation: &IUIAutomation, element: &IUIAutomationElement, rect: &RECT) -> Option<String> {
+/// How what is under a point relates to the element meant to be clicked there.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Hit {
+    /// The element, or something inside it.
+    Inside,
+    /// Something that holds the element: a coarse hit test (Chrome's tab strip answers for its buttons).
+    Holder,
+    Unrelated,
+}
+
+/// Whether a click at the element's centre lands somewhere else. `same_window` is the mouse's own hit test
+/// (WindowFromPoint skips click-through layers such as her pointer overlay, which UIA's hit test does not), so
+/// another window there always covers it, and inside its own window only an unrelated control does (a banner, a menu).
+fn covers(same_window: bool, hit: Hit) -> bool {
+    !same_window || hit == Hit::Unrelated
+}
+
+/// The name of what is on top at the element's centre when a click there would not reach it; None when it would (or
+/// the hit test cannot tell, which counts as reachable). `window` is the top-level window the element was found in.
+unsafe fn covered_by(automation: &IUIAutomation, element: &IUIAutomationElement, rect: &RECT, window: HWND) -> Option<String> {
     let (cx, cy) = centre(rect);
+    let point = POINT { x: cx as i32, y: cy as i32 };
+    let under = GetAncestor(WindowFromPoint(point), GA_ROOT);
+    let same_window = under.0.is_null() || under == window;
+    if !same_window {
+        let mut title = [0u16; 256];
+        let length = GetWindowTextW(under, &mut title).max(0) as usize;
+        let name = String::from_utf16_lossy(&title[..length]);
+        return Some(if name.trim().is_empty() { "another window".to_string() } else { name });
+    }
     let walker = automation.ControlViewWalker().ok()?;
-    let top = automation.ElementFromPoint(POINT { x: cx as i32, y: cy as i32 }).ok()?;
-    let mut hit = top.clone();
-    for _ in 0..8 {
-        if automation.CompareElements(&hit, element).map(|b| b.as_bool()).unwrap_or(false) {
-            return None;
+    let mut top = automation.ElementFromPoint(point).ok()?;
+    let same = |a: &IUIAutomationElement, b: &IUIAutomationElement| automation.CompareElements(a, b).map(|b| b.as_bool()).unwrap_or(false);
+    let related = |from: &IUIAutomationElement, to: &IUIAutomationElement| {
+        let mut at = from.clone();
+        for _ in 0..12 {
+            if same(&at, to) {
+                return true;
+            }
+            let Ok(parent) = walker.GetParentElement(&at) else { return false };
+            at = parent;
         }
-        let Ok(parent) = walker.GetParentElement(&hit) else { break };
-        hit = parent;
+        false
+    };
+    let hit_of = |top: &IUIAutomationElement| {
+        if related(top, element) {
+            Hit::Inside
+        } else if related(element, top) {
+            Hit::Holder
+        } else {
+            Hit::Unrelated
+        }
+    };
+    let mut hit = hit_of(&top);
+    if hit == Hit::Unrelated {
+        // Chromium answers a first hit test from cached boxes and the next from its precise one (how_a11y_works_3.md).
+        std::thread::sleep(std::time::Duration::from_millis(60));
+        if let Ok(again) = automation.ElementFromPoint(point) {
+            hit = hit_of(&again);
+            top = again;
+        }
+    }
+    if !covers(same_window, hit) {
+        return None;
     }
     let name = top.CurrentName().map(|n| n.to_string()).unwrap_or_default();
-    Some(if name.is_empty() { "another window".to_string() } else { name })
+    Some(if name.is_empty() { "another control in that window".to_string() } else { name })
 }
 
 /// The first visible top-level window whose title contains `title` (case-insensitive): a window to work on without
@@ -480,7 +531,7 @@ fn locate_here(label: &str, x: i32, y: i32, foreground: bool, window: Option<&st
                         return Ok(out);
                     }
                 }
-                if let Some(by) = covered_by(&automation, &f.element, &f.rect) {
+                if let Some(by) = covered_by(&automation, &f.element, &f.rect, top) {
                     out["covered_by"] = json!(by);
                 }
                 out
@@ -868,7 +919,7 @@ pub fn caret_geometry() -> Result<Value, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{clip, listed, name_score, secret_name, Listed, LISTED};
+    use super::{clip, covers, listed, name_score, secret_name, Hit, Listed, LISTED};
     use windows::Win32::Foundation::RECT;
 
     #[test]
@@ -903,5 +954,15 @@ mod tests {
         assert_eq!(name_score("export", "Important"), 0.0);
         assert!(name_score("export", "Export") > name_score("export", "Export as PDF"));
         assert!(name_score("Export button", "Export") == 0.0);
+    }
+
+    #[test]
+    fn a_click_is_covered_only_by_another_window_or_an_unrelated_control() {
+        // Her click-through overlay and Chrome's coarse tab-strip hit test refused two monitors' clicks (D-004).
+        assert!(!covers(true, Hit::Inside));
+        assert!(!covers(true, Hit::Holder));
+        assert!(covers(true, Hit::Unrelated));
+        assert!(covers(false, Hit::Inside));
+        assert!(covers(false, Hit::Holder));
     }
 }
