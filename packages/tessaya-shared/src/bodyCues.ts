@@ -299,6 +299,7 @@ export interface FaceAct {
 }
 const BROWS_UP = { match: /(BRW_Surprised|^browInnerUp|^browOuterUp(Left|Right))$/i, weight: 1 };
 const BROWS_DOWN = { match: /(BRW_Angry|^browDown(Left|Right))$/i, weight: 0.8 };
+const EYES_JOY = { match: /(EYE_Joy|^eyeSquint(Left|Right))$/i, weight: 1 };
 const EYES_WIDE = { match: /(EYE_Surprised|^eyeWide(Left|Right))$/i, weight: 1 };
 const MOUTH_TALL = { match: /(MTH_Surprised|^jawOpen)$/i, weight: 0.8 };
 /** How far a face act is in at `t` of `ms`: up, held near the peak, and down. */
@@ -353,9 +354,10 @@ export const GESTURES: Readonly<
       { bone: "chest", axis: "x", rad: -0.1, cycles: 0.5 },
       { bone: "leftShoulder", axis: "z", rad: 0.14, cycles: 0.5 },
       { bone: "rightShoulder", axis: "z", rad: -0.14, cycles: 0.5 },
-      // her right hand comes up to her chin (fitted on the reference body)
-      { bone: "rightUpperArm", axis: "x", rad: -1.1, cycles: 0.5 },
-      { bone: "rightUpperArm", axis: "y", rad: 0.9, cycles: 0.5 },
+      // her right hand comes up to her chin, elbow low by her side (fitted on the reference body)
+      { bone: "rightUpperArm", axis: "x", rad: -0.7, cycles: 0.5 },
+      { bone: "rightUpperArm", axis: "y", rad: 0.5, cycles: 0.5 },
+      { bone: "rightUpperArm", axis: "z", rad: 0.4, cycles: 0.5 },
       { bone: "rightLowerArm", axis: "y", rad: 2.5, cycles: 0.5 },
     ],
     act: { face: { aa: 1, oh: 0.7, blink: 1 }, shapes: [BROWS_UP, MOUTH_TALL], jaw: 0.45 },
@@ -368,7 +370,7 @@ export const GESTURES: Readonly<
       { bone: "leftShoulder", axis: "z", rad: 0.06, cycles: 4 },
       { bone: "rightShoulder", axis: "z", rad: -0.06, cycles: 4 },
     ],
-    act: { face: { happy: 1, aa: 0.8 }, shapes: [], jaw: 0.3 },
+    act: { face: { happy: 1, aa: 0.8 }, shapes: [EYES_JOY], jaw: 0.3 },
   },
   gasp: {
     ms: 1100,
