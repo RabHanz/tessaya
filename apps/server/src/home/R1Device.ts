@@ -343,10 +343,14 @@ export const tesselWishTick = Effect.fn("R1Device.tesselWish")(function* () {
   const pack = yield* r1Pack;
   const lead = (pack.personas.find((p) => p.lead) ?? pack.personas[0])?.id;
   const owner = (yield* turn.value.whoIsHome).find((p) => p.member === OWNER_MEMBER_ID);
+  const registry = yield* Effect.serviceOption(DeviceRegistry);
   const shown: Array<{ device: string; want: Want }> = [];
   for (const device of yield* Effect.flatMap(HomeAssistantService, (h) => h.devices)) {
     const id = device.deviceId;
     if (id === null) continue;
+    // Resting on battery (firmware 0.3.167 power.mode): her own wishes would wake the eyes it dimmed, so they wait.
+    const power = Option.isNone(registry) ? null : yield* registry.value.value(id, "power.mode");
+    if (power === "dim" || power === "sleep" || power === "off") continue;
     const persona = (Option.isSome(cast) ? yield* cast.value.wearing(id) : null) ?? lead;
     // when he was last with her, on any vessel: her one affect's (the same answer the desk's wishes read)
     const himAt = (yield* mood.value.view(persona, zone, OWNER_MEMBER_ID)).seenAt ?? null;
