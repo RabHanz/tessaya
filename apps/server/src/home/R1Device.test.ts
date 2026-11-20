@@ -449,6 +449,21 @@ effectIt.effect(
       // The test clock's 0 is 05:00 in Karachi.
       expect([...said].join("")).toBe("It's 5:00 am.");
       expect(touched).toEqual([]);
+      // With a name the loop asked her to use once, the model answers: the name is its to say (20 Nov gate, cue-once).
+      yield* r1TurnStream(
+        {
+          heard: "Hey, what's the time?",
+          history: [],
+          device: "bedroom",
+          voice: { nameOnce: "Avery" },
+        },
+        brain,
+        { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+      ).pipe(
+        Stream.runCollect,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+      );
+      expect(touched).toEqual(["brain"]);
     }),
 );
 

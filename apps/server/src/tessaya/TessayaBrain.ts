@@ -360,7 +360,8 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   // The time or the date alone needs no model: her own wording with the house clock in it, at once. Under load a warm
   // session took 12.5 s to say "What time is it?" (20 Nov 13:26).
   const asked = clockAsk(turn.text);
-  if (asked !== null && turn.private !== true) {
+  // A name the loop asked her to use once is said by the model, so that turn is not answered from the clock.
+  if (asked !== null && turn.private !== true && turn.nameOnce === undefined) {
     const now = new Intl.DateTimeFormat("en-GB", {
       timeZone,
       ...(asked === "time"
