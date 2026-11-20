@@ -2071,6 +2071,30 @@ export const liveCases: ReadonlyArray<LiveCase> = [
         ? "ended the conversation"
         : null,
   })),
+  // Listen mode (M-135) by meaning: the fixed "just listen" phrases never reach her brain; these do.
+  ...[
+    { id: "listen-work-through", said: "Give me a minute to work this through out loud." },
+    { id: "listen-dont-jump-in", said: "Don't jump in yet, I'm going to brainstorm for a bit." },
+  ].map((c): LiveCase => ({
+    id: c.id,
+    proves: [],
+    said: [c.said],
+    uses: [["listen_start"]],
+    // At most a few words before she listens: no answer to a thought he has not said yet.
+    lastNotSays: [/\?/],
+  })),
+  // About listening, not a request to only listen.
+  ...[
+    { id: "listen-not-hear-me", said: "Can you hear me okay?" },
+    { id: "listen-not-song", said: "Listen to this, what's the capital of Peru?" },
+  ].map((c): LiveCase => ({
+    id: c.id,
+    proves: [],
+    said: [c.said],
+    uses: [],
+    check: (_last, calls) =>
+      calls.some((x) => x.name === "listen_start") ? "started listen mode" : null,
+  })),
 ];
 
 /** The slots a case's sentences need. */

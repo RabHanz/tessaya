@@ -18,7 +18,12 @@ import { ServerSettingsService } from "../serverSettings.ts";
 export interface VoiceDefaults {
   readonly persona?: string;
   readonly voice?: string;
+  /** Listen mode's silence and end words, which the room loop applies itself. */
+  readonly listenWait?: string;
+  readonly listenEnds?: string;
 }
+
+const VOICE_KEYS: ReadonlySet<string> = new Set(["persona", "voice", "listenWait", "listenEnds"]);
 
 type Listener = (member: string, now: VoiceDefaults | null) => Effect.Effect<void>;
 type Names = ReadonlyArray<{ readonly word: string; readonly heardAs: string | null }>;
@@ -29,9 +34,9 @@ const PREFERENCE_MAX = 120;
 export const voiceDefaultsOf = (
   rows: ReadonlyArray<{ readonly member_id: string; readonly key: string; readonly value: string }>,
 ): ReadonlyMap<string, VoiceDefaults> => {
-  const out = new Map<string, { persona?: string; voice?: string }>();
+  const out = new Map<string, Record<string, string>>();
   for (const r of rows) {
-    if (r.key !== "persona" && r.key !== "voice") continue;
+    if (!VOICE_KEYS.has(r.key)) continue;
     out.set(r.member_id, { ...out.get(r.member_id), [r.key]: r.value });
   }
   return out;
@@ -68,10 +73,10 @@ const make = Effect.gen(function* () {
   const read = (member: string | null) =>
     (member === null
       ? sql<{ member_id: string; key: string; value: string }>`
-          SELECT member_id, key, value FROM tessaya_member_preferences WHERE key IN ('persona', 'voice')`
+          SELECT member_id, key, value FROM tessaya_member_preferences WHERE key IN ('persona', 'voice', 'listenWait', 'listenEnds')`
       : sql<{ member_id: string; key: string; value: string }>`
           SELECT member_id, key, value FROM tessaya_member_preferences
-          WHERE member_id = ${member} AND key IN ('persona', 'voice')`
+          WHERE member_id = ${member} AND key IN ('persona', 'voice', 'listenWait', 'listenEnds')`
     ).pipe(
       Effect.map(voiceDefaultsOf),
       Effect.orElseSucceed(() => new Map()),
