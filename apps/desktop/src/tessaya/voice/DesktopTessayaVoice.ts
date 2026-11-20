@@ -9,7 +9,7 @@
 import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
 import { screenOfBox } from "@t3tools/tessaya-shared/screenCompanion";
-import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import { effectFor, VESSELS, type PropState } from "@t3tools/tessaya-shared/expressionMap";
 import type { Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
 import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
@@ -5300,9 +5300,15 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         8_000,
       )
       .then((answer) => {
-        const felt = (answer as { value?: { label?: unknown; intensity?: unknown } } | null)?.value;
+        const felt = (
+          answer as { value?: { label?: unknown; intensity?: unknown; props?: unknown } } | null
+        )?.value;
+        const props =
+          typeof felt?.props === "object" && felt.props !== null
+            ? (felt.props as PropState)
+            : undefined;
         if (typeof felt?.label === "string" && typeof felt.intensity === "number")
-          mascot.mood(felt.label, felt.intensity);
+          mascot.mood(felt.label, felt.intensity, props);
       })
       .catch(() => undefined);
   };

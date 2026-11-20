@@ -1586,6 +1586,10 @@ export const ServerSettings = Schema.Struct({
   ),
   // Tessaya: who wears each Tessel and phone (Settings → Cast); the desktop keeps its own in its companion settings.
   tessayaCast: TessayaCast.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+  // Tessaya: a prop he pinned for her to hold on every body (tessaya-shared PROPS id); empty lets what's going on choose.
+  tessayaProp: Schema.String.check(Schema.isMaxLength(32)).pipe(
+    Schema.withDecodingDefault(Effect.succeed("")),
+  ),
   // Tessaya: the one chatter dial: lively, calm, or important only (her unprompted lines and the companion's acts).
   companionMotion: Schema.Literals(["lively", "calm", "important"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -2080,6 +2084,7 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   companionMotion: Schema.optionalKey(Schema.Literals(["lively", "calm", "important"])),
+  tessayaProp: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(32))),
   tessayaMotion: Schema.optionalKey(
     Schema.Struct({
       sensitivity: Schema.optionalKey(TessayaMotionSensitivity),

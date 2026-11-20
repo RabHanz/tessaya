@@ -24,7 +24,19 @@ const canvas = document.createElement("canvas");
 canvas.style.cssText = "position:fixed;inset:0;width:100%;height:100%;touch-action:none";
 document.body.append(canvas);
 // a phone frames her from mid-thigh up, face in the upper third, turned a little: her face reads on a small screen
-const body = mountBody(canvas, { framing: "half" });
+// his finger on her is felt by her one nervous system: the app sends it on (TessayaVoiceLibrary `touch`)
+const body = mountBody(canvas, {
+  framing: "half",
+  onTouch: (_bone, zone, t) =>
+    tell({
+      type: "touch",
+      part: zone,
+      kind: t.kind,
+      pressure: t.pressure ?? t.intensity,
+      cmPerS: t.felt?.cmPerS ?? 0,
+      ...(t.self === true ? { self: true } : {}),
+    }),
+});
 body.orbit(0.35);
 let whole = false;
 const toggle = () => {

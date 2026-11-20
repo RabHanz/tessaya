@@ -101,6 +101,7 @@ import {
 import { TessayaExpression, expressOr } from "../tessaya/TessayaExpression.ts";
 import { eyeClipOf, greetEvent, isLineEvent } from "@t3tools/tessaya-shared/expression";
 import { effectFor, renderFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
+import { propStateFor } from "../tessaya/propState.ts";
 import {
   EXPRESSION_MOODS,
   type ExpressionMood,
@@ -278,7 +279,9 @@ const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
     yield* current.value.listen(() => Queue.offer(switched, undefined).pipe(Effect.asVoid));
   if (Option.isSome(cast))
     yield* cast.value.listen(() => Queue.offer(switched, undefined).pipe(Effect.asVoid));
-  yield* Stream.runForEach(Stream.merge(mood.value.moves, Stream.fromQueue(switched)), () =>
+  // and every few minutes, for what a prop says of the house (a job building, the hour) that no mood move tells
+  const changes = Stream.merge(mood.value.moves, Stream.fromQueue(switched));
+  yield* Stream.runForEach(Stream.merge(changes, Stream.tick("5 minutes")), () =>
     Effect.gen(function* () {
       yield* nudgeDesktops(nudging);
       // A face at rest is the brain's to show: another server's mood is not hers.
@@ -295,6 +298,7 @@ const publishRestMood = Effect.fn("R1Device.publishRestMood")(function* () {
           VESSELS.tessel,
           felt.intensity >= 0.2 ? felt.label : "neutral",
           felt.intensity,
+          yield* propStateFor(device.deviceId),
         );
         const json = JSON.stringify({
           mood: shown.face,

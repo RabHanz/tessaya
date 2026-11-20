@@ -67,6 +67,7 @@ import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { feel, type Felt } from "./TessayaBody.ts";
+import { propStateFor } from "./propState.ts";
 import { SessionMember } from "./TessayaTurn.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
@@ -971,6 +972,7 @@ const DESK_FELT: Readonly<Record<string, Felt["kind"]>> = {
 const TOUCH_EVENT = {
   poke: "moment.poked",
   stroke: "moment.petted",
+  pat: "moment.petted",
   squeeze: "moment.squished",
   throw: "moment.thrown",
 } as const;
@@ -1031,19 +1033,22 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
       const a = decode(
         Schema.Struct({
           part: Text(24),
-          kind: Schema.Literals(["poke", "stroke", "squeeze", "throw", "carry"]),
+          kind: Schema.Literals(["poke", "stroke", "pat", "hold", "squeeze", "throw", "carry"]),
           pressure: between(0, 1),
           cmPerS: between(0, 2000),
           durationMs: between(0, 600_000),
           persona: Schema.optionalKey(Text(60)),
+          // the body it was on (a phone's id); the desk's when unsaid
+          device: Schema.optionalKey(Text(120)),
         }),
       );
       if (Option.isNone(a)) return bad;
       const t = a.value;
       // her nerves first (reflexes and how it felt, into her affect toward him), then her mood as it now stands
       // whoever is at this desk, assumed: one cause per touch, so "that wasn't me" moves what it did to him
+      const vessel = t.device ?? "desktop";
       const felt = yield* feel({
-        vessel: "desktop",
+        vessel,
         part: t.part,
         kind: t.kind,
         pressure: t.pressure,
@@ -1053,7 +1058,7 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
       }).pipe(
         Effect.provideService(AffectCause, {
           ref: `touch-${yield* Clock.currentTimeMillis}-${++touchCauses}`,
-          vessel: "desktop",
+          vessel,
           assumed: true,
         }),
       );
@@ -1071,7 +1076,7 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
         pressure: t.pressure,
         sinceWordsMs: last === undefined ? Infinity : now - last,
       });
-      const event = t.kind === "carry" ? null : TOUCH_EVENT[t.kind];
+      const event = t.kind === "carry" || t.kind === "hold" ? null : TOUCH_EVENT[t.kind];
       const lines = yield* Effect.serviceOption(TessayaExpression);
       const said =
         reaction.speak && event !== null && Option.isSome(lines)
@@ -1108,6 +1113,8 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
         value: {
           label: felt.label,
           intensity: felt.intensity,
+          // what's going on, for the prop her body there holds (renderFor decides, per form)
+          ...(a.value.device === undefined ? {} : { props: yield* propStateFor(a.value.device) }),
           ...(owner ? { why: felt.why, dials: inner.dials } : {}),
           people: inner.people.map((p) => ({
             member: p.member,

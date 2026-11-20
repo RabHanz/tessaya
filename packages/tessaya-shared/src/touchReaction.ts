@@ -99,6 +99,27 @@ const LOOK: Readonly<Record<Tone, Readonly<Record<Group, readonly [string, strin
     plain: ["surprised", "startle"],
   },
 };
+/**
+ * A full body's touch (bodyMotion TOUCH_KINDS) as the one touch path takes it (the `touch` voice op); null for one only
+ * a private moment or the page's "touch as" choice makes.
+ */
+export const touchOpKind = (kind: string): "poke" | "pat" | "stroke" | "hold" | "squeeze" | null =>
+  kind === "tap" || kind === "poke" || kind === "pinch"
+    ? "poke"
+    : kind === "pat"
+      ? "pat"
+      : kind === "stroke" ||
+          kind === "caress" ||
+          kind === "rub" ||
+          kind === "tickle" ||
+          kind === "trace"
+        ? "stroke"
+        : kind === "hold" || kind === "grab" || kind === "hug"
+          ? "hold"
+          : kind === "squeeze"
+            ? "squeeze"
+            : null;
+
 /** She says something about a touch no more often than this. */
 export const TOUCH_WORDS_GAP_MS = 20_000;
 

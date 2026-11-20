@@ -20,6 +20,7 @@ import {
   type CompanionMotion,
   type MascotAct,
 } from "@t3tools/tessaya-shared/companion";
+import type { PropState } from "@t3tools/tessaya-shared/expressionMap";
 import type { TurnPhase } from "@t3tools/tessaya-shared/voiceTurn";
 import { traceStep, type Trace } from "@t3tools/tessaya-shared/bodyMotion";
 import { HUMAN_SENSE, MASCOT_SENSE, mergeSense, regionAt } from "@t3tools/tessaya-shared/bodySense";
@@ -411,7 +412,7 @@ export interface DesktopMascot {
   /** Her window on screen (DIP) while she shows, so the pill opens clear of her. */
   readonly bounds: () => Rect | null;
   /** Her mood from the spine (TessayaMood, CS6) and how strongly, which she wears at rest. */
-  readonly mood: (label: string, intensity: number) => void;
+  readonly mood: (label: string, intensity: number, props?: PropState) => void;
   /** A face for a moment of her speech (a laugh), which her rig lets go of by itself; false when she is not showing. */
   readonly expression: (face: string) => boolean;
   /** A job finished, failed or started waiting for him. */
@@ -1587,8 +1588,8 @@ export const createDesktopMascot = (input: {
         call(`window.mascot.say(${JSON.stringify({ text: text.slice(0, 120) })})`);
     },
     bounds: () => (win !== null && !win.isDestroyed() && win.isVisible() ? bodyBox(win) : null),
-    mood: (label, intensity) => {
-      const next = restFaceOf(label, intensity);
+    mood: (label, intensity, props) => {
+      const next = restFaceOf(label, intensity, props);
       if (JSON.stringify(next) === JSON.stringify(restMood)) return;
       restMood = next;
       if (

@@ -124,5 +124,12 @@ describe("restFaceOf", () => {
     expect(restFaceOf("happy", 0.1)).toBeNull();
     expect(restFaceOf("neutral", 1)).toBeNull();
     expect(restFaceOf("x);alert(1", 1)).toBeNull();
+    // what's going on brings a prop to any face, her plain rest too
+    expect(restFaceOf("neutral", 1, { building: true })).toEqual({
+      expression: "neutral",
+      intensity: 0.85,
+      prop: "hardhat",
+    });
+    expect(restFaceOf("sleepy", 1, { building: true })?.prop).toBe("hardhat");
   });
 });

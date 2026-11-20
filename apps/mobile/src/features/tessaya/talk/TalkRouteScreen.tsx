@@ -10,6 +10,7 @@ import type { TessayaPersona, TessayaVoiceCallResult } from "@t3tools/tessaya-co
 import bodyStreamScript from "@t3tools/mobile-body-stream";
 import { lineCues } from "@t3tools/tessaya-shared/bodyCues";
 import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
+import { touchOpKind } from "@t3tools/tessaya-shared/touchReaction";
 import { modelOrder, type OfferedModel } from "@t3tools/tessaya-shared/playgroundOrder";
 import * as Battery from "expo-battery";
 import * as Device from "expo-device";
@@ -70,14 +71,62 @@ export function TalkRouteScreen() {
   // the battery at the start of the stretch on screen, and when she went off it
   const batteryAt = useRef<BatteryRead | null>(null);
   const awayBattery = useRef<BatteryRead | null>(null);
-  const reportCost = (line: string) => {
-    if (environmentId === null) return;
-    const manifest = phoneManifest({
+  const manifestNow = () =>
+    phoneManifest({
       installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
       model: Device.modelName ?? null,
       os: Device.osName === null ? null : `${Device.osName} ${Device.osVersion ?? ""}`.trim(),
       motion: Device.isDevice,
     });
+  /** His finger on her body here, felt by her one nervous system (the desk's own `touch` path); her mood answers. */
+  const touched = async (t: {
+    part?: unknown;
+    kind?: unknown;
+    pressure?: unknown;
+    cmPerS?: unknown;
+  }) => {
+    const kind = typeof t.kind === "string" ? touchOpKind(t.kind) : null;
+    if (environmentId === null || persona === null || kind === null || typeof t.part !== "string")
+      return;
+    const answer = await voiceCall({
+      environmentId,
+      input: {
+        kind: "act",
+        op: "touch",
+        args: {
+          part: t.part,
+          kind,
+          pressure: typeof t.pressure === "number" ? Math.min(1, Math.max(0, t.pressure)) : 0.4,
+          cmPerS: typeof t.cmPerS === "number" ? Math.min(2000, Math.max(0, t.cmPerS)) : 0,
+          durationMs: 0,
+          persona: persona.id,
+          device: manifestNow().deviceId,
+        },
+      },
+    });
+    const r =
+      answer._tag === "Success"
+        ? ((answer.value as TessayaVoiceCallResult).value as {
+            face?: unknown;
+            gesture?: unknown;
+            intensity?: unknown;
+          } | null)
+        : null;
+    if (typeof r?.face === "string")
+      post({
+        type: "cue",
+        cue: {
+          kind: "mood",
+          mood: r.face,
+          intensity: typeof r.intensity === "number" ? r.intensity : 0.6,
+        },
+      });
+    if (typeof r?.gesture === "string")
+      post({ type: "cue", cue: { kind: "gesture", gesture: r.gesture } });
+  };
+  const reportCost = (line: string) => {
+    if (environmentId === null) return;
+    const manifest = manifestNow();
     void devicesCall({
       environmentId,
       input: {
@@ -264,6 +313,13 @@ export function TalkRouteScreen() {
           onMessage={(e) => {
             const data = e.nativeEvent.data;
             if (data.includes('"ready"') && model !== null) post({ type: "model", ...model });
+            if (data.includes('"touch"')) {
+              try {
+                void touched(JSON.parse(data) as Record<string, unknown>);
+              } catch {
+                // not one of her page's messages
+              }
+            }
             const frames = /"frames","n":(\d+)/.exec(data)?.[1];
             if (frames !== undefined && cost.current !== null)
               cost.current = addFrames(cost.current, Number(frames));

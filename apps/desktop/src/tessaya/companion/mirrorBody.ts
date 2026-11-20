@@ -27,8 +27,8 @@ export const mirrorBody = (
       if (speaking)
         cue({ kind: "level", value, ...(shape?.viseme ? { viseme: shape.viseme } : {}) });
     },
-    mood: (label, intensity) => {
-      m.mood(label, intensity);
+    mood: (label, intensity, props) => {
+      m.mood(label, intensity, props);
       cue({ kind: "mood", mood: label, intensity });
     },
   };
