@@ -119,11 +119,7 @@ if (tessaya) {
   if ((await click(tessaya, "Devices")) && (await click(tessaya, "Tessels"))) {
     await shot("tessaya-devices-hardware-clicked", tessaya, /Tessels/);
   }
-  if ((await click(tessaya, "Settings")) && (await click(tessaya, "Home and devices"))) {
-    await shot("tessaya-settings-home-and-devices", tessaya, /Tessels/);
-    if (await click(tessaya, "Tessels"))
-      await shot("tessaya-settings-hardware", tessaya, /Tessels/);
-  }
+  // Settings holds switches only (D-038): Tessels is reached from Devices above, and Settings has no Home and devices.
 }
 
 // Voice ID's guided enrolment card. The read needs a microphone, which a CI runner lacks: then it is skipped, not failed.
