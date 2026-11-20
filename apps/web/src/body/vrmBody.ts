@@ -116,6 +116,10 @@ import {
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { OPENING, recipeWeights, type FaceRecipe } from "@t3tools/tessaya-shared/faceRecipes";
+import { HAT_IDS, wearHat } from "./hats.ts";
+import { gripOf, holdIn, holdPose } from "./heldProps.ts";
+import { frameOn, restTurns as restTurnsOf, type PropBone } from "./propKit.ts";
 
 import {
   applyMotion,
@@ -137,6 +141,74 @@ const TIERS = [
 const SLOW_FRAME_MS = 14;
 const BLEND_MS = 220;
 const BLINK_MS = 160;
+/**
+ * Her brows drawn over her fringe, as a VRoid face is meant to read: the brows mark the stencil and her hair, drawn
+ * after them, leaves those pixels alone. Anything in front of her face still hides them (they keep their depth test).
+ */
+const browsOverHair = (vrm: VRM) => {
+  const hairy = (m: THREE.Material) => /hair/i.test(m.name);
+  vrm.scene.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = [mesh.material].flat();
+    const brow = mats.some((m) => /brow/i.test(m.name));
+    const hair = /hair/i.test(mesh.name) || mats.some(hairy);
+    if (!brow && !hair) return;
+    mesh.renderOrder = brow ? 1 : 2;
+    for (const m of mats) {
+      // a see-through brow would draw after the opaque hair: cut out instead, so it goes first
+      if (brow && m.transparent) {
+        m.transparent = false;
+        m.alphaTest = Math.max(m.alphaTest, 0.5);
+        m.depthWrite = true;
+        m.needsUpdate = true;
+      }
+      m.stencilWrite = true;
+      m.stencilRef = 1;
+      m.stencilFunc = brow ? THREE.AlwaysStencilFunc : THREE.NotEqualStencilFunc;
+      m.stencilZPass = brow ? THREE.ReplaceStencilOp : THREE.KeepStencilOp;
+    }
+  });
+};
+/** How far an expression moves any vertex at full weight (m): read once when the model loads. */
+const reachOf = (vrm: VRM, name: string) => {
+  const em = vrm.expressionManager;
+  if (em?.getExpression(name) == null) return 0;
+  em.setValue(name, 1);
+  em.update();
+  let reach = 0;
+  vrm.scene.traverse((o) => {
+    const m = o as THREE.Mesh;
+    const deltas = m.geometry?.morphAttributes["position"];
+    m.morphTargetInfluences?.forEach((w, i) => {
+      const a = w > 0.5 ? deltas?.[i]?.array : undefined;
+      if (a) for (let k = 0; k < a.length; k++) reach = Math.max(reach, Math.abs(a[k]!));
+    });
+  });
+  em.setValue(name, 0);
+  em.update();
+  return reach;
+};
+/** The whole-face mood presets a model's mixed parts stand in for. */
+const MOOD_PRESETS = new Set<string>(["happy", "angry", "sad", "relaxed", "surprised"]);
+/** Moods that colour her cheeks, and those that tip her head. */
+const BLUSHING = new Set(["love", "shy", "embarrassed", "affectionate"]);
+const WONDERING = new Set(["curious", "thinking", "searching", "confused"]);
+/** The faces every body draws by VRM preset name: mood (BODY_FACES), mouth shapes and blinks. */
+const FACE_PRESETS = [
+  "happy",
+  "angry",
+  "sad",
+  "relaxed",
+  "surprised",
+  "aa",
+  "ih",
+  "ou",
+  "ee",
+  "oh",
+  "blink",
+  "blinkLeft",
+] as const;
 /** Spring bones (hair, cloth) settle for this long after the last move. */
 const SETTLE_MS = 600;
 const LEVEL_HOLD_MS = 400;
@@ -417,6 +489,8 @@ const makeStage = (canvas: HTMLCanvasElement, tier: number) => {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: TIERS[tier]!.aa,
+    // her brows show through her fringe by the stencil (browsOverHair)
+    stencil: true,
     alpha: true,
     powerPreference: "low-power",
   });
@@ -530,6 +604,17 @@ export function mountBody(
       }
       frames.push(f);
     }
+    // the mocap's own head carriage (its performer looked down at the floor) would hide her face under her fringe;
+    // her head is aimed by her gaze, so the idle keeps only its sway there
+    for (const b of ["neck", "head"] as const) {
+      const mean = [0, 1, 2].map(
+        (k) => frames.reduce((n, f) => n + (f[b]?.[k] ?? 0), 0) / frames.length,
+      );
+      for (const f of frames) {
+        const e = f[b];
+        if (e) f[b] = [e[0] - mean[0]!, e[1] - mean[1]!, e[2] - mean[2]!] as unknown as Euler;
+      }
+    }
     mixer.stopAllAction();
     mixer.uncacheRoot(target.scene);
     for (const b of POSE_BONES) target.humanoid.getNormalizedBoneNode(b)?.quaternion.identity();
@@ -555,11 +640,26 @@ export function mountBody(
     }
   >();
   const propsRunning = () => [...props.values()].some((p) => p.on && p.mixer !== null);
+  /** The arm and finger pose that holds a built-in prop (heldProps.ts), over whatever else she does. */
+  let holding: { readonly id: string; readonly pose: Partial<Record<string, Euler>> } | null = null;
 
   // what is showing and where it is heading
   let face: Weights = {};
   let faceFrom: Weights = {};
   let faceTo: Weights = {};
+  // the same face as a mix of the model's own part shapes (faceRecipes), where it has them
+  const recipes = new WeakMap<Weights, FaceRecipe>();
+  const faceOf = (label: string, intensity: number) => {
+    const w = faceWeights(label, intensity);
+    const r = recipeWeights(label, intensity);
+    if (r !== null) recipes.set(w, r);
+    return w;
+  };
+  let recipe: FaceRecipe = {};
+  let recipeFrom: FaceRecipe = {};
+  let recipeTo: FaceRecipe | null = null;
+  // the model's VRoid part shapes that move anything, by name without `Fcl_` (read when it loads)
+  let fcl = new Map<string, string>();
   let faceAt = 0;
   let look: string | null = null;
   // direct control: where she was asked to look and until when, and the pace a direct pose was asked to arrive at
@@ -569,6 +669,11 @@ export function mountBody(
   let shapeKeys = new Map<string, Array<{ mesh: THREE.Mesh; i: number }>>();
   let morphHold: Record<string, number> = {};
   let shapes: Record<string, number> = {};
+  // the face's part shapes this frame (faceRecipes), added over what the expressions put on the same keys, and the
+  // ones put last frame, cleared before the next so a mood's shape never outlives it
+  let parts: Record<string, number> = {};
+  let partsLast: ReadonlyArray<string> = [];
+  let tilt = 0;
   let seqTimers: Array<ReturnType<typeof setTimeout>> = [];
   let settledSent = true;
   // his hand: the last frame from whatever drives it (pointer now; an agent, a tracker or a controller later),
@@ -807,10 +912,16 @@ export function mountBody(
   let overlays: ReturnType<typeof makeOverlays> | null = null;
   let soft: ReturnType<typeof softenOnContact> | null = null;
   let own = new Set<string>();
+  // the expression each preset face is drawn with on this model (its own name where it uses another)
+  let presetAs = new Map<string, string>();
+  // a model whose mood faces never reach her eyes (only the mouth moves): her eyelids carry the mood instead
+  let lidsFromBlink = false;
   // ARKit unit (any case) -> the model's own expression name, when it carries perfect sync
   let sync: Map<string, string> | null = null;
   let bodyOwn = new Set<string>();
   let mirrored = false;
+  // where her own props ride her bones (propKit restTurns), read at rest when the model loads
+  let restTurns: ReadonlyMap<PropBone, THREE.Quaternion> = new Map();
   let speech: { track: ReadonlyArray<VisemeSegment>; start: number; end: number } | null = null;
   let effects: Array<{ at: number; face?: string; gesture?: string; act?: keyof typeof ACTS }> = [];
   let level: { value: number; viseme?: VisemeSegment["viseme"]; at: number } | null = null;
@@ -1122,7 +1233,16 @@ export function mountBody(
     if (performance.now() < idleUntil && m.breath < (posture().breath ?? 0.3))
       Object.assign(m, { breath: posture().breath ?? 0.3, breathHz: posture().breathHz ?? 0.25 });
     if (held("breath")) Object.assign(m, { breath: 0 });
-    return { states: { ...statesTo, ...override?.states }, motion: m };
+    // love and shyness colour her cheeks
+    const blush = BLUSHING.has(mood.mood) ? 0.3 + 0.4 * mood.intensity : 0;
+    return {
+      states: {
+        ...statesTo,
+        ...(blush > (statesTo.blush ?? 0) ? { blush } : {}),
+        ...override?.states,
+      },
+      motion: m,
+    };
   };
   const setPose = (now: number) => {
     clip = null;
@@ -1288,6 +1408,7 @@ export function mountBody(
       dancing === null ? {} : danceAt(now - dancing),
       stepping === null ? {} : stepAt(now - stepping),
       locoAt(now, bones),
+      holding?.pose ?? {},
     );
     // a clip's finger shapes bend whatever finger bones this model has; they are not rig bones
     const shapes = bones as Record<string, Euler | undefined>;
@@ -1484,12 +1605,19 @@ export function mountBody(
     // face: blend toward the mood (or a word-timed effect's face) over BLEND_MS
     if (override !== null && now >= override.until) {
       override = null;
-      setFace(faceWeights(mood.mood, mood.intensity), now);
+      setFace(faceOf(mood.mood, mood.intensity), now);
     }
     const k = Math.min(1, (now - faceAt) / BLEND_MS);
     const keys = new Set([...Object.keys(faceFrom), ...Object.keys(faceTo)]) as Set<keyof Weights>;
     face = Object.fromEntries(
       [...keys].map((p) => [p, (faceFrom[p] ?? 0) + ((faceTo[p] ?? 0) - (faceFrom[p] ?? 0)) * k]),
+    );
+    const goal = recipeTo ?? {};
+    recipe = Object.fromEntries(
+      [...new Set([...Object.keys(recipeFrom), ...Object.keys(goal)])].map((p) => [
+        p,
+        (recipeFrom[p] ?? 0) + ((goal[p] ?? 0) - (recipeFrom[p] ?? 0)) * k,
+      ]),
     );
 
     // mouth: the line's track by its own clock, or the live level and aligned viseme from the vessel playing it
@@ -1508,9 +1636,7 @@ export function mountBody(
             ? INTIMATE_FACES[e.face]
             : undefined;
           override =
-            intimate === undefined
-              ? { face: faceWeights(e.face, 1), until }
-              : { ...intimate, until };
+            intimate === undefined ? { face: faceOf(e.face, 1), until } : { ...intimate, until };
           setFace(override.face, now);
         }
       }
@@ -1703,25 +1829,40 @@ export function mountBody(
           (1 - roll) *
             (toTouch !== null ? -12 * felt : held !== null ? held.pitch : himPitch + glance.pitch);
       }
-      for (const p of [
-        "happy",
-        "angry",
-        "sad",
-        "relaxed",
-        "surprised",
-        "aa",
-        "ih",
-        "ou",
-        "ee",
-        "oh",
-        "blink",
-        "blinkLeft",
-      ] as const)
+      // a VRoid model shows the face as a mix of its own brows, eyes and mouth (faceRecipes), its whole-face presets
+      // left at rest; talking, the mouth's opening shapes give way to the words, the rest of the feeling stays on
+      const mixed = fcl.size > 0 && recipeTo !== null;
+      if (mixed) {
+        const talking = Object.keys(mouth).length > 0;
+        const put = (name: string, w: number) => {
+          if (w > 0.005) parts[name] = Math.max(parts[name] ?? 0, Math.min(1, w));
+        };
+        for (const [key, w0] of Object.entries(recipe)) {
+          const w = talking && OPENING.includes(key) ? 0.3 * w0 : w0;
+          const own = fcl.get(key);
+          const sides = [fcl.get(`${key}_L`), fcl.get(`${key}_R`)];
+          const both = fcl.get(key.replace(/_[LR]$/, ""));
+          if (own !== undefined) put(own, w);
+          else if (sides[0] !== undefined && sides[1] !== undefined)
+            for (const n of sides) put(n!, w);
+          // a model with only the pair for both eyes: one side's half of it
+          else if (both !== undefined) put(both, 0.5 * w);
+        }
+      }
+      // a model whose mood faces never reach her eyes, and with no parts to mix: her lids half close for the mood
+      const lids =
+        lidsFromBlink && !mixed
+          ? 0.4 * (face.happy ?? 0) + 0.3 * (face.sad ?? 0) + 0.3 * (face.relaxed ?? 0)
+          : 0;
+      for (const p of FACE_PRESETS)
         em.setValue(
-          p,
+          presetAs.get(p) ?? p,
           Math.min(
             1,
-            (face[p] ?? 0) + (mouth[p] ?? 0) + (added[p] ?? 0) + (p === "blink" ? blink : 0),
+            (mixed && MOOD_PRESETS.has(p) ? 0 : (face[p] ?? 0)) +
+              (mouth[p] ?? 0) +
+              (added[p] ?? 0) +
+              (p === "blink" ? blink + lids : 0),
           ),
         );
       if (look !== null) em.setValue(look, 1);
@@ -1774,9 +1915,15 @@ export function mountBody(
       if (head && eye) {
         const toHim = camera.position.clone().sub(eye);
         head.rotation.y += 0.3 * Math.max(-0.6, Math.min(0.6, Math.atan2(toHim.x, toHim.z)));
+        // a curious or puzzled head tips to one side
+        tilt += ((WONDERING.has(mood.mood) ? 0.16 : 0) - tilt) * Math.min(1, delta * 4);
+        head.rotation.z += tilt;
       }
     }
     if (mirrored) flipVrm0(vrm);
+    for (const name of partsLast)
+      for (const k of shapeKeys.get(name) ?? [])
+        if (k.mesh.morphTargetInfluences) k.mesh.morphTargetInfluences[k.i] = 0;
     vrm.update(delta);
     aimLock();
     // palms meet on her own hands, after everything else has posed the arms: the clip was authored on another body
@@ -1786,6 +1933,12 @@ export function mountBody(
       for (const k of shapeKeys.get(name) ?? [])
         if (k.mesh.morphTargetInfluences) k.mesh.morphTargetInfluences[k.i] = w;
     shapes = {};
+    for (const [name, w] of Object.entries(parts))
+      for (const k of shapeKeys.get(name) ?? [])
+        if (k.mesh.morphTargetInfluences)
+          k.mesh.morphTargetInfluences[k.i] = Math.min(1, k.mesh.morphTargetInfluences[k.i]! + w);
+    partsLast = Object.keys(parts);
+    parts = {};
     if (mirrored) flipVrm0(vrm);
     const f2 = 1 - Math.exp(-4 * delta);
     if (settleBody(f2) || placeCamera(f2)) lastMove = now;
@@ -1877,6 +2030,8 @@ export function mountBody(
   const setFace = (to: Weights, now = performance.now()) => {
     faceFrom = face;
     faceTo = to;
+    recipeFrom = recipe;
+    recipeTo = recipes.get(to) ?? null;
     faceAt = now;
     invalidate();
   };
@@ -1915,7 +2070,16 @@ export function mountBody(
       ]),
     );
     sync = names.has("jawopen") && names.has("eyeblinkleft") ? names : null;
+    // a VRoid export names its surprised face as a custom expression ("Surprised"), not the preset: map it home
+    presetAs = new Map(
+      FACE_PRESETS.map((p) => [
+        p,
+        next.expressionManager?.getExpression(p) ? p : (names.get(p.toLowerCase()) ?? p),
+      ]),
+    );
+    lidsFromBlink = reachOf(next, "happy") < 0.5 * reachOf(next, "blink");
     mirrored = mirroredOf(next);
+    restTurns = restTurnsOf(next);
     idle = null;
     void bakeIdle(next, mirrored);
     shapeKeys = new Map();
@@ -1924,6 +2088,19 @@ export function mountBody(
       for (const [name, i] of Object.entries(mesh.morphTargetDictionary ?? {}))
         shapeKeys.set(name, [...(shapeKeys.get(name) ?? []), { mesh, i }]);
     });
+    // its VRoid part shapes (…Fcl_BRW_Joy), kept where they move a vertex at all: some exports keep empty ones
+    fcl = new Map(
+      [...shapeKeys].flatMap(([name, at]) => {
+        const short = /Fcl_([A-Z]+_\w+)$/.exec(name)?.[1];
+        const moves = at.some(({ mesh, i }) =>
+          (mesh.geometry.morphAttributes["position"]?.[i]?.array ?? []).some(
+            (v) => Math.abs(v) > 0.0005,
+          ),
+        );
+        return short !== undefined && moves ? [[short, name] as const] : [];
+      }),
+    );
+    browsOverHair(next);
     morphHold = {};
     rig = rigOf(next);
     const samples = skinSamples(next);
@@ -1986,6 +2163,7 @@ export function mountBody(
   const dropProp = (id: string) => {
     const old = props.get(id);
     if (old === undefined) return;
+    if (holding?.id === id) holding = null;
     old.mixer?.stopAllAction();
     old.object.removeFromParent();
     VRMUtils.deepDispose(old.object);
@@ -1999,7 +2177,23 @@ export function mountBody(
       return invalidate();
     }
     let p = props.get(c.id);
-    if (p === undefined || p.url !== c.url) {
+    if ((p === undefined || p.url !== c.url) && c.url.startsWith("builtin:")) {
+      // a prop she has with no file: a hat made to fit her head (hats.ts), or a thing in her hand (heldProps.ts)
+      const id = c.url.slice(8);
+      const side = c.bone === "leftHand" ? "left" : "right";
+      const grip = gripOf(id);
+      if (vrm === null || (grip === null && !HAT_IDS.includes(id))) return;
+      dropProp(c.id);
+      const frame = frameOn(vrm, grip === null ? "head" : `${side}Hand`, restTurns);
+      const made =
+        frame === null ? null : grip === null ? wearHat(vrm, id, frame) : holdIn(vrm, id, side);
+      if (frame === null || made === null) return void frame?.removeFromParent();
+      frame.add(made);
+      // the hand that holds it closes round it, the arm bringing it in front of her, until it is put away
+      if (grip !== null) holding = { id: c.id, pose: holdPose(side, grip, posture().bones) };
+      p = { url: c.url, object: frame, mixer: null, on: false, rate: 1 };
+      props.set(c.id, p);
+    } else if (p === undefined || p.url !== c.url) {
       if (vrm === null) return;
       const gltf = await loader.loadAsync(c.url);
       if (disposed) return VRMUtils.deepDispose(gltf.scene);
@@ -2049,7 +2243,7 @@ export function mountBody(
     seqTimers = [];
     statesTo = {};
     motionTo = STILL;
-    setFace(faceWeights("neutral", 0));
+    setFace(faceOf("neutral", 0));
   };
 
   const hideNow = () => {
@@ -2484,7 +2678,7 @@ export function mountBody(
       // she is free: a pull back from it, a startled face, and her nerves let go
       reflexAt = now;
       reflexGain = 0.6;
-      override = { face: faceWeights(g.free ? "annoyed" : "surprised", 0.7), until: now + 900 };
+      override = { face: faceOf(g.free ? "annoyed" : "surprised", 0.7), until: now + 900 };
       setFace(override.face, now);
       return endGrab();
     }
@@ -2609,7 +2803,7 @@ export function mountBody(
         statesTo = c.states ?? {};
         motionTo = c.motion ?? STILL;
         invalidate();
-        if (override === null) setFace(faceWeights(c.mood, c.intensity), now);
+        if (override === null) setFace(faceOf(c.mood, c.intensity), now);
         return;
       }
       case "pose":
@@ -2710,7 +2904,7 @@ export function mountBody(
         // a feeling kept off her face still leaks through, at the system's floor
         if (c.systems["moodLeak"] !== undefined) {
           const floor = INVOLUNTARY.find((s) => s.id === "moodLeak")?.override.floor ?? 0;
-          const kept = faceWeights(mood.mood, mood.intensity * floor);
+          const kept = faceOf(mood.mood, mood.intensity * floor);
           override = { face: kept, until: now + c.systems["moodLeak"] };
           setFace(kept, now);
           seqTimers.push(setTimeout(invalidate, c.systems["moodLeak"]));
@@ -2807,7 +3001,7 @@ export function mountBody(
   };
   /** Her face's own first answer to his hand (local, this frame), before the touch is read or her layer hears it. */
   const touchGlance = (face: string, intensity: number, now: number) => {
-    override = { face: faceWeights(face, intensity), until: now + 900 };
+    override = { face: faceOf(face, intensity), until: now + 900 };
     setFace(override.face, now);
   };
   const feel = (kind0: string, intensity: number, speed: number) => {
@@ -2817,7 +3011,7 @@ export function mountBody(
     const now = performance.now();
     // her face answers on this frame (well inside 150 ms); her feel and words come back from the layer
     override = {
-      face: faceWeights(TOUCH_FACE[kind as TouchKind] ?? "attentive", 0.5 + 0.5 * intensity),
+      face: faceOf(TOUCH_FACE[kind as TouchKind] ?? "attentive", 0.5 + 0.5 * intensity),
       until: now + 900,
     };
     setFace(override.face, now);
@@ -3008,7 +3202,7 @@ export function mountBody(
     // she glances toward it and leans in a touch; her breath deepens, and a quick one sends a shiver through her
     touch = { at: now, point: at.hit.point.clone(), strength: 0.3 + 0.5 * intensity };
     override = {
-      face: faceWeights(TOUCH_FACE.trace, 0.4 + intensity),
+      face: faceOf(TOUCH_FACE.trace, 0.4 + intensity),
       motion: { breath: 0.35 + 0.4 * intensity, ...(speed > 0.6 ? { tremble: 0.25 * speed } : {}) },
       until: now + 1200,
     };

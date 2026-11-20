@@ -292,8 +292,25 @@ export const VESSELS = {
     face: FACE_LIBRARY,
     props: PROPS,
   },
-  // Her full (VRM) body, public or private (apps/web/src/body/vrmBody.ts).
-  body: { id: "body", form: "human", sense: "human" },
+  // Her full (VRM) body, public or private (apps/web/src/body/vrmBody.ts): hats made to her head (hats.ts) and things
+  // in her hand (heldProps.ts).
+  body: {
+    id: "body",
+    form: "human",
+    sense: "human",
+    props: [
+      "hardhat",
+      "beanie",
+      "nightcap",
+      "partyhat",
+      "crown",
+      "coffee",
+      "tea",
+      "umbrella",
+      "magnifier",
+      "wrench",
+    ],
+  },
   pill: { id: "pill", face: FACE_LIBRARY },
   speaker: { id: "speaker", voice: true },
 } as const satisfies Readonly<Record<string, VesselManifest>>;

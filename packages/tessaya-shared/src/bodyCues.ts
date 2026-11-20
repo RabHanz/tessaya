@@ -72,7 +72,7 @@ export const BODY_FACES: Readonly<Record<string, Weights>> = {
   shy: { happy: 0.3, relaxed: 0.3 },
   love: { happy: 0.7, relaxed: 0.4 },
   embarrassed: { happy: 0.3, sad: 0.2 },
-  curious: { surprised: 0.3 },
+  curious: { surprised: 0.4, happy: 0.15 },
   thinking: { relaxed: 0.2 },
   searching: { surprised: 0.2 },
   skeptical: { angry: 0.2, relaxed: 0.2 },
@@ -597,7 +597,10 @@ const BONES = new Set<string>([
 ]);
 // a blob: URL is minted only by this page's own script (a model it already fetched or he dropped in)
 const sameOrigin = (url: string) =>
-  (url.startsWith("/") && !url.startsWith("//") && !url.includes("\\")) || url.startsWith("blob:");
+  (url.startsWith("/") && !url.startsWith("//") && !url.includes("\\")) ||
+  url.startsWith("blob:") ||
+  // a prop the body makes itself (apps/web/src/body/hats.ts)
+  /^builtin:[a-z0-9]+$/.test(url);
 const num = (v: unknown, lo: number, hi: number) =>
   typeof v === "number" && Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : null;
 const str = (v: unknown, max = 200) =>
