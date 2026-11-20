@@ -233,6 +233,13 @@ export const liveLimit = (sessionId: string) =>
     return found === undefined ? null : liveLimitHit(readSessionTail(found));
   }).pipe(Effect.catchCause(() => Effect.succeed(null)));
 
+/**
+ * Whether a restart into another login must wait for the turn to end. A session stopped on its usage limit shows as
+ * waiting (Claude's limit prompt) but is between turns, and a switch is the way out of it (M-129).
+ */
+export const waitsForTurn = (status: string | null, limited: boolean): boolean =>
+  !limited && (status === "busy" || status === "waiting");
+
 /** The last bytes of a live session's transcript ("" when it has none yet). */
 export const readSessionTail = (session: Parameters<typeof transcriptPath>[0]): string =>
   readTail(transcriptPath(session));
@@ -362,7 +369,7 @@ export const liveSetAccount = (
             state: "not_in_herdr",
             detail: "Bring it into Herdr first; then it can restart in its pane.",
           };
-        if (session.status === "busy" || session.status === "waiting")
+        if (waitsForTurn(session.status, liveLimitHit(readSessionTail(session)) !== null))
           return { state: "busy", detail: "It restarts once and switches when this turn ends." };
         const respawned = await run(
           respawnClaudeInPane({ paneRef: session.herdrPane, sessionId: session.sessionId }),

@@ -1399,6 +1399,7 @@ export function ExistingThreadSettingsRouteScreen({
     route.params.environmentId,
     route.params.threadId,
     sessionEffort,
+    () => navigation.goBack(),
   );
 
   if (!selectedThread) {

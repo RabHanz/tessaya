@@ -7,7 +7,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
 import type { AdoptedSessionService } from "./AdoptedSessionService.ts";
-import { liveAttach, safeInboxName } from "./LiveActions.ts";
+import { liveAttach, safeInboxName, waitsForTurn } from "./LiveActions.ts";
 
 const withPane = (cwd: string) =>
   ({
@@ -51,4 +51,14 @@ describe("a file sent to a live session (D73)", () => {
       expect(result.saved).toBe(false);
     }),
   );
+});
+
+describe("a login switch on a terminal session (M-129)", () => {
+  it("waits for a working turn, but not for a session stopped on its usage limit", () => {
+    expect(waitsForTurn("busy", false)).toBe(true);
+    expect(waitsForTurn("waiting", false)).toBe(true);
+    expect(waitsForTurn("idle", false)).toBe(false);
+    // Claude's limit prompt reads as waiting; the switch is the way out of it, so it goes in now.
+    expect(waitsForTurn("waiting", true)).toBe(false);
+  });
 });
