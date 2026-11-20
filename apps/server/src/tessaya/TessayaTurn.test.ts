@@ -42,6 +42,7 @@ import {
   NOT_HIS_VOICE_TO_FORGET,
   boardLine,
   hereLine,
+  PRIVATE_LINE,
   SessionMember,
   TessayaTurn,
   TurnOrigin,
@@ -989,6 +990,8 @@ layer("TessayaTurn", (it) => {
     Effect.gen(function* () {
       setup();
       const turn = yield* TessayaTurn;
+      const kept = Effect.map(turn.transcript(0, Number.MAX_SAFE_INTEGER), (l) => l.length);
+      const before = yield* kept;
       const end = (envelope: Partial<TurnEnvelope>) =>
         Effect.map(
           turn.end(
@@ -1012,6 +1015,18 @@ layer("TessayaTurn", (it) => {
           ["vessel:device:desk-1", undefined, true],
         ],
       );
+      // The day's transcript keeps every said exchange but a rehearsal's; a private one only that it happened.
+      yield* end({ speaker: owner(), private: true });
+      const lines = (yield* turn.transcript(0, Number.MAX_SAFE_INTEGER)).slice(before);
+      assert.lengthOf(lines, 10);
+      assert.deepStrictEqual(
+        lines.slice(-2).map((l) => [l.role, l.who, l.text, l.private]),
+        [
+          ["them", "owner", PRIVATE_LINE, 1],
+          ["her", null, PRIVATE_LINE, 1],
+        ],
+      );
+      assert.strictEqual(lines[0]!.text, "remember the boiler code is in the drawer");
     }),
   );
 

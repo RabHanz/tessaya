@@ -158,6 +158,14 @@ const failed = (cause: unknown) =>
         : "Tessaya could not answer that.",
   });
 
+/** "today", "yesterday" or a YYYY-MM-DD date as the house's calendar day; null when it is none of them. */
+export const transcriptDay = (day: string, now: number, zone: string): string | null => {
+  const d = day.trim().toLowerCase();
+  if (d === "today") return isoIn(now, zone).slice(0, 10);
+  if (d === "yesterday") return isoIn(now - 86_400_000, zone).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) ? d : null;
+};
+
 /** The household's zone, read with the MCP runtime's own services. */
 const runtimeZone = Effect.gen(function* () {
   const context = yield* TessayaRuntime;
@@ -1204,6 +1212,40 @@ export const layer = McpToolAccess.toLayer(
             alarms: alarms2,
           };
         }),
+      ),
+      // The day's room transcript, kept on her brain: the owner's alone, never read out to a guest's turn.
+      tessaya_transcript: McpToolAccess.reads((input) =>
+        call(
+          Effect.gen(function* () {
+            const origin = yield* TurnOrigin;
+            if (origin !== null && (origin.member !== OWNER_MEMBER_ID || origin.tainted))
+              return { line: "That's for the owner to ask.", lines: [] };
+            const zone = yield* runtimeZone;
+            const now = yield* Clock.currentTimeMillis;
+            const day = transcriptDay(input.day ?? "today", now, zone);
+            if (day === null)
+              return {
+                line: 'Give the day as "today", "yesterday" or like 2026-11-20.',
+                lines: [],
+              };
+            // a day in any zone falls inside its UTC date ±14 h; the house clock picks the rows
+            const noon = Date.parse(`${day}T12:00:00Z`);
+            const rows = yield* withTurn((turn) =>
+              turn.transcript(noon - 26 * 3_600_000, noon + 26 * 3_600_000),
+            );
+            const lines = rows
+              .filter((r) => isoIn(r.at, zone).startsWith(day))
+              .filter((r) => input.vessel === undefined || r.vessel === input.vessel)
+              .map(
+                (r) =>
+                  `${isoIn(r.at, zone).slice(11, 16)} ${r.role === "her" ? "Her" : (r.who ?? "Someone")} (${r.vessel}): ${r.text}`,
+              );
+            return {
+              line: lines.length === 0 ? `Nothing was said with me on ${day}.` : "",
+              lines,
+            };
+          }),
+        ),
       ),
       // The one dictionary, on her brain: a worker server passes the change there (TessayaVocabulary.atBrain).
       tessaya_vocabulary: McpToolAccess.writes(

@@ -124,6 +124,7 @@ const ROOM_TOOLS = [
   "tessaya_always_allowed",
   // Alarms and wake-ups at a set time (M-108): "wake me up at 8:45", and "stop" or "snooze" when it rings.
   "tessaya_alarm",
+  "tessaya_transcript",
   // His prompt lab (B-030): "try my variant B on Sonnet"; making one live waits for his yes.
   "tessaya_prompt_lab",
   "settings_find",

@@ -958,6 +958,23 @@ const VocabularyTool = Tool.make("tessaya_vocabulary", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+/** The room's transcript by day (20 Nov): every exchange, his and hers, for her recall and his review. */
+const TranscriptTool = Tool.make("tessaya_transcript", {
+  ...shared,
+  description:
+    'What was said with her in the room on a day, his words and hers, oldest first: for "what did you say earlier?", "what did I ask you this morning?" or a review. `day` is "today" (default), "yesterday" or a date "2026-11-20"; `vessel` narrows to one device. A private moment shows only that it happened. Only for him.',
+  parameters: Schema.Struct({
+    day: Schema.optional(Schema.String.check(Schema.isMaxLength(10))),
+    vessel: Schema.optional(Schema.String.check(Schema.isMaxLength(120))),
+  }),
+  success: Schema.Struct({ lines: Schema.Array(Schema.String), line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 /** Alarms and spoken wake-ups (M-108): kept on her brain, rung on the Tessel nearest him. */
 const AlarmTool = Tool.make("tessaya_alarm", {
   ...shared,
@@ -1294,6 +1311,7 @@ export const TessayaToolkit = Toolkit.make(
   AlwaysAllowedTool,
   VocabularyTool,
   AlarmTool,
+  TranscriptTool,
   VoiceTool,
   PersonaTool,
   GroupTool,

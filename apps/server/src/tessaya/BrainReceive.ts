@@ -163,6 +163,21 @@ const ThreadActIn = Schema.Union([
     a: Schema.Literal("list"),
     persona: Schema.NullOr(Schema.String.check(Schema.isMaxLength(60))),
   }),
+  Schema.Struct({
+    a: Schema.Literal("said"),
+    lines: Schema.Array(
+      Schema.Struct({
+        at: Schema.Number,
+        vessel: Schema.String.check(Schema.isMaxLength(200)),
+        conversation: Schema.String.check(Schema.isMaxLength(400)),
+        role: Schema.Literals(["them", "her"]),
+        who: Schema.NullOr(Schema.String.check(Schema.isMaxLength(120))),
+        text: Schema.String.check(Schema.isMaxLength(2100)),
+        private: Schema.Number,
+      }),
+    ).check(Schema.isMaxLength(10)),
+  }),
+  Schema.Struct({ a: Schema.Literal("transcript"), from: Schema.Number, to: Schema.Number }),
 ]);
 const decodeThreadAct = Schema.decodeUnknownOption(ThreadActIn);
 const MemoryAsk = Schema.Struct({

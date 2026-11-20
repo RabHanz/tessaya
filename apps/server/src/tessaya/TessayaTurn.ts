@@ -35,6 +35,7 @@ import {
 import { PRESENCE_BARS, presenceReason } from "@t3tools/tessaya-shared/presence";
 import { emitAction, type TurnAction } from "./turnActions.ts";
 import { make as makeLive, TurnLiveContext } from "./TurnLiveContext.ts";
+import { recordText } from "@t3tools/tessaya-shared/audit";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Random from "effect/Random";
@@ -507,6 +508,21 @@ const parsedOr = <A>(json: string, fallback: A) =>
 /** How much of a conversation every vessel shares, and how long it waits for him to go on. */
 const CONVERSATION_TURNS = 24;
 const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
+/** The room transcript is kept as long as the Record (ActionLog's 30 days). */
+const TRANSCRIPT_KEEP_MS = 30 * 86_400_000;
+/** What a private moment leaves in the transcript: only that it happened. */
+export const PRIVATE_LINE = "(a private moment)";
+/** One line of the room's transcript. */
+export interface TranscriptLine {
+  readonly at: number;
+  readonly vessel: string;
+  readonly conversation: string;
+  readonly role: "them" | "her";
+  /** The member who spoke (their words only), or null for a guest or an unsure voice. */
+  readonly who: string | null;
+  readonly text: string;
+  readonly private: number;
+}
 /** How soon after a vessel's last exchange a turn Voice ID could not judge still continues it. */
 const THREAD_CARRY_MS = 2 * 60_000;
 /** A dictation this recent may be the turn it became; older words were typed again. */
@@ -633,6 +649,8 @@ export class TessayaTurn extends Context.Service<
      * A state for noticing and suggestions, not a history.
      */
     readonly whoIsHome: Effect.Effect<ReadonlyArray<WhoIsHome>>;
+    /** The room's exchanges between `from` and `to` (ms), oldest first: their words and hers, a private one noted. */
+    readonly transcript: (from: number, to: number) => Effect.Effect<ReadonlyArray<TranscriptLine>>;
     /** What his memories say is coming up this week, as the caller may see them (Memory v2 step 8). */
     readonly comingUp: Effect.Effect<
       ReadonlyArray<{
@@ -706,7 +724,9 @@ export class TessayaTurn extends Context.Service<
     /** Her live threads, one persona's or all, newest first: the base of the presence board (CS2). */
     readonly threads: (persona?: string) => Effect.Effect<ReadonlyArray<LiveThread>>;
     /** A worker's change to her one conversation list, applied on her brain. */
-    readonly threadAct: (act: ThreadAct) => Effect.Effect<ReadonlyArray<LiveThread> | null>;
+    readonly threadAct: (
+      act: ThreadAct,
+    ) => Effect.Effect<ReadonlyArray<LiveThread> | ReadonlyArray<TranscriptLine> | null>;
     /** What she is doing in one of her threads (its id, as body focus names it) until `until`; null clears it. */
     readonly setDoing: (
       thread: string,
@@ -729,7 +749,9 @@ export type ThreadAct =
       readonly thread: string;
       readonly doing: { readonly what: string; readonly until: number } | null;
     }
-  | { readonly a: "list"; readonly persona: string | null };
+  | { readonly a: "list"; readonly persona: string | null }
+  | { readonly a: "said"; readonly lines: ReadonlyArray<TranscriptLine> }
+  | { readonly a: "transcript"; readonly from: number; readonly to: number };
 
 export const make = Effect.gen(function* () {
   const memory = yield* TessayaMemoryService;
@@ -927,6 +949,42 @@ export const make = Effect.gen(function* () {
           : turns.filter((t) => t.vessel === turn.vessel.id),
     };
   });
+  let transcriptSweptAt = 0;
+  const transcriptHere = (from: number, to: number) =>
+    sql<TranscriptLine>`
+      SELECT at, vessel, conversation, role, who, text, private FROM tessaya_room_transcript
+      WHERE at >= ${from} AND at < ${to} ORDER BY seq LIMIT 2000
+    `.pipe(Effect.orElseSucceed((): ReadonlyArray<TranscriptLine> => []));
+  /** The day's transcript is kept once, on her brain: a worker sends its lines up (queued while she's away). */
+  const transcript = Effect.fn("TessayaTurn.transcript")(function* (from: number, to: number) {
+    if (!(yield* brain.isBrain)) {
+      yield* brain.replay();
+      const theirs = yield* brain.send("threads", { a: "transcript", from, to });
+      if (Option.isSome(theirs) && Array.isArray(theirs.value))
+        return theirs.value as ReadonlyArray<TranscriptLine>;
+    }
+    return yield* transcriptHere(from, to);
+  });
+  const keepLines = Effect.fn("TessayaTurn.keepLines")(function* (
+    lines: ReadonlyArray<TranscriptLine>,
+  ) {
+    if (!(yield* brain.isBrain)) {
+      yield* brain.sendOrQueue("threads", { a: "said", lines });
+      return;
+    }
+    for (const l of lines)
+      yield* sql`
+        INSERT INTO tessaya_room_transcript (at, vessel, conversation, role, who, text, private)
+        VALUES (${l.at}, ${l.vessel}, ${l.conversation}, ${l.role}, ${l.who}, ${l.text}, ${l.private})
+      `.pipe(Effect.ignore);
+    const now = yield* Clock.currentTimeMillis;
+    if (now - transcriptSweptAt > 3_600_000) {
+      transcriptSweptAt = now;
+      yield* sql`DELETE FROM tessaya_room_transcript WHERE at < ${now - TRANSCRIPT_KEEP_MS}`.pipe(
+        Effect.ignore,
+      );
+    }
+  });
   const addExchange = Effect.fn("TessayaTurn.converse")(function* (
     turn: TurnEnvelope,
     reply: string,
@@ -952,6 +1010,21 @@ export const make = Effect.gen(function* () {
     ];
     const kept = [...turns, ...said].slice(-CONVERSATION_TURNS);
     conversations.set(key, { at: now, turns: kept });
+    // The day's transcript keeps every exchange (the conversation above keeps only its last few).
+    if (turn.rehearsal !== true && said.length > 0) {
+      const who = turnIdentity(turn).member;
+      yield* keepLines(
+        said.map((t) => ({
+          at: now,
+          vessel: turn.vessel.id,
+          conversation: key,
+          role: t.role === "user" ? ("them" as const) : ("her" as const),
+          who: t.role === "user" ? who : null,
+          text: turn.private === true ? PRIVATE_LINE : recordText(t.content, 2000),
+          private: turn.private === true ? 1 : 0,
+        })),
+      ).pipe(Effect.ignore);
+    }
     yield* encodeJson(kept).pipe(
       Effect.flatMap(
         (json) => sql`
@@ -2195,6 +2268,7 @@ export const make = Effect.gen(function* () {
     about,
     setPreference,
     whoIsHome,
+    transcript,
     comingUp: comingUpNow,
     threads,
     setDoing,
@@ -2212,6 +2286,11 @@ export const make = Effect.gen(function* () {
           return null;
         case "list":
           return yield* threads(act.persona ?? undefined);
+        case "said":
+          yield* keepLines(act.lines);
+          return null;
+        case "transcript":
+          return yield* transcriptHere(act.from, act.to);
       }
     }),
     handOff,
