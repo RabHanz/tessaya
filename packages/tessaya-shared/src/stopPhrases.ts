@@ -97,6 +97,8 @@ export const stopIntent = (
 
 /** The room brain's own "he is done": the end of a reply that closes the conversation, never said (15 Nov). */
 export const REST_MARK = "[rest]";
+/** The room brain's "this turn is a private moment" (a persona layer answered): never said, and the turn is never kept. */
+export const PRIVATE_MARK = "[private]";
 
 /**
  * The model's way to end the conversation, on every vessel: the fixed phrases above are only the fast path (18 Nov).
