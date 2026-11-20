@@ -1020,7 +1020,8 @@ export const applyMessage = (
       break;
     }
   }
-  if (rest !== "state/online" || d.online) d.lastSeen = now;
+  // Seen only while online: the hub serves its retained readings again after it has gone.
+  if (d.online === true) d.lastSeen = now;
   d.log.push({ at: now, topic: rest, text: line });
   if (d.log.length > LOG_KEEP) d.log.shift();
   return done();
@@ -1873,6 +1874,9 @@ const make = Effect.gen(function* () {
     if (result === null) return;
     if (topic.endsWith("/state/online"))
       yield* registry.seen(result.id, heard.get(result.id)?.online === true);
+    // Put to sleep on purpose (S3 long-press, 20 Nov 20:37): asleep, not a fault (retained state/sleep).
+    if (topic.endsWith("/state/sleep"))
+      yield* registry.sleeping(result.id, json(payload)?.["asleep"] === true);
     if (result.manifest !== null) {
       const refused = yield* registry.publish("mqtt", result.manifest);
       if (refused !== null)

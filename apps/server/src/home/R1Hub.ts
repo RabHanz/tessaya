@@ -315,6 +315,11 @@ export const makeHub = (
         if (c.will !== null) c.will.topic = inside(c.will.topic);
         // 0x84 is 3.1.1 from another broker's bridge (mosquitto's try_private): it never gets its own messages back.
         if (c.name !== "MQTT" || (c.level !== 4 && c.level !== 0x84)) {
+          yield* Effect.logWarning("R1 hub login refused", {
+            user: c.user,
+            remote: who,
+            why: `protocol ${c.name} level ${c.level}`,
+          });
           io.send(connack(1));
           return end();
         }

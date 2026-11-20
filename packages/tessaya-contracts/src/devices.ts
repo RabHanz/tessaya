@@ -493,6 +493,8 @@ export const RegisteredDevice = Schema.Struct({
   values: Schema.Array(DeviceItemValue),
   /** Not heard from in two weeks: shown as such, with a way to forget it. */
   stale: Schema.optionalKey(Schema.Boolean),
+  /** Put to sleep on purpose (its own retained state/sleep): offline as asked, never a fault. */
+  asleep: Schema.optionalKey(Schema.Boolean),
   /** The member a client vessel belongs to (their phone, their desktop). */
   member: Schema.optionalKey(Schema.String),
   /** Private items in use now (a camera, a microphone): every client shows a live light until then. */
