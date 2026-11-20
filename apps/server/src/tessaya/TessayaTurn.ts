@@ -960,9 +960,8 @@ export const make = Effect.gen(function* () {
    * After a quiet spell the conversation starts afresh, so how long it has been and what he said last is the turn's
    * own line (`sinceLine`): hours after "I'll sleep for a bit" she can tell he is back (presence-diagnosis 20 Nov).
    */
-  const sinceFor = Effect.fn("TessayaTurn.sinceFor")(function* (turn: TurnEnvelope) {
+  const sinceFor = (turn: TurnEnvelope, now: number, zone: string | undefined): string => {
     if (turn.rehearsal === true) return "";
-    const now = yield* Clock.currentTimeMillis;
     const key = keyOf(turn, now);
     const held = conversations.get(key);
     // Only a conversation this server saw end in the open: a private moment's words never come back here.
@@ -970,11 +969,10 @@ export const make = Effect.gen(function* () {
       return "";
     const said = held.turns.findLast((t) => t.role === "user")?.content;
     if (said === undefined) return "";
-    const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
     return (
       sinceLine({ at: DateTime.formatIso(DateTime.makeUnsafe(held.at)), said }, now, zone) ?? ""
     );
-  });
+  };
   let transcriptSweptAt = 0;
   const transcriptHere = (from: number, to: number) =>
     sql<TranscriptLine>`
@@ -1487,6 +1485,11 @@ export const make = Effect.gen(function* () {
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
       .filter((l) => l !== "")
       .join(" ");
+    const since = sinceFor(
+      turn,
+      yield* Clock.currentTimeMillis,
+      turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined,
+    );
     const key = conversationKey(turn);
     const pending = handedTo.get(key);
     const handed =
@@ -1504,7 +1507,7 @@ export const make = Effect.gen(function* () {
       ]
         .filter((l) => l !== "")
         .join(" "),
-      feeling: [feeling, yield* sinceFor(turn)].filter((l) => l !== "").join(" "),
+      feeling: [feeling, since].filter((l) => l !== "").join(" "),
       block: [
         here,
         live,
