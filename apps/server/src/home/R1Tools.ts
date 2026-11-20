@@ -77,6 +77,9 @@ const ROOM_TOOLS = [
   "tessaya_in_flight",
   "tessaya_work_now",
   "tessaya_sessions",
+  // "What's the build session doing?", "tell it to rerun the tests" (M-104).
+  "tessaya_session_insight",
+  "tessaya_session_steer",
   "tessaya_fleet",
   "tessaya_jobs",
   "tessaya_watch",

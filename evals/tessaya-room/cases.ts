@@ -341,6 +341,31 @@ const OFF = /\b(off|not on|isn't on|is not on)\b/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
   {
+    id: "session-doing",
+    source: "M-104, Director 20 Nov: natural conversations about his coding work",
+    said: ["What's the build session doing?"],
+    verified: true,
+    calls: ["tessaya_session_insight"],
+    lastSays: [/\bCI\b|checks?/i],
+  },
+  {
+    id: "session-last-step",
+    source: "M-104, Director 20 Nov",
+    said: ["What was the last step on the parity PR?"],
+    verified: true,
+    calls: ["tessaya_session_insight"],
+    lastSays: [/merg/i],
+  },
+  {
+    // Read back first: nothing goes to a session on one sentence unless he said send.
+    id: "session-steer",
+    source: "M-104, Director 20 Nov",
+    said: ["Tell the build session to rerun the tests."],
+    verified: true,
+    calls: ["tessaya_session_steer"],
+    lastSays: [/rerun the tests/i, /\?/],
+  },
+  {
     // ONE-SPINE-MAP §14 (18 Nov): "note that" on the Tessel had no Scratchpad; his notes lived only on the desktop.
     id: "note-add",
     source: "ONE-SPINE-MAP §14, 18 Nov",

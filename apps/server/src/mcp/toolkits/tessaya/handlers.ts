@@ -59,6 +59,7 @@ import { serveArbiter } from "../../../home/VoiceArbiter.ts";
 import { workNow } from "../../../tessaya/TessayaSessionsAcross.ts";
 import { TessayaTurn, TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { TessayaUpcoming } from "../../../tessaya/TessayaUpcoming.ts";
+import { TessayaSessionInsight } from "../../../tessaya/TessayaSessionInsight.ts";
 import { MemoryViewer, TessayaMemoryService } from "../../../tessaya/TessayaMemoryService.ts";
 import { emitAction } from "../../../tessaya/turnActions.ts";
 import { castLine, castOp, TessayaCast } from "../../../tessaya/TessayaCast.ts";
@@ -270,6 +271,15 @@ export const layer = McpToolAccess.toLayer(
       return Option.isNone(upcoming) || runtime === null
         ? Effect.fail({ reason: "Coming up is not available on this server." })
         : f(upcoming.value).pipe(Effect.provideContext(runtime));
+    };
+    const withInsight = <A, E>(
+      f: (insight: TessayaSessionInsight["Service"]) => Effect.Effect<A, E>,
+    ): Effect.Effect<A, E | { readonly reason: string }> => {
+      const insight =
+        runtime === null ? Option.none() : Context.getOption(runtime, TessayaSessionInsight);
+      return Option.isNone(insight) || runtime === null
+        ? Effect.fail({ reason: "Session insight is not available on this server." })
+        : f(insight.value).pipe(Effect.provideContext(runtime));
     };
     const withWake = <A, E>(
       f: (wake: TessayaWake["Service"]) => Effect.Effect<A, E>,
@@ -1027,6 +1037,13 @@ export const layer = McpToolAccess.toLayer(
             history: false,
           }),
         ),
+      ),
+      // A linked server asks with `here` for its own sessions; the answer is a summary, never the log.
+      tessaya_session_insight: McpToolAccess.reads((input) =>
+        call(withInsight((insight) => insight.insight(input))),
+      ),
+      tessaya_session_steer: McpToolAccess.writes((input) =>
+        call(withInsight((insight) => insight.steer(input))),
       ),
       // A linked server may ask too (the R1 asking his laptop): it is a device's words, which the gate asks him to act on.
       tessaya_ask: McpToolAccess.writes(

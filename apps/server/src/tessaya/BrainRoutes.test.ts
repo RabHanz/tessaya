@@ -70,6 +70,9 @@ const SITES: Readonly<Record<string, Site>> = {
     routed: "rewriting her standing understanding of a person or herself: the consolidation row",
   },
   "apps/server/src/tessaya/IntentInterpreter.ts": { routed: "reading a sentence: the intent row" },
+  "apps/server/src/tessaya/TessayaSessionInsight.ts": {
+    routed: "what one of his coding sessions is doing (M-104): the synopsis row",
+  },
   "apps/server/src/tessaya/SynopsisReactor.ts": {
     routed: "a work session's synopsis: the synopsis row",
   },
