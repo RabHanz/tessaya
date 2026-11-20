@@ -1,5 +1,5 @@
 /**
- * The before-and-after task set for the assistant's hands (D144, issue #52): six Windows tasks, three
+ * The before-and-after task set for the assistant's hands (D144, issue #52, D-004): eight Windows tasks, three
  * runs each, scored by whether it finished, the steps taken, the wall time and the misclicks the
  * checks counted. Pure, so the scoring is tested without a desktop. The real run is `agentLab.ts`,
  * and it only runs when he is away and has been told.
@@ -33,6 +33,14 @@ export const TASKS: ReadonlyArray<AgentTask> = [
   {
     id: "dialog",
     goal: "If a dialog appears that you did not ask for, close it, then carry on with task one.",
+  },
+  {
+    id: "rename",
+    goal: "In File Explorer, rename tessaya-task-one.txt in Documents to tessaya-task-renamed.txt.",
+  },
+  {
+    id: "second-monitor",
+    goal: "Tell me the title of the window on my second monitor, then open a new tab in the browser there by clicking its New tab button.",
   },
 ];
 

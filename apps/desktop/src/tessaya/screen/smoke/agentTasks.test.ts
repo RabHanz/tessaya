@@ -13,7 +13,7 @@ const run = (task: string, n: number, over: Partial<RunResult> = {}): RunResult 
 });
 
 describe("the hands' task set", () => {
-  it("has six tasks", () => {
+  it("has eight tasks", () => {
     expect(TASKS.map((t) => t.id)).toEqual([
       "notepad",
       "explorer",
@@ -21,6 +21,8 @@ describe("the hands' task set", () => {
       "browser",
       "spreadsheet",
       "dialog",
+      "rename",
+      "second-monitor",
     ]);
   });
   it("scores finishing, steps, wall time and misclicks over the runs of a task", () => {
