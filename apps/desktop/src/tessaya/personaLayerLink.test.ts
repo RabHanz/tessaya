@@ -70,7 +70,10 @@ describe("startPersonaLayerLink", () => {
     const shield: Array<boolean> = [];
     let open = true;
     const link = startPersonaLayerLink({
-      post: async (body) => (posts.push(body), { open, page: "/tessaya/layer/x" }),
+      post: async (body) => (
+        posts.push(body),
+        { open, page: "/tessaya/layer/x", persona: "freya" }
+      ),
       deviceKey: () => "k",
       othersCapturing: async () => true,
       shield: (on) => void shield.push(on),
@@ -81,10 +84,13 @@ describe("startPersonaLayerLink", () => {
     expect(posts[1]?.key).toBe("k");
     expect(shield).toEqual([true]);
     expect(link.page()).toBe("/tessaya/layer/x");
+    // the companion it opened with, so only she takes the private form
+    expect(link.persona()).toBe("freya");
     open = false;
     await link.signal("screenLocked");
     expect(posts.at(-1)?.signals).toEqual(expect.arrayContaining(["screenLocked", "call"]));
     expect(shield).toEqual([true, false]);
+    expect(link.persona()).toBeNull();
     link.stop();
   });
 });
@@ -99,17 +105,26 @@ describe("createWindowCloseEnd", () => {
     };
     const fire = () => timers.filter((t) => t.live).forEach((t) => ((t.live = false), t.fn()));
     let ended = 0;
-    const w = createWindowCloseEnd({ end: () => void ended++, schedule });
+    const shown: Array<boolean> = [];
+    const w = createWindowCloseEnd({
+      end: () => void ended++,
+      schedule,
+      shown: (on) => void shown.push(on),
+    });
     w.opened();
     w.opened();
     // one of two closed: the other still holds it
     w.closed();
     fire();
     expect(ended).toBe(0);
+    expect(shown).toEqual([true]);
     // the last one closed, then reopened within the grace (a reload): nothing ends
     w.closed();
+    // her private form leaves the desk on the close itself, before any timer or server answer (M-122)
+    expect(shown).toEqual([true, false]);
     expect(timers.at(-1)?.ms).toBe(WINDOW_CLOSE_GRACE_MS);
     w.opened();
+    expect(shown).toEqual([true, false, true]);
     fire();
     expect(ended).toBe(0);
     // closed for good: it ends, once

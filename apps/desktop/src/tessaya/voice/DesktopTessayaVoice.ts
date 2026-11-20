@@ -1564,6 +1564,10 @@ export interface DesktopTessayaVoice {
   readonly rest: () => void;
   /** A line for the tray: a voice downloading, or why it could not. */
   readonly onNote: (message: string | null) => void;
+  /** The companion on the desk wearing this persona (the lead's when none is, or none is named). */
+  readonly mascotOf: (persona: string | null) => DesktopMascot;
+  /** His private layer shows its form of `who`: every other on the desk steps away, and comes back after (M-122). */
+  readonly aside: (on: boolean, who: DesktopMascot | null) => void;
 }
 
 const wordName = (word: string | null): string | null =>
@@ -5257,6 +5261,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     return (p === undefined ? undefined : crew.get(p.id)) ?? mascot;
   };
   const everyMascot = () => [mascot, ...crew.values()];
+  // the others are away while his private layer shows one's private form; one added meanwhile starts away too
+  let asideFor: DesktopMascot | null = null;
   /**
    * A group speaker starts (GroupTalk's turn, M-080 step 8): the others on his desktop turn to her and nod, so the
    * room looks at whoever is speaking. Only when her own body is here among the crew.
@@ -5457,6 +5463,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     want.forEach((p, i) => {
       const m = crew.get(p.id) ?? makeMascot(() => ({ persona: p.id }), { key: p.id, slot: i + 1 });
       crew.set(p.id, m);
+      m.aside(asideFor !== null && asideFor !== m);
       m.setOptions({
         on: settings.mascot,
         motion: settings.mascotMotion,
@@ -10192,6 +10199,18 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     onNote: (message) => {
       note = message;
       render();
+    },
+    // by id or name: a layer may know her by name ("freya") where the pack's id differs
+    mascotOf: (persona) => {
+      const key = persona?.toLowerCase();
+      const p = readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find(
+        (x) => x.id === key || x.name.toLowerCase() === key,
+      );
+      return (p === undefined ? undefined : crew.get(p.id)) ?? mascot;
+    },
+    aside: (on, who) => {
+      asideFor = on ? who : null;
+      for (const m of everyMascot()) m.aside(on && m !== who);
     },
   };
 };

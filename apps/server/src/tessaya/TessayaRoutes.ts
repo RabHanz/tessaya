@@ -1069,6 +1069,9 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       return HttpServerResponse.jsonUnsafe(
         {
           open: registry.value.all.some((l) => l.active?.("desktop") === true),
+          persona:
+            registry.value.all.map((l) => l.opened?.("desktop") ?? null).find((p) => p !== null) ??
+            null,
           page:
             registry.value.all[0] === undefined
               ? null

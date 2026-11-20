@@ -680,12 +680,22 @@ export const startTessayaDesktop = Effect.gen(function* () {
     // her full body: then it stands in her everyday look, and her character shows only while it isn't standing.
     let deskMascot: DesktopMascot | null = null;
     let deskFullBody = false;
+    // the companion wearing the private form now: the one the session opened with (M-122), else the lead
+    let veiled: DesktopMascot | null = null;
     const showLayerBody = async (open: boolean) => {
       const page = layerLink.page();
-      if (!(open || deskFullBody) || page === null) return deskMascot?.layerBody(null);
+      const who = open ? (voice?.mascotOf(layerLink.persona()) ?? deskMascot) : deskMascot;
+      // the others step away from her private form, and come back when it goes
+      voice?.aside(open && page !== null, who);
+      if (veiled !== null && veiled !== who) veiled.layerBody(null);
+      veiled = who;
+      if (!(open || deskFullBody) || page === null) return who?.layerBody(null);
+      // her shapeshift starts on the open itself; the private form finishes it once its page is up
+      if (open) who?.morph("out");
       const at = await layerSession();
+      if (at === null && open) who?.morph("in");
       if (at !== null && (layerLink.isOpen() || deskFullBody))
-        deskMascot?.layerBody({
+        who?.layerBody({
           url: `${at.origin}${page}/mascot`,
           session: at.session,
           waitShown: !layerLink.isOpen(),
@@ -712,7 +722,11 @@ export const startTessayaDesktop = Effect.gen(function* () {
       account: windowsAccountOf(NodeOS.hostname(), NodeOS.userInfo().username),
     });
     // Closing his private window ends that private moment; her desk body goes back to her everyday look or her character.
-    const layerWindows = createWindowCloseEnd({ end: () => void layerLink.signal("windowClosed") });
+    const layerWindows = createWindowCloseEnd({
+      end: () => void layerLink.signal("windowClosed"),
+      // her private form leaves the desk on the close itself; one reopened within the grace brings it back
+      shown: (on) => void showLayerBody(on && layerLink.isOpen()),
+    });
     const openLayerPage = async (chat = false) => {
       const page = layerLink.page();
       if (page === null) return;
@@ -740,13 +754,23 @@ export const startTessayaDesktop = Effect.gen(function* () {
           // ready again for when he locks it and opens it again from this window
           warmHello();
           if (opened) win.webContents.reload();
+          // the server knows it is open now: hear it at once, so her shapeshift starts without the next 10 s report
+          if (opened) void layerLink.report();
         });
         return { action: "deny" };
       });
       void win.loadURL(`${origin}${page}${chat ? "/chat" : ""}`);
       win.on("closed", coolHello);
       layerWindows.opened();
-      win.on("closed", layerWindows.closed);
+      // closed, or its page died: counted once either way
+      let gone = false;
+      const closed = () => {
+        if (gone) return;
+        gone = true;
+        layerWindows.closed();
+      };
+      win.on("closed", closed);
+      win.webContents.on("render-process-gone", closed);
       if (chat) {
         privateChatWindow = win;
         win.on("closed", () => {
@@ -757,7 +781,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     // The private chat page's 3D body takes her desktop speech and mood as cues; it ignores them while hidden.
     let privateChatWindow: Electron.BrowserWindow | null = null;
     const bodyCue = (cue: BodyCue) => {
-      deskMascot?.layerCue(cue);
+      (veiled ?? deskMascot)?.layerCue(cue);
       const win = privateChatWindow;
       if (win === null || win.isDestroyed()) return;
       void win.webContents
@@ -772,7 +796,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     Electron.powerMonitor.on("lock-screen", () => {
       bodyCue({ kind: "stop" });
       bodyCue({ kind: "hide" });
-      deskMascot?.layerBody(null);
+      (veiled ?? deskMascot)?.layerBody(null);
       void layerLink.signal("screenLocked");
     });
     Electron.powerMonitor.on("suspend", () => void layerLink.signal("sleep"));

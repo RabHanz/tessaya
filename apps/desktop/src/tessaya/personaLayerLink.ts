@@ -11,7 +11,12 @@ export interface LayerLinkDeps {
     readonly key?: string;
     readonly signals: ReadonlyArray<string>;
     readonly world?: { readonly fullscreen: boolean; readonly opened?: boolean };
-  }) => Promise<{ readonly open: boolean; readonly page: string | null } | null>;
+  }) => Promise<{
+    readonly open: boolean;
+    readonly page: string | null;
+    /** The persona its open session was opened with: only that companion takes the private form (M-122). */
+    readonly persona?: string | null;
+  } | null>;
   /** Her desk world now, sent with each report: a full-screen app in front keeps her own wishes out of his way. */
   readonly world?: () => { readonly fullscreen: boolean; readonly opened?: boolean };
   /** The device key, created and kept by the OS keystore on first use; null where none is available. */
@@ -27,6 +32,7 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
   let open = false;
   let knownHere = false;
   let page: string | null = null;
+  let persona: string | null = null;
   const pending = new Set<string>();
   const tick = async (signal?: string) => {
     if (stopped) return;
@@ -46,6 +52,7 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
     if (answer === null) return stop();
     for (const s of sent) pending.delete(s);
     page = answer.page;
+    persona = answer.open ? (answer.persona ?? null) : null;
     if (answer.open !== open) {
       open = answer.open;
       deps.shield(open);
@@ -72,6 +79,8 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
     isOpen: () => open,
     /** The layer's own page on this server (its path), or null where there is none. */
     page: () => page,
+    /** Who the open session is with, or null (none open, or the layer doesn't say). */
+    persona: () => persona,
   };
 };
 
@@ -84,6 +93,11 @@ export const WINDOW_CLOSE_GRACE_MS = 3_000;
  */
 export const createWindowCloseEnd = (deps: {
   readonly end: () => void;
+  /**
+   * His last private window closed (or crashed), or one came back: her private form on the desk goes, or returns, on
+   * this very call, never after the grace or a server answer (M-122).
+   */
+  readonly shown?: (on: boolean) => void;
   readonly schedule?: (fn: () => void, ms: number) => () => void;
 }) => {
   const schedule =
@@ -97,12 +111,14 @@ export const createWindowCloseEnd = (deps: {
   return {
     opened: () => {
       open += 1;
+      if (open === 1) deps.shown?.(true);
       pending?.();
       pending = null;
     },
     closed: () => {
       open = Math.max(0, open - 1);
       if (open > 0) return;
+      deps.shown?.(false);
       pending?.();
       pending = schedule(() => {
         pending = null;
