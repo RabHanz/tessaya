@@ -116,7 +116,12 @@ import {
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { OPENING, recipeWeights, type FaceRecipe } from "@t3tools/tessaya-shared/faceRecipes";
+import {
+  OPENING,
+  recipeWeights,
+  TUNED_REACH,
+  type FaceRecipe,
+} from "@t3tools/tessaya-shared/faceRecipes";
 import { HAT_IDS, wearHat } from "./hats.ts";
 import { gripOf, holdIn, holdPose } from "./heldProps.ts";
 import { frameOn, restTurns as restTurnsOf, type PropBone } from "./propKit.ts";
@@ -662,6 +667,8 @@ export function mountBody(
   let recipeTo: FaceRecipe | null = null;
   // the model's VRoid part shapes that move anything, by name without `Fcl_` (read when it loads)
   let fcl = new Map<string, string>();
+  // how far each of them moves her at full weight (m), so a recipe tuned on one model reads the same on another
+  let fclReach = new Map<string, number>();
   let faceAt = 0;
   let look: string | null = null;
   // direct control: where she was asked to look and until when, and the pace a direct pose was asked to arrive at
@@ -1837,7 +1844,11 @@ export function mountBody(
       const mixed = fcl.size > 0 && recipeTo !== null;
       if (mixed) {
         const talking = Object.keys(mouth).length > 0;
-        const put = (name: string, w: number) => {
+        const put = (name: string, w0: number) => {
+          // a model whose shape moves further than the one the recipe was tuned on gets less of it
+          const ref = TUNED_REACH[/Fcl_([A-Z]+_\w+)$/.exec(name)?.[1] ?? ""];
+          const reach = fclReach.get(name) ?? 0;
+          const w = ref !== undefined && reach > ref ? (w0 * ref) / reach : w0;
           if (w > 0.005) parts[name] = Math.max(parts[name] ?? 0, Math.min(1, w));
         };
         for (const [key, w0] of Object.entries(recipe)) {
@@ -2093,15 +2104,16 @@ export function mountBody(
         shapeKeys.set(name, [...(shapeKeys.get(name) ?? []), { mesh, i }]);
     });
     // its VRoid part shapes (…Fcl_BRW_Joy), kept where they move a vertex at all: some exports keep empty ones
+    fclReach = new Map();
     fcl = new Map(
       [...shapeKeys].flatMap(([name, at]) => {
         const short = /Fcl_([A-Z]+_\w+)$/.exec(name)?.[1];
-        const moves = at.some(({ mesh, i }) =>
-          (mesh.geometry.morphAttributes["position"]?.[i]?.array ?? []).some(
-            (v) => Math.abs(v) > 0.0005,
-          ),
-        );
-        return short !== undefined && moves ? [[short, name] as const] : [];
+        let reach = 0;
+        for (const { mesh, i } of at)
+          for (const v of mesh.geometry.morphAttributes["position"]?.[i]?.array ?? [])
+            reach = Math.max(reach, Math.abs(v));
+        if (short !== undefined && reach > 0.0005) fclReach.set(name, reach);
+        return short !== undefined && reach > 0.0005 ? [[short, name] as const] : [];
       }),
     );
     browsOverHair(next);

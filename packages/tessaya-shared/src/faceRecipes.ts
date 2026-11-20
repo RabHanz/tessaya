@@ -14,7 +14,7 @@ const sad = {
   EYE_Close: 0.15,
   MTH_Down: 0.9,
   MTH_Sorrow: 0.9,
-  MTH_Frown: 0.6,
+  MTH_Frown: 0.4,
 };
 const angry = {
   BRW_Angry: 1,
@@ -120,4 +120,25 @@ export const recipeWeights = (
   const cap = speaking ? FEELING_OPEN * 0.3 : FEELING_OPEN;
   if (open > cap) for (const key of OPENING) if (out[key] !== undefined) out[key] *= cap / open;
   return out;
+};
+
+/**
+ * How far each mouth shape moves at full weight on the model the recipes were tuned on (Lilac, m). A model whose
+ * shape moves further gets proportionally less of it, so a smile is a smile, not a grimace, on any model.
+ */
+export const TUNED_REACH: Readonly<Record<string, number>> = {
+  MTH_Up: 0.008,
+  MTH_Down: 0.013,
+  MTH_Angry: 0.002,
+  MTH_Small: 0.009,
+  MTH_Large: 0.02,
+  MTH_Fun: 0.003,
+  MTH_Joy: 0.006,
+  MTH_Sorrow: 0.004,
+  MTH_Surprised: 0.008,
+  MTH_A: 0.005,
+  MTH_I: 0.004,
+  MTH_U: 0.006,
+  MTH_E: 0.005,
+  MTH_O: 0.008,
 };
