@@ -120,6 +120,19 @@ describe("the vocabulary", () => {
     expect(NodeFS.readFileSync(`${settings}.bad`, "utf8")).toBe('{"holdKey":"F9",');
   });
 
+  it("shows her everyday form unless he turned it off himself", () => {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "voice-settings-"));
+    const at = (saved: object) => {
+      const file = NodePath.join(dir, `${Math.random()}.json`);
+      NodeFS.writeFileSync(file, JSON.stringify(saved));
+      return readSettings(file).mascot;
+    };
+    expect(at({})).toBe(true);
+    // a saved "off" from the old default was never his choice
+    expect(at({ mascot: false })).toBe(true);
+    expect(at({ mascot: false, mascotChosen: true })).toBe(false);
+  });
+
   it("keeps only well-formed recogniser addresses, never a token, from settings", () => {
     // Only plain ws:// on his tailnet. Built here, not written out, so the privacy guard sees no address.
     const tailnet = `ws://${[100, 76, 0, 9].join(".")}:8797`;
