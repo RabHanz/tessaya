@@ -1376,6 +1376,8 @@ export function mountBody(
     const x = Math.max(0, Math.min(1, p));
     return x * x * x * (10 - 15 * x + 6 * x * x);
   };
+  /** How much of a captured turn's travel a turn on the spot keeps. */
+  const TURN_TRAVEL = 0.33;
   /** Captured motion fades in and out over this long, from and back to her posture. */
   const LOCO_BLEND_MS = 250;
   /** This frame of a turn or walk: her yaw, the head leading it, and a walk's steps over her posture. */
@@ -1407,8 +1409,12 @@ export function mountBody(
         const root = at.a.root.map((v, k) => v + (at.b.root[k]! - v) * at.t);
         facing = turnClip.facing0 + turnClip.ratio * root[2]!;
         const yaw = baseYaw + turnClip.facing0;
-        travelX = turnClip.x0 + Math.cos(yaw) * root[0]! + Math.sin(yaw) * root[1]!;
-        travelZ = turnClip.z0 - Math.sin(yaw) * root[0]! + Math.cos(yaw) * root[1]!;
+        // the capture turns as it walks on; a turn where she stands keeps a third of that travel (her feet step
+        // round about her place, pinned where they land)
+        const x = root[0]! * TURN_TRAVEL;
+        const z = root[1]! * TURN_TRAVEL;
+        travelX = turnClip.x0 + Math.cos(yaw) * x + Math.sin(yaw) * z;
+        travelZ = turnClip.z0 - Math.sin(yaw) * x + Math.cos(yaw) * z;
       }
       // a walk after it takes over its last steps
       const w = Math.min(1, ms / LOCO_BLEND_MS, (loco.ms - ms) / LOCO_BLEND_MS);
