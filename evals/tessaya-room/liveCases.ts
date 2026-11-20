@@ -879,10 +879,10 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   },
   {
     id: "terminal-panes",
-    proves: ["weave_send", "weave_list"],
+    proves: ["weave_list"],
     said: ["Tell the api terminal session to run the tests.", "Did it answer?"],
     voices: [{ speaker: SURE }, { speaker: SURE }],
-    uses: [["weave_send"], ["weave_list"]],
+    uses: [["tessaya_session_steer"], ["weave_list"]],
     clean: ["weave_list"],
   },
   {

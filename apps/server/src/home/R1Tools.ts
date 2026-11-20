@@ -199,7 +199,6 @@ const ROOM_TOOLS = [
   "tessaya_main_session",
   "tessaya_move_into_tessaya",
   "tessaya_open_in_terminal",
-  "weave_send",
   "weave_list",
   "device_owner",
   "device_tag",
@@ -235,6 +234,8 @@ export const NOT_IN_ROOM: {
   household_peer: "only another of this home's linked servers calls it",
   household_voice_forget: "only another of this home's linked servers calls it",
   tessaya_dev_feed: "a maintainer agent's live tail of the developer feed, never a person's",
+  weave_send:
+    "tessaya_session_steer is his words to a session (read back, marked as his, recorded, a job through job_refine); weave_send stays for agents messaging sessions",
   device_sync: "only another of his linked servers calls it, to keep his devices' records alike",
   device_act:
     "the Tessel shows its own eyes, lights and voice as she speaks; the desktop drives them with device_act",
