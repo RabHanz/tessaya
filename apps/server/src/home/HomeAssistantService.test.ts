@@ -1082,7 +1082,7 @@ it.effect(
       assert.strictEqual((yield* set(30)).status, "done");
       yield* TestClock.adjust("10 seconds");
       // Its own step is where it was asked to be: no miss.
-      assert.strictEqual(yield* PubSub.size(misses), 0);
+      assert.strictEqual(yield* PubSub.remaining(misses), 0);
     }).pipe(Effect.provide(layer));
   },
 );
