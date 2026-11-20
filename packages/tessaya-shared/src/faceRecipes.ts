@@ -1,7 +1,7 @@
 /**
  * Her face per mood as a mix of a VRoid model's own part shapes (`Fcl_…` brows, eyes, mouth, teeth), asymmetric where
  * a person's is. Keys drop the `Fcl_` prefix; a pair without its side means both. A model draws what it has; one with
- * none keeps the preset faces. BRW_Knit, BRW_Grief, MTH_Frown, MTH_Pout and MTH_O_Big are optional authored shapes.
+ * none keeps the preset faces. BRW_Knit, BRW_Worry, MTH_Frown, MTH_Press and MTH_O_Big are optional sculpted shapes.
  */
 export type FaceRecipe = Readonly<Record<string, number>>;
 
@@ -9,31 +9,31 @@ export type FaceRecipe = Readonly<Record<string, number>>;
 const happy = { BRW_Joy: 0.7, EYE_Joy: 0.2, MTH_Up: 0.8, MTH_Joy: 0.85, MTH_Large: 0.15 };
 const sad = {
   BRW_Sorrow: 1,
-  BRW_Grief: 0.7,
+  BRW_Worry: 0.9,
   EYE_Sorrow: 1,
   EYE_Close: 0.15,
-  MTH_Down: 0.9,
-  MTH_Sorrow: 0.9,
-  MTH_Frown: 0.4,
+  MTH_Down: 0.6,
+  MTH_Sorrow: 0.6,
+  MTH_Frown: 0.9,
 };
 const angry = {
   BRW_Angry: 1,
-  BRW_Knit: 0.8,
+  BRW_Knit: 1,
   EYE_Angry: 1,
   EYE_Close: 0.2,
-  MTH_Angry: 0.9,
-  MTH_Down: 0.6,
-  MTH_Frown: 0.45,
+  MTH_Angry: 0.6,
+  MTH_Press: 1,
+  MTH_Frown: 0.35,
 };
 const fond = { BRW_Fun: 0.35, EYE_Joy: 0.25, MTH_Up: 0.4 };
 const worry = {
-  BRW_Sorrow: 0.85,
-  BRW_Grief: 0.5,
-  EYE_Spread: 0.2,
-  MTH_Sorrow: 0.4,
-  MTH_Down: 0.5,
+  BRW_Sorrow: 0.6,
+  BRW_Worry: 1,
+  EYE_Spread: 0.25,
+  MTH_Sorrow: 0.3,
+  MTH_Frown: 0.45,
+  MTH_Press: 0.25,
   MTH_Small: 0.2,
-  MTH_Frown: 0.3,
 };
 
 export const FACE_RECIPES: Readonly<Record<string, FaceRecipe>> = {
@@ -83,14 +83,14 @@ export const FACE_RECIPES: Readonly<Record<string, FaceRecipe>> = {
   amazed: { BRW_Surprised: 0.9, EYE_Spread: 0.8, MTH_Joy: 0.4, MTH_A: 0.35 },
   nervous: { ...worry, EYE_Spread: 0.35 },
   concerned: worry,
-  worried: { ...worry, BRW_Sorrow: 1, MTH_Down: 0.65 },
+  worried: worry,
   sad,
   hurt: { ...sad, EYE_Close: 0.3, MTH_Sorrow: 0.7 },
   crying: { ...sad, BRW_Sorrow: 1, EYE_Close: 0.45, MTH_Sorrow: 0.8, MTH_Down: 0.8 },
   lonely: { ...sad, MTH_Down: 0.5 },
   sulky: { BRW_Angry: 0.4, BRW_Sorrow: 0.3, MTH_Down: 0.6, MTH_U: 0.3 },
   putout: { BRW_Angry: 0.4, MTH_Down: 0.5 },
-  pout: { BRW_Angry: 0.35, MTH_U: 0.55, MTH_Pout: 0.6 },
+  pout: { BRW_Angry: 0.35, MTH_U: 0.55 },
   annoyed: { ...angry, BRW_Angry: 0.6, MTH_Angry: 0.3 },
   frustrated: { ...angry, BRW_Angry: 0.8 },
   angry: { ...angry, HA_Fung1: 0.4 },

@@ -169,29 +169,29 @@ export const POSTURES = {
     breathHz: 0.15,
   },
   angry: {
-    // chin down, shoulders up and squared, arms held a little out from her sides: braced
+    // chin down, shoulders up and squared, arms held stiff at her sides and drawn a little back: braced
     bones: {
-      leftUpperArm: [0, -0.05, -1.12],
-      rightUpperArm: [0, 0.05, 1.12],
-      leftLowerArm: [0, -0.35, 0],
-      rightLowerArm: [0, 0.35, 0],
-      leftShoulder: [0, 0, 0.12],
-      rightShoulder: [0, 0, -0.12],
+      leftUpperArm: [0.12, 0, -1.28],
+      rightUpperArm: [0.12, 0, 1.28],
+      leftLowerArm: [0, -0.2, 0],
+      rightLowerArm: [0, 0.2, 0],
+      leftShoulder: [0, 0, 0.14],
+      rightShoulder: [0, 0, -0.14],
       spine: [0.04, 0, 0],
-      chest: [-0.03, 0, 0],
+      chest: [-0.04, 0, 0],
       head: [0.09, 0, 0],
     },
     breathHz: 0.36,
   },
   worried: {
-    // hands wrung together low in front, shoulders drawn up, head down a little and to one side; breath quick
+    // hands held together at her chest, shoulders drawn up, head down a little and to one side; breath quick
     bones: {
-      leftUpperArm: [0.05, -0.7, -1.18],
-      rightUpperArm: [0.05, 0.7, 1.18],
-      leftLowerArm: [0, -1.05, 0],
-      rightLowerArm: [0, 1.05, 0],
-      leftShoulder: [0, -0.06, 0.08],
-      rightShoulder: [0, 0.06, -0.08],
+      leftUpperArm: [0.05, -0.75, -1.05],
+      rightUpperArm: [0.05, 0.75, 1.05],
+      leftLowerArm: [0, -1.6, 0],
+      rightLowerArm: [0, 1.6, 0],
+      leftShoulder: [0, -0.06, 0.1],
+      rightShoulder: [0, 0.06, -0.1],
       spine: [0.04, 0, 0],
       head: [0.07, 0.06, 0.06],
     },
