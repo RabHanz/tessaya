@@ -1770,6 +1770,15 @@ export const r1TurnStream = (
       const failed = (detail: string) => {
         limited ??= limitResets(detail);
       };
+      // Her login said it is spent: kept as an action, so health can compare it with cswap's active account.
+      const spent = (until: string) =>
+        emitAction({
+          kind: "brain.limit",
+          actor: { kind: "system", id: "brain", certainty: 1 },
+          subject: "her Claude login",
+          outcome: "spent",
+          data: { until },
+        }).pipe(Effect.ignore);
       // Her reply's tone reaches the loop in line, before its words: it says them in that tone of his clone. Only a loop
       // that says it reads the mark gets one; an older loop would say "[tone:soft]" aloud.
       const hooks = {
@@ -1778,6 +1787,7 @@ export const r1TurnStream = (
       };
       // Out of capacity: one honest line from her pool, not the other routes on the same spent login.
       const outOfCapacity = Effect.gen(function* () {
+        if (limited !== null) yield* spent(limited);
         const line = yield* expressOr("err.limit", {
           ...lineWho(input),
           facts: { until: limited ?? "later" },
