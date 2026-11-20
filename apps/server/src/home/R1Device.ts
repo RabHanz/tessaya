@@ -546,6 +546,10 @@ export const calledPersona = (pack: OsPack, voice: unknown): Persona | null => {
   return pack.personas.find((p) => !p.lead && p.id === id) ?? null;
 };
 
+/** The loop reads a reply's tone mark (`tones: true`); an older loop never says so, and hears its reply plainly. */
+export const tonesHeard = (voice: unknown): boolean =>
+  typeof voice === "object" && voice !== null && "tones" in voice && voice.tones === true;
+
 /** The loop says `switched: true` only on the turn he named a different persona; an older loop never does. */
 export const switchedPersona = (voice: unknown): boolean =>
   typeof voice === "object" && voice !== null && "switched" in voice && voice.switched === true;
@@ -1762,8 +1766,12 @@ export const r1TurnStream = (
       const failed = (detail: string) => {
         limited ??= limitResets(detail);
       };
-      // Her reply's tone reaches the loop in line, before its words: it says them in that tone of his clone.
-      const hooks = { failed, tone: (tone: AffectVariant) => say(toneMark(tone)) };
+      // Her reply's tone reaches the loop in line, before its words: it says them in that tone of his clone. Only a loop
+      // that says it reads the mark gets one; an older loop would say "[tone:soft]" aloud.
+      const hooks = {
+        failed,
+        ...(tonesHeard(input.voice) ? { tone: (tone: AffectVariant) => say(toneMark(tone)) } : {}),
+      };
       // Out of capacity: one honest line from her pool, not the other routes on the same spent login.
       const outOfCapacity = Effect.gen(function* () {
         const line = yield* expressOr("err.limit", {

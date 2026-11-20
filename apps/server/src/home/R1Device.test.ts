@@ -52,6 +52,7 @@ import {
   spokenReply,
   sseReply,
   switchedPersona,
+  tonesHeard,
   turnFace,
   withoutNarration,
   withoutSelfIntros,
@@ -214,6 +215,9 @@ describe('who answers in the room (13 Nov audit: every reply opened with "Sebast
   it("reads a switch only from the loop's switched flag, so an older loop never switches", () => {
     expect(switchedPersona({ persona: "alter-ego", switched: true })).toBe(true);
     expect(switchedPersona({ persona: "alter-ego" })).toBe(false);
+    // Only a loop that strips the tone mark is sent one: an older loop would read "[tone:soft]" aloud.
+    expect(tonesHeard({ tones: true })).toBe(true);
+    expect(tonesHeard({ persona: "alter-ego" })).toBe(false);
     expect(switchedPersona({ persona: "alter-ego", switched: "yes" })).toBe(false);
     expect(switchedPersona(undefined)).toBe(false);
   });
