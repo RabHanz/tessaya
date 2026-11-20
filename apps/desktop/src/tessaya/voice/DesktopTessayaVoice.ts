@@ -794,6 +794,8 @@ interface VoiceSettings {
   readonly pillWaveform: PillWave;
   /** Her character on the desktop (Settings → Appearance → Desktop companion), its motion, look and size. */
   readonly mascot: boolean;
+  /** He turned the companion on or off himself; until then it follows the default (on, since the Director's 20 Nov call). */
+  readonly mascotChosen: boolean;
   readonly mascotMotion: CompanionMotion;
   /** A persona in his pack, by name in lower case; custom ones too. */
   readonly mascotPersona: string;
@@ -1005,8 +1007,9 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   pillStyle: "pill",
   pillDesign: "tessaya",
   pillWaveform: "match",
-  // Off until the characters' art is approved; he turns them on in Settings → Appearance.
-  mascot: false,
+  // Her everyday form on every device (the Director, 20 Nov 2026): on unless he turns it off in Settings → Appearance.
+  mascot: true,
+  mascotChosen: false,
   mascotMotion: "calm",
   mascotPersona: "tessaya",
   mascotSize: "medium",
@@ -1178,7 +1181,9 @@ export const readSettings = (path: string): VoiceSettings => {
       pillStyle: saved["pillStyle"] === "field" ? "field" : "pill",
       pillDesign: parsePillDesign(saved["pillDesign"]),
       pillWaveform: parsePillWave(saved["pillWaveform"]),
-      mascot: saved["mascot"] === true,
+      // a saved "off" from before the default changed was the old default, not his choice
+      mascot: saved["mascotChosen"] === true ? saved["mascot"] === true : true,
+      mascotChosen: saved["mascotChosen"] === true,
       mascotMotion: parseCompanionMotion(saved["mascotMotion"]),
       mascotPersona: parseMascotPersona(saved["mascotPersona"]),
       mascotSize: parseMascotSize(saved["mascotSize"]),
@@ -9371,7 +9376,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       void linkT3Theme(settings.palette);
     } else if (id === "v.pillDesign") save({ pillDesign: parsePillDesign(value) });
     else if (id === "v.pillWaveform") save({ pillWaveform: parsePillWave(value) });
-    else if (id === "v.mascot") save({ mascot: on });
+    else if (id === "v.mascot") save({ mascot: on, mascotChosen: true });
     else if (id === "v.mascotMotion") save({ mascotMotion: parseCompanionMotion(value) });
     else if (id === "v.mascotPersona") save({ mascotPersona: parseMascotPersona(value) });
     else if (id === "v.mascotSize") save({ mascotSize: parseMascotSize(value) });
