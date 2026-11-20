@@ -687,7 +687,9 @@ const context = (
     .filter((l) => l !== "")
     .join("\n\n"),
   // As r1Gather gives them: her feeling, and who the answering persona is (the lead's when none was called).
-  ...(c.feeling === undefined ? {} : { feeling: c.feeling }),
+  ...(c.feeling === undefined && c.since === undefined
+    ? {}
+    : { feeling: [c.feeling ?? "", c.since ?? ""].filter((l) => l !== "").join(" ") }),
   self:
     (c.persona === undefined
       ? DEFAULT_OS_PACK.personas.find((p) => p.lead)

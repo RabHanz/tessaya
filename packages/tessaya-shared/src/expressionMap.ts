@@ -4,8 +4,10 @@
  * emotion's kin. A new emotion is a row in EMOTIONS, a new prop a name in a row and a manifest, a new vessel a manifest:
  * no surface keeps its own emotion table.
  */
+import type { TessayaBodyForm } from "@t3tools/contracts";
 import { R1_MOODS, type ExpressionMood } from "@t3tools/tessaya-contracts";
 import type { HandledHow } from "./affect.ts";
+import type { SensePackId } from "./bodySense.ts";
 import type { HapticHardware } from "./haptics.ts";
 import type { Nonverbal } from "./interjections.ts";
 
@@ -185,6 +187,9 @@ export const FACE_LIBRARY: ReadonlyArray<string> = (
 /** One vessel's channels and what each renders; a channel it lacks is simply absent. */
 export interface VesselManifest {
   readonly id: string;
+  /** The form of her it shows (one self in any form), and the nerves a touch on it is read through (SENSE_PACKS). */
+  readonly form?: TessayaBodyForm;
+  readonly sense?: SensePackId;
   /** Faces or eyes it draws, by name. */
   readonly face?: ReadonlyArray<string>;
   readonly props?: ReadonlyArray<string>;
@@ -204,6 +209,8 @@ export const VESSELS = {
   // (firmware 3.31), by its own names.
   tessel: {
     id: "tessel",
+    form: "tumble",
+    sense: "tumble",
     face: [...FACE_LIBRARY, ...R1_MOODS],
     props: ["reading", "magnifier", "mask"],
     voice: true,
@@ -212,12 +219,23 @@ export const VESSELS = {
   // Props are the Character Studio's (apps/web/public/companion/props.js).
   mascot: {
     id: "mascot",
+    form: "cartoon",
+    sense: "mascot",
     face: FACE_LIBRARY,
     props: ["crown", "magnifier", "glasses", "wrench", "nightcap", "tissue", "bandage"],
   },
+  // Her full (VRM) body, public or private (apps/web/src/body/vrmBody.ts).
+  body: { id: "body", form: "human", sense: "human" },
   pill: { id: "pill", face: FACE_LIBRARY },
   speaker: { id: "speaker", voice: true },
 } as const satisfies Readonly<Record<string, VesselManifest>>;
+
+/** The vessel that draws each form, for its nerves and what it can show. */
+export const FORM_VESSELS = {
+  cartoon: VESSELS.mascot,
+  human: VESSELS.body,
+  tumble: VESSELS.tessel,
+} as const satisfies Readonly<Record<TessayaBodyForm, VesselManifest>>;
 
 export interface Rendering {
   /** The face to draw, or null when the vessel has no face. */

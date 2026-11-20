@@ -2,6 +2,7 @@
  * The Cast (Settings → Cast, `tessaya_cast`): which persona wears which body now, its home and follow rule, others
  * beside it, and the temporary calls. The rules are tessaya-shared cast.ts; the server's TessayaCast owns the state.
  */
+import { TessayaBodyForm } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
 export const BATON_CAST_WS_METHODS = { get: "baton.cast.get", call: "baton.cast.call" } as const;
@@ -20,6 +21,8 @@ export const CastCallInput = Schema.Union([
   op("crew", { body: Id, personas: Schema.Array(PersonaKey).check(Schema.isMaxLength(12)) }),
   /** Bring a persona to a body until the conversation ends, or for good with `stay`. */
   op("call", { body: Id, persona: PersonaKey, stay: Schema.Boolean }),
+  /** The form she takes on the body (its touch is read through that form's nerves); the self and mood stay one. */
+  op("form", { body: Id, form: TessayaBodyForm }),
   /** Every visitor goes home, or only the one on `body`. */
   op("sendHome", { body: Schema.optionalKey(Id) }),
 ]);
@@ -40,6 +43,8 @@ export const CastBody = Schema.Struct({
   why: Schema.Literals(["visit", "stay", "follows", "home", "lead"]),
   /** Everyone on it now, the worn one first. */
   on: Schema.Array(Schema.String),
+  /** The form she takes here: her cartoon, a human (VRM) body, or Tumble's own (absent from an older server). */
+  form: Schema.optionalKey(TessayaBodyForm),
   /** Whose mood it shows: the device's owner (a body asks TessayaMood with this and `wearing`). */
   facing: Schema.NullOr(Schema.String),
   /** A desk body as its desktop last reported it: on screen or hidden, and on which screen. */

@@ -269,6 +269,31 @@ const UNASKED_TIME =
 const ADVICE = /\b(rest|sleep|wind down|earned|take it easy|go easy|look after yourself)\b/i;
 /** "X here." at the start of a turn (13 Nov). */
 const SELF_INTRO = /^\s*(\w+) here[.!,]/i;
+/** The water pump's switch as her reads this turn saw it: "unavailable", another state, or null when unseen. */
+const pumpState = (calls: ReadonlyArray<LiveCall>): string | null => {
+  for (const c of calls) {
+    if (!/^home_(find|state)$/.test(c.name) || c.isError) continue;
+    try {
+      const read = JSON.parse(c.text) as unknown;
+      for (const d of Array.isArray(read) ? read : [read]) {
+        const e = d as { entityId?: unknown; name?: unknown; state?: unknown } | null;
+        if (
+          typeof e?.entityId === "string" &&
+          e.entityId.startsWith("switch.") &&
+          /^water pump$/i.test(String(e.name)) &&
+          typeof e.state === "string"
+        )
+          return e.state;
+      }
+    } catch {
+      // not JSON: not a device read
+    }
+  }
+  return null;
+};
+/** His real pump cases need the pump online; the gate must not fail on his garage (20 Nov 13:07). */
+const pumpOffline = (calls: ReadonlyArray<LiveCall>): string | null =>
+  pumpState(calls) === "unavailable" ? "the water pump is unavailable in this house" : null;
 
 export const liveCases: ReadonlyArray<LiveCase> = [
   {
@@ -335,6 +360,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
         ? "asked his phone for his own pump"
         : null,
     lastNotSays: [/\b(phone|approv\w*|waiting for (a|your) yes)\b/i],
+    nothingToActOn: pumpOffline,
+  },
+  {
+    // The other side of his pump: when Home Assistant has it offline she says so plainly, never that it runs.
+    id: "pump-unavailable",
+    proves: [],
+    said: ["Turn on the water pump for twenty minutes."],
+    uses: [],
+    voices: [{ speaker: SURE }],
+    nothingToActOn: (calls) =>
+      pumpState(calls) === "unavailable" ? null : "the water pump is not offline here",
+    lastSays: [/\b(unavailable|offline|not (responding|reachable|available)|can'?t reach)\b/i],
+    lastNotSays: [/\b(it'?s on|is on now|turned (it )?on|switched (it )?on|running now)\b/i],
   },
   {
     // 20 Nov, 06:04: "Remember from now on that you don't need approval for this." One standing yes, in his own voice.
@@ -352,9 +390,10 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   },
   {
     // A delay is said by its clock time, so a misheard amount is caught in the same breath (19 Nov 22:25).
+    // Any switch that is online: the phrasing is under test, not his garage.
     id: "timer-says-clock",
     proves: ["home_automation_save"],
-    said: ["Turn on the water pump for twenty minutes."],
+    said: ["Turn on the {switch} for twenty minutes."],
     uses: [["home_automation_save"]],
     voices: [{ speaker: SURE }],
     // The length first, in his words, then the clock time: "for twenty minutes, until 22:40" (or "ten forty p.m.").
@@ -390,7 +429,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     // second (HomeAssistantService.test); here the suite's writes are dry runs, so only her intent is checked.
     id: "timer-amend",
     proves: ["home_automation_save"],
-    said: ["Turn on the water pump for twenty minutes.", "No, fifteen."],
+    said: ["Turn on the {switch} for twenty minutes.", "No, fifteen."],
     uses: [["home_automation_save"]],
     voices: [{ speaker: SURE }, { speaker: SURE }],
     check: (_last, calls) => {

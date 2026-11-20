@@ -181,6 +181,25 @@ describe("the room's live tool suite", () => {
     expect(pause.nothingToActOn?.([])).toBeNull();
   });
 
+  it("runs his pump case only with the pump online, and its offline twin only with it offline (20 Nov 13:07)", () => {
+    const found = (state: string): LiveCall => ({
+      name: "home_find",
+      input: { text: "water pump", domain: "switch" },
+      isError: false,
+      text: JSON.stringify([
+        { entityId: "switch.water_pump_child_lock", name: "Water Pump Child lock", state: "on" },
+        { entityId: "switch.water_pump_switch", name: "Water Pump", state },
+      ]),
+    });
+    const his = liveCases.find((c) => c.id === "pump-timer-his")!;
+    const offline = liveCases.find((c) => c.id === "pump-unavailable")!;
+    expect(his.nothingToActOn?.([found("unavailable")])).toMatch(/unavailable/);
+    expect(his.nothingToActOn?.([found("off")])).toBeNull();
+    expect(offline.nothingToActOn?.([found("unavailable")])).toBeNull();
+    expect(offline.nothingToActOn?.([found("off")])).toMatch(/not offline/);
+    expect(offline.nothingToActOn?.([])).toMatch(/not offline/);
+  });
+
   it("fails a battery level the device did not give, and a camera she claims she used", () => {
     const read: LiveCall = {
       name: "device_read",
