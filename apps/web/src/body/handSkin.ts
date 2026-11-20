@@ -16,6 +16,8 @@ interface Patch {
   readonly bvh: MeshBVH;
   /** Per triangle, +1 or -1: its winding turned so its normal points out of the hand (models wind either way). */
   readonly out: Int8Array;
+  /** Per triangle, 1 when it lies on the patch's open edge (where it joins the next part): nothing is inside there. */
+  readonly rim: Uint8Array;
 }
 export interface HandSkin {
   readonly palm: Patch;
@@ -94,9 +96,27 @@ const patchOf = (
     }
     out[f] = sum.lengthSq() === 0 || n.dot(sum) >= 0 ? 1 : -1;
   }
-  return { ...p, bvh, out };
+  // the open edge: edges only one triangle uses, by position (a mesh splits vertices along its UV seams)
+  const key = (vi: number) =>
+    `${Math.round(pos[vi * 3]! * 1e4)},${Math.round(pos[vi * 3 + 1]! * 1e4)},${Math.round(pos[vi * 3 + 2]! * 1e4)}`;
+  const edges = new Map<string, number>();
+  const edgeOf = (a: number, b: number) => {
+    const ka = key(a);
+    const kb = key(b);
+    return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+  };
+  for (let f = 0; f < out.length; f++)
+    for (let k = 0; k < 3; k++) {
+      const e = edgeOf(idx.getX(f * 3 + k), idx.getX(f * 3 + ((k + 1) % 3)));
+      edges.set(e, (edges.get(e) ?? 0) + 1);
+    }
+  const rim = new Uint8Array(out.length);
+  for (let f = 0; f < out.length; f++)
+    for (let k = 0; k < 3; k++)
+      if (edges.get(edgeOf(idx.getX(f * 3 + k), idx.getX(f * 3 + ((k + 1) % 3)))) === 1) rim[f] = 1;
+  return { ...p, bvh, out, rim };
 };
-const update = (p: Omit<Patch, "bvh" | "out">) => {
+const update = (p: Omit<Patch, "bvh" | "out" | "rim">) => {
   for (let i = 0; i < p.index.length; i++) {
     const mesh = p.meshes[p.of[i]!]!;
     mesh.getVertexPosition(p.index[i]!, v).applyMatrix4(mesh.matrixWorld);
@@ -156,15 +176,18 @@ export const handSkinsOf = (
 };
 
 const hit = { point: new THREE.Vector3(), distance: 0, faceIndex: 0 };
-const INSIDE_MAX = 0.025;
+const INSIDE_MAX = 0.08;
+/** A hand is about this thick: nothing is deeper inside one than that. */
+const HAND_THICK = 0.025;
 const tri = new THREE.Triangle();
 const n = new THREE.Vector3();
 const d = new THREE.Vector3();
+const deepN = new THREE.Vector3();
 /**
  * How close one hand's skin comes to the other's: the least signed distance from `a`'s vertices to `b`'s surface
  * (negative: that deep inside it), and how many of `a`'s vertices are within `touching` of it (m).
  */
-const signed = (a: Patch, b: Patch, touching: number) => {
+const signed = (a: Patch, b: Patch, touching: number, deepest = INSIDE_MAX) => {
   let least = Infinity;
   let at = -1;
   let near = 0;
@@ -176,15 +199,16 @@ const signed = (a: Patch, b: Patch, touching: number) => {
     const f = hit.faceIndex * 3;
     tri.setFromAttributeAndIndices(pos, idx.getX(f), idx.getX(f + 1), idx.getX(f + 2));
     tri.getNormal(n).multiplyScalar(b.out[hit.faceIndex]!);
-    // inside only near the surface: past a hand's thickness, the nearest face of an open patch (a rim at the wrist
-    // or the fingers) can face away from a point well outside it
+    // a point nearest the patch's open edge (where it joins the next part) is outside it, whichever way that face
+    // turns; and nothing of one part is deeper than 8 cm inside another
     const s =
-      hit.distance < INSIDE_MAX && d.subVectors(v, hit.point).dot(n) < 0
+      hit.distance < deepest && b.rim[hit.faceIndex] === 0 && d.subVectors(v, hit.point).dot(n) < 0
         ? -hit.distance
         : hit.distance;
     if (s < least) {
       least = s;
       at = i;
+      deepN.copy(n);
     }
     if (s < touching) near++;
   }
@@ -207,8 +231,8 @@ export const skinBetween = (left: HandSkin, right: HandSkin) => {
   }
   // each palm against the other whole hand: a palm alone is open where the fingers join, and a point near that rim
   // can read as inside it from the wrong side
-  const lr = signed(left.palm, right.whole, 0.001);
-  const rl = signed(right.palm, left.whole, 0.001);
+  const lr = signed(left.palm, right.whole, 0.001, HAND_THICK);
+  const rl = signed(right.palm, left.whole, 0.001, HAND_THICK);
   return {
     gap: Math.min(lr.least, rl.least),
     area: ((lr.near + rl.near) / 2) * ((left.vertexArea + right.vertexArea) / 2),
@@ -220,8 +244,8 @@ export const skinOverlap = (left: HandSkin, right: HandSkin) => {
     update(s.whole);
     s.whole.bvh.refit();
   }
-  const a = signed(left.whole, right.whole, 0);
-  const b = signed(right.whole, left.whole, 0);
+  const a = signed(left.whole, right.whole, 0, HAND_THICK);
+  const b = signed(right.whole, left.whole, 0, HAND_THICK);
   const [deep, from] = a.least <= b.least ? [a, left.whole] : [b, right.whole];
   return { depth: Math.max(0, -deep.least), part: deep.least < 0 ? partOf(from, deep.at) : null };
 };
@@ -235,3 +259,54 @@ const partOf = (p: Patch, i: number) => {
     if (sw.getComponent(p.index[i]!, k) > sw.getComponent(p.index[i]!, best)) best = k;
   return mesh.skeleton.bones[si.getComponent(p.index[i]!, best)] ?? null;
 };
+
+/** Every part of her drawn skin by group (`groupOf` names a vertex's bone's group; null leaves it out, e.g. hair). */
+export const bodySkinOf = (
+  root: THREE.Object3D,
+  groupOf: (bone: THREE.Object3D, mesh: THREE.SkinnedMesh) => string | null,
+): ReadonlyMap<string, Patch> => {
+  const meshes: THREE.SkinnedMesh[] = [];
+  root.updateMatrixWorld(true);
+  root.traverse((o) => {
+    if ((o as THREE.SkinnedMesh).isSkinnedMesh) meshes.push(o as THREE.SkinnedMesh);
+  });
+  const names = new Set<string>();
+  for (const m of meshes)
+    for (const b of m.skeleton.bones) {
+      const g = groupOf(b, m);
+      if (g !== null) names.add(g);
+    }
+  const out = new Map<string, Patch>();
+  for (const g of names) {
+    const p = patchOf(meshes, (m, b) => groupOf(b, m) === g);
+    if (p !== null) out.set(g, p);
+  }
+  return out;
+};
+export type SkinPatch = Patch;
+/** A patch read again where its bones are now. */
+export const refresh = (p: Patch) => {
+  update(p);
+  p.bvh.refit();
+};
+/**
+ * How deep `a`'s skin (its vertices, as last refreshed) is inside `b`'s (m, 0 when not), and the way out: `b`'s
+ * outward normal where it is deepest (world, into `normal`).
+ */
+export const deepestIn = (
+  a: Patch,
+  b: Patch,
+  normal: THREE.Vector3,
+  /** No part is deeper inside than it is thick: a reading past this is a thin sheet (cloth) seen from behind. */
+  thickness = INSIDE_MAX,
+  /** Set to the bone of `a` whose skin is deepest in (null when none is inside). */
+  part?: { bone: THREE.Object3D | null },
+): number => {
+  const r = signed(a, b, 0, thickness);
+  if (part !== undefined) part.bone = r.least < 0 ? partOf(a, r.at) : null;
+  if (r.least >= 0) return 0;
+  normal.copy(deepN).normalize();
+  return -r.least;
+};
+/** A hand's whole skin (palm and fingers), for checks against the rest of her. */
+export const handPatch = (h: HandSkin) => h.whole;
