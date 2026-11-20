@@ -581,6 +581,7 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
         machine: "home",
         state: parity ? "idle" : "working",
         private: false,
+        job: null,
         goal: parity ? "Bring the fork level with upstream" : "Ship the shop's checkout fix",
         lastStep: parity ? "Merged the upstream sync PR" : "Pushed the fix and opened a PR",
         now: parity ? null : "Waiting for CI on the PR",

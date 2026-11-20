@@ -51,6 +51,11 @@ import { TessayaWeaveService } from "./TessayaWeaveService.ts";
 import { WorkSessionService } from "./WorkSessionService.ts";
 
 const PEER_TIMEOUT = "20 seconds";
+const PHASE_WORDS: Readonly<Record<string, string>> = {
+  drafting_plan: "a job writing its plan",
+  awaiting_agreement: "a job whose plan waits for his yes",
+  approved: "a job at work on its agreed plan",
+};
 const decodeJson = Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown));
 const LIMITS = { runtimeMode: "approval-required", interactionMode: "default" } as const;
 
@@ -81,6 +86,7 @@ const notFound = (said: string): TessayaSessionInsightResult => ({
   machine: "",
   state: "",
   private: false,
+  job: null,
   goal: null,
   lastStep: null,
   now: null,
@@ -172,6 +178,12 @@ export const make = Effect.gen(function* () {
             ),
           { concurrency: 3 },
         );
+
+  /** The job a work-session row is, from its terms: what the job tools act on. */
+  const jobOf = (row: TessayaSessionSummary) =>
+    !row.key.startsWith("work:") || Option.isNone(jobs)
+      ? Effect.succeed(null)
+      : jobs.value.terms(WorkSessionId.make(row.key.split(":").at(-1)!));
 
   const readLocal = Effect.fn("TessayaSessionInsight.readLocal")(function* (
     row: TessayaSessionSummary,
@@ -272,7 +284,13 @@ export const make = Effect.gen(function* () {
         private: true,
         line: `${row.session} is private work; I can only say it is ${row.state}.`,
       };
-    return { ...base, private: false, ...(yield* readLocal(row)) };
+    const terms = yield* jobOf(row);
+    return {
+      ...base,
+      private: false,
+      job: terms === null ? null : (PHASE_WORDS[terms.phase] ?? terms.phase),
+      ...(yield* readLocal(row)),
+    };
   });
 
   const steer: TessayaSessionInsight["Service"]["steer"] = Effect.fn("TessayaSessionInsight.steer")(
@@ -287,6 +305,13 @@ export const make = Effect.gen(function* () {
             Effect.orElseSucceed(() => null),
           );
       const said = steerText(owner ?? "the owner", text);
+      if ((yield* jobOf(row)) !== null)
+        return {
+          status: "is_job",
+          text: said,
+          session: row.session,
+          line: `${row.session} is a job: his words go to it with job_refine (its id is ${row.key.split(":").at(-1)}), so its plan stays the one he agreed.`,
+        } as const;
       if (confirmed !== true)
         return {
           status: "read_back",
@@ -296,24 +321,39 @@ export const make = Effect.gen(function* () {
         } as const;
       const link = yield* linkOf(row);
       const sent = yield* (
-        link === null
-          ? weave.send({ to: row.session, text: said, from: "Tessaya" }).pipe(
-              Effect.tap(() => weave.tick.pipe(Effect.ignore)),
-              Effect.mapError(() => "failed" as const),
-            )
-          : peers
-              .call({
-                environmentId: EnvironmentId.make(link),
-                tool: "weave_send",
-                arguments: { to: row.session, text: said },
-                limits: LIMITS,
-                success: TessayaWeaveSendResult,
+        link === null && row.pane === null && row.thread !== null && !row.key.startsWith("claude:")
+          ? // a T3 thread with no pane: his words are its next message
+            engine
+              .sendMessage({
+                tag: "tessaya-steer",
+                threadId: ThreadId.make(row.thread.threadId),
+                text: said,
               })
               .pipe(
-                Effect.timeout(PEER_TIMEOUT),
-                Effect.map((r) => r.weave),
+                Effect.flatMap((sent) =>
+                  sent
+                    ? Effect.succeed({ status: "delivered" as const })
+                    : Effect.fail("failed" as const),
+                ),
+              )
+          : link === null
+            ? weave.send({ to: row.session, text: said, from: "Tessaya" }).pipe(
+                Effect.tap(() => weave.tick.pipe(Effect.ignore)),
                 Effect.mapError(() => "failed" as const),
               )
+            : peers
+                .call({
+                  environmentId: EnvironmentId.make(link),
+                  tool: "weave_send",
+                  arguments: { to: row.session, text: said },
+                  limits: LIMITS,
+                  success: TessayaWeaveSendResult,
+                })
+                .pipe(
+                  Effect.timeout(PEER_TIMEOUT),
+                  Effect.map((r) => r.weave),
+                  Effect.mapError(() => "failed" as const),
+                )
       ).pipe(Effect.result);
       const status =
         sent._tag === "Failure"

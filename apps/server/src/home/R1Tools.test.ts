@@ -149,6 +149,13 @@ describe("the room's tools for a replay", () => {
     // Only the owner (or a machine grant) flips the home's intercom or his memory sync.
     expect(roomRefusal(sara, adult, "intercom_switch")).not.toBeNull();
     expect(roomRefusal(sara, adult, "memory_sync_switch")).not.toBeNull();
+    // His coding sessions (M-104): another member reads or steers them only with his machine grant; a guest never.
+    for (const tool of ["tessaya_session_insight", "tessaya_session_steer"]) {
+      expect(roomRefusal(sara, adult, tool)).not.toBeNull();
+      expect(roomRefusal(sara, { ...adult, machine: true }, tool)).toBeNull();
+      expect(roomRefusal({ member: null, assurance: 0 }, null, tool)).not.toBeNull();
+      expect(roomRefusal({ member: "owner", assurance: 0 }, null, tool)).toBeNull();
+    }
     expect(
       roomRefusal({ member: null, assurance: 0 }, null, "tessaya_memory_search"),
     ).not.toBeNull();

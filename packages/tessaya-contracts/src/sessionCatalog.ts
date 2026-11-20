@@ -349,6 +349,8 @@ export const TessayaSessionInsightResult = Schema.Struct({
   state: Schema.String,
   /** Private: only that it exists and its state are said. */
   private: Schema.Boolean,
+  /** A job's phase in words (its plan, his agreement, at work), from its terms; null for a plain session. */
+  job: Schema.NullOr(Schema.String),
   goal: Schema.NullOr(Schema.String),
   lastStep: Schema.NullOr(Schema.String),
   now: Schema.NullOr(Schema.String),
@@ -369,7 +371,8 @@ export const TessayaSessionSteerInput = Schema.Struct({
   confirmed: Schema.optionalKey(Schema.Boolean),
 });
 export const TessayaSessionSteerResult = Schema.Struct({
-  status: Schema.Literals(["read_back", "sent", "queued", "not_found", "failed"]),
+  /** `is_job`: a job takes his words through job_refine, so its agreed plan stays the one it works to. */
+  status: Schema.Literals(["read_back", "sent", "queued", "not_found", "failed", "is_job"]),
   /** The exact text that goes, attribution included. */
   text: Schema.String,
   session: Schema.String,

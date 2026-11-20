@@ -259,7 +259,7 @@ const SessionsTool = Tool.make("tessaya_sessions", {
 const SessionInsightTool = Tool.make("tessaya_session_insight", {
   ...shared,
   description:
-    'What one of his coding sessions or T3 threads is doing, on any of his linked machines: its goal, the last step it finished, what it is on now, what it waits for, files, unresolved errors and its pull requests (checks, review, merge state). For "what\'s the build session doing?", "what was the last step on the parity PR?", "is X done?". `session` is its name or a few words of it, or a key from tessaya_work_now. Say it in a sentence or two from the fields; a private session gives only its state, so say only that.',
+    'What one of his coding sessions or T3 threads is doing, on any of his linked machines: its goal, the last step it finished, what it is on now, what it waits for, files, unresolved errors and its pull requests (checks, review, merge state). For "what\'s the build session doing?", "what was the last step on the parity PR?", "is X done?". `session` is its name or a few words of it, or a key from tessaya_work_now. Say it in a sentence or two from the fields; a private session gives only its state, so say only that. `job` says when it is one of his jobs (tessaya_jobs and job_* act on it).',
   parameters: TessayaSessionInsightInput,
   success: TessayaSessionInsightResult,
 })
@@ -271,7 +271,7 @@ const SessionInsightTool = Tool.make("tessaya_session_insight", {
 const SessionSteerTool = Tool.make("tessaya_session_steer", {
   ...shared,
   description:
-    'Send his words to one of his coding sessions ("tell the build session to rerun the tests"), on any linked machine, marked as from him via Tessaya. First call without `confirmed`: it returns the exact text; read it back to him word for word and ask. Call again with `confirmed: true` only when he says yes to that text, or when he said "send" in the same request. Never add to his words or put a secret in them.',
+    'Send his words to one of his coding sessions ("tell the build session to rerun the tests"), on any linked machine, marked as from him via Tessaya. First call without `confirmed`: it returns the exact text; read it back to him word for word and ask. Call again with `confirmed: true` only when he says yes to that text, or when he said "send" in the same request. Never add to his words or put a secret in them. A job answers is_job: pass his words with job_refine instead.',
   parameters: TessayaSessionSteerInput,
   success: TessayaSessionSteerResult,
 })
