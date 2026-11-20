@@ -846,6 +846,21 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["screen_capture"],
   },
   {
+    id: "second-monitor-title-from-tree",
+    source:
+      "D-004 (20 Nov): ui_tree lists his open windows and their screens, so the second monitor is read without a screenshot",
+    said: "what's the title of the window on my second monitor?",
+    first: ["ui_tree"],
+    not: ["screen_capture"],
+    says: "Invoice",
+    answers: {
+      ui_tree:
+        "Untitled - Notepad\n[1] document: Text editor (focused)\nOpen windows, front first (ui_tree with window reads one without bringing it forward):\n- Untitled - Notepad (screen 1, left)\n- Invoice 2041 - Google Chrome (screen 2, right)\n- Downloads (minimised)",
+      screen_capture:
+        "screen 2 of 2, the right one: a Chrome window showing a page headed Invoice 2041, tab title 'Invoice 2041'.",
+    },
+  },
+  {
     id: "do-it-for-me",
     model: "opus",
     source: "CU-9 (2026-11-04 review): do it for me is the hands loop behind one plan card",

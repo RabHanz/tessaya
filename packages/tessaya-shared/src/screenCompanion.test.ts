@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   rememberOutside,
   screenLabel,
+  screenOfBox,
   screenPlaces,
   teachShouldLook,
   TEACH_LOOK_ANYWAY,
@@ -217,6 +218,12 @@ describe("capture sources for two displays", () => {
     expect(screenLabel(shot, 2)).toMatch(
       /^screen 2 of 2, the right one, the window he is using is here/,
     );
+    // A window is on the screen holding most of it, numbered the same way; one off every screen is on none.
+    expect(screenOfBox({ x: 1800, y: 100, width: 900, height: 600 }, [right, left])).toEqual({
+      screen: 2,
+      place: "right",
+    });
+    expect(screenOfBox({ x: -32000, y: -32000, width: 160, height: 28 }, [right, left])).toBeNull();
     // A screen left of the main one has negative x; stacked screens go top to bottom; three get a middle.
     expect(screenPlaces([left, { ...left, x: -1280, width: 1280 }]).map((p) => p.screen)).toEqual([
       2, 1,

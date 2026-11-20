@@ -212,6 +212,15 @@ export interface UiTree {
   readonly shown?: number;
   /** A numbered tree's id: a click by number names it, and is refused once another tree was numbered. */
   readonly tree?: number;
+  /** His other open windows, front first, boxes in physical pixels: only with a plain read of the window he is using. */
+  readonly windows?: ReadonlyArray<{
+    readonly title: string;
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+    readonly minimized: boolean;
+  }>;
   readonly error?: string;
 }
 
