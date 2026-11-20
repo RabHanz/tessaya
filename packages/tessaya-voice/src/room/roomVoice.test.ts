@@ -464,6 +464,38 @@ describe("the room voice loop", () => {
     expect(spoken.some(([text]) => text.includes("[tone"))).toBe(false);
   });
 
+  it("says a line of hers from her server in the tone it carries, and the next one plainly", async () => {
+    const spoken: Array<[string, string | undefined]> = [];
+    const t = setup({
+      speak: async function* (text, _signal, voice) {
+        spoken.push([text, voice]);
+        yield new Int16Array(3_200);
+      },
+    });
+    t.room.personas([
+      {
+        id: "executive",
+        name: "Tessaya",
+        voice: "http://127.0.0.1/clone.safetensors",
+        cloneUrl: "/clone.safetensors",
+        cloneTones: { excited: "http://127.0.0.1/clone.affect-excited.safetensors" },
+      },
+    ]);
+    const say = (body: object) =>
+      t.room.message(`freya/r1/${DEV}/voice/say`, Buffer.from(JSON.stringify(body)));
+    say({ text: "Welcome back! How was the trip?", tone: "excited" });
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.deps.sleep(500);
+    say({ text: "The front door is unlocked." });
+    await t.deps.sleep(500);
+    expect(spoken.find(([text]) => /trip/.test(text))?.[1]).toBe(
+      "http://127.0.0.1/clone.affect-excited.safetensors",
+    );
+    expect(spoken.find(([text]) => /unlocked/.test(text))?.[1]).toBe(
+      "http://127.0.0.1/clone.safetensors",
+    );
+  });
+
   it("shows a stage direction's face and asks for its buzz on its word, once her sentence is playing (G7)", async () => {
     const fired: Array<{ args: readonly unknown[]; framesBefore: number }> = [];
     const t = setup({

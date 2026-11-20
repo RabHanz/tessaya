@@ -340,6 +340,19 @@ const nameIn = (m: PresenceMember, text: string) =>
   );
 
 /**
+ * Whether a vessel is in a Home Assistant area: the area he set for it, else (none set) its name saying so ("Office
+ * Tessel"). Every room sensor's feed (occupancy now, cameras and doors next) places by this.
+ */
+export const inArea = (
+  vessel: { readonly name: string; readonly area?: string | undefined },
+  area: string,
+): boolean => {
+  const want = area.trim().toLowerCase();
+  const set = vessel.area?.trim().toLowerCase() ?? "";
+  return set !== "" ? set === want : vessel.name.toLowerCase().includes(want);
+};
+
+/**
  * Home Assistant's view of who is where: a `person` home or away, a router's `device_tracker` for a member's own
  * device, an occupancy sensor at the vessels in its room, and a calendar event now (a meeting, or out of office).
  * `owner` gets the calendars that name no member.
@@ -347,7 +360,12 @@ const nameIn = (m: PresenceMember, text: string) =>
 export const homeAssistantSignals = (input: {
   readonly entities: ReadonlyArray<PresenceEntity>;
   readonly members: ReadonlyArray<PresenceMember>;
-  readonly vessels: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** `area`: the room or Home Assistant area he set for the vessel (`tessayaVesselAreas`). */
+  readonly vessels: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly area?: string | undefined;
+  }>;
   readonly owner: string;
   readonly at: number;
 }): ReadonlyArray<PresenceSignal> => {
@@ -375,11 +393,8 @@ export const homeAssistantSignals = (input: {
       OCCUPANCY.has(e.attributes["device_class"] ?? "") &&
       e.area !== null
     ) {
-      // shortcut: a vessel is in a room when its name says so ("Office Tessel"); a vessel area setting when one exists.
-      const area = e.area.toLowerCase();
       for (const v of input.vessels)
-        if (v.name.toLowerCase().includes(area))
-          out.push({ member: null, source: "occupied", vessel: v.id, at });
+        if (inArea(v, e.area)) out.push({ member: null, source: "occupied", vessel: v.id, at });
     } else if (domain === "calendar" && e.state === "on") {
       const said = `${e.attributes["message"] ?? ""}`;
       const member = members.find((x) => nameIn(x, e.name))?.id ?? input.owner;

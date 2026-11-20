@@ -526,6 +526,14 @@ function DeviceControls({
   // The server's warning when something on another machine uses the key: asked once more.
   const [rotateWarning, setRotateWarning] = useState<string | null>(null);
   const [picture, setPicture] = useState<{ at: string; dataUrl: string } | null>(null);
+  const areas = useEnvironmentSettings(environmentId, (s) => s.tessayaVesselAreas);
+  const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const [area, setArea] = useState(areas?.[id] ?? "");
+  const saveArea = () => {
+    const { [id]: _was, ...rest } = areas ?? {};
+    const next = area.trim();
+    updateSettings({ tessayaVesselAreas: next === "" ? rest : { ...rest, [id]: next } });
+  };
 
   return (
     <>
@@ -614,6 +622,23 @@ function DeviceControls({
             )
           }
         />
+        <SettingsRow
+          title="Room"
+          description="The room or Home Assistant area it is in, so room sensors there know who is near it."
+        >
+          <div className="flex gap-2 pt-2">
+            <Input
+              value={area}
+              maxLength={80}
+              placeholder="Office"
+              aria-label="Room"
+              onChange={(e) => setArea(e.target.value)}
+            />
+            <Button size="xs" disabled={area.trim() === (areas?.[id] ?? "")} onClick={saveArea}>
+              Save
+            </Button>
+          </div>
+        </SettingsRow>
         <SettingsRow title="Say something" description="Spoken out loud in the room.">
           <div className="flex gap-2 pt-2">
             <Input

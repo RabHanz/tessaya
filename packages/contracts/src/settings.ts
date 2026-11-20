@@ -1567,6 +1567,10 @@ export const ServerSettings = Schema.Struct({
   tessayaBodyOutsideAgents: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: library moves play the physics-trained version (baked, checked rollouts) where one exists; off until he likes it.
   tessayaBodyPhysicsClips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Tessaya: the room or Home Assistant area each of her devices is in, by device id: room sensors place people there.
+  tessayaVesselAreas: Schema.Record(Schema.String, Schema.String).pipe(
+    Schema.withDecodingDefault(Effect.succeed({})),
+  ),
   // Tessaya: voices heard without her name place who is near that Tessel (M-123); who and where only, never the words.
   tessayaAmbientPresence: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Tessaya: a soft breath before a long later sentence of her reply on the Tessel; off until it sounds natural (19 Nov).
@@ -2070,6 +2074,7 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaLiveliness: Schema.optionalKey(Schema.Literals(["still", "calm", "lively"])),
   tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
   tessayaAmbientPresence: Schema.optionalKey(Schema.Boolean),
+  tessayaVesselAreas: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   tessayaTurnCapture: Schema.optionalKey(Schema.Boolean),
   tessayaBodyOutsideAgents: Schema.optionalKey(Schema.Boolean),
   tessayaBodyPhysicsClips: Schema.optionalKey(Schema.Boolean),
