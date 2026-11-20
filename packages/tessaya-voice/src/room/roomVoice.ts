@@ -987,6 +987,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let asleep = false;
     /** He opened this session himself (her name or S2), not audio alone: a voice over hers is presumed his. */
     let opened = false;
+    /** A turn here verified him at 0.5 or more: an unplaced voice in this session may be his. */
+    let verifiedHere = false;
     const personas = roster;
     // The persona this R1 wears (Settings → Cast), else the roster's lead.
     const lead = personas.find((p) => p.id === castOf.get(id)?.persona) ?? personas[0];
@@ -2744,13 +2746,25 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const his = identity.kind === "owner" && identity.verified && identity.test !== true;
       const overHis =
         bargedIn && hisSession() && identity.kind !== "saved" && identity.kind !== "guest";
-      if (given === undefined && text !== "" && capturing.get(id) !== false && (his || overHis))
+      if (his && (score ?? 0) >= 0.5) verifiedHere = true;
+      // A turn Voice ID could not place, in a session where another turn verified him at 0.5 or more: his far and soft
+      // turns are the ones it misses (20 Nov 13:26, 17:44). Kept apart, 14 days, never to shape his voice.
+      const doubtful =
+        !his && !overHis && verifiedHere && identity.kind === "unverified" && !bargedIn;
+      if (
+        given === undefined &&
+        text !== "" &&
+        capturing.get(id) !== false &&
+        !muted.has(id) &&
+        (his || overHis || doubtful)
+      )
         deps.keepTurn?.(id, pcm, {
           turn,
           text,
           speaker: identity.kind,
           score: score === null ? null : r3(score),
           overHer: bargedIn,
+          ...(doubtful ? { verified: false } : {}),
         });
       bargedIn = false;
       deps.publish(topic(id, "event/voice/metrics"), JSON.stringify(metrics));

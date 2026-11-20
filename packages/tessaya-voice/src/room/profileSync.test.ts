@@ -134,4 +134,20 @@ describe("enrol once, recognised everywhere: shared profiles and this R1's refin
     expect(r.sync.room("member-1")).toBeUndefined();
     r.done();
   });
+
+  it("keeps a far voice near the shared base, measured against that base and not this R1's moved copy", () => {
+    const r = rig();
+    r.sync.shared(parseShared(shared(1, vec(1, 0, 0)))!);
+    // His copy here has moved (refined), but the bar stays the shared base.
+    r.store.save({ ...r.store.list()[0]!, centroid: vec(0.7, 0.7, 0) });
+    r.sync.setFar("member-1", vec(0.2, 1, 0), 10, 5);
+    expect(r.sync.far("member-1")).toBeUndefined();
+    r.sync.setFar("member-1", vec(0.8, 0.5, 0), 10, 5);
+    expect(r.sync.far("member-1")).toBeDefined();
+    expect(r.sync.learning()).toEqual([{ id: "member-1", roomSamples: 0, farClips: 10, farAt: 5 }]);
+    // Forgetting what was learnt clears it with the room profile.
+    r.sync.reset();
+    expect(r.sync.far("member-1")).toBeUndefined();
+    r.done();
+  });
 });

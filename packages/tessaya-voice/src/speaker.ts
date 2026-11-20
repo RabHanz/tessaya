@@ -23,13 +23,33 @@ export interface SpeakerProfile {
   readonly base?: Float32Array;
   /** Their voice as this device's own mic hears it, learnt from turns it was sure of (profileSync): scored beside `centroid`. */
   readonly room?: Float32Array;
+  /** Their voice from across the room, softer and duller (farVoice): only whether it is them talking, never to act. */
+  readonly far?: Float32Array;
 }
 
-/** A clip's cosine to a profile: the better of its enrolled centroid and this device's room centroid. */
-export const profileScore = (vector: Float32Array, profile: SpeakerProfile): number =>
-  profile.room === undefined
-    ? cosine(vector, profile.centroid)
-    : Math.max(cosine(vector, profile.centroid), cosine(vector, profile.room));
+/**
+ * The far centroid counts from here up. His far-degraded held-out clips scored 0.33-0.72 with it; 790 degraded clips of
+ * 40 other speakers (LibriSpeech) at most 0.42, none accepted (20 Nov): below this it adds nothing but risk.
+ */
+export const FAR_MIN = 0.45;
+
+/**
+ * A clip's cosine to a profile: the best of its enrolled centroid, this device's room centroid and, for "is it them
+ * talking" (any use but `act`), their far voice from FAR_MIN up. Acting on their word never rests on the far one.
+ */
+export const profileScore = (
+  vector: Float32Array,
+  profile: SpeakerProfile,
+  use: SpeakerUse = "steer",
+): number => {
+  const near =
+    profile.room === undefined
+      ? cosine(vector, profile.centroid)
+      : Math.max(cosine(vector, profile.centroid), cosine(vector, profile.room));
+  if (use === "act" || profile.far === undefined) return near;
+  const far = cosine(vector, profile.far);
+  return far >= FAR_MIN ? Math.max(near, far) : near;
+};
 
 /** Which mic a turn came through (upformat v1 flags bit4 is the headset's): a voice sounds different on each. */
 export type VoiceInput = "mic" | "headset";
@@ -149,7 +169,7 @@ export const decideSpeaker = (input: {
   const cut = averaged ? policy.averaged[input.use] : policy.single[input.use];
   const scores = mine.map((p) => ({
     p,
-    score: used.reduce((n, c) => n + profileScore(c.vector, p), 0) / used.length,
+    score: used.reduce((n, c) => n + profileScore(c.vector, p, input.use), 0) / used.length,
   }));
   if (!scores.every((s) => Number.isFinite(s.score))) return { kind: "unverified", why: "failed" };
   const [best, next] = scores.toSorted((a, b) => b.score - a.score);

@@ -75,6 +75,7 @@ import { createSmartTurn } from "./smartTurn.ts";
 import { createPlaybackWindows, PLAYBACK_TOPIC } from "./playbackWindow.ts";
 import { createHealthReport, readHost } from "./healthReport.ts";
 import { createTurnCapture } from "./turnCapture.ts";
+import { farCentroid } from "./farVoice.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
@@ -651,7 +652,28 @@ const main = async () => {
   /** Profiles learnt on his headset's mic (another channel and codec than hers), apart from the mic's. */
   const headsetStore = createSpeakerStore(state, "headset");
   const testMode = process.env["R1_TEST_MODE"] === "1";
+  /** When he last asked her to forget what she learnt of his voice (voiceIdGate.forgetLearningAt). */
+  const forgotFile = NodePath.join(state, "voice", "forgot.json");
+  const forgotAt = () => {
+    try {
+      return Number(JSON.parse(NodeFS.readFileSync(forgotFile, "utf8")).at) || 0;
+    } catch {
+      return 0;
+    }
+  };
   // Enrol once, recognised everywhere: the shared bases from her server, and this R1's own refinement of them.
+  /** What this loop has learnt of his voice, on each Tessel it serves (retained): Settings shows it with Forget. */
+  const publishLearning = () => {
+    const owner = store.list().find((p) => p.kind === "owner");
+    const mine = sharedProfiles.learning().find((l) => l.id === owner?.id);
+    const body = JSON.stringify({
+      roomSamples: mine?.roomSamples ?? 0,
+      farClips: mine?.farClips ?? 0,
+      farAt: mine?.farAt ?? null,
+      forgotAt: forgotAt() || null,
+    });
+    for (const id of online) mqtt.publish(`freya/r1/${id}/state/voice/learning`, body, true);
+  };
   const sharedProfiles = createProfileSync({
     store,
     file: NodePath.join(state, "voice", "shared.json"),
@@ -829,7 +851,12 @@ const main = async () => {
       if (kwsPass !== null && /"pass"\s*:\s*true/.test(String(p)))
         healthReport.attempt(kwsPass[1]!);
       const seen = /^freya\/r1\/([^/]+)\/state\/online$/.exec(t);
-      if (seen !== null) String(p).trim() === "1" ? online.add(seen[1]!) : online.delete(seen[1]!);
+      if (seen !== null) {
+        if (String(p).trim() === "1") {
+          online.add(seen[1]!);
+          publishLearning();
+        } else online.delete(seen[1]!);
+      }
       // Her early kws threshold and wake gate, which the Tessel loses on every boot: sent whenever it reports others.
       const kws = /^(freya\/r1\/[^/]+)\/state\/voice\/kws$/.exec(t);
       if (kws !== null) {
@@ -881,6 +908,27 @@ const main = async () => {
           );
           return;
         }
+      }
+      const gateAsk = /^freya\/r1\/[^/]+\/voice\/gate$/.test(t)
+        ? (() => {
+            try {
+              return (
+                Number(
+                  (JSON.parse(String(p)) as { forgetLearningAt?: unknown }).forgetLearningAt,
+                ) || 0
+              );
+            } catch {
+              return 0;
+            }
+          })()
+        : 0;
+      // "Forget recent voice learning" (Settings, or by voice through voiceIdGate): once per ask, on every Tessel here.
+      if (gateAsk > forgotAt()) {
+        NodeFS.mkdirSync(NodePath.dirname(forgotFile), { recursive: true });
+        NodeFS.writeFileSync(forgotFile, JSON.stringify({ at: gateAsk }), { mode: 0o600 });
+        sharedProfiles.reset();
+        log("voice learning forgotten: back to his enrolled profile, his far voice cleared");
+        publishLearning();
       }
       if (/^freya\/r1\/[^/]+\/voice\/refine$/.test(t)) {
         const ask = (() => {
@@ -1034,12 +1082,30 @@ const main = async () => {
     testSpeaker = readTest();
     return `test speaker enrolled from ${made.kept} clips (${made.dropped} dropped)`;
   };
-  /** Her mic's profiles, each with this R1's room centroid for that person when it has learnt one. */
+  /** Her mic's profiles, each with this R1's room centroid and far voice for that person when it has learnt them. */
   const withRoom = () =>
     store.list().map((p) => {
       const room = sharedProfiles.room(p.id);
-      return room === undefined || room.length !== p.centroid.length ? p : { ...p, room };
+      const far = sharedProfiles.far(p.id);
+      return {
+        ...p,
+        ...(room === undefined || room.length !== p.centroid.length ? {} : { room }),
+        ...(far === undefined || far.length !== p.centroid.length ? {} : { far }),
+      };
     });
+  // His far voice, from his own verified turns since he last asked her to forget what she learnt (voiceIdGate).
+  let farBuiltAt = 0;
+  const rebuildFar = async () => {
+    const owner = store.list().find((p) => p.kind === "owner");
+    if (turnCapture === undefined || owner === undefined || Date.now() - farBuiltAt < 10 * 60_000)
+      return;
+    farBuiltAt = Date.now();
+    const clips = turnCapture.ownerClips(forgotAt());
+    const centroid = await farCentroid(clips, (pcm) => embedder.embed(pcm)).catch(() => null);
+    if (centroid !== null) sharedProfiles.setFar(owner.id, centroid, clips.length, Date.now());
+    publishLearning();
+  };
+  void rebuildFar();
   const speakerOf = async (pcm: Int16Array, input: VoiceInput = "mic") => {
     const at = Date.now();
     const live =
@@ -1175,7 +1241,15 @@ const main = async () => {
   room = createRoomVoice(
     {
       ...(wake === undefined ? {} : { wake }),
-      ...(turnCapture === undefined ? {} : { keepTurn: turnCapture.turn }),
+      ...(turnCapture === undefined
+        ? {}
+        : {
+            keepTurn: (id, pcm, meta) => {
+              turnCapture.turn(id, pcm, meta);
+              if (meta.speaker === "owner" && meta.verified !== false && !meta.overHer)
+                void rebuildFar();
+            },
+          }),
       publish: (t, p) => {
         mqtt.publish(t, p);
         bridge?.answer(t, p);

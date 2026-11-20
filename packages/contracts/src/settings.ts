@@ -1404,6 +1404,11 @@ export const VoiceIdGate = Schema.Struct({
   offSilencesSaved: Schema.Boolean,
   savedBarge: Schema.Boolean,
   strictWhenUnavailable: Schema.Boolean,
+  /**
+   * When he last asked her to forget what she learnt of his voice (ms): each Tessel drops its room and far centroids
+   * and learns again only from his turns after it. His enrolled profile is never touched.
+   */
+  forgetLearningAt: Schema.optionalKey(Schema.Number),
 });
 export type VoiceIdGate = typeof VoiceIdGate.Type;
 export const VOICE_ID_GATE_DEFAULTS: VoiceIdGate = {

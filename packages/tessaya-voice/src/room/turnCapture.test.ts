@@ -46,3 +46,36 @@ it("keeps his turns private, and drops the oldest past its size or age", () => {
       .map((f) => f.split("_t")[1]),
   ).toEqual(["4.pcm"]);
 });
+
+it("keeps a turn it could not verify 14 days and apart: his far voice is made from his verified turns only", () => {
+  const dir = NodePath.join(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "turncap-")),
+    "turns",
+  );
+  let clock = Date.parse("2026-11-20T00:00:00Z");
+  const capture = createTurnCapture({
+    dir,
+    capBytes: 1_000_000,
+    maxAgeMs: 30 * 86_400_000,
+    now: () => clock,
+    log: () => undefined,
+  });
+  const meta = { text: "Did you hear me?", speaker: "owner", score: 0.6, overHer: false };
+  capture.turn("r1-a", new Int16Array(500).fill(1), { ...meta, turn: 1 });
+  capture.turn("r1-a", new Int16Array(500).fill(2), { ...meta, turn: 2, overHer: true });
+  capture.turn("r1-a", new Int16Array(500).fill(3), {
+    ...meta,
+    turn: 3,
+    speaker: "unverified",
+    score: 0.02,
+    verified: false,
+  });
+  expect(capture.ownerClips(0).map((c) => c[0])).toEqual([1]);
+  expect(capture.ownerClips(clock)).toEqual([]);
+  clock += 15 * 86_400_000;
+  capture.turn("r1-a", new Int16Array(500).fill(4), { ...meta, turn: 4 });
+  const left = NodeFS.readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .toSorted();
+  expect(left.map((f) => f.replace(/^.*_t/, "t"))).toEqual(["t1.json", "t2.json", "t4.json"]);
+});
