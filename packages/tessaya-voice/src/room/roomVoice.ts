@@ -571,6 +571,8 @@ export const gateFrom = (payload: Uint8Array | string): SpeakerGate | null => {
 };
 /** As long as her server holds a conversation (TessayaTurn's idle boundary). */
 const CURRENT_HELD_MS = 10 * 60_000;
+/** How long after her stop the R1's mic tail is dropped unless a new session starts (it ran 6 s on 20 Nov). */
+const STOP_TAIL_MS = 10_000;
 const onlyEnglish = (languages: ReadonlyArray<string>) =>
   languages.length > 0 && languages.every((l) => l.toLowerCase().split("-")[0] === "en");
 /** A voice this much quieter than his name reached the R1 is the room, not him. */
@@ -970,10 +972,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     let asleep = false;
     const personas = roster;
-    // The persona this R1 wears (Settings → Cast), else the roster's lead. A wake word changes only this session.
+    // The persona this R1 wears (Settings → Cast), else the roster's lead.
     const lead = personas.find((p) => p.id === castOf.get(id)?.persona) ?? personas[0];
+    // The one he last talked to here goes on into the next session while her server holds that conversation: a lift,
+    // a touch or stray audio never hands him back to the lead (20 Nov 13:27: Freya became Tessaya on a false lift).
+    const held = lastWore.get(id);
     /** Who answers: the one he last called, until the window lapses. */
-    let persona = lead;
+    let persona =
+      held !== undefined && held.lead === lead?.id && deps.now() - held.at <= CURRENT_HELD_MS
+        ? (personas.find((p) => p.id === held.persona) ?? lead)
+        : lead;
     let voiceHold = NO_HOLD;
     /** Her name's clip when he called her without a request in the same breath: scored with his first turn. */
     let nameClip: Int16Array | null = null;
@@ -3278,6 +3286,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       drained: () => chain,
       close: () => {
         closed = true;
+        // only a session he talked in: a false wake for another persona with no turn hands nothing on
+        if (persona !== undefined && history.length > 0)
+          lastWore.set(id, { persona: persona.id, lead: lead?.id, at: lastExchangeAt });
         early?.control.abort();
         rec?.cancel();
         reply?.abort("the session closed");
@@ -3351,6 +3362,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const restFace = new Map<string, { readonly mood: string; readonly accessory: string }>();
   /** The persona look each R1's eyes last showed or were asked for; unknown after a restart. */
   const worn = new Map<string, string>();
+  /** Who each R1's last session ended on, under which lead (a changed cast starts over), and when. */
+  const lastWore = new Map<
+    string,
+    { readonly persona: string; readonly lead: string | undefined; readonly at: number }
+  >();
+  /** When her loop last stopped each R1's session: the mic's tail after it opens nothing. */
+  const stoppedAt = new Map<string, number>();
   /** A persona look sent to an R1 and not yet acknowledged on `state/eye/persona`. */
   const eyeAsked = new Map<
     string,
@@ -3410,6 +3428,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   >();
   /** `wear` false: the caller names the persona first, then wears it, so the lead's eyes never flash between. */
   const start = (id: string, how = "audio", wear = true) => {
+    stoppedAt.delete(id);
     sessions.get(id)?.close();
     const s = openSession(id);
     sessions.set(id, s);
@@ -3631,6 +3650,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       if (tail === "voice/up" || tail === "voice/up/tainted") {
+        const stopped = stoppedAt.get(id);
+        // The R1 sends for a few seconds after her stop (20 Nov 13:27: 6 s); that tail is not him opening a session.
+        if (!sessions.has(id) && stopped !== undefined && deps.now() - stopped < STOP_TAIL_MS)
+          return;
         if (!muted.has(id))
           (sessions.get(id) ?? start(id)).frame(payload, tail === "voice/up/tainted");
       } else if (tail === "voice/ctl") {
@@ -3767,13 +3790,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         );
       } else if (tail === "event/wake/kws") {
         deps.wake?.kws?.(id, json() as KwsEvent);
-      } else if (tail === "cmd/voice/stop") stop(id);
-      else if (tail === "event/voice/interrupt" || tail === "event/voice/stop") {
+      } else if (tail === "cmd/voice/stop") {
+        stop(id);
+        stoppedAt.set(id, deps.now());
+      } else if (tail === "event/voice/interrupt" || tail === "event/voice/stop") {
         const src = json()["src"];
         sessions.get(id)?.stopReply(typeof src === "string" ? src.slice(0, 20) : "button");
       } else if (tail === "event/voice/flush")
         deps.log(`[${id}] the R1 flushed: ${String(payload).slice(0, 80)}`);
       else if (tail === "event/session/start" || tail === "event/wake") {
+        stoppedAt.delete(id);
         sessions.get(id)?.wake();
         cue(id, "wake");
       } else if (

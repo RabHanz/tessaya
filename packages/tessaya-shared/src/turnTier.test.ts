@@ -10,6 +10,7 @@ import {
   tierBrains,
   tierOfSentence,
   createTierMemories,
+  clockAsk,
 } from "./turnTier.ts";
 
 const opus = { model: "opus", effort: "medium" };
@@ -44,6 +45,19 @@ describe("which model answers a chat turn", () => {
     ["open notepad then type hello", "deep"],
   ])("%s -> %s", (said, tier) => {
     expect(tierOfSentence(said).tier).toBe(tier);
+  });
+
+  it.each([
+    ["What time is it?", "time"],
+    ["Freya, what time is it now?", "time"],
+    ["what's the date today", "date"],
+    ["What day is it?", "date"],
+    // Anything more goes to the model: another zone, or something to do with it.
+    ["what time is it in Tokyo?", null],
+    ["what time is the meeting", null],
+    ["what's the time, remind me at five to call mum", null],
+  ])("answers %j from the house clock: %s", (said, ask) => {
+    expect(clockAsk(said)).toBe(ask);
   });
 
   it("never runs above the persona's model, and keeps a model it does not know", () => {

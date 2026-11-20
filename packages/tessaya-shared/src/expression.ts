@@ -98,6 +98,11 @@ export const LINE_EVENTS = {
     mood: "curious",
     gesture: "think",
   }),
+  "clock.now": spec(
+    "It's {now}.",
+    "He asked the time or the date; {now} is it, read from the house clock. Just tell him, no more.",
+    { slots: ["now"], maxWords: 6, mood: "neutral", gesture: "nodSmall" },
+  ),
   "err.brain": spec(
     "Sorry, I couldn't reach my brain just then.",
     "Her thinking failed mid-answer, so she has no answer this time; he can ask again. Never claim whether anything was done.",

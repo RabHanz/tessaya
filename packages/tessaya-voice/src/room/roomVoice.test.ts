@@ -1393,14 +1393,40 @@ describe("waking by name with no session open", () => {
     await t.feed(true, 20);
     await t.feed(false, 60);
     expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("butler");
-    // Once that session is over, the next one by the button is Freya's again: the body's home held.
-    await t.deps.sleep(3_000);
-    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
-    expect(t.room.session(DEV)).toBeUndefined();
+    // He talked to Alfred, so the next session by the button goes on with Alfred while that conversation is held
+    // (20 Nov 13:27: a false lift reopened on the lead), and only after it lapses is the body Freya's again.
+    const next = async (wait: number) => {
+      await t.deps.sleep(wait);
+      t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+      expect(t.room.session(DEV)).toBeUndefined();
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      await t.feed(true, 20);
+      await t.feed(false, 60);
+      return t.brainCalls.at(-1)?.tessaya.persona;
+    };
+    expect(await next(3_000)).toBe("butler");
+    expect(await next(11 * 60_000)).toBe("companion");
+  });
+
+  it("drops the R1's mic tail after her stop, and a later session keeps the persona he was talking to (20 Nov 13:27)", async () => {
+    const t = setup();
+    const looks = () =>
+      t.published.filter((p) => p.topic.endsWith("/cmd/eye/persona")).map((p) => String(p.payload));
+    t.room.woken(DEV, "companion");
     t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
     await t.feed(true, 20);
     await t.feed(false, 60);
     expect(t.brainCalls.at(-1)?.tessaya.persona).toBe("companion");
+    // "Okay, thanks, that will be all": her stop, then 6 s more of the R1's mic.
+    t.room.message(`freya/r1/${DEV}/cmd/voice/stop`, new Uint8Array());
+    t.room.message(`freya/r1/${DEV}/voice/up`, new Uint8Array(1920));
+    expect(t.room.session(DEV)).toBeUndefined();
+    // Audio after the tail opens a session (an R1 that sends no start), on Freya still, her eyes unchanged.
+    const before = looks().length;
+    t.advance(11_000);
+    t.room.message(`freya/r1/${DEV}/voice/up`, new Uint8Array(1920));
+    expect(t.room.session(DEV)).toBeDefined();
+    expect(looks().slice(before)).toEqual([]);
   });
 
   it.each([

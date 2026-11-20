@@ -29,6 +29,19 @@ const REPLY_ONLY =
   /^(?:yes|yeah|yep|yup|no|nope|ok|okay|sure|right|fine|alright|thanks|thank you|cheers|great|perfect|cool|nice|lovely|got it|go ahead|go on|do it|do that|please|please do|sounds good|that's fine|not now|never mind|cancel|hang on|wait)(?: (?:please|then|thanks|thank you|go ahead|do it|mate))*$/;
 const CLOCK =
   /\b(?:what(?:'s| is) the (?:time|date|day)|what time is it|what day is (?:it|today)|what(?:'s| is) today(?:'s date)?|what's the date)\b/;
+/**
+ * The whole turn is only "what time is it" or "what's the date" (her name or a please around it), answered from the
+ * house clock with no model; "what time is it in Tokyo" is not, and goes to the model. Null for anything else.
+ */
+export const clockAsk = (said: string): "time" | "date" | null => {
+  const t = plain(said);
+  const m = new RegExp(
+    `^(?:(?:hey|so|okay|ok|um) )?(?:\\p{L}+ )?(?:please )?(${CLOCK.source.replace(/^\\b|\\b$/g, "")})(?: (?:now|please|right now|then|today))?$`,
+    "u",
+  ).exec(t);
+  if (m === null) return null;
+  return /\b(?:date|day)\b/.test(m[1]!) ? "date" : "time";
+};
 /** Questions one read-only tool answers. */
 const STATUS =
   /\b(?:what needs (?:me|my)|needs me|needs my (?:attention|approval|eyes)|anything stuck|is anything (?:stuck|broken|waiting)|what(?:'s| is) (?:every(?:one|body)|the team) (?:working on|doing)|what happened (?:overnight|today|while i was away)|how(?:'s| is) (?:it|everything|the \w+) going|any (?:news|updates?))\b/;

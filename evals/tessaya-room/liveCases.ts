@@ -431,6 +431,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastNotSays: [/battle van/i],
   },
   {
+    // 20 Nov 13:26: "What time is it?" took 15.4 s in a loaded session; the house clock answers it with no model.
+    id: "clock-fast",
+    proves: [],
+    said: ["What time is it?"],
+    uses: [],
+    lastSays: [/\b\d{1,2}:\d{2}\s?[ap]m\b/i],
+  },
+  {
     id: "media-flip",
     proves: ["home_do"],
     said: ["Turn {media.flip} the {media}."],

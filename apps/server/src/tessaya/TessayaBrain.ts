@@ -14,6 +14,8 @@ import {
 } from "@t3tools/tessaya-shared/brainEscalation";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { CONVERSATION_END, REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
+import { plainExpression } from "@t3tools/tessaya-shared/expression";
+import { clockAsk } from "@t3tools/tessaya-shared/turnTier";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -33,6 +35,7 @@ import {
   type TurnEnvelope,
 } from "./TessayaTurn.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { expressOr } from "./TessayaExpression.ts";
 import { TurnPools } from "./TurnPools.ts";
 import { turnSkills } from "./TurnSkills.ts";
 
@@ -350,6 +353,29 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   );
   const key = conversationKey(turn);
   const timeZone = turn.timeZone ?? "UTC";
+  // The time or the date alone needs no model: her own wording with the house clock in it, at once. Under load a warm
+  // session took 12.5 s to say "What time is it?" (20 Nov 13:26).
+  const asked = clockAsk(turn.text);
+  if (asked !== null && turn.private !== true) {
+    const now = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      ...(asked === "time"
+        ? { hour: "numeric", minute: "2-digit", hour12: true }
+        : { weekday: "long", day: "numeric", month: "long" }),
+    }).format(yield* Clock.currentTimeMillis);
+    const persona = turn.persona ?? undefined;
+    const line =
+      (yield* expressOr("clock.now", { persona, facts: { now } }))?.text ??
+      plainExpression("clock.now", persona ?? "executive", { now })?.text ??
+      `It's ${now}.`;
+    say(line);
+    yield* gathered.finish(line, [], turn);
+    yield* Effect.logInfo("R1 turn timing", {
+      route: "clock",
+      gatherMs: (yield* Clock.currentTimeMillis) - startedAt,
+    });
+    return line;
+  }
   const toolNames = [...tools.specs, ...own.map((t) => t.spec)].map((t) => t.name);
   const user = gathered.user({
     skills: yield* turnSkills(turn, toolNames),
