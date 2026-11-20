@@ -856,6 +856,31 @@ layer("TessayaTurn", (it) => {
       }),
   );
 
+  it.effect(
+    "hours later she hears how long it has been and what he said last; never a private moment's words",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const room: TurnEnvelope["vessel"] = { kind: "device", id: "since-room" };
+        const his = { vessel: room, speaker: owner(), conversation: "since-thread" };
+        yield* turn.end(
+          { ...his, text: "okay, I will sleep for a bit. Bye." },
+          { reply: "Sleep well." },
+        );
+        yield* TestClock.adjust("2 hours");
+        const back = yield* turn.begin({ ...his, text: "turn off the fan" });
+        assert.lengthOf(back.conversation.turns, 0);
+        assert.include(back.feeling, "2 hours ago");
+        assert.include(back.feeling, "I will sleep for a bit");
+        // Within the conversation it is the same talk going on: no line.
+        yield* turn.end({ ...his, text: "turn off the fan" }, { reply: "Off." });
+        assert.notInclude((yield* turn.begin({ ...his, text: "thanks" })).feeling, "ago");
+        yield* turn.end({ ...his, text: "the secret words", private: true }, { reply: "Kept." });
+        yield* TestClock.adjust("2 hours");
+        assert.notInclude((yield* turn.begin({ ...his, text: "hello" })).feeling, "secret");
+      }),
+  );
+
   it.effect("a hand-off moves the conversation's live thread to the named persona, and back", () =>
     Effect.gen(function* () {
       const turn = yield* TessayaTurn;
