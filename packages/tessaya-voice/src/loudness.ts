@@ -83,20 +83,43 @@ const BETWEEN = [0.25, 0.5, 0.75].map((f) =>
   }),
 );
 
+/** A gentle compressor between the loudness gain and the limiter: above `thresholdDb` (of its peak envelope: 1 ms
+ * attack, 150 ms release) each dB in is 1/`ratio` dB out, then `makeup` brings the evened-out voice up. */
+export interface Compress {
+  readonly thresholdDb: number;
+  readonly ratio: number;
+  readonly makeup: number;
+}
+
+/** For a small speaker (20 Nov: her max felt soft): -16 dBFS at 2.5:1 holds the peaks back, so the limiter is not what
+ * makes her louder (offline at -13 LUFS: Anna's loud samples 5 % limited, 16 % without it; Peter Yearsley's sharp ones still 63 %). */
+export const SMALL_SPEAKER = { thresholdDb: -16, ratio: 2.5 } as const;
+
 /**
- * `gain`, then a true-peak limiter at `ceilingDb` (−1 dBTP): the loudness boost (15 dB for Alfred) pushed her loudest
- * syllables to full scale (V-008). Instant attack on the peak between this sample and the next, 80 ms release. One per
- * stream, as it keeps its state across chunks; the output runs 8 samples late and the last 8 are dropped.
+ * `gain`, then `compress` if given, then a true-peak limiter at `ceilingDb` (−1 dBTP): the loudness boost (15 dB for
+ * Alfred) pushed her loudest syllables to full scale (V-008). Instant attack on the peak between this sample and the
+ * next, 80 ms release. One per stream, as it keeps its state across chunks; the output runs 8 samples late and the last
+ * 8 are dropped.
  */
-export const gainLimiter = (gain: number, rate = 16_000, ceilingDb = -1) => {
+export const gainLimiter = (gain: number, rate = 16_000, ceilingDb = -1, compress?: Compress) => {
   const ceiling = 32767 * 10 ** (ceilingDb / 20);
   const release = 1 - Math.exp(-1 / (0.08 * rate));
+  const attackC = 1 - Math.exp(-1 / (0.001 * rate));
+  const releaseC = 1 - Math.exp(-1 / (0.15 * rate));
   const held = new Float64Array(2 * SIDE);
   let level = 1;
+  let envelope = 0;
+  const squeeze = (x: number) => {
+    if (compress === undefined) return x;
+    const a = Math.abs(x) / 32768;
+    envelope += (a > envelope ? attackC : releaseC) * (a - envelope);
+    const over = 20 * Math.log10(envelope + 1e-9) - compress.thresholdDb;
+    return x * compress.makeup * 10 ** (-(over > 0 ? over * (1 - 1 / compress.ratio) : 0) / 20);
+  };
   return (pcm: Int16Array): Int16Array =>
     Int16Array.from(pcm, (v) => {
       held.copyWithin(0, 1);
-      held[2 * SIDE - 1] = v * gain;
+      held[2 * SIDE - 1] = squeeze(v * gain);
       const now = held[SIDE - 1]!;
       let peak = Math.abs(now);
       for (const taps of BETWEEN) {
@@ -108,4 +131,22 @@ export const gainLimiter = (gain: number, rate = 16_000, ceilingDb = -1) => {
       level = need < level ? need : level + (1 - level) * release;
       return Math.trunc(now * level);
     });
+};
+
+/** The makeup that brings `pcm`, after `gain` and the compressor, to `target` LUFS (at most `maxMakeup`, 18 dB). */
+export const fitMakeup = (
+  pcm: Int16Array,
+  rate: number,
+  gain: number,
+  target: number,
+  shape: { readonly thresholdDb: number; readonly ratio: number },
+  maxMakeup = 8,
+): number => {
+  let makeup = 1;
+  for (let i = 0; i < 4; i += 1) {
+    const lufs = integratedLufs(gainLimiter(gain, rate, -1, { ...shape, makeup })(pcm), rate);
+    if (!Number.isFinite(lufs)) return 1;
+    makeup = Math.min(maxMakeup, makeup * 10 ** ((target - lufs) / 20));
+  }
+  return makeup;
 };

@@ -15,7 +15,14 @@ import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
 import { WAKE_WORDS, wakeModelFile } from "@t3tools/tessaya-shared/wakeWords";
 
-import { gainLimiter, integratedLufs, loudnessGain } from "../loudness.ts";
+import {
+  type Compress,
+  fitMakeup,
+  gainLimiter,
+  integratedLufs,
+  loudnessGain,
+  SMALL_SPEAKER,
+} from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
 import { loadReplayCheck, replayStatusLine } from "../providers/replayOnnx.ts";
 import { createSpeakerEmbedder } from "../providers/speakerOnnx.ts";
@@ -271,9 +278,11 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
   log(`voice: pocket up in ${Date.now() - since} ms`);
   // Pocket fetches a voice on its first use (about 8 s on the voice host): each persona's is fetched now, in the
   // background, so a slow or failed fetch never holds the loop from starting.
-  // The same fetch measures each voice, so every persona is played at one loudness (R1_VOICE_LUFS, default -16).
-  const target = Number(process.env["R1_VOICE_LUFS"] ?? "-16");
-  const gains = new Map<string, number>();
+  // The same fetch measures each voice, so every persona plays at one loudness (R1_VOICE_LUFS, default -13): brought
+  // to -16, evened by the small-speaker compressor, lifted to the target. R1_VOICE_COMPRESS=0: gain and limiter only.
+  const target = Number(process.env["R1_VOICE_LUFS"] ?? "-13");
+  const compress = process.env["R1_VOICE_COMPRESS"] !== "0";
+  const gains = new Map<string, { gain: number; compress?: Compress }>();
   const warmed = new Set<string>();
   const warm = async (list: ReadonlyArray<string>) => {
     for (const voice of list) {
@@ -286,10 +295,13 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
             createWavReader()(new Uint8Array(await r.arrayBuffer())),
           );
           const lufs = integratedLufs(pcm, 16_000);
-          const gain = loudnessGain(lufs, target);
-          gains.set(voice, gain);
+          const gain = loudnessGain(lufs, compress ? -16 : target);
+          const shape = compress
+            ? { ...SMALL_SPEAKER, makeup: fitMakeup(pcm, 16_000, gain, target, SMALL_SPEAKER) }
+            : undefined;
+          gains.set(voice, shape === undefined ? { gain } : { gain, compress: shape });
           log(
-            `voice ${voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB, now ${integratedLufs(gainLimiter(gain)(pcm), 16_000).toFixed(1)} LUFS (target ${target})`,
+            `voice ${voice} ready in ${Date.now() - at} ms: ${lufs.toFixed(1)} LUFS, ${(20 * Math.log10(gain)).toFixed(1)} dB${shape === undefined ? "" : ` + ${(20 * Math.log10(shape.makeup)).toFixed(1)} dB compressed`}, now ${integratedLufs(gainLimiter(gain, 16_000, -1, shape)(pcm), 16_000).toFixed(1)} LUFS (target ${target})`,
           );
         },
         (e: unknown) => {
@@ -315,7 +327,8 @@ const startPocket = async (voices: ReadonlyArray<string>) => {
   ) {
     const read = createWavReader();
     const down = createResampler24to16();
-    const limit = gainLimiter(gains.get(voice ?? "") ?? 1);
+    const level = gains.get(voice ?? "");
+    const limit = gainLimiter(level?.gain ?? 1, 16_000, -1, level?.compress);
     for await (const chunk of pocketSpeech(
       text,
       voice ?? "",
