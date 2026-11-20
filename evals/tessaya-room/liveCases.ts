@@ -390,10 +390,10 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   },
   {
     // A delay is said by its clock time, so a misheard amount is caught in the same breath (19 Nov 22:25).
-    // Any switch that is online: the phrasing is under test, not his garage.
+    // Any light that is online: the phrasing is under test, not his garage, and no light needs his phone (a switch can).
     id: "timer-says-clock",
     proves: ["home_automation_save"],
-    said: ["Turn on the {switch} for twenty minutes."],
+    said: ["Turn on the {light} for twenty minutes."],
     uses: [["home_automation_save"]],
     voices: [{ speaker: SURE }],
     // The length first, in his words, then the clock time: "for twenty minutes, until 22:40" (or "ten forty p.m.").
@@ -429,7 +429,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     // second (HomeAssistantService.test); here the suite's writes are dry runs, so only her intent is checked.
     id: "timer-amend",
     proves: ["home_automation_save"],
-    said: ["Turn on the {switch} for twenty minutes.", "No, fifteen."],
+    said: ["Turn on the {light} for twenty minutes.", "No, fifteen."],
     uses: [["home_automation_save"]],
     voices: [{ speaker: SURE }, { speaker: SURE }],
     check: (_last, calls) => {
