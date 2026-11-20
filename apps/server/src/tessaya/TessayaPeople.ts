@@ -93,6 +93,7 @@ interface Row {
   readonly ask_name: number;
   readonly asked_at: string | null;
   readonly impression: string | null;
+  readonly appearance: string | null;
   /** In the bin: when, by whom, and the name and status to restore. */
   readonly forgotten_json: string | null;
 }
@@ -274,6 +275,7 @@ export const make = Effect.gen(function* () {
       keepUntil: r.keep_until,
       askName: r.ask_name !== 0,
       impression: r.impression,
+      appearance: r.appearance,
       topics: yield* topicsOf(r.id),
     } satisfies TessayaPerson;
   });
@@ -294,7 +296,7 @@ export const make = Effect.gen(function* () {
       yield* sql`
         UPDATE fabric_memory_entities SET status = NULL, kind = NULL, member_id = NULL, voice_model = NULL,
           voice_centroid = NULL, voice_samples = 0, first_seen = NULL, last_seen = NULL, keep_until = NULL,
-          asked_at = NULL, impression = NULL, forgotten_json = NULL,
+          asked_at = NULL, impression = NULL, appearance = NULL, forgotten_json = NULL,
           name = ${was?.name !== null && was?.name !== undefined && (yield* byName(was.name)) === null ? was.name : r.name}
         WHERE id = ${r.id}
       `;
@@ -444,6 +446,7 @@ export const make = Effect.gen(function* () {
         voice_samples = ${to.voice_samples + from.voice_samples},
         first_seen = ${earliest}, last_seen = ${latest}, keep_until = ${keep},
         impression = ${to.impression ?? from.impression},
+        appearance = ${to.appearance ?? from.appearance},
         aliases_json = ${encodeAliases(aliases)}
       WHERE id = ${to.id}
     `;
@@ -821,6 +824,7 @@ export const make = Effect.gen(function* () {
           `Their voice is kept until ${p.keepUntil.slice(0, 10)} unless you name or keep them.`,
         );
       if (p.impression !== null) parts.push(`My impression: ${p.impression}.`);
+      if (r.appearance !== null) parts.push(`Looks like: ${r.appearance}.`);
     }
     return done(parts.join(" "));
   });
@@ -892,6 +896,36 @@ export const make = Effect.gen(function* () {
           ? 0
           : yield* facts.purge(input.id, actor));
       return done(n === 0 ? "Nothing to delete." : `Deleted for good: ${n}.`);
+    }
+    if (input.action === "appearance") {
+      // What a camera turn compares against, so only words he gave; the owner's alone (M-114).
+      if (!owner) return refused("Only the owner describes how people look.");
+      const words = input.appearance?.trim().slice(0, 400) ?? "";
+      const name = nameCase(input.name ?? "").slice(0, 60);
+      let r =
+        input.id === undefined
+          ? name === ""
+            ? null
+            : yield* byName(name)
+          : yield* target(input.id, input.vessel);
+      if (r === null && input.id === undefined && name !== "" && words !== "") {
+        const at = yield* now;
+        const id = globalThis.crypto.randomUUID();
+        yield* sql`
+          INSERT INTO fabric_memory_entities (id, name, aliases_json, updated_at, kind, status, first_seen, last_seen)
+          VALUES (${id}, ${name}, '[]', ${iso(at)}, 'person', 'guest', ${iso(at)}, ${iso(at)})
+        `.pipe(Effect.orDie);
+        r = yield* row(id);
+      }
+      if (r === null) return refused("Who do they look like that? Give me their name.");
+      yield* sql`
+        UPDATE fabric_memory_entities SET appearance = ${words === "" ? null : words} WHERE id = ${r.id}
+      `.pipe(Effect.orDie);
+      return done(
+        words === ""
+          ? `I've dropped how ${label(r)} looks.`
+          : `Noted: ${label(r)} looks like ${words}.`,
+      );
     }
     const r = yield* target(input.id, input.vessel);
     if (r === null)

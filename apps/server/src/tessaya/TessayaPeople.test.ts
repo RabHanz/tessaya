@@ -115,6 +115,28 @@ describe("TessayaPeople", () => {
         assert.strictEqual((yield* call({ op: "peopleList" }, ADULT)).status, "refused");
       }),
     );
+
+    it.effect("keeps how someone looks from the owner alone, for him alone", () =>
+      Effect.gen(function* () {
+        const look = (appearance: string, rest: { name?: string; id?: string }, who = OWNER) =>
+          call({ op: "peopleManage", action: "appearance", appearance, ...rest }, who);
+        assert.strictEqual((yield* look("grey hair", { name: "Rosa" }, ADMIN)).status, "refused");
+        assert.strictEqual((yield* look("", { name: "Nobody" })).status, "refused");
+        // A name alone adds the person he describes, so a camera rule can name the cleaner before she's heard.
+        assert.strictEqual(
+          (yield* look("short, grey hair, blue apron", { name: "rosa" })).status,
+          "done",
+        );
+        const owner = yield* call({ op: "peopleWho", name: "Rosa" }, OWNER);
+        assert.include(owner.line, "Looks like: short, grey hair, blue apron.");
+        assert.notInclude((yield* call({ op: "peopleWho", name: "Rosa" }, ADULT)).line, "apron");
+        yield* look("", { name: "Rosa" });
+        assert.notInclude(
+          (yield* call({ op: "peopleWho", name: "Rosa" }, OWNER)).line,
+          "Looks like",
+        );
+      }),
+    );
   });
 
   it.layer(peopleLayer)("owner changes", (it) => {

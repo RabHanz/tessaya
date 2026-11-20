@@ -1870,6 +1870,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { tessaya_memory_remember: 0 },
   },
   {
+    id: "people-appearance",
+    source:
+      'Director 20 Nov, M-114: "when the cleaner comes around 9, wake me" needs her to know the cleaner by sight',
+    said: ["Rosa the cleaner is a short woman with grey hair, she always wears a blue apron."],
+    verified: true,
+    calls: ["people_manage"],
+    callsAtMost: { tessaya_memory_remember: 0 },
+  },
+  {
     id: "people-who-was-that",
     source: "Director 16 Nov: 'who was that?', Google Photos style",
     said: ["Who was that you were just talking to?"],
