@@ -234,6 +234,8 @@ export const createAgentGate = (input: {
     readonly label: string;
     readonly shell: boolean;
   }) => void;
+  /** The site the window in front is on, read from its address bar; null when it is not a browser or has none. */
+  readonly frontSite?: () => Promise<string | null>;
   /** His own Chrome (D3): whether social accounts are on, the clock, and a line sink for what is done on them. */
   readonly chrome?: {
     readonly socialOn: () => boolean;
@@ -425,12 +427,6 @@ export const createAgentGate = (input: {
     }
     const project = call.input["project"];
     // The same key the server checks for a Tessel or desk turn, so one "Always allow" holds on every vessel.
-    // In his browser a standing yes is per site (GEN-21a): "always" on one site never carries to another.
-    const standingKey = standingKeyOf(
-      name,
-      judged.why,
-      callHost === null ? app : siteScope(callHost),
-    );
     // Never for what follows a read or reaches a command line: that is what an injection would ask for.
     const canStand =
       input.always !== undefined &&
@@ -438,6 +434,13 @@ export const createAgentGate = (input: {
       !outside &&
       focus?.shell !== true &&
       !context.tainted;
+    // In his browser a standing yes is per site (GEN-21a): "always" on one site never carries to another. A hands act
+    // (a click or key, not the Chrome bridge) takes the site from the front window's address bar.
+    const site =
+      callHost ??
+      (canStand && !chromeCall ? await input.frontSite?.().catch(() => null) : null) ??
+      null;
+    const standingKey = standingKeyOf(name, judged.why, site === null ? app : siteScope(site));
     const standing = canStand && input.always?.has(standingKey) === true;
     const asked = gatePrompt(judged, action, {
       ...(agent === undefined ? {} : { agent: agent.name }),

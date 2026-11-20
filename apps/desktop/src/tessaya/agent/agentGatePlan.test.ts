@@ -288,6 +288,22 @@ describe("his answer to her question (2026-11-12)", () => {
     expect(read.kept.size).toBe(0);
   });
 
+  it("a standing yes for a key in his browser holds on the site in its address bar, not every site", async () => {
+    let site: string | null = "youtube.com";
+    const r = answering(["always", true], { frontSite: async () => site });
+    expect(await r.gate(enter)).toEqual({ allow: true });
+    expect(await r.gate(enter)).toEqual({ allow: true });
+    expect(r.asked).toHaveLength(1);
+    expect([...r.kept]).toEqual(["press_keys|That may send what is typed.|site:youtube.com"]);
+    site = "bank.example.com";
+    await r.gate(enter);
+    expect(r.asked).toHaveLength(2);
+    // No address bar to read: the browser's own key, as before.
+    const plain = answering(["always"], { frontSite: async () => null });
+    await plain.gate(enter);
+    expect([...plain.kept]).toEqual(["press_keys|That may send what is typed.|Google Chrome"]);
+  });
+
   it("opens Google after a look at the screen with no question: a new tab, the address and Enter", async () => {
     const r = answering([]);
     r.taint.mark();

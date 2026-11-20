@@ -4,6 +4,7 @@
  * brain decides which; every capture still needs his yes (once, an hour, this lesson, or always)
  * and every drive plan its own Run it. How each mode runs is in docs/baton/SCREEN.md.
  */
+import { addressBarHost } from "@t3tools/tessaya-shared/webPolicy";
 import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { volumeAfter, volumeLine } from "@t3tools/tessaya-shared/speakingVolume";
 import {
@@ -246,6 +247,8 @@ const stepMark = (name: string): [] => {
 
 // F5 to F8 are voice and dictation, and Airdeck has F9 to F12.
 export const ASK_HOTKEY = "Control+Alt+Shift+B";
+/** A browser in front, by its window title: only its address bar names a site. */
+const FRONT_BROWSER = /\b(?:chrome|chromium|edge|firefox|brave|opera|vivaldi)\b/i;
 
 interface ScreenSettings {
   readonly captureApproval: CaptureApproval;
@@ -2191,6 +2194,12 @@ export const startScreenCompanion = (input: {
           conversations.heard(12, isPrivate).filter((t) => !outsideSaid.has(t.said)),
         ),
       focusedWindow: gateWindow,
+      frontSite: async () => {
+        const tree = await actions?.uiTree?.("address", false);
+        return tree != null && FRONT_BROWSER.test(tree.window)
+          ? addressBarHost(tree.controls)
+          : null;
+      },
       pointerField: (tool, call) =>
         tool === "click_element" && clickTargetsField(lastControls, call),
       confirm: async (p) => {
