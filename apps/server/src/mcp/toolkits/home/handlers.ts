@@ -129,14 +129,23 @@ export const make = Effect.gen(function* () {
         if (room === null) return yield* home("read", "find", { ...input });
         const near = yield* home("read", "find", { ...input, area: room });
         const found = (r: typeof near) => (r.ok && Array.isArray(r.value) ? r.value : []);
-        const sure = (r: typeof near) =>
-          (found(r)[0] as { attributes?: Record<string, string> } | undefined)?.attributes?.[
-            "match"
-          ] === SURE_MATCH;
-        if (sure(near)) return near;
-        // The room's own results that are not what he named ("water pump" in the bedroom) never hide the house's.
+        const first = (r: typeof near) =>
+          found(r)[0] as
+            | { entityId?: string; name?: string; attributes?: Record<string, string> }
+            | undefined;
+        const words = String(input["text"] ?? "")
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter(Boolean);
+        // The room's best has every word he said: that is it, one lookup.
+        const named = (e: ReturnType<typeof first>) =>
+          e !== undefined &&
+          (e.attributes?.["match"] === SURE_MATCH ||
+            words.every((w) => `${e.entityId ?? ""} ${e.name ?? ""}`.toLowerCase().includes(w)));
+        if (named(first(near))) return near;
+        // The room's own results that are not what he named ("water pump" from the bedroom) never hide the house's.
         const all = yield* home("read", "find", { ...input });
-        return sure(all) || found(near).length === 0 ? all : near;
+        return found(all).length > 0 || found(near).length === 0 ? all : near;
       }),
     ),
     home_state: McpToolAccess.reads((input: Args) => home("read", "state", { ...input })),
