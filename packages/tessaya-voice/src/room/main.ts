@@ -43,6 +43,7 @@ import { createSpeakerStore, vectorToBase64 } from "../speakerStore.ts";
 import { createLines, type LinesGot } from "./lines.ts";
 import { servedVocabulary, VOCABULARY_EVERY_MS } from "./vocabulary.ts";
 import { voicesOf } from "./segments.ts";
+import { createAmbientPresence } from "./ambientPresence.ts";
 import { createResampler24to16, createWavReader } from "./audio.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { connectBrainBridge } from "./brainBridge.ts";
@@ -1081,6 +1082,27 @@ const main = async () => {
       sharedProfiles.refine(identity.personId, vector);
     return identity;
   };
+  // Voices she hears without her name tell her server who is near (M-123): who only, on this machine's Voice ID.
+  const ambient = createAmbientPresence({
+    voices: (pcm) =>
+      voicesOf({ pcm, embed: embedder.embed, profiles: store.list(), policy, at: Date.now() }),
+    speaker: (pcm) => speakerOf(pcm),
+    herVoiceAt: (id) => room?.herVoiceAt(id) ?? null,
+    send: async (deviceId, voices) => {
+      const res = await fetch(
+        env("R1_BRAIN_URL").replace(/\/chat\/completions$/, "/presence/heard"),
+        {
+          method: "POST",
+          headers: { authorization: `Bearer ${deviceKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ device: deviceId, voices }),
+          signal: AbortSignal.timeout(5_000),
+        },
+      );
+      return !res.ok || ((await res.json()) as { on?: unknown }).on !== false;
+    },
+    now: () => Date.now(),
+    log,
+  });
   /** Clips per person kept for a headset profile, from turns of sessions verified on her mic; memory only. */
   const learning = new Map<string, Array<Float32Array>>();
   const learnInput = async (input: VoiceInput, personId: string, pcm: Int16Array) => {
@@ -1136,6 +1158,7 @@ const main = async () => {
             );
           },
           voice: (pcm) => speakerOf(pcm),
+          ambient: (id, pcm) => void ambient.segment(id, pcm).catch(() => undefined),
           log,
           kwsWake,
           kwsReady: (id) => kwsReady.has(id),

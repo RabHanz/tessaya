@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  ambientSignals,
   fusePresence,
   peopleAt,
   PRESENCE_BARS,
@@ -165,6 +166,35 @@ describe("peopleAt", () => {
     const faded = fusePresence([{ ...sig("p-1", "voice", "lounge", 20), guest: true }], NOW);
     expect(peopleAt(faded, "lounge").map((m) => m.member)).toEqual(["p-1"]);
     expect(peopleAt(faded, "lounge", PRESENCE_BARS.present)).toEqual([]);
+  });
+});
+
+describe("ambient voices (M-123)", () => {
+  it("places each member it is sure of, and anyone else only as someone there", () => {
+    expect(ambientSignals([{ member: "omid" }], "study", NOW)).toEqual([
+      { member: "omid", source: "ambientVoice", vessel: "study", at: NOW },
+    ]);
+    const two = ambientSignals(
+      [{ member: "omid" }, { member: "sara" }, { member: "omid" }],
+      "study",
+      NOW,
+    );
+    expect(two.map((s) => s.member)).toEqual(["omid", "sara"]);
+    const plusGuest = ambientSignals([{ member: "omid" }, { member: null }], "study", NOW);
+    expect(plusGuest.map((s) => s.member)).toEqual(["omid", null]);
+    const estimate = fusePresence(plusGuest, NOW);
+    expect(estimate.members.find((m) => m.member === "omid")?.nearest?.vessel).toBe("study");
+    expect(estimate.occupied.get("study")).toBeGreaterThan(0.8);
+  });
+
+  it("two weak sources together place him more surely than either alone", () => {
+    const one = (source: string) =>
+      fusePresence([sig("omid", source, "study", 0)], NOW).members[0]!.confidence;
+    const both = fusePresence(
+      [sig("omid", "phone", "study", 0), sig("omid", "occupied", "study", 0)],
+      NOW,
+    ).members[0]!.confidence;
+    expect(both).toBeGreaterThan(Math.max(one("phone"), one("occupied")));
   });
 });
 

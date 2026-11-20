@@ -1567,6 +1567,8 @@ export const ServerSettings = Schema.Struct({
   tessayaBodyOutsideAgents: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: library moves play the physics-trained version (baked, checked rollouts) where one exists; off until he likes it.
   tessayaBodyPhysicsClips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Tessaya: voices heard without her name place who is near that Tessel (M-123); who and where only, never the words.
+  tessayaAmbientPresence: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Tessaya: a soft breath before a long later sentence of her reply on the Tessel; off until it sounds natural (19 Nov).
   tessayaVoiceBreath: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: his own turns on the Tessel kept privately for his Voice ID and recogniser (turnCapture.ts); on, his consent.
@@ -2067,6 +2069,7 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaOwnSensorsNoApproval: Schema.optionalKey(Schema.Boolean),
   tessayaLiveliness: Schema.optionalKey(Schema.Literals(["still", "calm", "lively"])),
   tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
+  tessayaAmbientPresence: Schema.optionalKey(Schema.Boolean),
   tessayaTurnCapture: Schema.optionalKey(Schema.Boolean),
   tessayaBodyOutsideAgents: Schema.optionalKey(Schema.Boolean),
   tessayaBodyPhysicsClips: Schema.optionalKey(Schema.Boolean),

@@ -34,6 +34,8 @@ const AT_HOME = ["home", "lan", "haHome"];
 export const PRESENCE_SOURCES: Readonly<Record<string, PresenceSource>> = {
   // A voice verified on its own audio: about 10 minutes to the follow bar, about 30 to "around".
   voice: { weight: 0.95, halfLifeMinutes: 15, says: "heard your voice" },
+  // His voice in the room without her name (M-123): Voice ID on a wake segment, the same guard, nothing kept but this.
+  ambientVoice: { weight: 0.85, halfLifeMinutes: 10, says: "heard your voice nearby" },
   typed: { weight: 0.9, halfLifeMinutes: 10, says: "you typed on your own device" },
   device: { weight: 0.6, halfLifeMinutes: 2, says: "your own device is connected" },
   handled: { weight: 0.6, halfLifeMinutes: 3, says: "someone picked it up or moved it" },
@@ -390,4 +392,26 @@ export const homeAssistantSignals = (input: {
     }
   }
   return out;
+};
+
+/** One voice in a segment heard without her name: a member Voice ID is sure of, or someone it can't name (null). */
+export interface AmbientVoice {
+  readonly member: string | null;
+}
+
+/**
+ * Voices heard at a vessel without her name (M-123), as presence signals: each member placed there, and anyone else as
+ * someone there. Who, where and when only: never what was said.
+ */
+export const ambientSignals = (
+  voices: ReadonlyArray<AmbientVoice>,
+  vessel: string,
+  at: number,
+): ReadonlyArray<PresenceSignal> => {
+  const members = [...new Set(voices.flatMap((v) => (v.member === null ? [] : [v.member])))];
+  const someone = voices.some((v) => v.member === null);
+  return [
+    ...members.map((member) => ({ member, source: "ambientVoice", vessel, at })),
+    ...(someone ? [{ member: null, source: "ambientVoice", vessel, at }] : []),
+  ];
 };

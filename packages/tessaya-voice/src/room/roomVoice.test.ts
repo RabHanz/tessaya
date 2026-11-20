@@ -1199,6 +1199,10 @@ describe("waking by name with no session open", () => {
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
     expect(frames).toEqual([DEV, DEV]);
     expect(t.room.session(DEV)).toBeUndefined();
+    // Muted, nothing is heard: no wake, and no voice for ambient presence either (M-123).
+    t.room.message(`freya/r1/${DEV}/state/mic`, Buffer.from('{"muted":true,"src":"button"}'));
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(frames).toEqual([DEV, DEV]);
   });
 
   it("reopens a session the R1 lost to a reboot, with one short line, and leaves it open for him", async () => {
