@@ -88,7 +88,7 @@ import { FINGER_KEYS, fingerBones, PALM_CONTACT } from "@t3tools/tessaya-shared/
 import { gaitAt, gaitOf, type Gait } from "@t3tools/tessaya-shared/bodyGait";
 import type { BodyTarget } from "@t3tools/tessaya-shared/bodyLocomotion";
 import type { StageMount, StageSpot } from "@t3tools/tessaya-shared/rooms";
-import { meetPalms, palmOf, palmWorld, turnWorld, type Arm } from "./handIk.ts";
+import { meetPalms, palmOf, palmWorld, placePalm, turnWorld, type Arm } from "./handIk.ts";
 import { handSkinsOf, skinBetween, skinOverlap } from "./handSkin.ts";
 import { softenOnContact } from "./softContact.ts";
 import IDLE_URL from "./assets/idle-neutral.vrma?url";
@@ -441,7 +441,24 @@ export interface Stage {
   readonly points: () => ReadonlyArray<THREE.Vector3>;
   /** The body that moves the shared camera (the first one mounted). */
   readonly leads: (id: string) => boolean;
+  /** Whether a persona has a body here. */
+  readonly has: (id: string) => boolean;
+  /** That persona's chest (world), into a vector the caller keeps; false when there is none. */
+  readonly chestOf: (id: string, into: THREE.Vector3) => boolean;
+  /** Where a persona's hand is laid on another body here, if it is: the reaching arm's target. */
+  readonly touchOf: (by: string) => Contact | null;
 }
+/** A hand laid on a body: the palm's point on her skin, the way the palm faces (into her), how firmly, and how far off. */
+export interface Contact {
+  readonly palm: V3;
+  readonly normal: V3;
+  readonly pressure: number;
+  readonly lift: number;
+}
+/** A persona's own arm takes this long to reach the one it touches on a shared stage, before the touch is felt. */
+const REACH_MS = 450;
+/** And this long to come back when it lets go. */
+const RETURN_MS = 400;
 
 const makeStage = (canvas: HTMLCanvasElement, tier: number) => {
   const renderer = new THREE.WebGLRenderer({
@@ -620,6 +637,10 @@ export function mountBody(
     /** The bone it landed on and that bone's world-to-local at landing: the hand moves with her when she moves. */
     bone: THREE.Object3D | null;
     unbone: THREE.Matrix4;
+    /** Another persona's on a stage they share: her own arm lays this hand, so none is drawn. */
+    by: string | null;
+    /** Her reaction, held until that arm arrives. */
+    react: { strength: number; from: THREE.Vector3 } | null;
   } | null = null;
   const follow = new THREE.Matrix4();
   // a reflex arc (her sense packs) pulls her back, then she settles, over REFLEX_MS; a caress's arc leans her in
@@ -779,7 +800,7 @@ export function mountBody(
       handFrame === null || !handHeld ? handFrame : { ...handFrame, at: now },
       now,
     );
-    if (shown <= 0.01 || handFrame === null || handEuro === null) {
+    if (shown <= 0.01 || handFrame === null || handEuro === null || agentTouch?.by != null) {
       if (handMesh !== null) handMesh.group.visible = false;
       return false;
     }
@@ -870,6 +891,86 @@ export function mountBody(
    * For checks: each palm's skin centre and facing (world), their distance, and the nearest her two hands' skin comes
    * (both mm), read off the drawn mesh.
    */
+  /** Her own arm laying her hand on another body on the stage: which arm, and how far there (0..1). */
+  let reaching: { readonly side: "left" | "right"; k: number } | null = null;
+  let reachLast = 0;
+  let reachLift = 0;
+  let reachFelt = 0;
+  const reachTo = new THREE.Vector3();
+  const reachFace = new THREE.Vector3();
+  const reachP = new THREE.Vector3();
+  const reachN = new THREE.Vector3();
+  const reachA = new THREE.Vector3();
+  const reachB = new THREE.Vector3();
+  const UP = new THREE.Vector3(0, 1, 0);
+  /**
+   * After the pose lands: when her hand is laid on another body here, her arm goes there and stays on it as it moves
+   * (a pat lifts between pats), her trunk leaning and her shoulder going with the reach, more the further it is.
+   * Returns whether she is moving for it.
+   */
+  const reachOut = (dt: number): boolean => {
+    if (arms === null || vrm === null || shared === undefined) return false;
+    const c = shared.stage.touchOf(shared.id);
+    if (c === null && reaching === null) return false;
+    // her own palm feels what it lays on the other body, as firmly as it presses there
+    reachFelt = c === null ? 0 : c.pressure;
+    if (c !== null) {
+      reachLift = c.lift;
+      reachFace.set(...c.normal);
+      reachTo.set(...c.palm).addScaledVector(reachFace, -c.lift);
+    }
+    if (reaching === null) {
+      const d = (s: "left" | "right") =>
+        arms![s].upper.getWorldPosition(reachA).distanceTo(reachTo);
+      reaching = { side: d("left") <= d("right") ? "left" : "right", k: 0 };
+    }
+    reaching.k = Math.max(
+      0,
+      Math.min(1, reaching.k + (c === null ? -dt / RETURN_MS : dt / REACH_MS)),
+    );
+    const w = reaching.k * reaching.k * (3 - 2 * reaching.k);
+    const side = reaching.side;
+    const arm = arms[side];
+    if (reaching.k === 0) reaching = null;
+    if (w === 0) return true;
+    // the further the reach, the more her trunk leans into it (beyond about three quarters of her arm)
+    const long =
+      arm.upper.getWorldPosition(reachA).distanceTo(arm.lower.getWorldPosition(reachB)) +
+      reachB.distanceTo(arm.end.getWorldPosition(reachP));
+    const over = Math.max(
+      0,
+      Math.min(1, (reachA.distanceTo(reachTo) - 0.75 * long) / (0.5 * long)),
+    );
+    const hips = vrm.humanoid.getRawBoneNode("hips");
+    if (hips !== null) {
+      reachB.subVectors(reachTo, hips.getWorldPosition(reachB)).setY(0);
+      if (reachB.lengthSq() > 1e-6) {
+        reachB.crossVectors(UP, reachB.normalize()).normalize();
+        const lean = w * (0.06 + 0.3 * over);
+        for (const [b, share] of [
+          ["spine", 0.4],
+          ["chest", 0.35],
+          ["upperChest", 0.25],
+        ] as const) {
+          const node = vrm.humanoid.getRawBoneNode(b);
+          if (node) turnWorld(node, reachB, lean * share);
+        }
+      }
+    }
+    // the collarbone carries the arm a little toward it
+    const girdle = vrm.humanoid.getRawBoneNode(`${side}Shoulder`);
+    if (girdle !== null) {
+      girdle.getWorldPosition(reachB);
+      reachA.subVectors(arm.upper.getWorldPosition(reachA), reachB);
+      reachB.subVectors(reachTo, reachB);
+      const turn = Math.min(0.25, reachA.angleTo(reachB) * 0.3) * w;
+      reachA.cross(reachB);
+      if (reachA.lengthSq() > 1e-10) turnWorld(girdle, reachA.normalize(), turn);
+    }
+    palmWorld(arm, reachP, reachN);
+    placePalm(arm, reachP, reachN, reachFace, reachTo, w);
+    return true;
+  };
   const palmsOf = () => {
     if (vrm === null || arms === null) return null;
     vrm.scene.updateMatrixWorld(true);
@@ -2122,10 +2223,14 @@ export function mountBody(
       pressure: number;
       ms: number;
       pull?: readonly [number, number, number];
+      by?: string;
     },
     now: number,
   ) => {
     const region = sense.regions.get(c.part);
+    // a persona on this stage reaches with her own arm: the hand lands from where she stands, once it gets there
+    const by =
+      c.by !== undefined && c.by !== shared?.id && shared?.stage.has(c.by) === true ? c.by : null;
     if (region === undefined) return;
     // a pack region without a reach is met on its own bone, from in front of her
     const r = region.reach ?? {
@@ -2157,7 +2262,17 @@ export function mountBody(
         ? out.clone().normalize()
         : new THREE.Vector3(...r.dir).normalize();
     // reached from that part's own side, from a little way off her
-    const from = p.clone().addScaledVector(side, 0.6);
+    const toward =
+      by !== null && shared!.stage.chestOf(by, scratch) ? scratch.sub(p).setY(0) : null;
+    // from her side of the part, turned toward the one reaching when another body on the stage lays this hand
+    const from = p
+      .clone()
+      .addScaledVector(
+        toward !== null && toward.lengthSq() > 1e-6
+          ? toward.normalize().add(side).normalize()
+          : side,
+        0.6,
+      );
     ray.set(from, p.clone().sub(from).normalize());
     const hit = ray.intersectObject(vrm.scene, true).find((h) => h.object.visible);
     const normal = hit !== undefined ? surfaceNormal(hit) : from.clone().sub(p).normalize();
@@ -2188,7 +2303,8 @@ export function mountBody(
     }
     for (const [x, side] of sides) x.side = side;
     // she reacts to a hand arriving from that side (another persona's on a shared stage, his otherwise)
-    if (c.motion !== "grab") touch = { at: now, point: landed.clone(), strength: c.pressure, from };
+    if (c.motion !== "grab" && by === null)
+      touch = { at: now, point: landed.clone(), strength: c.pressure, from };
     // a new touch starts where it lands: the drawn hand does not glide there through her body from the last one
     handEuro = null;
     drawnAt = 0;
@@ -2204,7 +2320,13 @@ export function mountBody(
       lift,
       bone,
       unbone: bone?.matrixWorld.clone().invert() ?? new THREE.Matrix4(),
+      by,
+      react: by !== null && c.motion !== "grab" ? { strength: c.pressure, from } : null,
     };
+    if (by !== null) {
+      agentTouch.start += REACH_MS;
+      shared!.stage.wake(0, by);
+    }
     // the nerves under the hand fire, wherever it actually landed on her
     nerveRegion = (hit && regionOf(hit)) ?? c.part;
     fired.clear();
@@ -2222,8 +2344,16 @@ export function mountBody(
   const moveAgentHand = (now: number): boolean => {
     if (agentTouch === null) return false;
     const a = agentTouch;
+    // a persona's arm on its way: where it will land is known, but nothing touches her yet
+    const coming = a.by !== null && now < a.start;
+    if (!coming && a.react !== null) {
+      touch = { at: now, point: a.hit.clone(), strength: a.react.strength, from: a.react.from };
+      a.react = null;
+    }
     // a frame's clock can trail the cue's by a frame: that is the touch's start, not before it
-    const h = agentHandAt(a.motion, a.pressure, a.ms, Math.max(0, now - a.start));
+    const h = coming
+      ? { along: 0, pressure: 0, fingertip: false }
+      : agentHandAt(a.motion, a.pressure, a.ms, Math.max(0, now - a.start));
     if (h === null) {
       agentTouch = null;
       handHeld = false;
@@ -2259,16 +2389,36 @@ export function mountBody(
       source: "agent",
     });
     handEuro = euroStep(handEuro, handFrame.palm, now);
-    handHeld = true;
+    handHeld = !coming;
+    // a pat lifts the hand off her between pats (the drawn hand only lightens)
+    handLift =
+      a.motion === "pat" && !coming
+        ? 0.035 * (0.5 + 0.5 * Math.cos((2 * Math.PI * (now - a.start)) / 400))
+        : 0;
     return true;
   };
+  let handLift = 0;
+  /** For the stage: the hand persona `id` lays on her now, if any. */
+  const touchedBy = (id: string): Contact | null =>
+    agentTouch === null || agentTouch.by !== id || handFrame === null
+      ? null
+      : {
+          palm: handFrame.palm,
+          normal: handFrame.normal,
+          pressure: handHeld ? handFrame.pressure : 0,
+          lift: handHeld ? handLift : 0.06,
+        };
   /**
    * Her nerves, each frame a hand is on her (nothing at rest): the region under it fires (bodySense.ts), and the reflex
    * arcs that firing sets off act on her body after their own latency, before any word reaches her brain.
    */
   const feelNerves = (now: number) => {
-    const own =
-      selfTouch === null
+    const own = [
+      ...(reachFelt > 0.02
+        ? // a palm laid flat: about a palm's skin (handContact's palm area)
+          [{ region: "hand", pressure: reachFelt, cmPerS: 0, areaCm2: 60 }]
+        : []),
+      ...(selfTouch === null
         ? []
         : [
             {
@@ -2280,7 +2430,8 @@ export function mountBody(
                 areaCm2: selfTouch.area * 1e4,
               }),
             },
-          ];
+          ]),
+    ];
     const on = handFrame !== null && handHeld && nerveRegion !== null;
     if (!on && own.length > 0) {
       const step = fire(sense, nerves, own, now);
@@ -3221,10 +3372,15 @@ export function mountBody(
         Object.entries(skeleton()).map(([k, v]) => [k, v.map((x) => Math.round(x * 1e4) / 1e4)]),
       );
       const palmsNow = palmsOf();
+      const reachNow =
+        reaching === null
+          ? null
+          : { side: reaching.side, k: reaching.k, to: reachTo.toArray(), lift: reachLift };
       if (vrm === null || handMesh === null || !handMesh.group.visible || handFrame === null)
         return {
           world,
           palms: palmsNow,
+          reach: reachNow,
           hand: null,
           held: grip === null ? null : { kind: grip.kind, root: grip.root },
         };
@@ -3262,6 +3418,7 @@ export function mountBody(
       return {
         world,
         palms: palmsNow,
+        reach: reachNow,
         hand: {
           points: points.map((p) => [p.x, p.y, p.z]),
           insideMm: inside,
@@ -3322,6 +3479,18 @@ export function mountBody(
     },
     /** One frame of this body's own work on a shared stage (the stage draws). */
     tick: (now: number) => frame(now),
+    /** For a shared stage: the hand persona `id` lays on her now, if any, and where her chest is. */
+    touchedBy,
+    /** For a shared stage, after every body ticked this frame: her arm onto where another's body is now. */
+    reachAfter: (now: number) => {
+      const dt = reachLast === 0 ? 1000 / 60 : Math.min(100, now - reachLast);
+      reachLast = now;
+      if (!reachOut(dt)) return void (reachLast = 0);
+      lastMove = now;
+      invalidate();
+    },
+    chest: (into: THREE.Vector3) =>
+      vrm?.humanoid.getRawBoneNode("chest")?.getWorldPosition(into) !== undefined,
     /** Her joints in the world, for a shared stage's camera (into vectors she keeps, so a frame allocates none). */
     worldJoints: (into: THREE.Vector3[]) => {
       if (vrm === null) return;
@@ -3357,6 +3526,7 @@ export function mountBodies(
   const list: Array<{ readonly id: string; readonly body: Body }> = [];
   const wanting = new Set<string>();
   const points: THREE.Vector3[] = [];
+  const ticked: Body[] = [];
   let due = Infinity;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let raf = 0;
@@ -3371,11 +3541,15 @@ export function mountBodies(
     due = Infinity;
     if (disposed) return;
     // each body that asked ticks (and may ask again); the rest hold their pose; then one draw for all
+    ticked.length = 0;
     for (const { id, body } of list)
       if (wanting.has(id)) {
         wanting.delete(id);
         body.tick(now);
+        ticked.push(body);
       }
+    // a hand on another body goes where that body is this frame, so it is reached once all have moved
+    for (const body of ticked) body.reachAfter(now);
     base.renderer.render(base.scene, base.camera);
   };
   const stage: Stage = {
@@ -3395,6 +3569,15 @@ export function mountBodies(
       return points;
     },
     leads: (id) => list[0]?.id === id,
+    has: (id) => list.some((b) => b.id === id),
+    chestOf: (id, into) => list.find((b) => b.id === id)?.body.chest(into) === true,
+    touchOf: (by) => {
+      for (const { id, body } of list) {
+        const c = id === by ? null : body.touchedBy(by);
+        if (c !== null) return c;
+      }
+      return null;
+    },
   };
   const resize = () => {
     const w = canvas.clientWidth || 1;

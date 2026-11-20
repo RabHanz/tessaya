@@ -110,7 +110,11 @@ const off = new THREE.Vector3();
 const hq = new THREE.Quaternion();
 const turn = new THREE.Quaternion();
 
-const meetOne = (
+/**
+ * Lays a palm (now at `palm`, facing `normal`) on `to`, facing `face`, by `w`: the least turn of the hand that faces it
+ * there, the wrist following, and the arm re-solved to reach.
+ */
+export const placePalm = (
   arm: Arm,
   palm: THREE.Vector3,
   normal: THREE.Vector3,
@@ -160,11 +164,11 @@ export const meetPalms = (
     t.copy(mid)
       .addScaledVector(across, -gap / 2)
       .sub(sep);
-    meetOne(left, pl, nl, across, t, w);
+    placePalm(left, pl, nl, across, t, w);
     t.copy(mid)
       .addScaledVector(across, gap / 2)
       .add(sep);
-    meetOne(right, pr, nr, across.negate(), t, w);
+    placePalm(right, pr, nr, across.negate(), t, w);
     palmWorld(left, pl, nl);
     palmWorld(right, pr, nr);
   }
