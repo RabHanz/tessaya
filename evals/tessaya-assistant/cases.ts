@@ -861,6 +861,22 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     },
   },
   {
+    id: "point-from-tree",
+    source:
+      "D-010 L-56 (20 Nov): point_at takes a ui_tree line, so showing him a control needs no screenshot",
+    said: "where's the save button?",
+    first: ["ui_tree"],
+    goal: "point_at",
+    goalArgs: ['"id"'],
+    maxCalls: 2,
+    answers: {
+      ui_tree:
+        "Untitled - Notepad\n[1] menu item: File\n[2] menu item: Edit\n[3] button: Save\n[4] document: Text editor (focused)",
+      point_at: "Pointing.",
+      screen_capture: "Notepad with a menu bar and a Save button at the top left.",
+    },
+  },
+  {
     id: "do-it-for-me",
     model: "opus",
     source: "CU-9 (2026-11-04 review): do it for me is the hands loop behind one plan card",

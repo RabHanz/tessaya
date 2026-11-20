@@ -16,6 +16,9 @@ export const GRANTS_MAX = 50;
 /** One act he answered "Always allow" to: the tool, the reason it asks, and the app (none for a job act). */
 export const standingKey = (tool: string, why: string, app = ""): string => `${tool}|${why}|${app}`;
 
+/** The app part of a standing key for an act on one web site, so his "Always allow" on one site holds on that site alone. */
+export const siteScope = (host: string): string => `site:${host}`;
+
 /** His standing yes for changing one house device without a card ("remember you don't need approval for the pump"). */
 export const houseGrant = (entityId: string, name: string): string =>
   standingKey("house", name.replace(/\|/g, " ").slice(0, 80), entityId);
@@ -126,7 +129,8 @@ export const grantLabel = (key: string): string => {
   const [tool = key, why = "", app = ""] = key.split("|");
   if (tool === "house") return `Changing ${why} at home`;
   const what = tool.replace(/^tessaya_/, "").replace(/_/g, " ");
-  return `${what[0]?.toUpperCase() ?? ""}${what.slice(1)}${app === "" ? "" : ` in ${app}`}${why === "" ? "" : ` (${why.replace(/\.$/, "")})`}`;
+  const where = app === "" ? "" : app.startsWith("site:") ? ` on ${app.slice(5)}` : ` in ${app}`;
+  return `${what[0]?.toUpperCase() ?? ""}${what.slice(1)}${where}${why === "" ? "" : ` (${why.replace(/\.$/, "")})`}`;
 };
 
 const WORD_SKIP = new Set([

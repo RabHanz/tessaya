@@ -71,5 +71,8 @@ describe("his standing yeses", () => {
     expect(grantLabel("press_keys|That may send what is typed.|Google Chrome")).toBe(
       "Press keys in Google Chrome (That may send what is typed)",
     );
+    expect(grantLabel("computer|That may submit, send or delete something.|site:example.com")).toBe(
+      "Computer on example.com (That may submit, send or delete something)",
+    );
   });
 });

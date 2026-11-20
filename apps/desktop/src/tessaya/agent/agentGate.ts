@@ -3,7 +3,7 @@
  * (D127), run INSIDE every tool, so no local process and no harness mode reaches a tool without it.
  * A yes is spoken or clicked; for anything high risk the default is no.
  */
-import { standingKey as standingKeyOf } from "@t3tools/tessaya-shared/consent";
+import { siteScope, standingKey as standingKeyOf } from "@t3tools/tessaya-shared/consent";
 import * as DateTime from "effect/DateTime";
 import {
   addressBarAfter,
@@ -425,7 +425,12 @@ export const createAgentGate = (input: {
     }
     const project = call.input["project"];
     // The same key the server checks for a Tessel or desk turn, so one "Always allow" holds on every vessel.
-    const standingKey = standingKeyOf(name, judged.why, app);
+    // In his browser a standing yes is per site (GEN-21a): "always" on one site never carries to another.
+    const standingKey = standingKeyOf(
+      name,
+      judged.why,
+      callHost === null ? app : siteScope(callHost),
+    );
     // Never for what follows a read or reaches a command line: that is what an injection would ask for.
     const canStand =
       input.always !== undefined &&

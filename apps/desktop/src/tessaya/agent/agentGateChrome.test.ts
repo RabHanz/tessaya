@@ -27,6 +27,32 @@ const rig = (
 };
 
 describe("the gate on his own Chrome", () => {
+  it("an Always allow on one site holds on that site only (GEN-21a)", async () => {
+    const kept = new Set<string>();
+    let asked = 0;
+    const gate = createAgentGate({
+      actWithoutAsking: () => true,
+      taint: createTaint(),
+      textIsHis: () => false,
+      focusedWindow: async () => ({ label: "Shop - Google Chrome", shell: false }),
+      confirm: async () => (asked++, "always"),
+      record: () => undefined,
+      always: { has: (k) => kept.has(k), add: (k) => void kept.add(k) },
+      chrome: { socialOn: () => false, now: () => 0, log: () => undefined },
+    });
+    const submit = (url: string) => ({
+      tool: `${P}computer`,
+      input: { action: "left_click", url, text: "Submit the form" },
+    });
+    expect((await gate(submit("https://example.com/a"))).allow).toBe(true);
+    expect((await gate(submit("https://example.com/b"))).allow).toBe(true);
+    expect(asked).toBe(1);
+    expect((await gate(submit("https://other.org/"))).allow).toBe(true);
+    expect(asked).toBe(2);
+    expect(
+      [...kept].every((k) => k.endsWith("|site:example.com") || k.endsWith("|site:other.org")),
+    ).toBe(true);
+  });
   it("refuses a social site while it is off, and acts on nothing after being taken to one", async () => {
     const r = rig(false);
     expect(

@@ -2676,6 +2676,20 @@ export const startScreenCompanion = (input: {
       return relaunchChromeWithAccessibility(realRelaunchPorts(input.platform));
     },
     point: async (a) => {
+      if ("id" in a) {
+        // A tree line is the control's own rectangle: on any screen, with no screenshot taken.
+        const found = await actions
+          ?.locate?.(`line ${a.id}`, Electron.screen.getCursorScreenPoint(), true, false, {
+            line: a.id,
+            tree: lastTree ?? 0,
+          })
+          .catch(() => null);
+        if (found === null || found === undefined)
+          throw new Error("That line is gone or the window changed. Read ui_tree again.");
+        const here = await overlay.point(found, a.label ?? found.name);
+        if (!here) activity("Pointing", "on your other screen");
+        return "Pointing.";
+      }
       if (lastShots.length === 0) throw new Error("Take a screenshot first.");
       await pointAt(
         { x: a.x, y: a.y, label: a.label ?? null, screen: a.screen ?? null, confidence: null },

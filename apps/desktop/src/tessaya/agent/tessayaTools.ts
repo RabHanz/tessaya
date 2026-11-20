@@ -52,12 +52,10 @@ export interface ToolHost {
     label?: string;
   }) => Promise<string>;
   /** Draws the pointer, a ring and a label at a point of the last screenshot. */
-  readonly point?: (a: {
-    x: number;
-    y: number;
-    screen?: number;
-    label?: string;
-  }) => Promise<string>;
+  /** Points at a spot in the last screenshot, or at a line of the last ui_tree (`id`), which needs no screenshot. */
+  readonly point?: (
+    a: { x: number; y: number; screen?: number; label?: string } | { id: number; label?: string },
+  ) => Promise<string>;
   /** Starts a lesson: the same machine as the older router's. */
   readonly guided?: (mode: "teach", goal: string) => Promise<string>;
   /** Shows him the steps of "do it for me" on one card; his yes covers them for this turn. Says what he answered. */
@@ -534,19 +532,20 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
     {
       name: "point_at",
       description:
-        "Show him where something is: a pointer, a ring and a short label at a point you can see in the last screenshot. Use it when he asks where something is or you want him to look at a spot. Take a screenshot first.",
-      inputSchema: object(
-        {
-          x: POINT,
-          y: POINT,
-          screen: SCREEN,
-          label: { type: "string", description: "Three words or fewer." },
-        },
-        ["x", "y"],
-      ),
+        "Show him where something is: a pointer, a ring and a short label, on any of his screens. Point at a line of the last ui_tree by its number (id), which needs no screenshot, or at a point in the last screenshot (x, y). Use it when he asks where something is or you want him to look at a spot.",
+      inputSchema: object({
+        id: { type: "integer", description: "A line number from the last ui_tree." },
+        x: POINT,
+        y: POINT,
+        screen: SCREEN,
+        label: { type: "string", description: "Three words or fewer." },
+      }),
       run: async (a) => {
         if (host.point === undefined) throw new Error("Pointing is not available here.");
         const label = typeof a["label"] === "string" ? str(a, "label", 60) : undefined;
+        const id = optNum(a, "id");
+        if (id !== undefined)
+          return { text: await host.point({ id, ...(label === undefined ? {} : { label }) }) };
         const screen = optNum(a, "screen");
         return {
           text: await host.point({
