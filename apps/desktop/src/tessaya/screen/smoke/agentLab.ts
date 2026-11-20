@@ -69,10 +69,13 @@ void Electron.app.whenReady().then(async () => {
       await companion.said(task.goal, { direct: false, typed: true });
       await ended;
       // Finished and misclicks are read from the frames afterwards; the file check covers task one.
+      const documents = NodePath.join(NodeOS.homedir(), "Documents");
       const finished =
         task.id === "notepad"
-          ? NodeFS.existsSync(NodePath.join(NodeOS.homedir(), "Documents", "tessaya-task-one.txt"))
-          : false;
+          ? NodeFS.existsSync(NodePath.join(documents, "tessaya-task-one.txt"))
+          : task.id === "rename"
+            ? NodeFS.existsSync(NodePath.join(documents, "tessaya-task-renamed.txt"))
+            : false;
       results.push({
         task: task.id,
         run,
