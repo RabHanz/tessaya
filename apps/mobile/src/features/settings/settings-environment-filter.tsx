@@ -25,7 +25,7 @@ export type SettingsTarget = EnvironmentPresentation & {
 const targetsCache = new WeakMap<readonly EnvironmentPresentation[], readonly SettingsTarget[]>();
 const groupsCache = new WeakMap<object, Map<string, ReturnType<typeof buildProjectGroups>>>();
 
-function connectedSettingsTargets(environments: readonly EnvironmentPresentation[]) {
+export function connectedSettingsTargets(environments: readonly EnvironmentPresentation[]) {
   let targets = targetsCache.get(environments);
   if (!targets) {
     targets = environments.filter(

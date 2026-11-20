@@ -104,18 +104,59 @@ index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb223718
    }
  }
 diff --git a/apps/mobile/metro.config.js b/apps/mobile/metro.config.js
-index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..9111e6d28c06462ad7189cd45dc47fe795f38cbd 100644
+index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..46753e0388f57e59abca313b827cf0593a8a7d58 100644
 --- a/apps/mobile/metro.config.js
 +++ b/apps/mobile/metro.config.js
-@@ -19,6 +19,8 @@ const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"
+@@ -18,7 +18,10 @@ const licenseGeneratorSource = path.join(
+ const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-stream");
  const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
++const generatedBodyStreamRoot = path.join(__dirname, ".generated", "body-stream");
  
 +// The Tessaya babel rewrite depends on APP_VARIANT, so a cached transform from another variant must not be reused.
 +config.cacheVersion = `${config.cacheVersion ?? ""}:${process.env.APP_VARIANT ?? ""}:${process.env.TESSAYA_BRAND ?? ""}`;
  config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
  config.resolver = {
    ...config.resolver,
+@@ -35,6 +38,7 @@ config.resolver = {
+     "@t3tools/mobile-third-party-licenses": generatedLicenseModuleRoot,
+     "@t3tools/mobile-device-stream": generatedDeviceStreamRoot,
+     "@t3tools/mobile-preview-stream": generatedPreviewStreamRoot,
++    "@t3tools/mobile-body-stream": generatedBodyStreamRoot,
+   },
+ };
+ 
+@@ -71,11 +75,14 @@ async function generateMobileThirdPartyLicenses() {
+ }
+ 
+ async function prepareStreamScripts() {
+-  const { generateDeviceStreamScript, generatePreviewStreamScript } = await import(
+-    pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href
+-  );
++  const { generateDeviceStreamScript, generatePreviewStreamScript, generateBodyStreamScript } =
++    await import(pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href);
+   const generateAll = () =>
+-    Promise.all([generateDeviceStreamScript(), generatePreviewStreamScript()]);
++    Promise.all([
++      generateDeviceStreamScript(),
++      generatePreviewStreamScript(),
++      generateBodyStreamScript(),
++    ]);
+   await generateAll();
+   if (process.env.NODE_ENV !== "production") {
+     let rebuild = Promise.resolve();
+@@ -90,6 +97,11 @@ async function prepareStreamScripts() {
+         ["preview-stream.browser.ts"],
+         generatePreviewStreamScript,
+       ],
++      [
++        "apps/mobile/src/features/tessaya/talk",
++        ["body-stream.browser.ts"],
++        generateBodyStreamScript,
++      ],
+       ["packages/client-runtime/src/device", ["stream.ts", "hubAccess.ts"], generateAll],
+       [
+         "packages/client-runtime/src/preview",
 diff --git a/apps/mobile/modules/t3-agent-notifications/android/src/main/java/expo/modules/t3agentnotifications/AgentNotifications.kt b/apps/mobile/modules/t3-agent-notifications/android/src/main/java/expo/modules/t3agentnotifications/AgentNotifications.kt
 index fdfd144ebb9ccebdf8dff2b2daadd86e60549497..3d1c13e29eeb519ae4f0673e503154b04324aec0 100644
 --- a/apps/mobile/modules/t3-agent-notifications/android/src/main/java/expo/modules/t3agentnotifications/AgentNotifications.kt
@@ -155,6 +196,38 @@ index 2d1fd4a24855835749240451726cd5c9356d0846..f32a45694affa5039aa28396879c2b83
      put(MediaStore.Images.Media.IS_PENDING, 1)
    }
    val target = resolver.insert(
+diff --git a/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt b/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt
+index 736f7cd3019f02fa7f18c4a2fe0a442022d448a6..8b1ef8a7b7efedfafaa88f2906048bbffc46fff3 100644
+--- a/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt
++++ b/apps/mobile/modules/t3-native-controls/android/src/main/java/expo/modules/t3nativecontrols/T3WorkspaceNavigationModule.kt
+@@ -412,11 +412,15 @@ class T3WorkspaceNavigationView(
+     }
+   }
+ 
++  // Tessaya's tabs (D-038): Talk, Chats, Personas, Devices, and More for the rest and Settings.
+   private fun tabTitle(tab: String) = when (tab) {
++    "talk" -> "Talk"
+     "threads" -> "Chats"
++    "personas" -> "Personas"
++    "devices" -> "Devices"
+     "pullRequests" -> "Pulls"
+     "usage" -> "Usage"
+-    else -> "Settings"
++    else -> "More"
+   }
+ 
+   private fun expandedTabTitle(tab: String) =
+@@ -425,7 +429,10 @@ class T3WorkspaceNavigationView(
+   @Composable
+   private fun tabIconPainter(tab: String) = painterResource(
+     when (tab) {
++      "talk" -> R.drawable.t3_talk
+       "threads" -> R.drawable.t3_chats
++      "personas" -> R.drawable.t3_personas
++      "devices" -> R.drawable.t3_devices
+       "pullRequests" -> R.drawable.t3_pull_requests
+       "usage" -> R.drawable.t3_usage
+       else -> R.drawable.t3_settings
 diff --git a/apps/mobile/modules/t3-native-controls/ios/T3NativeControlsModule.swift b/apps/mobile/modules/t3-native-controls/ios/T3NativeControlsModule.swift
 index af67e80afebb45a07ab3cb03c7c9a9e56c3a9375..01378d624cfeb1efda640f21c8598e1ba8eb17c3 100644
 --- a/apps/mobile/modules/t3-native-controls/ios/T3NativeControlsModule.swift
@@ -168,6 +241,28 @@ index af67e80afebb45a07ab3cb03c7c9a9e56c3a9375..01378d624cfeb1efda640f21c8598e1b
          ))
          return
        }
+diff --git a/apps/mobile/modules/t3-native-controls/ios/T3SidebarTabBarView.swift b/apps/mobile/modules/t3-native-controls/ios/T3SidebarTabBarView.swift
+index 243490678c530d4c0d9d369f9c126526fb4f7cd8..807faa582b8dc0402d7b90df8aa807366c3bd9fe 100644
+--- a/apps/mobile/modules/t3-native-controls/ios/T3SidebarTabBarView.swift
++++ b/apps/mobile/modules/t3-native-controls/ios/T3SidebarTabBarView.swift
+@@ -106,8 +106,15 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
+   private func prepareItems() {
+     let iconBundle = Bundle(for: Self.self).url(forResource: "T3NativeControlIcons", withExtension: "bundle").flatMap(Bundle.init(url:))
+     let pullRequestIcon = UIImage(named: "pull-request", in: iconBundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
+-    let labels = ["threads": "Chats", "pullRequests": "PRs", "usage": "Usage", "settings": "Settings"]
+-    let symbols = ["threads": "text.bubble", "usage": "chart.bar.xaxis", "settings": "gearshape"]
++    // Tessaya's tabs (D-038): Talk, Chats, Personas, Devices, then More.
++    let labels = [
++      "talk": "Talk", "threads": "Chats", "personas": "Personas", "devices": "Devices",
++      "pullRequests": "PRs", "usage": "Usage", "settings": "More",
++    ]
++    let symbols = [
++      "talk": "mic", "threads": "text.bubble", "personas": "person.2", "devices": "iphone",
++      "usage": "chart.bar.xaxis", "settings": "ellipsis.circle",
++    ]
+     for (tab, label) in labels {
+       let icon = tab == "pullRequests" ? pullRequestIcon : UIImage(systemName: symbols[tab] ?? "circle")
+       let item = UITabBarItem(title: nil, image: tabIcon(icon), tag: 0)
 diff --git a/apps/mobile/plugins/withWidgetLogoAsset.cjs b/apps/mobile/plugins/withWidgetLogoAsset.cjs
 index d20d199119b051799bf36797e0898787d2faf02f..95cb0e9f71064a98bca794e241c5cd5690232b24 100644
 --- a/apps/mobile/plugins/withWidgetLogoAsset.cjs
@@ -182,6 +277,16 @@ index d20d199119b051799bf36797e0898787d2faf02f..95cb0e9f71064a98bca794e241c5cd56
        const catalogDir = path.join(cfg.modRequest.platformProjectRoot, TARGET_NAME, CATALOG_NAME);
        const imageSetDir = path.join(catalogDir, IMAGE_SET);
        fs.mkdirSync(imageSetDir, { recursive: true });
+diff --git a/apps/mobile/scripts/generate-device-stream.mts b/apps/mobile/scripts/generate-device-stream.mts
+index 76f3d262dfa90983c9cfcf5a9ed10a76de03426f..dadd9d979e96093a21d6dbe89c854c99f8a6dff6 100644
+--- a/apps/mobile/scripts/generate-device-stream.mts
++++ b/apps/mobile/scripts/generate-device-stream.mts
+@@ -40,3 +40,5 @@ async function generateWebViewScript(feature: string, name: string) {
+ 
+ export const generateDeviceStreamScript = () => generateWebViewScript("devices", "Device");
+ export const generatePreviewStreamScript = () => generateWebViewScript("browser", "Preview");
++// Tessaya: her body in the Talk tab, the same renderer as the desk and the web (apps/web/src/body).
++export const generateBodyStreamScript = () => generateWebViewScript("tessaya/talk", "Body");
 diff --git a/apps/mobile/src/App.tsx b/apps/mobile/src/App.tsx
 index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18926b00f8 100644
 --- a/apps/mobile/src/App.tsx
@@ -482,6 +587,411 @@ index 0750705315fa2aead4296c31931854df5b8bcfe5..12bcef06ba2965b24a82522eaa6b3788
 -  return trimmed;
 +  return [trimmed];
  }
+diff --git a/apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx b/apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx
+index a90ba87eedda21cb583e8f9bada47784bc38f06a..4e766580ac08c139b49bf8671097bda9b294da1a 100644
+--- a/apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx
++++ b/apps/mobile/src/features/layout/AdaptiveWorkspaceLayout.tsx
+@@ -115,7 +115,7 @@ import {
+   workspaceTabColumns,
+   workspaceTabNavigationState,
+ } from "./workspace/workspace-tab-navigation";
+-import { workspaceTabOf, type WorkspaceTab } from "./workspace/workspace-tabs-state";
++import { workspaceTabOf, type WorkspaceTab, isPageTab } from "./workspace/workspace-tabs-state";
+ import { workspaceRoutesOf } from "./workspace-overlay-routes";
+ import { SettingsWorkspaceLayout } from "../settings/SettingsWorkspaceLayout";
+ import { WorkspaceThreadSidebar } from "./workspace/WorkspaceThreadSidebar";
+@@ -270,7 +270,9 @@ function AdaptiveWorkspaceLayoutContent(
+   const androidSettingsOpen = useAndroidWorkspaceRoot()?.settingsOpen ?? false;
+   const safeAreaInsets = useSafeAreaInsets();
+   const workspacePage =
+-    Platform.OS === "android" && (androidSettingsOpen || workspace?.state.selectedTab === "usage");
++    Platform.OS === "android" &&
++    (androidSettingsOpen ||
++      (workspace !== null && workspace !== undefined && isPageTab(workspace.state.selectedTab)));
+   const navigation = useNavigation();
+   const [primarySidebarPreferredVisible, setPrimarySidebarPreferredVisible] = useState(true);
+   const [fileInspectorPreferredVisible, setFileInspectorPreferredVisible] = useState(true);
+diff --git a/apps/mobile/src/features/layout/WorkspaceEmptyDetail.tsx b/apps/mobile/src/features/layout/WorkspaceEmptyDetail.tsx
+index e04b72cb9685ddfa5e6c8641d4f1a55fda5769a9..7bb58c9b5daa011a88ad0f1def3d4956909154ac 100644
+--- a/apps/mobile/src/features/layout/WorkspaceEmptyDetail.tsx
++++ b/apps/mobile/src/features/layout/WorkspaceEmptyDetail.tsx
+@@ -7,6 +7,7 @@ import { FloatingActionButton } from "../../components/ui/FloatingActionButton";
+ import { EmptyState } from "../../components/ui/EmptyState";
+ import { ScreenContent } from "../../components/ui/ScreenContent";
+ import type { WorkspaceTab } from "./workspace/workspace-tabs-state";
++import { isPageTab } from "./workspace/workspace-tabs-state";
+ 
+ export function WorkspaceEmptyDetail(props: {
+   readonly tab?: WorkspaceTab | "settings";
+@@ -15,7 +16,7 @@ export function WorkspaceEmptyDetail(props: {
+ }) {
+   const pullRequests = props.tab === "pullRequests";
+   const settings = props.tab === "settings";
+-  if (props.tab === "usage") return <View className="flex-1 bg-screen" />;
++  if (isPageTab(props.tab)) return <View className="flex-1 bg-screen" />;
+   return (
+     <ScreenContent surface="screen">
+       <View
+diff --git a/apps/mobile/src/features/layout/createWorkspaceStackNavigator.ios.tsx b/apps/mobile/src/features/layout/createWorkspaceStackNavigator.ios.tsx
+index bac954d99f118b2244fc960e518e8eeece83f280..c459982ac0bb921acd8acd7225a3a85097a5d6ac 100644
+--- a/apps/mobile/src/features/layout/createWorkspaceStackNavigator.ios.tsx
++++ b/apps/mobile/src/features/layout/createWorkspaceStackNavigator.ios.tsx
+@@ -359,8 +359,8 @@ function WorkspaceColumns(
+         if (workspace.some((route) => route.name !== "Home" && route.name !== "Settings")) return;
+         const tab = workspace.some((route) => route.name === "Settings")
+           ? "settings"
+-          : (["threads", "pullRequests", "usage"] as const).find((candidate) =>
+-              workspaceTabs?.isTabActive(candidate),
++          : (["threads", "pullRequests", "usage", "talk", "personas", "devices"] as const).find(
++              (candidate) => workspaceTabs?.isTabActive(candidate),
+             );
+         openWorkspaceTab(tab ?? "threads", { columns: true });
+       }}
+diff --git a/apps/mobile/src/features/layout/workspace/AndroidWorkspaceSidebar.android.tsx b/apps/mobile/src/features/layout/workspace/AndroidWorkspaceSidebar.android.tsx
+index 5d784359d4f42b60d3c7db45f54b988b422ef305..1b7f7a9b186f5f16a023acc6df64c412d18c9811 100644
+--- a/apps/mobile/src/features/layout/workspace/AndroidWorkspaceSidebar.android.tsx
++++ b/apps/mobile/src/features/layout/workspace/AndroidWorkspaceSidebar.android.tsx
+@@ -18,6 +18,7 @@ import { WorkspaceTabsContext, useWorkspaceTabs } from "./WorkspaceTabsContext";
+ import { WorkspaceTabPanes } from "./WorkspaceTabPanes";
+ import { WorkspaceThreadSidebar } from "./WorkspaceThreadSidebar";
+ import { WorkspaceAppBarScope } from "../../../components/ui/WorkspaceAppBar.android";
++import { isPageTab } from "./workspace-tabs-state";
+ 
+ /** The Home route in the sidebar column: the selected tab's list. */
+ export function AndroidWorkspaceSidebar() {
+@@ -30,7 +31,7 @@ export function AndroidWorkspaceSidebar() {
+   const selectedPullRequest = useNavigationState(selectedPullRequestKey);
+   // Settings and Usage cover the sidebar.
+   const coveredByPage =
+-    (useAndroidWorkspaceRoot()?.settingsOpen ?? false) || workspace.state.selectedTab === "usage";
++    (useAndroidWorkspaceRoot()?.settingsOpen ?? false) || isPageTab(workspace.state.selectedTab);
+   const bottomClearance = floatingTabsEnabled
+     ? insets.bottom + FLOATING_TABS.bottom + FLOATING_TABS.edge + fabSize
+     : 16;
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
+index 17fc0069eb8e678617f1951410f306bdf6732bce..c37b846f1d7f4664819f64992bec184295cb7bc5 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
+@@ -1,14 +1,25 @@
+ import { type NavigationTab } from "./navigation-tab-order";
+ import { NativeStackScreenOptions } from "../../../native/StackHeader";
++import { SettingsHardwareRouteScreen } from "../../settings/SettingsHardwareRouteScreen";
++import { SettingsPersonasRouteScreen } from "../../settings/SettingsPersonasRouteScreen";
++import { TalkRouteScreen } from "../../tessaya/talk/TalkRouteScreen";
+ import { UsageRouteScreen } from "../../usage/UsageRouteScreen";
+ 
+-export function WorkspaceExtraTab(_props: {
++export function WorkspaceExtraTab(props: {
+   tab: Exclude<NavigationTab, "threads" | "pullRequests">;
+ }) {
+   return (
+     <>
+       <NativeStackScreenOptions options={{ headerSearchBarOptions: undefined }} />
+-      <UsageRouteScreen workspace />
++      {props.tab === "talk" ? (
++        <TalkRouteScreen />
++      ) : props.tab === "personas" ? (
++        <SettingsPersonasRouteScreen />
++      ) : props.tab === "devices" ? (
++        <SettingsHardwareRouteScreen />
++      ) : (
++        <UsageRouteScreen workspace />
++      )}
+     </>
+   );
+ }
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
+index 2247ea50c9a4a8a516cd1325f653b9c91839596b..8959306e824adf91f445aa203ce8653ae90506c5 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceNativeTabs.ios.tsx
+@@ -134,10 +134,10 @@ export function WorkspaceNativeTabs(props: {
+               key={slot}
+               screenKey={slot}
+               title=""
+-              tabBarItemAccessibilityLabel={settings ? "Settings" : WORKSPACE_TAB_LABELS[tab]}
++              tabBarItemAccessibilityLabel={settings ? "More" : WORKSPACE_TAB_LABELS[tab]}
+               ios={{
+                 icon: settings
+-                  ? { type: "sfSymbol", name: "gearshape" }
++                  ? { type: "sfSymbol", name: "ellipsis.circle" }
+                   : tab === "pullRequests"
+                     ? { type: "templateSource", templateSource: PULL_REQUEST_ICON }
+                     : { type: "sfSymbol", name: NAVIGATION_TAB_ICONS[tab] },
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx
+index 75d139621562a891cea2235871bf83de049a2666..b3e8d79299de7a094a48e895021abd7ef5900b4c 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.android.tsx
+@@ -26,6 +26,7 @@ import { AndroidWorkspaceSidebar } from "./AndroidWorkspaceSidebar.android";
+ import type { WorkspaceTab } from "./workspace-tabs-state";
+ import { useSelectWorkspaceTab } from "./useSelectWorkspaceTab";
+ import { useHardwareBack } from "../../../lib/backHandler";
++import { isPageTab } from "./workspace-tabs-state";
+ 
+ const TABS: readonly WorkspaceTab[] = NAVIGATION_TAB_ORDER;
+ 
+@@ -75,7 +76,7 @@ function WorkspaceRoot() {
+             layout.usesSplitView
+               ? insets
+               : floatingTabsEnabled
+-                ? tab === "usage"
++                ? isPageTab(tab)
+                   ? { ...insets, bottom: context.bottomClearance }
+                   : insets
+                 : { ...insets, bottom: 0 }
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx
+index e8e7c0d325983ea038baaaa98f39d2231d90fb09..eb38dfcae3ac46717e7cef2d8021f08a9999a946 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx
+@@ -30,7 +30,7 @@ import {
+   useWorkspaceTabs,
+ } from "./WorkspaceTabsContext";
+ import { WorkspaceToolbar } from "./WorkspaceToolbar";
+-import { WORKSPACE_DOCK, workspaceDockBottomClearance } from "./workspace-tabs-state";
++import { WORKSPACE_DOCK, workspaceDockBottomClearance, isPageTab } from "./workspace-tabs-state";
+ import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
+ import {
+   useCompactWorkspaceTabs,
+@@ -97,7 +97,7 @@ function WorkspaceRootContent() {
+   );
+   const tab = state.tabs[settingsOpen ? "settings" : state.selectedTab];
+   const bottomClearance =
+-    layout.variant === "medium" && state.selectedTab === "usage"
++    layout.variant === "medium" && isPageTab(state.selectedTab)
+       ? workspaceDockBottomClearance({ bottomInset: insets.bottom, keyboardHeight })
+       : isDuoDevice(deviceType)
+         ? // The column's safe area already holds the Duo's search toolbar and keyboard.
+@@ -143,7 +143,7 @@ function WorkspaceRootContent() {
+             // Beside a detail column the tab bar names the tab and the detail header the page,
+             // so the sidebar keeps the brand.
+             headerTitle:
+-              sidebarNavigation || (!settingsOpen && state.selectedTab !== "usage")
++              sidebarNavigation || (!settingsOpen && !isPageTab(state.selectedTab))
+                 ? renderHeaderTitle
+                 : undefined,
+           }}
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
+index 81344be55e4d25fa2b7b3dea86cdf895839b6c50..607fda38b3fbaafbdcf506dc8affb6caab1db446 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceTabsContext.tsx
+@@ -60,6 +60,9 @@ function createWorkspaceTabsModel(selectedTab?: WorkspaceTab) {
+     threads: 0,
+     pullRequests: 0,
+     usage: 0,
++    talk: 0,
++    personas: 0,
++    devices: 0,
+     settings: 0,
+   };
+   return {
+diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx
+index f07076a8fb14132cc07324ad62307ed0f4244265..91849f5e9a34533c7082d51ec6be43cf5d6595ae 100644
+--- a/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx
++++ b/apps/mobile/src/features/layout/workspace/WorkspaceToolbar.tsx
+@@ -17,7 +17,7 @@ import {
+ import { useHardwareKeyboardCommand } from "../../keyboard/hardwareKeyboardCommands";
+ import { useAdaptiveWorkspaceLayout, useWorkspacePaneState } from "../AdaptiveWorkspaceLayout";
+ import { useWorkspaceTabs } from "./WorkspaceTabsContext";
+-import { shouldRestoreNativeSearch } from "./workspace-tabs-state";
++import { shouldRestoreNativeSearch, isPageTab } from "./workspace-tabs-state";
+ import { useFloatingWorkspaceTabs, useSidebarWorkspaceTabs } from "./useSystemWorkspaceTabBar";
+ import { WorkspaceTabToolbarButtons } from "./WorkspaceSectionToolbar";
+ 
+@@ -53,7 +53,10 @@ export function WorkspaceToolbar(props: {
+   // The Settings list takes the selected tab's place, so search follows it.
+   const selectedTab = workspace.settingsOpen ? "settings" : workspace.state.selectedTab;
+   const tab = workspace.state.tabs[selectedTab];
+-  const searchLabel = SEARCH_LABELS[selectedTab === "usage" ? "threads" : selectedTab];
++  const searchLabel =
++    SEARCH_LABELS[
++      selectedTab === "settings" ? "settings" : isPageTab(selectedTab) ? "threads" : selectedTab
++    ];
+   const { isTabActive: isListTabActive } = workspace;
+   // A retained tab slot stays mounted while another is shown.
+   const isTabActive = (tab: typeof selectedTab) =>
+diff --git a/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts b/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts
+index 71ea901ed3b7bd8544545a75caf4acd36f990456..44fb59b3150d7ec2506b54c2da2f63e536f2394b 100644
+--- a/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts
++++ b/apps/mobile/src/features/layout/workspace/navigation-tab-order.test.ts
+@@ -14,7 +14,8 @@ import {
+ 
+ describe("navigation tab order", () => {
+   it("enables customization only above four registered sections, excluding Settings", () => {
+-    expect(navigationCustomizationAvailable()).toBe(false);
++    // Tessaya registers six sections (D-038), so its bar is customizable and the last two sit under More
++    expect(navigationCustomizationAvailable()).toBe(true);
+     expect(navigationCustomizationAvailable(3)).toBe(false);
+     expect(navigationCustomizationAvailable(4)).toBe(false);
+     expect(navigationCustomizationAvailable(5)).toBe(true);
+@@ -24,7 +25,7 @@ describe("navigation tab order", () => {
+   it("fills missing sections and drops removed placeholders, duplicates, and Settings", () => {
+     expect(
+       resolveNavigationTabOrder(["usage", "home", "issues", "settings", "usage", null]),
+-    ).toEqual(["usage", "threads", "pullRequests"]);
++    ).toEqual(["usage", "talk", "threads", "personas", "devices", "pullRequests"]);
+     expect(resolveNavigationTabOrder()).toEqual(NAVIGATION_TAB_ORDER);
+   });
+ 
+@@ -41,26 +42,33 @@ describe("navigation tab order", () => {
+   });
+ 
+   it("shows every real section without overflow and keeps Settings selected during editing", () => {
+-    expect(visibleNavigationTabs()).toEqual(NAVIGATION_TAB_ORDER);
+-    expect(overflowNavigationTabs()).toEqual([]);
++    expect(visibleNavigationTabs()).toEqual(["talk", "threads", "personas", "devices"]);
++    expect(overflowNavigationTabs()).toEqual(["pullRequests", "usage"]);
+     expect(selectedNavigationTab(undefined, "threads", true)).toBe("settings");
+-    expect(selectedNavigationTab(undefined, "usage", false)).toBe("usage");
++    expect(selectedNavigationTab(undefined, "threads", false)).toBe("threads");
++    expect(selectedNavigationTab(undefined, "usage", false)).toBe("settings");
+     expect(selectedNavigationTab(undefined, "usage", false, [], 2)).toBe("settings");
+   });
+ 
+   it("removes hidden sections from navigation and restores their saved positions", () => {
+     const order = moveNavigationTab(undefined, "usage", 0);
+     const hidden = toggleNavigationTabVisibility([], "usage");
+-    expect(enabledNavigationTabs(order, hidden)).toEqual(["threads", "pullRequests"]);
++    expect(enabledNavigationTabs(order, hidden)).toEqual([
++      "talk",
++      "threads",
++      "personas",
++      "devices",
++      "pullRequests",
++    ]);
+     expect(toggleNavigationTabVisibility(hidden, "usage")).toEqual([]);
+-    expect(visibleNavigationTabs(order, [], 5)).toEqual(order);
++    expect(visibleNavigationTabs(order, [], 6)).toEqual(order);
+     expect(enabledNavigationTabs(undefined, ["home", "issues", "settings"])).toEqual(
+       NAVIGATION_TAB_ORDER,
+     );
+   });
+ 
+   it("falls back when the selected section is hidden, including when all are hidden", () => {
+-    expect(resolveSelectedNavigationTab(undefined, ["threads"], "threads")).toBe("pullRequests");
++    expect(resolveSelectedNavigationTab(undefined, ["threads"], "threads")).toBe("talk");
+     expect(resolveSelectedNavigationTab(undefined, ["threads"], "usage")).toBe("usage");
+     expect(
+       resolveSelectedNavigationTab(undefined, NAVIGATION_TAB_ORDER, "threads"),
+diff --git a/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts b/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
+index 85e3e1c6f29fee0ddd07fa82da902bc033a91ea4..70b6d636a3f4bd44e4811590a1b0282067e4ee7d 100644
+--- a/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
++++ b/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
+@@ -1,4 +1,12 @@
+-export const NAVIGATION_TAB_ORDER = ["threads", "pullRequests", "usage"] as const;
++// Tessaya first (D-038): Talk, Chats, Personas, Devices; T3's PRs and Usage follow, under More once the bar is full.
++export const NAVIGATION_TAB_ORDER = [
++  "talk",
++  "threads",
++  "personas",
++  "devices",
++  "pullRequests",
++  "usage",
++] as const;
+ export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
+ 
+ export function navigationCustomizationAvailable(
+@@ -8,7 +16,10 @@ export function navigationCustomizationAvailable(
+ }
+ 
+ export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
+-  threads: "Threads",
++  talk: "Talk",
++  personas: "Personas",
++  devices: "Devices",
++  threads: "Chats",
+   pullRequests: "Pulls",
+   usage: "Usage",
+ };
+diff --git a/apps/mobile/src/features/layout/workspace/navigation-tabs.ts b/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
+index 3472242dc4f565b83782fd0f9f602208d4d76eb0..bfb097d5950365aeb7abaaad86fcee52dd5d5345 100644
+--- a/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
++++ b/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
+@@ -19,6 +19,9 @@ export const WORKSPACE_TAB_LABELS = {
+ };
+ 
+ export const NAVIGATION_TAB_ICONS = {
++  talk: "mic",
++  personas: "person.2",
++  devices: "iphone",
+   threads: "text.bubble",
+   pullRequests: PullRequestGlyph.pullRequest,
+   usage: "chart.bar.xaxis",
+diff --git a/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts b/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
+index 6a44e617e53ede0535bd1555925be6adb3e242ca..14b7faa83492afddaca1dc133039f6ccf0947776 100644
+--- a/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
++++ b/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
+@@ -5,6 +5,7 @@ import {
+ } from "../../settings/components/settings-page-targets";
+ import { settingsNavigationState } from "../../settings/settings-navigation";
+ import type { WorkspaceTab } from "./workspace-tabs-state";
++import { isPageTab } from "./workspace-tabs-state";
+ 
+ type RouteLike = {
+   readonly name: string;
+@@ -227,7 +228,7 @@ export function workspaceTabNavigationState<
+   }
+   const home = state.routes.find((route) => route.name === "Home") ?? { name: "Home" };
+   const detail =
+-    options.columns && tab !== "usage"
++    options.columns && !isPageTab(tab)
+       ? detailRoute(state, tab, selections, options.check, options.seedPullRequest)
+       : undefined;
+   const routes = [...[home, ...(detail ? [detail] : [])].map(keyed), ...overlays];
+diff --git a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts
+index 797da115a20ebc163730947bad56de775bb95c5e..301bf32ebf7be9ae0c74e31034b74714a6ef14d9 100644
+--- a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts
++++ b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.test.ts
+@@ -62,11 +62,19 @@ describe("workspace root navigation", () => {
+     expect(workspaceUsesColumns("pullRequests")).toBe(true);
+   });
+ 
+-  it("keeps the registered defaults while customization is unavailable", () => {
+-    expect(resolveWorkspaceTabOrder(undefined)).toEqual(["threads", "pullRequests", "usage"]);
+-    expect(resolveWorkspaceTabOrder(["home", "usage", "issues", "threads"])).toEqual(
+-      resolveWorkspaceTabOrder(undefined),
+-    );
++  it("starts on Tessaya's order and keeps a saved order, now that six sections make it customizable", () => {
++    expect(resolveWorkspaceTabOrder(undefined)).toEqual([
++      "talk",
++      "threads",
++      "personas",
++      "devices",
++      "pullRequests",
++      "usage",
++    ]);
++    expect(resolveWorkspaceTabOrder(["usage", "threads"]).slice(0, 2)).toEqual([
++      "usage",
++      "threads",
++    ]);
+   });
+ 
+   it("retains separate queries and positions across tabs, and cancels only the current search", () => {
+diff --git a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
+index 3f6754c679c5aa9e3c1626301e0fc16d4ca704a1..f273af319cdd50afc0dcff5ca8940c6324064a79 100644
+--- a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
++++ b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
+@@ -17,6 +17,12 @@ export type WorkspaceSearchTab = WorkspaceTab | "settings";
+ export type WorkspaceSearchMode = "resting" | "active" | "expanded";
+ 
+ /** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
++/** Tabs that are one page with no list or search: Usage, and Tessaya's Talk, Personas and Devices (D-038). */
++export const isPageTab = (
++  tab: WorkspaceTab | "settings" | undefined,
++): tab is "usage" | "talk" | "personas" | "devices" =>
++  tab === "usage" || tab === "talk" || tab === "personas" || tab === "devices";
++
+ export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
+   return settingsOpen || tab === "threads" || tab === "pullRequests";
+ }
+@@ -53,6 +59,9 @@ export function initialWorkspaceTabsState(
+       threads: emptyTab(),
+       pullRequests: emptyTab(),
+       usage: emptyTab(),
++      talk: emptyTab(),
++      personas: emptyTab(),
++      devices: emptyTab(),
+       settings: emptyTab(),
+     },
+   };
 diff --git a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
 index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..65a0cb59fb7b32cd47334493d5da453d0e203c02 100644
 --- a/apps/mobile/src/features/settings/SettingsAboutRouteScreen.tsx
@@ -532,6 +1042,19 @@ index 096513c0e0a3c191cfc5adf2cd109a67c8dcdb63..65a0cb59fb7b32cd47334493d5da453d
        {updateCheckAvailable ? (
          <Pressable
            accessibilityLabel={`Version ${versionLabel}`}
+diff --git a/apps/mobile/src/features/settings/settings-environment-filter.tsx b/apps/mobile/src/features/settings/settings-environment-filter.tsx
+index 2d75625dedee5c714f78c72eb9f3f7e769772515..605aa687bef7df81c8b7213335053213083ac9ff 100644
+--- a/apps/mobile/src/features/settings/settings-environment-filter.tsx
++++ b/apps/mobile/src/features/settings/settings-environment-filter.tsx
+@@ -25,7 +25,7 @@ export type SettingsTarget = EnvironmentPresentation & {
+ const targetsCache = new WeakMap<readonly EnvironmentPresentation[], readonly SettingsTarget[]>();
+ const groupsCache = new WeakMap<object, Map<string, ReturnType<typeof buildProjectGroups>>>();
+ 
+-function connectedSettingsTargets(environments: readonly EnvironmentPresentation[]) {
++export function connectedSettingsTargets(environments: readonly EnvironmentPresentation[]) {
+   let targets = targetsCache.get(environments);
+   if (!targets) {
+     targets = environments.filter(
 diff --git a/apps/mobile/src/features/updates/app-updates.ts b/apps/mobile/src/features/updates/app-updates.ts
 index 914bb3797685a501e06307b7459fe5f0960f22d1..46c16b4fcfe9806268c7c40e48b03001493bf438 100644
 --- a/apps/mobile/src/features/updates/app-updates.ts

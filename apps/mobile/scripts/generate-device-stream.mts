@@ -40,3 +40,5 @@ async function generateWebViewScript(feature: string, name: string) {
 
 export const generateDeviceStreamScript = () => generateWebViewScript("devices", "Device");
 export const generatePreviewStreamScript = () => generateWebViewScript("browser", "Preview");
+// Tessaya: her body in the Talk tab, the same renderer as the desk and the web (apps/web/src/body).
+export const generateBodyStreamScript = () => generateWebViewScript("tessaya/talk", "Body");

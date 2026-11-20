@@ -14,7 +14,8 @@ import {
 
 describe("navigation tab order", () => {
   it("enables customization only above four registered sections, excluding Settings", () => {
-    expect(navigationCustomizationAvailable()).toBe(false);
+    // Tessaya registers six sections (D-038), so its bar is customizable and the last two sit under More
+    expect(navigationCustomizationAvailable()).toBe(true);
     expect(navigationCustomizationAvailable(3)).toBe(false);
     expect(navigationCustomizationAvailable(4)).toBe(false);
     expect(navigationCustomizationAvailable(5)).toBe(true);
@@ -24,7 +25,7 @@ describe("navigation tab order", () => {
   it("fills missing sections and drops removed placeholders, duplicates, and Settings", () => {
     expect(
       resolveNavigationTabOrder(["usage", "home", "issues", "settings", "usage", null]),
-    ).toEqual(["usage", "threads", "pullRequests"]);
+    ).toEqual(["usage", "talk", "threads", "personas", "devices", "pullRequests"]);
     expect(resolveNavigationTabOrder()).toEqual(NAVIGATION_TAB_ORDER);
   });
 
@@ -41,26 +42,33 @@ describe("navigation tab order", () => {
   });
 
   it("shows every real section without overflow and keeps Settings selected during editing", () => {
-    expect(visibleNavigationTabs()).toEqual(NAVIGATION_TAB_ORDER);
-    expect(overflowNavigationTabs()).toEqual([]);
+    expect(visibleNavigationTabs()).toEqual(["talk", "threads", "personas", "devices"]);
+    expect(overflowNavigationTabs()).toEqual(["pullRequests", "usage"]);
     expect(selectedNavigationTab(undefined, "threads", true)).toBe("settings");
-    expect(selectedNavigationTab(undefined, "usage", false)).toBe("usage");
+    expect(selectedNavigationTab(undefined, "threads", false)).toBe("threads");
+    expect(selectedNavigationTab(undefined, "usage", false)).toBe("settings");
     expect(selectedNavigationTab(undefined, "usage", false, [], 2)).toBe("settings");
   });
 
   it("removes hidden sections from navigation and restores their saved positions", () => {
     const order = moveNavigationTab(undefined, "usage", 0);
     const hidden = toggleNavigationTabVisibility([], "usage");
-    expect(enabledNavigationTabs(order, hidden)).toEqual(["threads", "pullRequests"]);
+    expect(enabledNavigationTabs(order, hidden)).toEqual([
+      "talk",
+      "threads",
+      "personas",
+      "devices",
+      "pullRequests",
+    ]);
     expect(toggleNavigationTabVisibility(hidden, "usage")).toEqual([]);
-    expect(visibleNavigationTabs(order, [], 5)).toEqual(order);
+    expect(visibleNavigationTabs(order, [], 6)).toEqual(order);
     expect(enabledNavigationTabs(undefined, ["home", "issues", "settings"])).toEqual(
       NAVIGATION_TAB_ORDER,
     );
   });
 
   it("falls back when the selected section is hidden, including when all are hidden", () => {
-    expect(resolveSelectedNavigationTab(undefined, ["threads"], "threads")).toBe("pullRequests");
+    expect(resolveSelectedNavigationTab(undefined, ["threads"], "threads")).toBe("talk");
     expect(resolveSelectedNavigationTab(undefined, ["threads"], "usage")).toBe("usage");
     expect(
       resolveSelectedNavigationTab(undefined, NAVIGATION_TAB_ORDER, "threads"),

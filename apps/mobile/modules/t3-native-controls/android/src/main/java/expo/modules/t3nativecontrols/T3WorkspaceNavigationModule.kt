@@ -412,11 +412,15 @@ class T3WorkspaceNavigationView(
     }
   }
 
+  // Tessaya's tabs (D-038): Talk, Chats, Personas, Devices, and More for the rest and Settings.
   private fun tabTitle(tab: String) = when (tab) {
+    "talk" -> "Talk"
     "threads" -> "Chats"
+    "personas" -> "Personas"
+    "devices" -> "Devices"
     "pullRequests" -> "Pulls"
     "usage" -> "Usage"
-    else -> "Settings"
+    else -> "More"
   }
 
   private fun expandedTabTitle(tab: String) =
@@ -425,7 +429,10 @@ class T3WorkspaceNavigationView(
   @Composable
   private fun tabIconPainter(tab: String) = painterResource(
     when (tab) {
+      "talk" -> R.drawable.t3_talk
       "threads" -> R.drawable.t3_chats
+      "personas" -> R.drawable.t3_personas
+      "devices" -> R.drawable.t3_devices
       "pullRequests" -> R.drawable.t3_pull_requests
       "usage" -> R.drawable.t3_usage
       else -> R.drawable.t3_settings

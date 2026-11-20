@@ -69,10 +69,10 @@ import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useVisibleThreadShells } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
-import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
+import { useEnvironments } from "../../state/environments";
+import { connectedSettingsTargets } from "./settings-environment-filter";
 import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
@@ -119,8 +119,8 @@ const lineOf = (v: unknown) =>
     : "Done.";
 
 export function SettingsHardwareRouteScreen() {
-  const environmentMenu = useSettingsEnvironmentMenu();
-  const { selectedTargets } = useSettingsEnvironmentFilter();
+  // the household's devices on every connected server, with no server to pick (D-038); rows name their machine
+  const selectedTargets = connectedSettingsTargets(useEnvironments().environments);
   const insets = useSafeAreaInsets();
   // What each server hears, so a Tessel several servers reach (a bridged broker) shows once, on its primary host.
   const [seen, setSeen] = useState<ReadonlyMap<EnvironmentId, ReadonlyArray<TesselSeen>>>(
@@ -139,7 +139,7 @@ export function SettingsHardwareRouteScreen() {
   const labelOf = (id: EnvironmentId) =>
     selectedTargets.find((e) => e.environmentId === id)?.label ?? id;
   return (
-    <SettingsScreen title="Tessels" menus={[environmentMenu]}>
+    <SettingsScreen title="Tessels">
       <ScreenScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"

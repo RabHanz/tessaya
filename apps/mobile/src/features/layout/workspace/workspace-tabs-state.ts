@@ -17,6 +17,12 @@ export type WorkspaceSearchTab = WorkspaceTab | "settings";
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
 /** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
+/** Tabs that are one page with no list or search: Usage, and Tessaya's Talk, Personas and Devices (D-038). */
+export const isPageTab = (
+  tab: WorkspaceTab | "settings" | undefined,
+): tab is "usage" | "talk" | "personas" | "devices" =>
+  tab === "usage" || tab === "talk" || tab === "personas" || tab === "devices";
+
 export function workspaceUsesColumns(tab: WorkspaceTab, settingsOpen = false) {
   return settingsOpen || tab === "threads" || tab === "pullRequests";
 }
@@ -53,6 +59,9 @@ export function initialWorkspaceTabsState(
       threads: emptyTab(),
       pullRequests: emptyTab(),
       usage: emptyTab(),
+      talk: emptyTab(),
+      personas: emptyTab(),
+      devices: emptyTab(),
       settings: emptyTab(),
     },
   };

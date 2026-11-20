@@ -19,6 +19,9 @@ export const WORKSPACE_TAB_LABELS = {
 };
 
 export const NAVIGATION_TAB_ICONS = {
+  talk: "mic",
+  personas: "person.2",
+  devices: "iphone",
   threads: "text.bubble",
   pullRequests: PullRequestGlyph.pullRequest,
   usage: "chart.bar.xaxis",
