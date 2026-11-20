@@ -175,10 +175,10 @@ export function CastSection({ environmentId }: { readonly environmentId: Environ
                 />
               }
             />
-            {b.form !== undefined && b.form !== "tumble" ? (
+            {b.kind === "desktop" && b.form !== undefined ? (
               <SettingsRow
                 title="Form"
-                description="How she shows here. She is the same self, with the same mood, in any form."
+                description="Her cartoon or her full body on the desk. She is the same self, with the same mood, in either."
                 control={
                   <span className="flex gap-1">
                     {(["cartoon", "human"] as const).map((form) => (

@@ -129,7 +129,7 @@ function CastSection(props: {
                   >
                     <ControlPill variant="pill" label={`Home: ${name(b.home)}`} />
                   </Menu>
-                  {b.form !== undefined && b.form !== "tumble" ? (
+                  {b.kind === "desktop" && b.form !== undefined ? (
                     <Menu
                       accessible
                       accessibilityRole="button"
