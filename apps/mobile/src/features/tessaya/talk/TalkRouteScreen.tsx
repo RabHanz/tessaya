@@ -32,7 +32,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 import { AppText as Text } from "../../../components/ui/AppText";
@@ -424,9 +424,11 @@ export function TalkRouteScreen() {
           </Text>
         </View>
       )}
-      <View
+      <SafeAreaView
+        // the native view reads its own safe area, which includes the floating iOS tab bar over this tab
+        edges={["bottom"]}
         className="absolute inset-x-0 bottom-0 gap-3 rounded-t-3xl bg-background/85 px-4 pt-4"
-        style={{ paddingBottom: insets.bottom + 12 }}
+        style={{ paddingBottom: 12 }}
         // the panel grows with her reply or the keyboard; her framing keeps her face above it
         onLayout={(e) => {
           if (screenHeight === 0) return;
@@ -522,7 +524,7 @@ export function TalkRouteScreen() {
                 : `Hold to talk to ${persona?.name ?? "her"}`}
           </Text>
         </Pressable>
-      </View>
+      </SafeAreaView>
     </View>
   );
 }
