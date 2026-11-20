@@ -99,6 +99,31 @@ export const nextDailyAt = (at: string, clockNowSeconds: number, now: number): n
   return now - (now % 1000) + wait * 1000;
 };
 
+/** How long Home Assistant has to fire a timed run before it counts as not run. */
+const FIRE_GRACE_MS = 60_000;
+/** A run this late or less is made up at once; later it is reported missed (scheduled tasks use the same 10 minutes). */
+export const LATE_RUN_MS = 10 * 60_000;
+
+/**
+ * What became of a time-of-day timer's last due run (`dueAt`, the last time its clock time came): still to come, ran
+ * (Home Assistant's last_triggered says so, even if this server was down to hear it), late (due while the house or this
+ * server was down, and still worth running now), or missed.
+ */
+export const timedRunFate = (input: {
+  readonly dueAt: number | null;
+  readonly setAt: number;
+  readonly lastTriggered: number | null;
+  readonly expiresAt: number | null;
+  readonly now: number;
+}): "waiting" | "ran" | "late" | "missed" => {
+  const { dueAt, now } = input;
+  if (dueAt === null || dueAt < input.setAt || now - dueAt < FIRE_GRACE_MS) return "waiting";
+  if (input.lastTriggered !== null && input.lastTriggered >= dueAt - 1000) return "ran";
+  return now - dueAt <= LATE_RUN_MS && (input.expiresAt === null || now < input.expiresAt)
+    ? "late"
+    : "missed";
+};
+
 export const UPCOMING_SOURCE_LABEL: Record<UpcomingItem["source"], string> = {
   house: "House",
   reminder: "Reminder",

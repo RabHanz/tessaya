@@ -330,6 +330,9 @@ export const runStandingJobs = async (
         clearTimeout(timer);
       }
     }
+    keep(run);
+  };
+  const keep = (run: StandingRun) => {
     did.push(run);
     state = {
       ...state,
@@ -337,9 +340,14 @@ export const runStandingJobs = async (
       counts:
         run.outcome === "held"
           ? state.counts
-          : { ...state.counts, [id]: (state.counts[id] ?? 0) + 1 },
+          : { ...state.counts, [run.id]: (state.counts[run.id] ?? 0) + 1 },
     };
   };
+  /** Its hour came today while Tessaya was off, so a run now is a made-up one. */
+  const missedToday = (id: BuiltInId, at: number) =>
+    firstHour > at && input.hour >= at && state.moved?.[id]?.day !== input.day;
+  const late = (id: BuiltInId, at: number, text: string) =>
+    missedToday(id, at) ? `Ran late: Tessaya was off at ${at}:00. ${text}` : text;
 
   for (const t of triggersFromCi(input.ci, input.now)) {
     const run = input.ci.find((r) => `ci:${r.repo}:${r.runId}` === t.id);
@@ -365,11 +373,26 @@ export const runStandingJobs = async (
     await attempt("morning_brief", input.day, async (signal) => {
       const text = await ops.brief(signal);
       if (!signal.aborted) state = { ...state, brief: { day: input.day, text } };
-      return "Built the morning brief.";
+      return late("morning_brief", BRIEF_HOUR, "Built the morning brief.");
     });
   }
   if (timeHasCome(state, "nightly_learning", input, LEARN_HOUR, firstHour))
-    await attempt("nightly_learning", input.day, (signal) => ops.learn(signal));
+    await attempt("nightly_learning", input.day, async (signal) =>
+      late("nightly_learning", LEARN_HOUR, await ops.learn(signal)),
+    );
+  for (const [id, at] of [
+    ["morning_brief", BRIEF_HOUR],
+    ["nightly_learning", LEARN_HOUR],
+  ] as const)
+    if (missedToday(id, at) && missedRunOf(state, id) === "skip" && isDue(state, id, input.day))
+      keep({
+        id,
+        key: input.day,
+        at: input.now,
+        outcome: "held",
+        status: "cancelled",
+        text: `Missed: Tessaya was off at ${at}:00, and this job skips a missed day.`,
+      });
   for (const f of input.findings) {
     if (f.kind !== "unanswered" || f.minutes < WAIT_MINUTES || input.quiet === true) continue;
     await attempt(

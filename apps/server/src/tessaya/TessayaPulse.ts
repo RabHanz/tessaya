@@ -53,6 +53,7 @@ import { HomeDevices } from "../home/HomeDevices.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BrainUsage, periodStarts } from "./BrainUsage.ts";
 import { houseZone } from "./houseZone.ts";
+import { LATE_RUN_MS } from "@t3tools/tessaya-shared/upcoming";
 import { readDndUntil, readQuietHours } from "./quietHours.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
 import * as TessayaHealth from "./TessayaHealth.ts";
@@ -182,6 +183,12 @@ const localClock = (zone: string): LocalClock => {
     };
   };
 };
+
+/** A reminder that came due while her brain was down says so, so she can say it is late. */
+export const dueText = (text: string, due: number, now: number, zone: string): string =>
+  now - due <= LATE_RUN_MS
+    ? `Due: ${text}`
+    : `Due at ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: zone }).format(due)}, late because Tessaya was offline then: ${text}`;
 
 const settingsNow = Effect.gen(function* () {
   const service = yield* Effect.serviceOption(ServerSettingsService);
@@ -319,7 +326,7 @@ export const sense = Effect.fn("TessayaPulse.sense")(function* (state: PulseStat
         events.push({
           id: `commit:${c.id}`,
           category: "reminders",
-          text: `Due: ${c.text}`,
+          text: dueText(c.text, c.due, now, zone),
           at: c.due,
           member: null,
           weight: 75,

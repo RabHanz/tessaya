@@ -74,6 +74,8 @@ export class TessayaOrchestrationReactor extends Context.Service<
   {
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
     readonly drain: Effect.Effect<void>;
+    /** Queues every work session with a rule: those that changed while the server was down fire now. */
+    readonly catchUp: Effect.Effect<void>;
     /** Evaluate one work session now. The reactor's own unit of work. */
     readonly evaluate: (input: {
       readonly workSessionId: WorkSessionId;
@@ -265,9 +267,23 @@ export const make = Effect.gen(function* () {
     ),
   );
 
+  // Their stored last state shows a transition no thread event will announce.
+  const catchUp = rules.list({}).pipe(
+    Effect.map((all) => new Set(all.map(({ rule }) => rule.workSessionId))),
+    Effect.flatMap((ids) =>
+      Effect.forEach(
+        ids,
+        (workSessionId) => worker.enqueue({ workSessionId, changedThreadId: null }),
+        { discard: true },
+      ),
+    ),
+    Effect.ignoreCause({ log: true }),
+  );
+
   const start: TessayaOrchestrationReactor["Service"]["start"] = Effect.fn(
     "BatonOrchestrationReactor.start",
   )(function* () {
+    yield* forkParked(catchUp);
     yield* forkParked(
       Stream.runForEach(engine.changedThreads, (threadId) =>
         workSessions.findForThread(threadId).pipe(
@@ -282,7 +298,12 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  return { start, drain: worker.drain, evaluate } satisfies TessayaOrchestrationReactor["Service"];
+  return {
+    start,
+    drain: worker.drain,
+    catchUp,
+    evaluate,
+  } satisfies TessayaOrchestrationReactor["Service"];
 });
 
 export const layer = Layer.effect(TessayaOrchestrationReactor, make);

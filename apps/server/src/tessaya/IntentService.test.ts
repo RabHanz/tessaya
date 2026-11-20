@@ -175,6 +175,7 @@ const baseLayer = (
       Layer.succeed(TessayaOrchestrationReactor, {
         start: () => Effect.void,
         drain: Effect.void,
+        catchUp: Effect.void,
         evaluate: () => Effect.succeed([]),
       }),
     ),

@@ -235,6 +235,32 @@ describe("the reactor's own evaluation", () => {
     ),
   );
 
+  it.effect("on start, fires on work that finished while the server was down", () =>
+    Effect.gen(function* () {
+      yield* givenFinishedWork;
+      currentThread = workingThread;
+      const rules = yield* OrchestrationRuleService;
+      const id = OrchestrationRuleId.make("rule-restart");
+      yield* rules.create({
+        id,
+        workSessionId,
+        trigger: { kind: "on_done" },
+        action: reviewAction,
+      });
+      const reactor = yield* TessayaOrchestrationReactor;
+      yield* reactor.evaluate({ workSessionId, changedThreadId: implThreadId });
+      assert.strictEqual(yield* ruleCount(id), 0);
+
+      // It finished with no one listening; no thread event comes after the restart.
+      currentThread = finishedThread;
+      yield* reactor.catchUp;
+      yield* reactor.drain;
+      assert.strictEqual(yield* ruleCount(id), 1);
+    }).pipe(
+      Effect.provide(harness({ startProviderSession: () => Effect.succeed(reviewThreadId) })),
+    ),
+  );
+
   it.effect("stops at the bound however many times the work finishes", () =>
     Effect.gen(function* () {
       yield* givenFinishedWork;

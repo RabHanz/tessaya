@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { BrainUsage } from "./BrainUsage.ts";
-import { beat, react } from "./TessayaPulse.ts";
+import { beat, dueText, react } from "./TessayaPulse.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
@@ -212,3 +212,15 @@ it.layer(base.pipe(Layer.provideMerge(askOneShot), Layer.provideMerge(inbox)))(
     );
   },
 );
+
+it("says a reminder is late when it came due while her brain was down", () => {
+  const due = Date.parse("2026-11-20T09:00:00Z");
+  assert.strictEqual(
+    dueText("call the bank", due, due + 60_000, "Asia/Karachi"),
+    "Due: call the bank",
+  );
+  assert.strictEqual(
+    dueText("call the bank", due, due + 3 * 3_600_000, "Asia/Karachi"),
+    "Due at 14:00, late because Tessaya was offline then: call the bank",
+  );
+});
