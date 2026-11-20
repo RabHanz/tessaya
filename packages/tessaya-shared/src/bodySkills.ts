@@ -4,6 +4,7 @@
  * meeting point in front of her trunk, so they meet surface to surface (never through each other) whatever her
  * posture, with each wrist turned so the palms face, and finger curl where the model has fingers.
  */
+import { contactPoint, type ContactPlace, type PalmShape, type TrunkPoint } from "./bodyContact.ts";
 import type { Euler, PoseBone } from "./bodyMotion.ts";
 import {
   clampJoint,
@@ -39,6 +40,21 @@ export const isTwoHandSkill = (s: unknown): s is TwoHandSkill =>
 /** Finger shape per hand as one clip entry, [curl 0..1, spread 0..1, thumb 0..1]: the renderer bends whatever finger bones the model has. */
 export const FINGER_KEYS = ["leftFingers", "rightFingers"] as const;
 export type FingerKey = (typeof FINGER_KEYS)[number];
+/**
+ * A clip frame's palms, [skin gap m, weight 0..1, offset kept along the palms 0..1]: the renderer closes her own palms
+ * to that gap (handIk), since the arm angles are solved on the reference body and her arms are not its length.
+ */
+export const PALMS_KEY = "palms";
+/**
+ * Where the palms meet, [ahead, up, 0] m from her upper chest in her trunk's frame on the 1.6 m body: the renderer
+ * puts the meeting there on her own midline, scaled to her height.
+ */
+export const MEET_KEY = "meet";
+/** Every clip key that is not a bone. */
+export const HAND_KEYS = [...FINGER_KEYS, PALMS_KEY, MEET_KEY] as const;
+export type HandKey = (typeof HAND_KEYS)[number];
+/** How much of the palms' offset along each other a skill keeps when they close: a rub slides, a clap lands. */
+const MEETS: Partial<Record<TwoHandSkill, number>> = { clap: 0, rub: 1, pray: 0, wring: 1 };
 
 type Side = "left" | "right";
 interface HandGoal {
@@ -88,6 +104,9 @@ const goals = (
   rate: number,
   k: number,
   frame: { readonly m: V3; readonly f: V3; readonly u: V3; readonly x: V3; readonly hips: V3 },
+  /** Placed by intent: the meeting point is `m` itself, not the skill's own spot in front of her. */
+  placed: boolean,
+  palm: PalmShape,
 ): Record<Side, HandGoal> => {
   const { f, u, x } = frame;
   const ph = rate * t;
@@ -106,11 +125,31 @@ const goals = (
       const big = style === "excited" ? 1 : style === "polite" ? 0.45 : 0.8;
       const open = (0.1 + 0.22 * k) * big;
       const p = ph - Math.floor(ph);
-      // a clap closes fast and lands, rests a moment, then opens slower: not a sine
+      // a clap speeds up into the impact, the palms stay pressed a moment, rebound a little, then open slower
+      // the rebound pops the palms a few mm apart at once, and the opening carries on from there
+      const rebound = 0.008 * k * smooth((p - 0.5) / 0.08);
       const g =
-        p < 0.3 ? open * (1 - (p / 0.3) ** 2) : p < 0.45 ? 0 : open * smooth((p - 0.45) / 0.55);
-      const at = mix([frame.m, 1], [u, style === "excited" ? 0.08 : -0.02], [f, 0.02]);
-      return facing(at, unit(mix([f, 1], [u, 0.75])), x, g, 0.02, 0);
+        p < 0.28
+          ? open * (1 - (p / 0.28) ** 2)
+          : p < 0.5
+            ? 0
+            : rebound * (1 - smooth((p - 0.5) / 0.5)) + open * smooth((p - 0.5) / 0.5) ** 2;
+      // a little higher when excited, unless she was asked where
+      const at = placed
+        ? frame.m
+        : mix([frame.m, 1], [f, -0.06], [u, style === "excited" ? 0.04 : 0]);
+      // the fingers point up and out, or up overhead, or down behind her back
+      const fromHips = v3.sub(at, frame.hips);
+      const fingers = unit(
+        dot(fromHips, f) < 0
+          ? mix([u, -1], [f, -0.3])
+          : dot(fromHips, u) > 0.45
+            ? mix([u, 1], [f, 1])
+            : mix([f, 1], [u, 0.75]),
+      );
+      // relaxed fingers, a little curled (cupped: a hollow between the palms), spreading as the hands open
+      const curl = (palm === "cupped" ? 0.4 : 0.06) + 0.08 * (open > 0 ? g / open : 0);
+      return facing(at, fingers, x, g, curl, open > 0 ? (0.35 * g) / open : 0);
     }
     case "rub": {
       const d = (style === "eager" ? 0.035 : 0.025) + 0.02 * k;
@@ -282,10 +321,16 @@ const bestArm = (
 /** One frame of a two-hand skill over a base posture: both arms, both wrists, and each hand's finger shape. */
 export const twoHandsAt = (
   skill: TwoHandSkill,
-  opts: { readonly rate?: number; readonly intensity?: number; readonly style?: string },
+  opts: {
+    readonly rate?: number;
+    readonly intensity?: number;
+    readonly style?: string;
+    readonly where?: ContactPlace | TrunkPoint;
+    readonly palm?: PalmShape;
+  },
   base: Partial<Record<PoseBone, Euler>>,
   t: number,
-): Partial<Record<PoseBone | FingerKey, Euler>> => {
+): Partial<Record<PoseBone | HandKey, Euler>> => {
   const local: Record<string, Q> = Object.fromEntries(
     Object.entries(base).map(([b, e]) => [b, qFromEuler(e as V3)]),
   );
@@ -294,24 +339,41 @@ export const twoHandsAt = (
   const f = qRotate(trunk, [0, 0, 1]);
   const u = qRotate(trunk, [0, 1, 0]);
   const x = qRotate(trunk, [1, 0, 0]);
-  const m = mix([w.pos["upperChest"]!, 1], [f, 0.3], [u, -0.08]);
+  // each skill's own spot is about a hand's breadth further out than a clap's, when she was not asked where
+  const [ahead, high, left] =
+    opts.where === undefined ? ([0.3, -0.08, 0] as const) : contactPoint(opts.where);
+  const m = mix([w.pos["upperChest"]!, 1], [f, ahead], [u, high], [x, left]);
   const styles: ReadonlyArray<string> = TWO_HAND_SKILLS[skill];
   const style = styles.includes(opts.style ?? "") ? opts.style! : styles[0]!;
   const rate = Math.max(0.1, Math.min(6, opts.rate ?? RATE[skill] * (style === "slow" ? 0.4 : 1)));
-  const g = goals(skill, style, Math.max(0, t), rate, opts.intensity ?? 0.8, {
-    m,
-    f,
-    u,
-    x,
-    hips: w.pos["hips"]!,
-  });
+  const g = goals(
+    skill,
+    style,
+    Math.max(0, t),
+    rate,
+    opts.intensity ?? 0.8,
+    { m, f, u, x, hips: w.pos["hips"]! },
+    opts.where !== undefined,
+    opts.palm ?? "flat",
+  );
   const wrists = Object.fromEntries(
     (["left", "right"] as const).map((s) => [
       `${s}Hand`,
       mix([g[s].palm, 1], [g[s].normal, -PALM_HALF], [g[s].fingers, -PALM_REACH]),
     ]),
   );
-  const out: Partial<Record<PoseBone | FingerKey, Euler>> = {};
+  const out: Partial<Record<PoseBone | HandKey, Euler>> = {};
+  const keep = MEETS[skill];
+  if (keep !== undefined) {
+    const gap = Math.max(PALM_CONTACT, dot(v3.sub(g.right.palm, g.left.palm), g.left.normal));
+    out[PALMS_KEY] = [Math.round(gap * 1000) / 1000, 1, keep];
+    const at = v3.sub(v3.scale(v3.add(g.left.palm, g.right.palm), 0.5), w.pos["upperChest"]!);
+    out[MEET_KEY] = [
+      Math.round(dot(at, f) * 1000) / 1000,
+      Math.round(dot(at, u) * 1000) / 1000,
+      Math.round(dot(at, x) * 1000) / 1000,
+    ];
+  }
   for (const s of ["left", "right"] as const) {
     const arm = bestArm(s, local, w, wrists[`${s}Hand`]!, handRot(s, g[s].fingers, g[s].normal));
     // the girdle is part of the skill: a performance's shrug or reach would carry the palms apart

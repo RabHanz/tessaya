@@ -245,12 +245,40 @@ const rhythmWords = (
   // a rubbing or clapping hand turns its wrist every beat, which is not a tremble; a real one is under a degree
   if (rubs < 4 && !clapping && turns(series("leftHand", 2), 0.003) >= 8)
     out.push("trembles in her hands");
-  if (clapping) out.push(`claps ${claps} times, palm to palm`);
+  if (clapping) out.push(`claps ${claps} times, palm to palm, ${clapPlace(frames, palms, meet)}`);
   else if (rubs >= 4) out.push(`rubs her hands together ${Math.ceil(rubs / 2)} times`);
   else if (arms >= 4) out.push(`beats her hands ${Math.ceil(arms / 2)} times`);
   if (rubs < 4 && wrings >= 2) out.push(`wrings her hands ${Math.ceil(wrings / 2)} times`);
   if (turns(series("chest", 0), 0.02) >= 2) out.push("breathes visibly");
   return out.length === 0 ? [] : [`through ${s} s she ${out.join(", ")}`];
+};
+
+/** Where the palms meet, in a viewer's words: where they are against her upper chest when they touch. */
+const clapPlace = (
+  frames: ReadonlyArray<Partial<Record<PoseBone, Euler>>>,
+  palms: ReadonlyArray<ReturnType<typeof palmsIn>>,
+  meet: ReadonlyArray<number>,
+): string => {
+  const at = frames.flatMap((f, i) =>
+    meet[i]! < 0.01
+      ? [
+          v3.sub(
+            v3.scale(v3.add(palms[i]!.left.palm, palms[i]!.right.palm), 0.5),
+            worldOf(f)["upperChest"]!,
+          ),
+        ]
+      : [],
+  );
+  const m = at.reduce<V3>((a, b) => v3.add(a, v3.scale(b, 1 / at.length)), [0, 0, 0]);
+  return m[1] > 0.2
+    ? "above her head"
+    : m[2] < -0.05
+      ? "behind her back"
+      : m[0] > 0.1
+        ? "out to her left"
+        : m[0] < -0.1
+          ? "out to her right"
+          : "in front of her chest";
 };
 
 /** How far a frame is from standing with arms down: the clip's most expressive moment is its peak. */

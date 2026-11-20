@@ -18,7 +18,21 @@ import {
   type Q,
   type V3,
 } from "./bodyRig.ts";
-import { isTwoHandSkill, TWO_HAND_SKILLS, twoHandsAt, type TwoHandSkill } from "./bodySkills.ts";
+import {
+  isContactPlace,
+  PALM_SHAPES,
+  type ContactPlace,
+  type PalmShape,
+  type TrunkPoint,
+} from "./bodyContact.ts";
+import {
+  isTwoHandSkill,
+  MEET_KEY,
+  PALMS_KEY,
+  TWO_HAND_SKILLS,
+  twoHandsAt,
+  type TwoHandSkill,
+} from "./bodySkills.ts";
 
 /**
  * Human speed ceilings per joint (rad/s), the most any frame may ask (M-069): peak values measured in fast human
@@ -64,6 +78,10 @@ export interface Perform {
     readonly skill?: TwoHandSkill;
     /** The skill's manner, one of `TWO_HAND_SKILLS[skill]`. */
     readonly style?: string;
+    /** Where the hands meet: a place (`CONTACT_PLACES`) or [ahead, up, left] m from her upper chest. */
+    readonly where?: ContactPlace | TrunkPoint;
+    /** The palms flat (a sharp clap) or cupped (a hollow one). */
+    readonly palm?: PalmShape;
   };
   /** Where her attention goes, when the direction says (a ball coming, a noise behind her): looks at `atMs`. */
   readonly focus?: ReadonlyArray<{ readonly x: number; readonly y: number; readonly atMs: number }>;
@@ -359,7 +377,7 @@ export const speedRatio = (frames: ReadonlyArray<Pose>, fps: number): number => 
   for (let i = 1; i < frames.length; i += 1)
     for (const [b, e] of Object.entries(frames[i]!)) {
       const was = frames[i - 1]![b as PoseBone];
-      if (was === undefined) continue;
+      if (was === undefined || b === PALMS_KEY || b === MEET_KEY) continue;
       worst = Math.max(worst, (qAngle(qFromEuler(was), qFromEuler(e)) * fps) / JOINT_SPEED(b));
     }
   return worst;
@@ -605,6 +623,8 @@ export const performCues = (
         ...(hz > 0 ? { rate: beatHz } : {}),
         intensity: q.k,
         ...(p.hands?.style === undefined ? {} : { style: p.hands.style }),
+        ...(p.hands?.where === undefined ? {} : { where: p.hands.where }),
+        ...(p.hands?.palm === undefined ? {} : { palm: p.hands.palm }),
       },
       from,
       Math.min(tm.hold, ms - beatFrom) / 1000,
@@ -613,11 +633,20 @@ export const performCues = (
     // one envelope for both arms: staggered joints would carry one palm through the other on the way in
     const e = handEnvelope(tm, ms - ORDER("leftUpperArm") * tm.stagger);
     for (const [b, to] of Object.entries(there)) {
-      out[b] = /Fingers$/.test(b)
-        ? (to.map((x) => Math.round(x * e * 100) / 100) as unknown as Euler)
-        : (qToEuler(
-            qSlerp(qFromEuler((from[b as PoseBone] ?? [0, 0, 0]) as V3), qFromEuler(to as V3), e),
-          ).map((x) => Math.round(x * 1000) / 1000) as unknown as Euler);
+      out[b] =
+        b === MEET_KEY
+          ? to
+          : b === PALMS_KEY
+            ? ([to[0], Math.round(to[1]! * e * 100) / 100, to[2]] as unknown as Euler)
+            : /Fingers$/.test(b)
+              ? (to.map((x) => Math.round(x * e * 100) / 100) as unknown as Euler)
+              : (qToEuler(
+                  qSlerp(
+                    qFromEuler((from[b as PoseBone] ?? [0, 0, 0]) as V3),
+                    qFromEuler(to as V3),
+                    e,
+                  ),
+                ).map((x) => Math.round(x * 1000) / 1000) as unknown as Euler);
     }
     return out;
   };
@@ -814,6 +843,16 @@ const dims = <K extends string>(v: unknown, keys: ReadonlyArray<K>): Partial<Rec
       ) as Partial<Record<K, number>>)
     : {};
 /** A performance off the wire, bounded; errors say how to fix it. */
+/** A two-hand skill's place: a named one, or a finite [ahead, up, left] point. */
+const whereOf = (v: unknown): ContactPlace | TrunkPoint | undefined =>
+  isContactPlace(v)
+    ? v
+    : Array.isArray(v) &&
+        v.length === 3 &&
+        v.every((x) => typeof x === "number" && Number.isFinite(x))
+      ? ([v[0], v[1], v[2]] as const)
+      : undefined;
+
 export const decodePerform = (
   raw: unknown,
 ):
@@ -862,6 +901,10 @@ export const decodePerform = (
         ...(isTwoHandSkill(h["skill"]) &&
         (TWO_HAND_SKILLS[h["skill"]] as ReadonlyArray<unknown>).includes(h["style"])
           ? { style: h["style"] as string }
+          : {}),
+        ...(whereOf(h["where"]) === undefined ? {} : { where: whereOf(h["where"])! }),
+        ...((PALM_SHAPES as ReadonlyArray<unknown>).includes(h["palm"])
+          ? { palm: h["palm"] as PalmShape }
           : {}),
       }
     : undefined;

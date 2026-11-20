@@ -83,10 +83,13 @@ import {
 } from "@t3tools/tessaya-shared/bodyRig";
 import type { BodyState } from "@t3tools/tessaya-shared/bodyControl";
 import { INVOLUNTARY, performCues } from "@t3tools/tessaya-shared/bodyPlanner";
-import { FINGER_KEYS, fingerBones } from "@t3tools/tessaya-shared/bodySkills";
+import { contactFeel } from "@t3tools/tessaya-shared/bodyContact";
+import { FINGER_KEYS, fingerBones, PALM_CONTACT } from "@t3tools/tessaya-shared/bodySkills";
 import { gaitAt, gaitOf, type Gait } from "@t3tools/tessaya-shared/bodyGait";
 import type { BodyTarget } from "@t3tools/tessaya-shared/bodyLocomotion";
 import type { StageMount, StageSpot } from "@t3tools/tessaya-shared/rooms";
+import { meetPalms, palmOf, palmWorld, turnWorld, type Arm } from "./handIk.ts";
+import { handSkinsOf, skinBetween, skinOverlap } from "./handSkin.ts";
 import { softenOnContact } from "./softContact.ts";
 import IDLE_URL from "./assets/idle-neutral.vrma?url";
 import {
@@ -200,6 +203,47 @@ const mirroredOf = (vrm: VRM): boolean => {
   arm.quaternion.identity();
   vrm.update(0);
   return lowered > rest;
+};
+/** A clip's palms at this gap or closer are meant to touch; her skin is then closed to SKIN_TOUCH_M. */
+const SKIN_TOUCH_M = 0.0005;
+/** No part of either hand more than this inside the other. */
+const SKIN_PEN_M = 0.002;
+/** Each hand's real skin (palm, and palm with fingers) on a model. */
+const skinsOf = (vrm: VRM) => {
+  const sides = new Map<THREE.Object3D, "left" | "right">();
+  const palms = new Set<THREE.Object3D>();
+  for (const [name, b] of Object.entries(vrm.humanoid.humanBones)) {
+    const m = /^(left|right)(Hand|Thumb|Index|Middle|Ring|Little)/.exec(name);
+    if (!b?.node || m === null) continue;
+    sides.set(b.node, m[1] as "left" | "right");
+    if (m[2] === "Hand") palms.add(b.node);
+  }
+  return handSkinsOf(
+    vrm.scene,
+    (bone) => sides.get(bone) ?? null,
+    (bone) => palms.has(bone),
+  );
+};
+/** Each arm's drawn bones, and its palm measured on the hand's own skin at rest. */
+const armsOf = (vrm: VRM, skin: ReadonlyArray<{ bone: string; p: V3 }>, height: number) => {
+  const one = (s: "left" | "right"): Arm | null => {
+    const raw = (b: string) => vrm.humanoid.getRawBoneNode(b as VRMHumanBoneName);
+    const [upper, lower, end] = [raw(`${s}UpperArm`), raw(`${s}LowerArm`), raw(`${s}Hand`)];
+    if (!upper || !lower || !end) return null;
+    const knuckles = ["Index", "Middle", "Ring", "Little"].flatMap((f) => {
+      const n = raw(`${s}${f}Proximal`);
+      return n ? [n.getWorldPosition(new THREE.Vector3())] : [];
+    });
+    const k =
+      knuckles.length === 0
+        ? null
+        : knuckles.reduce((m, p) => m.add(p), new THREE.Vector3()).divideScalar(knuckles.length);
+    const own = skin.filter((x) => x.bone === `${s}Hand`).map((x) => x.p);
+    return { upper, lower, end, palm: palmOf(end, k, own, height) };
+  };
+  const left = one("left");
+  const right = one("right");
+  return left && right ? { left, right } : null;
 };
 /**
  * Up to ~30k of the model's skinned vertices at rest, each with the humanoid bone that moves it most: what the rig
@@ -438,6 +482,8 @@ export function mountBody(
         /** How much of his hand met her (cm²: a fingertip is ~1, a palm ~60) and how firmly (0..1). */
         readonly area?: number;
         readonly pressure?: number;
+        /** Her own hand on herself (a clap, a hand on her arm), felt by her alone. */
+        readonly self?: boolean;
         /** What her nerves made of it (bodySense.ts): how strongly it fired, 0..1, the fibres that led, and its speed. */
         readonly felt?: {
           readonly intensity: number;
@@ -820,6 +866,205 @@ export function mountBody(
   // the rig of the model on screen, every bone's spring toward its target, and what the last target needed fixing
   let rig: Rig | null = null;
   let manifest: RigManifest | null = null;
+  /**
+   * For checks: each palm's skin centre and facing (world), their distance, and the nearest her two hands' skin comes
+   * (both mm), read off the drawn mesh.
+   */
+  const palmsOf = () => {
+    if (vrm === null || arms === null) return null;
+    vrm.scene.updateMatrixWorld(true);
+    const side = (arm: Arm) => {
+      const p = new THREE.Vector3();
+      const n = new THREE.Vector3();
+      palmWorld(arm, p, n);
+      return { at: p.toArray(), normal: n.toArray() };
+    };
+    const left = side(arms.left);
+    const right = side(arms.right);
+    // her real skin: the palms' least signed distance, and the deepest either hand (fingers too) is in the other
+    const skin = skins === null ? null : skinBetween(skins.left, skins.right);
+    const deep = skins === null ? null : skinOverlap(skins.left, skins.right);
+    const mm = (x: number) => Math.round(x * 10000) / 10;
+    return {
+      left,
+      right,
+      centresMm: mm(new THREE.Vector3(...left.at).distanceTo(new THREE.Vector3(...right.at))),
+      facing: -new THREE.Vector3(...left.normal).dot(new THREE.Vector3(...right.normal)),
+      skinGapMm: skin === null ? null : mm(skin.gap),
+      overlapMm: deep === null ? null : mm(deep.depth),
+      overlapPart: deep?.part?.name ?? null,
+      contactCm2: skin === null ? null : Math.round(skin.area * 1e5) / 10,
+    };
+  };
+  const meetP = new THREE.Vector3();
+  const trunkL = new THREE.Vector3();
+  const trunkU = new THREE.Vector3();
+  const trunkF = new THREE.Vector3();
+  const trunkA = new THREE.Vector3();
+  /** Her trunk's frame now: left, up (chest to neck) and ahead, unit; false without the bones. */
+  const trunkFrame = () => {
+    const h = vrm?.humanoid;
+    const la = h?.getRawBoneNode("leftUpperArm");
+    const ra = h?.getRawBoneNode("rightUpperArm");
+    const top = h?.getRawBoneNode("upperChest") ?? h?.getRawBoneNode("chest");
+    const neck = h?.getRawBoneNode("neck");
+    if (!la || !ra || !top || !neck) return false;
+    la.getWorldPosition(trunkL).sub(ra.getWorldPosition(trunkA)).normalize();
+    neck.getWorldPosition(trunkU).sub(top.getWorldPosition(trunkA)).normalize();
+    trunkF.crossVectors(trunkL, trunkU).normalize();
+    return true;
+  };
+  /** Where a clip's palms meet on her: her own midline, ahead of her upper chest, at her scale. */
+  const meetAt = (): THREE.Vector3 | null => {
+    if (meet === null || !trunkFrame()) return null;
+    const top = vrm!.humanoid.getRawBoneNode("upperChest") ?? vrm!.humanoid.getRawBoneNode("chest");
+    const k = (rig?.height ?? 1.6) / 1.6;
+    return top!
+      .getWorldPosition(meetP)
+      .addScaledVector(trunkF, meet[0] * k)
+      .addScaledVector(trunkU, meet[1] * k);
+  };
+  /**
+   * Her body goes with closing hands: the shoulders draw forward and her chest and head dip a little as they meet,
+   * over whatever her idle is doing (added to the drawn bones, before the arms reach).
+   */
+  const engage = (gap: number, weight: number) => {
+    if (vrm === null || !trunkFrame()) return;
+    const close = weight * Math.max(0, 1 - gap / 0.08);
+    if (close <= 0) return;
+    const h = vrm.humanoid;
+    for (const [b, a] of [
+      ["chest", 0.035],
+      ["neck", 0.03],
+      ["head", 0.045],
+    ] as const) {
+      const node = h.getRawBoneNode(b);
+      // about her left: her front dips
+      if (node) turnWorld(node, trunkL, a * close);
+    }
+    for (const side of ["left", "right"] as const) {
+      const node = h.getRawBoneNode(`${side}Shoulder`);
+      // about her up: each shoulder comes forward
+      if (node) turnWorld(node, trunkU, (side === "left" ? -1 : 1) * 0.07 * close);
+    }
+  };
+  /** Her hands' real skin, measured each frame two-hand contact is being made. */
+  let skins: ReturnType<typeof skinsOf> = null;
+  /** Each drawn bone's humanoid name: which finger a contact reading came from. */
+  let humanOf = new Map<THREE.Object3D, string>();
+  /** How far her skin's own gap differs from the palm points' (m): learned at each contact, used between them. */
+  let skinBias = 0;
+  /** The palms' skin now, the last gap a clip asked for and when, and her own touch on herself (for her nerves). */
+  let skinNow: { gap: number; area: number } | null = null;
+  let palmsWas: { gap: number; at: number } | null = null;
+  let selfTouch: { impact: number; since: number; area: number; depth: number } | null = null;
+  const tipW = new THREE.Vector3();
+  const rootW = new THREE.Vector3();
+  const awayW = new THREE.Vector3();
+  const axisW = new THREE.Vector3();
+  const palmP = new THREE.Vector3();
+  /**
+   * A finger (a thumb, most often) that the palms' contact has pushed into the other hand turns aside, out of the
+   * contact, its whole chain from its root, until no part of either hand is more than 2 mm inside the other.
+   */
+  const clearFingers = () => {
+    if (skins === null || arms === null || vrm === null) return;
+    for (let pass = 0; pass < 6; pass++) {
+      const o = skinOverlap(skins.left, skins.right);
+      if (o.depth <= SKIN_PEN_M || o.part === null) return;
+      const name = humanOf.get(o.part);
+      const m =
+        name === undefined ? null : /^(left|right)(Thumb|Index|Middle|Ring|Little)/.exec(name);
+      if (m === null) return;
+      const side = m[1] as "left" | "right";
+      const root =
+        vrm.humanoid.getRawBoneNode(
+          `${side}${m[2]}${m[2] === "Thumb" ? "Metacarpal" : "Proximal"}` as VRMHumanBoneName,
+        ) ?? vrm.humanoid.getRawBoneNode(`${side}${m[2]}Proximal` as VRMHumanBoneName);
+      if (root === null) return;
+      // away from the other hand is back along this palm's own facing
+      palmWorld(arms[side], palmP, awayW);
+      awayW.negate();
+      root.getWorldPosition(rootW);
+      o.part.getWorldPosition(tipW).sub(rootW);
+      if (tipW.lengthSq() < 1e-8) (root.children[0] ?? root).getWorldPosition(tipW).sub(rootW);
+      axisW.crossVectors(tipW, awayW);
+      if (axisW.lengthSq() < 1e-10) return;
+      turnWorld(
+        root,
+        axisW.normalize(),
+        Math.min(0.35, (1.5 * o.depth) / Math.max(0.02, tipW.length()) + 0.06),
+      );
+    }
+  };
+  /**
+   * Two-hand contact closed on her real skin: the palms go to the gap asked, then the skin is measured and the gap
+   * corrected until the palms' skin is 0-1 mm apart (or the gap asked, when that is wider), a few passes at most.
+   */
+  const closePalms = (now: number) => {
+    if (palms === null || arms === null || palms[1] <= 0) {
+      skinNow = null;
+      palmsWas = null;
+      selfTouch = null;
+      return;
+    }
+    const centre = meetAt() ?? undefined;
+    engage(palms[0], palms[1]);
+    // the first few mm of a rebound are the skin springing back: still touching
+    const want = palms[0] <= PALM_CONTACT + 0.002 ? SKIN_TOUCH_M : palms[0];
+    let gap = palms[0] + skinBias;
+    meetPalms(arms.left, arms.right, gap, palms[1], palms[2], centre);
+    // the skin is read only near contact (cheap enough there, nothing to do further apart)
+    if (skins === null || palms[0] > 0.02 || palms[1] < 0.99) skinNow = null;
+    else {
+      for (let pass = 0; pass < 4; pass++) {
+        skinNow = skinBetween(skins.left, skins.right);
+        const err = skinNow.gap - want;
+        if (Math.abs(err) <= 0.0005) break;
+        gap -= err;
+        meetPalms(arms.left, arms.right, gap, palms[1], palms[2], centre);
+      }
+      skinBias = gap - palms[0];
+      clearFingers();
+    }
+    // the palms' skin met: felt from how fast they closed, how much skin, and how deep
+    const touching = skinNow !== null && skinNow.gap <= 0.001;
+    if (touching && selfTouch === null) {
+      const speed =
+        palmsWas === null
+          ? 0
+          : Math.max(0, palmsWas.gap - palms[0]) / Math.max(1e-3, (now - palmsWas.at) / 1000);
+      selfTouch = {
+        impact: speed,
+        since: now,
+        area: skinNow!.area,
+        depth: Math.max(0, -skinNow!.gap),
+      };
+      options.onTouch?.("leftHand", "hand", {
+        kind: "clap",
+        intensity: Math.min(1, speed / 3),
+        speed,
+        area: Math.round(skinNow!.area * 1e4),
+        pressure: contactFeel({
+          impact: speed,
+          sinceMs: 0,
+          depth: selfTouch.depth,
+          areaCm2: skinNow!.area * 1e4,
+        }).pressure,
+        self: true,
+      });
+    } else if (touching && selfTouch !== null) {
+      selfTouch.area = skinNow!.area;
+      selfTouch.depth = Math.max(0, -skinNow!.gap);
+    } else selfTouch = null;
+    palmsWas = { gap: palms[0], at: now };
+  };
+  /** Her arms as drawn, with each palm measured on her skin: what two-hand contact closes on. */
+  let arms: { readonly left: Arm; readonly right: Arm } | null = null;
+  /** A clip's palms this frame: [skin gap m, weight 0..1, offset kept along the palms 0..1]. */
+  let palms: Euler | null = null;
+  /** And where they meet: [ahead, up] from her upper chest on the 1.6 m body (bodySkills MEET_KEY). */
+  let meet: Euler | null = null;
   let springs = new Map<string, BoneSpring>();
   let springing = false;
   let lastSpring = 0;
@@ -855,6 +1100,7 @@ export function mountBody(
   let insetBottom = 0;
   let headY = 1.4;
   let camYaw = 0;
+  let camPitch = 0;
   let touchAs: string | null = null;
   // owner extensions: a playing clip, extra touch regions, and model expressions standing in for states and faces
   let clip: (Extract<BodyCue, { kind: "clip" }> & { start: number }) | null = null;
@@ -1089,6 +1335,10 @@ export function mountBody(
         vrm.humanoid.getNormalizedBoneNode(b as VRMHumanBoneName)?.rotation.set(e[0], e[1], e[2]);
       fingersBent[i] = shape !== undefined;
     }
+    palms = shapes["palms"] ?? null;
+    meet = shapes["meet"] ?? null;
+    delete shapes["palms"];
+    delete shapes["meet"];
     // the rig's work is redone only when the target changes (a held posture costs nothing per frame)
     const key = JSON.stringify(bones);
     if (key !== goalKey) {
@@ -1245,9 +1495,9 @@ export function mountBody(
     }
     const lift = framing === "body" ? 0.02 * headY : 0.08;
     camera.position.set(
-      camAim.x + Math.sin(camYaw) * camAim.dist,
-      camAim.y + lift,
-      Math.cos(camYaw) * camAim.dist,
+      camAim.x + Math.sin(camYaw) * Math.cos(camPitch) * camAim.dist,
+      camAim.y + lift + Math.sin(camPitch) * camAim.dist,
+      Math.cos(camYaw) * Math.cos(camPitch) * camAim.dist,
     );
     // the camera stays where he is: when she walks over she comes closer to him
     camera.lookAt(camAim.x, camAim.y, 0);
@@ -1559,6 +1809,8 @@ export function mountBody(
     if (mirrored) flipVrm0(vrm);
     vrm.update(delta);
     aimLock();
+    // palms meet on her own hands, after everything else has posed the arms: the clip was authored on another body
+    closePalms(now);
     // shape keys asked for by name go on after the expressions, which would otherwise reset the ones they bind
     for (const [name, w] of Object.entries({ ...shapes, ...morphHold }))
       for (const k of shapeKeys.get(name) ?? [])
@@ -1704,7 +1956,15 @@ export function mountBody(
     });
     morphHold = {};
     rig = rigOf(next);
-    rig = { ...rig, proxies: fitProxies(rig, skinSamples(next)) };
+    const samples = skinSamples(next);
+    rig = { ...rig, proxies: fitProxies(rig, samples) };
+    arms = armsOf(next, samples, rig.height);
+    skins = skinsOf(next);
+    humanOf = new Map(
+      Object.entries(next.humanoid.humanBones).flatMap(([n, b]) =>
+        b?.node ? [[b.node, n] as const] : [],
+      ),
+    );
     manifest = manifestOf(rig, {
       expressions: (next.expressionManager?.expressions ?? []).map((e) => e.expressionName),
       morphs: [...shapeKeys.keys()],
@@ -2007,7 +2267,28 @@ export function mountBody(
    * arcs that firing sets off act on her body after their own latency, before any word reaches her brain.
    */
   const feelNerves = (now: number) => {
+    const own =
+      selfTouch === null
+        ? []
+        : [
+            {
+              region: "hand",
+              ...contactFeel({
+                impact: selfTouch.impact,
+                sinceMs: now - selfTouch.since,
+                depth: selfTouch.depth,
+                areaCm2: selfTouch.area * 1e4,
+              }),
+            },
+          ];
     const on = handFrame !== null && handHeld && nerveRegion !== null;
+    if (!on && own.length > 0) {
+      const step = fire(sense, nerves, own, now);
+      nerves = step.state;
+      const f = feltOf(step.rates)[0];
+      if (f !== undefined) nerveFelt = { intensity: f.intensity, kind: f.kind, cmPerS: 0 };
+      return;
+    }
     if (!on && nerves.at === 0) return;
     if (!on) {
       nerves = fire(sense, nerves, [], now).state;
@@ -2036,6 +2317,7 @@ export function mountBody(
                 pressure: grip.kind === "skin" ? h.pressure : 0.2,
               }),
         },
+        ...own,
       ],
       now,
     );
@@ -2916,8 +3198,10 @@ export function mountBody(
       invalidate();
     },
     /** Move the camera round her (radians); her eyes follow him there. */
-    orbit: (yaw: number) => {
-      camYaw = Math.max(-1.2, Math.min(1.2, yaw));
+    /** Turns the camera round her (rad, either way to her side) and, for checks, up over her (`pitch`, rad). */
+    orbit: (yaw: number, pitch = 0) => {
+      camYaw = Math.max(-1.6, Math.min(1.6, yaw));
+      camPitch = Math.max(0, Math.min(1.45, pitch));
       lastMove = performance.now();
       invalidate();
     },
@@ -2936,9 +3220,11 @@ export function mountBody(
       const world = Object.fromEntries(
         Object.entries(skeleton()).map(([k, v]) => [k, v.map((x) => Math.round(x * 1e4) / 1e4)]),
       );
+      const palmsNow = palmsOf();
       if (vrm === null || handMesh === null || !handMesh.group.visible || handFrame === null)
         return {
           world,
+          palms: palmsNow,
           hand: null,
           held: grip === null ? null : { kind: grip.kind, root: grip.root },
         };
@@ -2975,6 +3261,7 @@ export function mountBody(
       for (const [x, side] of sides) x.side = side;
       return {
         world,
+        palms: palmsNow,
         hand: {
           points: points.map((p) => [p.x, p.y, p.z]),
           insideMm: inside,
