@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mayRecast, onBody, VISIT_MS, wearing } from "./cast.ts";
+import { formOf, mayRecast, onBody, VISIT_MS, wearing } from "./cast.ts";
 
 const roster = [
   { id: "tessaya", name: "Tessaya" },
@@ -63,5 +63,16 @@ describe("mayRecast", () => {
     expect(mayRecast("ask", false)).toBe(false);
     expect(mayRecast("wake", true)).toBe(false);
     expect(mayRecast("turn", true)).toBe(false);
+  });
+});
+
+describe("formOf", () => {
+  it("is his choice on any body but a Tessel, which is always Tumble, else what the body draws", () => {
+    expect(formOf("desktop", undefined)).toBe("cartoon");
+    expect(formOf("phone", undefined)).toBe("human");
+    expect(formOf("phone", { form: "cartoon" })).toBe("cartoon");
+    expect(formOf("desktop", { form: "human" })).toBe("human");
+    expect(formOf("r1", { form: "human" })).toBe("tumble");
+    expect(formOf("desktop", { form: "tumble" })).toBe("cartoon");
   });
 });

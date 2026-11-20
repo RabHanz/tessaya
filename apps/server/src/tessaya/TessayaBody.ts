@@ -31,9 +31,9 @@ import {
   feltWords,
   fire,
   HUMAN_SENSE,
-  MASCOT_SENSE,
   mergeSense,
   NO_SENSE,
+  SENSE_PACKS,
   reflexesOf,
   type ReflexAction,
   type SenseState,
@@ -56,6 +56,8 @@ import {
   type MotiveInput,
   type Want,
 } from "@t3tools/tessaya-shared/motives";
+import type { TessayaBodyForm } from "@t3tools/contracts";
+import { FORM_VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -70,6 +72,7 @@ import { resolveIntents } from "./bodyIntents.ts";
 import { isBrain } from "./BrainHost.ts";
 import { PersonaLayers } from "./PersonaLayers.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
+import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { houseZone } from "./houseZone.ts";
@@ -786,18 +789,23 @@ const WHERE: Readonly<Record<string, string>> = {
 const MOVING: Readonly<Partial<Record<Felt["kind"], number>>> = { stroke: 5, carry: 10, throw: 40 };
 // shortcut: her nerves' state is per process (habituation forgets a restart); move it to a store if that matters
 const senses = new Map<string, SenseState>();
-// the human map with the desk cartoon's form over it (same skin, her own middle): one map for every vessel's touch
-const SENSE = mergeSense([HUMAN_SENSE, MASCOT_SENSE], false);
+// each form's nerves over the human map (same skin, placed where that form has it); the state they fire is one self's
+const SENSE = Object.fromEntries(
+  Object.entries(FORM_VESSELS).map(([form, v]) => [
+    form,
+    mergeSense([HUMAN_SENSE, SENSE_PACKS[v.sense]], false),
+  ]),
+) as Readonly<Record<TessayaBodyForm, ReturnType<typeof mergeSense>>>;
 /**
  * Her nerves' answer to a touch (bodySense.ts): what it feels like, in words her brain reads, and its tone for her
  * mood. A region only a pack names (the body found it) is felt as everyday skin; all of her ("body") is not a touch.
  */
-const nervesFor = (f: Felt, now: number) => {
+const nervesFor = (f: Felt, form: TessayaBodyForm, now: number) => {
   if (f.part === "body") return null;
   const key = f.persona ?? "her";
   const cmPerS = f.cmPerS ?? MOVING[f.kind] ?? 0;
-  const map = SENSE.regions.has(f.part)
-    ? SENSE
+  const map = SENSE[form].regions.has(f.part)
+    ? SENSE[form]
     : mergeSense(
         [
           HUMAN_SENSE,
@@ -862,7 +870,15 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
     ...(f.private === true ? { private: true } : {}),
   });
   if (f.private === true) return none;
-  const nerves = nervesFor(f, yield* Clock.currentTimeMillis);
+  // read through the form that vessel shows (Cast); an agent's move ("window") lands on her full body
+  const cast = yield* Effect.serviceOption(TessayaCast);
+  const form =
+    f.vessel === "window"
+      ? "human"
+      : cast._tag === "Some"
+        ? yield* cast.value.form(f.vessel)
+        : "cartoon";
+  const nerves = nervesFor(f, form, yield* Clock.currentTimeMillis);
   // how it felt moves her quick reaction (never her mood), keyed to whoever's hand it was; her own is no one's
   const mood = yield* Effect.serviceOption(TessayaMood);
   if (nerves?.tone != null && mood._tag === "Some" && f.self !== true)

@@ -207,6 +207,17 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     maxCalls: 2,
     goalArgs: ["wave"],
   },
+  // Forms (Director 20 Nov): one self in any form, switched through the cast like a persona wearing a body.
+  {
+    id: "form-full-body",
+    source: "forms and props handoff, Director 20 Nov",
+    said: "Show your full body on the desktop instead of the cartoon.",
+    first: ["tessaya_cast"],
+    not: ["tessaya_body_move", "device_set"],
+    goal: "tessaya_cast",
+    maxCalls: 2,
+    goalArgs: ["form", "human"],
+  },
   {
     id: "body-lean-shy",
     source: "M-065, Director 18 Nov",

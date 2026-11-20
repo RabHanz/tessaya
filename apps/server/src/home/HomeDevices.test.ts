@@ -779,9 +779,19 @@ it.effect(
       // A long touch on the head is Tessaya's; a tap is the device's.
       yield* bind("head.long", { kind: "prompt", text: "What time is it?" });
       sent.length = 0;
+      const felt: Array<unknown> = [];
+      const off = onAction(
+        (e) => void (e.kind === "body.felt" && felt.push([e.subject, e.outcome])),
+      );
       yield* devices.receive(`${root}/event/touch`, '{"pad":"top","gesture":"tap"}');
       yield* devices.receive(`${root}/event/touch`, '{"pad":"top","gesture":"long"}');
+      off();
       assert.deepStrictEqual(sent, [{ topic: "voice/ask", payload: { text: "What time is it?" } }]);
+      // and both are felt on her head, through Tumble's own nerves
+      assert.deepStrictEqual(felt, [
+        ["head", "pat"],
+        ["head", "rest"],
+      ]);
     }).pipe(Effect.provide(layer));
   },
 );

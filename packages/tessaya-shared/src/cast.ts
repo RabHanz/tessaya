@@ -4,6 +4,7 @@
  * persona visits until the conversation ends, unless he said "stay". Mood is not here: a body asks the one mood
  * function (TessayaMood) with the persona it wears.
  */
+import type { TessayaBodyForm } from "@t3tools/contracts";
 
 /** A body's standing rule, kept in the `tessayaCast` server setting (the desktop's in its own settings). */
 export interface BodyCast {
@@ -13,7 +14,23 @@ export interface BodyCast {
   readonly follows?: boolean | undefined;
   /** Others beside the one it wears, where the body can show several (the desktop). */
   readonly crew?: ReadonlyArray<string> | undefined;
+  /** The form she takes here, when he chose one (formOf). */
+  readonly form?: TessayaBodyForm | undefined;
 }
+
+/**
+ * The form she takes on a body: a Tessel is always Tumble's own, any other body his choice, else what it draws today
+ * (the phone's Talk tab draws a human body; her cartoon everywhere else). One self in every form: mood isn't here.
+ */
+export const formOf = (kind: string, cast: BodyCast | undefined): TessayaBodyForm =>
+  // the registry's kind for a Tessel, and the devices door's
+  kind === "r1" || kind === "agora-r1"
+    ? "tumble"
+    : cast?.form !== undefined && cast.form !== "tumble"
+      ? cast.form
+      : kind === "phone"
+        ? "human"
+        : "cartoon";
 
 /** A called-upon move: temporary, it returns home once the conversation lapses, unless he said "stay". */
 export interface Visit {

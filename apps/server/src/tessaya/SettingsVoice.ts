@@ -90,7 +90,7 @@ export const SERVER_SETTINGS_VOICE: {
   ),
   tessayaFeedbackGithub: owner("opening a GitHub issue for each problem report"),
   tessayaCast: free(
-    'the cast: which persona lives on each Tessel and whether it follows; tessaya_cast does this. Its value is an object by device id: {"<device id>": {"home": "<persona>", "follows": false, "crew": []}}',
+    'the cast: which persona lives on each Tessel and whether it follows; tessaya_cast does this. Its value is an object by device id: {"<device id>": {"home": "<persona>", "follows": false, "crew": [], "form": "cartoon" or "human"}}',
   ),
   newSessionsRun: free("whether new sessions run in Tessaya or a terminal"),
   mainThreadId: owner("which thread is the main session"),
