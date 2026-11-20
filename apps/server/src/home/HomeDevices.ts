@@ -2852,7 +2852,12 @@ const make = Effect.gen(function* () {
         return done(`The eyes show ${c.mood}.`);
       case "led":
         yield* publish(id, "cmd/led/set", { ...LED[c.color], mode: "solid" });
-        return done(`The light is ${c.color}.`);
+        // Green is only her live mic light (firmware 0.3.176): any status colour shows red, so say what he sees.
+        return done(
+          c.color === "standby"
+            ? "The status light is off."
+            : "The status light is on, red. Green is only for her live microphone.",
+        );
       case "volume": {
         const reported = yield* registry.value(id, "audio.volume");
         const before =
