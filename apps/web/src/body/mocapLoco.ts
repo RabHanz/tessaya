@@ -97,10 +97,8 @@ export const bakeLoco = (
   const last = raw[n - 1]!;
   const rootAt = (i: number) => {
     const r = raw[i]!;
-    if (loop) {
-      const p = first.hips.clone().lerp(last.hips, i / (n - 1)).setY(0);
-      return { p, yaw: yawOf(last.hips.clone().sub(first.hips).setY(0)) };
-    }
+    // a walk's root is her hips over the floor, heading along the stride: a stance foot stays exactly where it landed
+    if (loop) return { p: r.hips.clone().setY(0), yaw: yawOf(last.hips.clone().sub(first.hips).setY(0)) };
     return { p: r.feet[0]!.clone().add(r.feet[1]!).multiplyScalar(0.5).setY(0), yaw: r.heading };
   };
   const r0 = rootAt(0);
@@ -130,8 +128,9 @@ export const bakeLoco = (
       const b = raw[Math.min(n - 1, i + 1)]!.feet[k]!;
       return Math.hypot(b.x - a.x, b.z - a.z) * (fps / 2);
     };
-    // on the floor (within 4 cm of its lowest) and moving under 20 cm/s: standing on it, or pivoting on it
-    const plant = [0, 1].map((k) => r.feet[k]!.y < floor + 0.04 && step(k) < 0.2) as [boolean, boolean];
+    // flat on the floor (the ankle within 2 cm of its lowest: once the heel lifts, the foot rolls onto its ball) and
+    // moving under 20 cm/s: standing on it, or pivoting on it
+    const plant = [0, 1].map((k) => r.feet[k]!.y < floor + 0.02 && step(k) < 0.2) as [boolean, boolean];
     return {
       bones,
       hips: [h.x, h.y, h.z],

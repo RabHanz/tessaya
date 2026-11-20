@@ -1325,9 +1325,24 @@ export function mountBody(
             },
     };
   };
+  let walkDX = 0;
+  let walkDZ = 0;
+  /** A walk loop's root at frame `f` (fractional, any number of loops on): where its strides have carried her. */
+  const loopRoot = (c: LocoClip, f: number): readonly [number, number] => {
+    const n = c.frames.length - 1;
+    const laps = Math.floor(f / n);
+    const i = Math.floor(f - laps * n);
+    const t = f - laps * n - i;
+    // frames run 0..n, the last the first again one stride on: in a stride, frame i and the next one
+    const a = c.frames[i]!.root;
+    const b = c.frames[i + 1]!.root;
+    const end = c.frames[n]!.root;
+    return [a[0] + (b[0] - a[0]) * t + laps * end[0], a[1] + (b[1] - a[1]) * t + laps * end[1]];
+  };
   /** A captured clip's frame `f` (fractional), each bone between its two nearest frames. */
   const locoFrame = (c: LocoClip, f: number, wrapAround: boolean) => {
-    const n = c.frames.length;
+    // a loop's last frame is its first again
+    const n = wrapAround ? c.frames.length - 1 : c.frames.length;
     const i = wrapAround ? ((Math.floor(f) % n) + n) % n : Math.max(0, Math.min(n - 1, Math.floor(f)));
     const j = wrapAround ? (i + 1) % n : Math.min(n - 1, i + 1);
     return { a: c.frames[i]!, b: c.frames[j]!, t: wrapAround || i < n - 1 ? f - Math.floor(f) : 0 };
@@ -1348,8 +1363,11 @@ export function mountBody(
         return from[k]! + (v - from[k]!) * w;
       }) as unknown as Euler;
     }
-    locoHips = [0, 1, 2].map((k) => a.hips[k]! + (b.hips[k]! - a.hips[k]!) * t) as unknown as LocoFrame["hips"];
-    locoW = w;
+    const hips = [0, 1, 2].map((k) => a.hips[k]! + (b.hips[k]! - a.hips[k]!) * t);
+    // a second capture this frame (a walk taking over a turn) fades in over the first
+    const was = locoW > 0 ? locoHips : null;
+    locoHips = (was === null ? hips : hips.map((v, k) => was[k]! + (v - was[k]!) * w)) as unknown as LocoFrame["hips"];
+    locoW = Math.max(locoW, w);
     locoPlant = t < 0.5 ? a.plant : b.plant;
   };
   const minJerk = (p: number) => {
@@ -1381,11 +1399,22 @@ export function mountBody(
         travelZ = turnClip.z0 - Math.sin(yaw) * root[0]! + Math.cos(yaw) * root[1]!;
       }
       // a walk after it takes over its last steps
-      const w =
-        loco.walk !== null && now >= loco.walk.start
-          ? 0
-          : Math.min(1, ms / LOCO_BLEND_MS, (loco.ms - ms) / LOCO_BLEND_MS);
-      if (w > 0) showLoco(out, base, at, Math.max(0, w));
+      const w = Math.min(1, ms / LOCO_BLEND_MS, (loco.ms - ms) / LOCO_BLEND_MS);
+      if (w > 0) {
+        showLoco(out, base, at, Math.max(0, w));
+        // she looks first, then her shoulders come round, then her hips: the head ~200 ms ahead, the trunk twisting
+        const turn = loco.to - loco.from;
+        const lead = (k: number) => turn * (minJerk(u * k) - minJerk(u)) * w;
+        for (const [bone, k, share] of [
+          ["neck", 1.25, 0.35],
+          ["head", 1.25, 0.35],
+          ["chest", 1.12, 0.3],
+          ["upperChest", 1.12, 0.3],
+        ] as const) {
+          const e = out[bone] ?? base[bone] ?? [0, 0, 0];
+          out[bone] = [e[0], e[1] + lead(k) * share, e[2]];
+        }
+      }
     } else {
       facing = loco.from + (loco.to - loco.from) * minJerk(u);
       // the head gets there first: a lead that grows as the turn starts and is gone as the body arrives
@@ -1417,10 +1446,17 @@ export function mountBody(
         const c = gaits.walk;
         const clipSpeed = c.ahead / ((c.frames.length - 1) / c.fps);
         const rate = w.gait.speed / clipSpeed;
+        // she goes as far as the capture's own root goes between these two moments: her stance foot does not slide
+        const from = loopRoot(c, w.phase);
         w.phase += rate * ramp * dt * c.fps;
-        step = w.gait.speed * ramp * dt;
+        const to = loopRoot(c, w.phase);
+        const dx = to[0] - from[0];
+        const dz = to[1] - from[1];
+        step = Math.hypot(dx, dz);
+        walkDX = dx;
+        walkDZ = dz;
         const blend = Math.min(1, (t * 1000) / LOCO_BLEND_MS, (left * 1000) / LOCO_BLEND_MS + 0.05);
-        showLoco(out, base, locoFrame(c, w.phase, true), Math.max(0, blend));
+        showLoco(out, { ...base, ...out }, locoFrame(c, w.phase, true), Math.max(0, blend));
       } else {
         const frame = gaitAt(stepRig(), w.gait, t, base, ramp);
         Object.assign(out, frame.bones);
@@ -1436,9 +1472,14 @@ export function mountBody(
         });
       else {
         // no host carries her: she goes across the floor herself, the way she faces
-        const yaw = baseYaw + facing + (gaits?.walk.restYaw ?? 0);
-        travelX += Math.sin(yaw) * step;
-        travelZ += Math.cos(yaw) * step;
+        const yaw = baseYaw + facing;
+        if (gaits !== null) {
+          travelX += Math.cos(yaw) * walkDX + Math.sin(yaw) * walkDZ;
+          travelZ += -Math.sin(yaw) * walkDX + Math.cos(yaw) * walkDZ;
+        } else {
+          travelX += Math.sin(yaw) * step;
+          travelZ += Math.cos(yaw) * step;
+        }
       }
       if (w.travelled >= w.metres) {
         loco.walk = null;
@@ -1546,16 +1587,31 @@ export function mountBody(
   const planted = [new THREE.Vector3(), new THREE.Vector3()];
   const plantedOn = [false, false];
   const footTurn = new THREE.Quaternion();
+  const legA = new THREE.Vector3();
+  const legB = new THREE.Vector3();
+  const legC = new THREE.Vector3();
+  let stance = false;
   const plantFeet = () => {
+    if (locoW > 0) stance = true;
     for (const [k, side] of (["left", "right"] as const).entries()) {
       const leg = legs?.[side];
-      if (leg === undefined || locoW === 0 || !locoPlant[k]) {
+      // after a walk or turn her feet stay where they were set down (she stops as she stands), until she moves again
+      const standing = locoW === 0 && stance && !posture().grounded;
+      if (leg === undefined || (!standing && (locoW === 0 || !locoPlant[k]))) {
         plantedOn[k] = false;
         continue;
       }
       if (!plantedOn[k]) {
         leg.end.getWorldPosition(planted[k]!);
         plantedOn[k] = true;
+        continue;
+      }
+      // a leg that cannot reach where its foot was set down lets it go (the body has moved on: the next step)
+      const long =
+        leg.upper.getWorldPosition(legA).distanceTo(leg.lower.getWorldPosition(legB)) +
+        legB.distanceTo(leg.end.getWorldPosition(legC));
+      if (legA.distanceTo(planted[k]!) > 0.99 * long) {
+        plantedOn[k] = false;
         continue;
       }
       leg.end.getWorldQuaternion(footTurn);
@@ -1779,6 +1835,7 @@ export function mountBody(
     if (grip === null) giveToHand(now);
     // walking to or from him: steps while the distance closes, then she stands
     if (closer !== closerTo) {
+      stance = false;
       const stride = WALK_SPEED * delta;
       closer =
         Math.abs(closerTo - closer) <= stride
@@ -3524,6 +3581,7 @@ export function mountBody(
     /** Where she stands on a shared stage (metres across and toward him) and how big. */
     setPlace: (x: number, z: number, scale: number) => {
       root.position.set(x, 0, z);
+      stance = false;
       root.scale.setScalar(scale);
       invalidate();
     },
