@@ -17,11 +17,16 @@ export interface MotionSeen {
   liftedAt: number;
   /** A voice session is open on it (`state/voice` start to stop; `event/session/*` on older firmware). */
   live: boolean;
+  /** Since when she has been upside down, and how many of FLIP_FELT_MIN she has felt since. */
+  flippedAt: number | null;
+  flipFelt: number;
 }
 export const freshSeen = (): MotionSeen => ({
   placement: null,
   liftedAt: Number.NEGATIVE_INFINITY,
   live: false,
+  flippedAt: null,
+  flipFelt: 0,
 });
 
 export interface MotionMoment {
@@ -32,7 +37,12 @@ export interface MotionMoment {
   readonly busy: boolean;
   /** A voice session is open now: the only time a moment may speak, as a line said there opens nothing. */
   readonly live: boolean;
+  /** Left upside down this many minutes: felt again, more each time (Director 20 Nov). */
+  readonly forMin?: number;
 }
+
+/** Still upside down after this many minutes: she feels it again, each time more. */
+const FLIP_FELT_MIN = [10, 30, 60, 120] as const;
 
 const RESTING = new Set(["bench", "desk", "dock", "bedside", "perch", "plush"]);
 const HELD = new Set(["handheld", "carried"]);
@@ -140,10 +150,18 @@ export const motionMoment = (
     }
   }
   // Firmware 0.3.169+: she settled upside down from his side (M-101); felt, never a reason to speak mid-turn.
-  if (tail === "event/orientation")
-    return body?.["frame"] === "flipped"
-      ? { how: "flipped", strong: false, busy: seen.live, live: seen.live }
-      : null;
+  if (tail === "event/orientation") {
+    const flipped = body?.["frame"] === "flipped";
+    seen.flippedAt = flipped ? now : null;
+    seen.flipFelt = 0;
+    return flipped ? { how: "flipped", strong: false, busy: seen.live, live: seen.live } : null;
+  }
+  // Any later message from her (her wake stats come each minute) times how long the flip has lasted.
+  const due = FLIP_FELT_MIN[seen.flipFelt];
+  if (seen.flippedAt !== null && due !== undefined && now - seen.flippedAt >= due * 60_000) {
+    seen.flipFelt += 1;
+    return { how: "flipped", strong: false, busy: seen.live, live: seen.live, forMin: due };
+  }
   if (tail === "state/placement") {
     const next = typeof body?.["placement"] === "string" ? body["placement"] : null;
     const was = seen.placement;

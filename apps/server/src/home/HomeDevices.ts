@@ -1752,7 +1752,10 @@ const make = Effect.gen(function* () {
         vessel: id,
         source: "motion",
         expiresAfterTurns: 2,
-        line: `A moment ago your body was ${HANDLED_WORDS[m.how]} (its motion sensor): mention it only if it fits.`,
+        line:
+          m.forMin === undefined
+            ? `A moment ago your body was ${HANDLED_WORDS[m.how]} (its motion sensor): mention it only if it fits.`
+            : `Your body has been ${HANDLED_WORDS[m.how]} for ${m.forMin} minutes now (its motion sensor), and it is getting uncomfortable: mention it only if it fits.`,
       });
     const feel = MOMENT_HAPTICS[m.how];
     if (feel !== null && !buzzed) yield* buzz(id, feel, "reactions", quiet);
@@ -1779,7 +1782,7 @@ const make = Effect.gen(function* () {
     yield* audit(
       { who: `the ${DEVICE}'s motion sensor`, surface: "agent" },
       id,
-      `moved: ${m.how}`,
+      m.forMin === undefined ? `moved: ${m.how}` : `moved: ${m.how} for ${m.forMin} min`,
       said === null ? "her eyes answered" : `she said "${said.text}"`,
     );
   });

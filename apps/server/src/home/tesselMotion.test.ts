@@ -53,6 +53,20 @@ describe("motionMoment", () => {
     });
   });
 
+  it("feels a long flip again at 10, 30, 60 and 120 minutes, and stops once righted", () => {
+    const seen = freshSeen();
+    const min = 60_000;
+    motionMoment("event/orientation", { frame: "flipped", mode: "auto" }, seen, 0);
+    const felt = [5, 10, 11, 30, 61, 200].map(
+      (m) => motionMoment("event/wake/stats", {}, seen, m * min)?.forMin ?? null,
+    );
+    expect(felt).toEqual([null, 10, null, 30, 60, 120]);
+    expect(motionMoment("event/wake/stats", {}, seen, 500 * min)).toBeNull();
+    motionMoment("event/orientation", { frame: "flipped", mode: "auto" }, seen, 0);
+    motionMoment("event/orientation", { frame: "upright", mode: "auto" }, seen, min);
+    expect(motionMoment("event/wake/stats", {}, seen, 20 * min)).toBeNull();
+  });
+
   it("hears a gentle pick-up in the placement alone, once per handling", () => {
     // 16 Nov 07:30: dock to carried with no lift event.
     const seen = freshSeen();
