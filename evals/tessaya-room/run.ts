@@ -37,6 +37,7 @@ import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speak
 import { CONVERSATION_END } from "../../packages/tessaya-shared/src/stopPhrases.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
+import { toneOf } from "../../packages/tessaya-shared/src/expressionMap.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
 import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { diagnose } from "../../packages/tessaya-shared/src/health.ts";
@@ -690,6 +691,7 @@ const context = (
   ...(c.feeling === undefined && c.since === undefined
     ? {}
     : { feeling: [c.feeling ?? "", c.since ?? ""].filter((l) => l !== "").join(" ") }),
+  ...(c.tone === undefined ? {} : { tone: c.tone }),
   self:
     (c.persona === undefined
       ? DEFAULT_OS_PACK.personas.find((p) => p.lead)
@@ -834,11 +836,14 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
           ],
           dir,
         );
-        calls.push(...ran.lines.flatMap(toolUsesOf).map((u) => u.tool.replace(PREFIX, "")));
+        const used = ran.lines.flatMap(toolUsesOf);
+        calls.push(...used.map((u) => u.tool.replace(PREFIX, "")));
         reply = withoutNarration(
           resultOf(ran.lines),
           DEFAULT_OS_PACK.personas.map((p) => p.name),
         );
+        // As brainTurn does: once a tool has run, her reply is a task's and any tone mark is dropped.
+        if (used.length > 0) reply = toneOf(reply).text;
         firstMs.push(ran.firstMs);
       } else {
         const ran = await claude(

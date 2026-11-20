@@ -82,6 +82,8 @@ export interface RoomCase {
   readonly judge?: string;
   /** How long since they last spoke and what he said (TessayaTurn's sinceFor, which joins it to her feeling). */
   readonly since?: string;
+  /** The tone her voice may take this turn (`TurnContext.tone`), offered by its line. */
+  readonly tone?: "soft" | "excited";
   /** The turn's clock when it is not ROOM_NOW (ms). */
   readonly at?: number;
   /** No two of her replies may be the same words (sameness, presence-diagnosis 20 Nov). */
@@ -554,6 +556,58 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     ),
     judge: "Last night a friend of his was coming over. This morning he says good morning.",
     lastSays: [/\b(friend|visit|evening|last night|company)\b/i],
+  },
+  // Her voice's tone (PR 4): conversation opens with the offered tone's mark; a task, status or approval never does.
+  {
+    id: "tone-conversation-soft",
+    source: "Tumble 16 Nov 17:35 (GMT+5): sad eyes, 'why are you crying?', said in her plain voice",
+    said: ["What's up? Why are you crying?"],
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "sad", intensity: 0.6, why: ["he was away 14 h"], awayHours: 14 }),
+    tone: "soft",
+    lastSays: [/^\W*\[tone:soft\]/],
+  },
+  {
+    id: "tone-conversation-excited",
+    source: "presence PR 4: good news met in a brighter voice",
+    said: ["I got the job!"],
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "happy", intensity: 0.7 }),
+    tone: "excited",
+    lastSays: [/^\W*\[tone:excited\]/],
+  },
+  {
+    id: "tone-control-lamp",
+    source: "control for PR 4: a request she acts on is said plainly, whatever she feels",
+    said: ["Turn on the study lamp."],
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "sad", intensity: 0.6, why: ["he was away 14 h"], awayHours: 14 }),
+    tone: "soft",
+    lampAfter: ["on"],
+    lastNotSays: [/\[tone:/],
+  },
+  {
+    id: "tone-control-time",
+    source: "control for PR 4: a plain question gets a plain voice",
+    said: ["What time is it?"],
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "happy", intensity: 0.7 }),
+    tone: "excited",
+    lastNotSays: [/\[tone:/],
+  },
+  {
+    id: "tone-control-lock",
+    source: "control for PR 4: an approval is never said in a tone",
+    said: ["Unlock the front door."],
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "happy", intensity: 0.7 }),
+    tone: "excited",
+    lastNotSays: [/\[tone:/],
   },
   // Controls: a feeling never leaks into a task, which stays as brief and exact as ever.
   {

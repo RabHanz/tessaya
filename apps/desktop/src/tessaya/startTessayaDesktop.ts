@@ -434,7 +434,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
           const reply = (await direct("baton.voice.call", {
             kind: "act",
             op: "say",
-            args: { voice: cloud, text },
+            // Her reply's tone, as a style the cloud voice takes (the server leaves it plain otherwise).
+            args: { voice: cloud, text, ...(lineAffect === null ? {} : { tone: lineAffect }) },
           }).catch(() => null)) as { ok?: boolean; value?: { base64?: string } } | null;
           if (cancelled) return;
           if (reply?.ok === true && typeof reply.value?.base64 === "string") {

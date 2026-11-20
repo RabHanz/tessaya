@@ -47,6 +47,7 @@ effectIt.effect(
                 Effect.succeed({
                   block: "",
                   feeling: "",
+                  tone: null,
                   ids: [],
                   privateBlock: "",
                   conversation: { key: "household", turns: [] },

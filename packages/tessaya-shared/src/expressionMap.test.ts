@@ -15,6 +15,10 @@ import {
   PROPS,
   propTagOf,
   renderFor,
+  toneFor,
+  toneLine,
+  toneMark,
+  toneOf,
 } from "./expressionMap.ts";
 
 describe("clips by name", () => {
@@ -37,6 +41,25 @@ describe("clips by name", () => {
     expect(clipFor(body, "angry", "Idle")).toBe("Neutral_Idle");
     expect(clipFor(body, "happy", "Fidget")).toBeNull();
     expect(clipFor(VESSELS.pill, "happy", "Idle")).toBeNull();
+  });
+});
+
+describe("her voice's tone", () => {
+  it("a strong feeling takes its tone, a mild one or a calm one speaks plainly", () => {
+    expect(toneFor("sad", 0.6)).toBe("soft");
+    expect(toneFor("happy", 0.5)).toBe("excited");
+    // Playful, tender and whisper are the private layer's (VOXTA I5): never a public reply's tone.
+    expect(toneFor("curious", 0.5)).toBeNull();
+    expect(toneFor("sad", 0.3)).toBeNull();
+    expect(toneFor("neutral", 1)).toBeNull();
+    expect(toneFor("focused", 1)).toBeNull();
+  });
+
+  it("reads the tone her reply opens with and takes every mark out, a made-up tone too", () => {
+    expect(toneOf("[tone:soft] I missed you.")).toEqual({ tone: "soft", text: "I missed you." });
+    expect(toneOf("[tone:angry] Fine.")).toEqual({ tone: null, text: "Fine." });
+    expect(toneOf("Lamp's on.")).toEqual({ tone: null, text: "Lamp's on." });
+    expect(toneLine("soft")).toContain(toneMark("soft"));
   });
 });
 

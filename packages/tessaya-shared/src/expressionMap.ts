@@ -5,7 +5,12 @@
  * no surface keeps its own emotion table.
  */
 import type { TessayaBodyForm } from "@t3tools/contracts";
-import { R1_MOODS, type ExpressionMood } from "@t3tools/tessaya-contracts";
+import {
+  R1_MOODS,
+  isAffectVariant,
+  type AffectVariant,
+  type ExpressionMood,
+} from "@t3tools/tessaya-contracts";
 import type { HandledHow } from "./affect.ts";
 import type { SensePackId } from "./bodySense.ts";
 import type { HapticHardware } from "./haptics.ts";
@@ -52,6 +57,11 @@ export interface EmotionLook {
   readonly blocks?: ReadonlyArray<string>;
   /** The voice's style for engines that take one (§5.2). */
   readonly style: string;
+  /**
+   * Out loud: the recorded tone of his clone that carries it (VOXTA G1), when the mood is strong (TONE_AT). Only
+   * soft and excited: tender, whisper and playful are the private layer's deliveries (VOXTA I5).
+   */
+  readonly tone?: Extract<AffectVariant, "soft" | "excited">;
   /** The light's dye (§5.4, MA-016). */
   readonly dye?: Dye;
   /** A buzz that may carry it once as it arrives, where a vessel has a motor. */
@@ -67,6 +77,7 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     kin: [],
     sound: "laugh",
     style: "warm, lightly smiling",
+    tone: "excited",
     dye: "weld",
     haptic: "purr",
   },
@@ -75,6 +86,7 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     props: ["crown"],
     sound: "laugh",
     style: "warm, quietly pleased",
+    tone: "excited",
     dye: "weld",
   },
   curious: {
@@ -100,6 +112,7 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
   surprised: {
     kin: ["surprise", "curious"],
     style: "brightly surprised",
+    tone: "excited",
     dye: "weld",
     haptic: "tap",
   },
@@ -108,12 +121,14 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     props: ["nightcap", "sleepmask"],
     blocks: ["[excited]"],
     style: "quiet, relaxed, lower energy",
+    tone: "soft",
     dye: "damson",
   },
   concerned: {
     kin: ["worried", "sad"],
     blocks: NO_LAUGH,
     style: "gentle, slower, kind",
+    tone: "soft",
     dye: "damson",
   },
   steady: {
@@ -127,6 +142,7 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     sound: "sigh",
     blocks: NO_LAUGH,
     style: "gentle, a little quieter, warm",
+    tone: "soft",
     dye: "indigo",
     haptic: "heartbeat",
   },
@@ -135,12 +151,14 @@ export const EMOTIONS: Readonly<Record<ExpressionMood, EmotionLook>> = {
     props: ["bandage"],
     blocks: NO_LAUGH,
     style: "gentle, a little quieter",
+    tone: "soft",
     dye: "indigo",
   },
   lonely: {
     kin: ["sad"],
     sound: "sigh",
     style: "wistful, then bright",
+    tone: "soft",
     dye: "indigo",
     haptic: "heartbeat",
   },
@@ -183,6 +201,39 @@ export const PROPS: ReadonlyArray<string> = (
   "chefhat gradcap detective beanie crown headset glasses sunglasses sleepmask bandage lightbulb raincloud " +
   "sun snowflake wifioff batterylow notes laptop cake plant books"
 ).split(" ");
+
+/** Her voice takes a mood's tone only this strong: a mild mood speaks plainly. */
+export const TONE_AT = 0.4;
+
+/** The tone her voice may take for a reply in this mood, or null for her plain voice. */
+export const toneFor = (
+  label: string,
+  intensity: number,
+): Extract<AffectVariant, "soft" | "excited"> | null =>
+  intensity >= TONE_AT ? (lookOf(label).tone ?? null) : null;
+
+/** A tone as a style for a voice that takes one (a cloud voice); undefined for anything else. */
+export const toneStyle = (tone: string | undefined): string | undefined =>
+  tone === "soft" ? EMOTIONS.sad.style : tone === "excited" ? EMOTIONS.happy.style : undefined;
+
+/** In a reply, the mark she opens it with to say it in a tone; stripped before anything is shown, said or kept. */
+export const toneMark = (tone: AffectVariant): string => `[tone:${tone}]`;
+const TONE_MARKS = /\[tone:([a-z]{1,20})\]\s*/g;
+
+/** A reply's first valid tone mark, and its text with every tone mark taken out (a stray one never reaches a voice). */
+export const toneOf = (
+  text: string,
+): { readonly tone: AffectVariant | null; readonly text: string } => {
+  const first = [...text.matchAll(TONE_MARKS)].map((m) => m[1]!).find(isAffectVariant) ?? null;
+  return { tone: first, text: text.replace(TONE_MARKS, "") };
+};
+
+/**
+ * The turn's line offering her the tone: only conversation takes it. A request she acts on, a device, a status, an
+ * approval, a warning or an alarm is said in her plain voice.
+ */
+export const toneLine = (tone: AffectVariant): string =>
+  `Your voice can carry how you feel: when this reply is talk about you, them or how you both are, begin it with ${toneMark(tone)}, written exactly. Anything else is said plainly, with no mark: a request you act on, a question for a fact (the time, a device, the weather, their work), an approval, a warning or an alarm.`;
 
 /** A prop only comes out for a mood this strong (the spine's intensity, 0 to 1): a mild mood is the face alone. */
 export const PROP_AT = 0.6;

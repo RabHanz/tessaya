@@ -430,6 +430,40 @@ describe("the room voice loop", () => {
     expect(m.text).toBe("turn on the study light");
   });
 
+  it("says a reply her brain opened with a tone in that tone of the persona's clone, never the mark itself", async () => {
+    const spoken: Array<[string, string | undefined]> = [];
+    const t = setup({
+      brain: async function* () {
+        yield "[tone:soft]";
+        yield " I missed you too. ";
+      },
+      speak: async function* (text, _signal, voice) {
+        spoken.push([text, voice]);
+        yield new Int16Array(16_000);
+      },
+    });
+    t.room.personas([
+      {
+        id: "executive",
+        name: "Tessaya",
+        voice: "http://127.0.0.1/clone.safetensors",
+        cloneUrl: "/clone.safetensors",
+        cloneTones: { soft: "http://127.0.0.1/clone.affect-soft.safetensors" },
+      },
+    ]);
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 8);
+    await t.metrics;
+    await t.feed(false, 30);
+    const reply = spoken.filter(([text]) => /missed/.test(text));
+    expect(reply.length).toBeGreaterThan(0);
+    expect(
+      reply.every(([, voice]) => voice === "http://127.0.0.1/clone.affect-soft.safetensors"),
+    ).toBe(true);
+    expect(spoken.some(([text]) => text.includes("[tone"))).toBe(false);
+  });
+
   it("shows a stage direction's face and asks for its buzz on its word, once her sentence is playing (G7)", async () => {
     const fired: Array<{ args: readonly unknown[]; framesBefore: number }> = [];
     const t = setup({
@@ -1819,6 +1853,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
           voice: "alba",
           lead: false,
           cloneUrl: "/tessaya/voice/embedding/k/c.safetensors",
+          cloneTones: { soft: "/tessaya/voice/embedding/k/c.affect-soft.safetensors", bad: 3 },
         },
         { id: "bad", voice: "eve" },
         {
@@ -1839,6 +1874,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
         name: "Nova",
         voice: "alba",
         cloneUrl: "/tessaya/voice/embedding/k/c.safetensors",
+        cloneTones: { soft: "/tessaya/voice/embedding/k/c.affect-soft.safetensors" },
       },
     ]);
     t.room.personas(roster!);
