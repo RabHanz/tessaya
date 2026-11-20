@@ -475,7 +475,9 @@ export interface Stage {
   /** That persona's chest (world), into a vector the caller keeps; false when there is none. */
   readonly chestOf: (id: string, into: THREE.Vector3) => boolean;
   /** Where a persona's hand is laid on another body here, if it is: the reaching arm's target. */
-  readonly touchOf: (by: string) => Contact | null;
+  readonly touchOf: (by: string) => (Contact & { readonly who: string }) | null;
+  /** That persona's hand has arrived on the body it touches: the touch is felt from now. */
+  readonly land: (by: string) => void;
 }
 /** A hand laid on a body: the palm's point on her skin, the way the palm faces (into her), how firmly, and how far off. */
 export interface Contact {
@@ -484,8 +486,10 @@ export interface Contact {
   readonly pressure: number;
   readonly lift: number;
 }
-/** A persona's own arm takes this long to reach the one it touches on a shared stage, before the touch is felt. */
+/** A persona's own arm takes this long to reach the one it touches on a shared stage. */
 const REACH_MS = 450;
+/** The touched body waits this long at most for that arm (and a step in, when she stands too far) to land. */
+const LAND_WAIT_MS = 6000;
 /** And this long to come back when it lets go. */
 const RETURN_MS = 400;
 
@@ -944,6 +948,7 @@ export function mountBody(
   let reachLast = 0;
   let reachLift = 0;
   let reachFelt = 0;
+  let landed = false;
   const reachTo = new THREE.Vector3();
   const reachFace = new THREE.Vector3();
   const reachP = new THREE.Vector3();
@@ -972,10 +977,33 @@ export function mountBody(
         arms![s].upper.getWorldPosition(reachA).distanceTo(reachTo);
       reaching = { side: d("left") <= d("right") ? "left" : "right", k: 0 };
     }
+    // too far to reach from where she stands: she steps in to about arm's length first, then reaches
+    const arm0 = arms[reaching.side];
+    const span =
+      arm0.upper.getWorldPosition(reachA).distanceTo(arm0.lower.getWorldPosition(reachB)) +
+      reachB.distanceTo(arm0.end.getWorldPosition(reachP));
+    const far = c !== null && reachA.distanceTo(reachTo) > 1.05 * span;
+    if (far && loco === null && reaching.k === 0)
+      cue({
+        kind: "walk",
+        to: { kind: "persona", id: c.who },
+        speed: 0.7,
+        style: "stroll",
+        stop: 0.32,
+      });
+    const stepping = loco?.walk != null;
     reaching.k = Math.max(
       0,
-      Math.min(1, reaching.k + (c === null ? -dt / RETURN_MS : dt / REACH_MS)),
+      Math.min(
+        1,
+        reaching.k + (c === null ? -dt / RETURN_MS : stepping || far ? 0 : dt / REACH_MS),
+      ),
     );
+    if (c !== null && reaching.k === 1 && !landed) {
+      landed = true;
+      shared.stage.land(shared.id);
+    }
+    if (c === null) landed = false;
     const w = reaching.k * reaching.k * (3 - 2 * reaching.k);
     const side = reaching.side;
     const arm = arms[side];
@@ -2598,7 +2626,8 @@ export function mountBody(
       react: by !== null && c.motion !== "grab" ? { strength: c.pressure, from } : null,
     };
     if (by !== null) {
-      agentTouch.start += REACH_MS;
+      // felt when her hand lands there (the stage says so), or after a wait at most
+      agentTouch.start += LAND_WAIT_MS;
       shared!.stage.wake(0, by);
     }
     // the nerves under the hand fire, wherever it actually landed on her
@@ -3768,6 +3797,13 @@ export function mountBody(
     tick: (now: number) => frame(now),
     /** For a shared stage: the hand persona `id` lays on her now, if any, and where her chest is. */
     touchedBy,
+    /** For a shared stage: persona `id`'s hand has landed on her; the touch it lays is felt from now. */
+    landedBy: (id: string) => {
+      if (agentTouch?.by === id && performance.now() < agentTouch.start) {
+        agentTouch.start = performance.now();
+        invalidate();
+      }
+    },
     /**
      * For checks: how far her surface is from a point along a direction (m; negative when the point is inside her),
      * her hair aside; null when nothing of her is within 20 cm that way.
@@ -3883,9 +3919,12 @@ export function mountBodies(
     touchOf: (by) => {
       for (const { id, body } of list) {
         const c = id === by ? null : body.touchedBy(by);
-        if (c !== null) return c;
+        if (c !== null) return { ...c, who: id };
       }
       return null;
+    },
+    land: (by) => {
+      for (const { body } of list) body.landedBy(by);
     },
   };
   const resize = () => {
