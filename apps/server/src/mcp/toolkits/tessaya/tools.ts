@@ -958,6 +958,26 @@ const VocabularyTool = Tool.make("tessaya_vocabulary", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+/** Alarms and spoken wake-ups (M-108): kept on her brain, rung on the Tessel nearest him. */
+const AlarmTool = Tool.make("tessaya_alarm", {
+  ...shared,
+  description:
+    'Alarms and wake-ups at a set time ("wake me up at 8:45", "remind me out loud in 20 minutes to take the bread out"): `set` with `clock` (24-hour "08:45", the house\'s time) or `inMinutes`, and `say` only when he wants her to say something of his at that time. When it rings and he says "stop", "I\'m up" or "snooze" (or "ten more minutes"): `stop`, or `snooze` with `minutes`. `list` for what is set. Say its `line` in one short line: it carries the time and how far off it is.',
+  parameters: Schema.Struct({
+    op: Schema.Literals(["set", "stop", "snooze", "list"]),
+    clock: Schema.optional(Schema.String.check(Schema.isMaxLength(5))),
+    inMinutes: Schema.optional(Schema.Number),
+    say: Schema.optional(Schema.String.check(Schema.isMaxLength(200))),
+    minutes: Schema.optional(Schema.Number),
+  }),
+  success: Schema.Struct({ line: Schema.String, alarms: Schema.Array(Schema.String) }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
 /** The Voice Playground's two acts by voice or chat, through the one voice library; his alone. */
 const VoiceTool = Tool.make("tessaya_voice", {
   ...shared,
@@ -1273,6 +1293,7 @@ export const TessayaToolkit = Toolkit.make(
   NoteSearchTool,
   AlwaysAllowedTool,
   VocabularyTool,
+  AlarmTool,
   VoiceTool,
   PersonaTool,
   GroupTool,

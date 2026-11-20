@@ -77,6 +77,7 @@ import * as TessayaSessionCatalogService from "./TessayaSessionCatalogService.ts
 import * as TessayaSessionsAcross from "./TessayaSessionsAcross.ts";
 import * as TessayaSessionInsight from "./TessayaSessionInsight.ts";
 import * as TessayaWeaveService from "./TessayaWeaveService.ts";
+import * as TessayaAlarms from "./TessayaAlarms.ts";
 import * as TessayaCommitmentService from "./TessayaCommitmentService.ts";
 import * as TessayaMemoryLearning from "./TessayaMemoryLearning.ts";
 import * as TessayaMemoryReactor from "./TessayaMemoryReactor.ts";
@@ -286,6 +287,12 @@ const servicesInner = Layer.mergeAll(
         Layer.provide(TessayaOneShot.layer),
       ),
       homeDevicesLayer,
+      // Alarms and spoken wake-ups (M-108): her commitments, rung on the Tessel nearest him by her brain.
+      TessayaAlarms.layer.pipe(
+        Layer.provide(homeDevicesLayer),
+        Layer.provide(TessayaCommitmentService.layer),
+        Layer.provide(homeLayer),
+      ),
       vesselBodiesLayer,
       // The engine is provided here: a sibling in this mergeAll is not visible to it, and without it a new session
       // on a machine with no Herdr found no way to start a thread.
