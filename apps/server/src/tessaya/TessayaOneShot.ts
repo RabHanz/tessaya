@@ -25,6 +25,14 @@ import type { UsageAttribution } from "@t3tools/tessaya-contracts";
 
 import { BrainUsage, cliTokens, ledgeredCwd, layer as brainUsageLayer } from "./BrainUsage.ts";
 import { resolveClaudeSdkExecutablePath } from "../provider/Drivers/ClaudeExecutable.ts";
+import { ProviderDriverKind } from "@t3tools/tessaya-contracts";
+import { LIMIT_TEXT } from "@t3tools/tessaya-shared/liveTranscript";
+import * as DateTime from "effect/DateTime";
+import * as Option from "effect/Option";
+import { AccountPoolService } from "./AccountPoolService.ts";
+import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
+import { rotationTick } from "./AccountRotationReactor.ts";
+import { TessayaRecordService } from "./TessayaRecordService.ts";
 
 /** The claude CLI to spawn: on Windows a bare `claude` is an npm .cmd shim that cannot be spawned without a shell. */
 export const claudeProgram = Effect.flatMap(HostProcess.Environment, (env) =>
@@ -66,12 +74,54 @@ export function resultOf(stdout: string): { structured_output?: unknown } | unde
     : (parsed as { structured_output?: unknown } | undefined);
 }
 
+const CLAUDE = ProviderDriverKind.make("claudeAgent");
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const usage = yield* BrainUsage;
 
-  const run: TessayaOneShot["Service"]["run"] = ({
+  /**
+   * The machine login a one-shot runs on hit its limit: the same rotation the reactor makes (cswap's pool, his
+   * policy), now rather than at its next tick, and on the Record. True when another account is active.
+   */
+  const rotateOnLimit = Effect.fn("TessayaOneShot.rotateOnLimit")(function* (why: string) {
+    const pool = yield* Effect.serviceOption(AccountPoolService);
+    const policy = yield* Effect.serviceOption(AccountRotationPolicy);
+    if (Option.isNone(pool) || Option.isNone(policy) || (yield* policy.value.read) !== "auto")
+      return false;
+    const current = yield* pool.value.read(CLAUDE).pipe(Effect.option);
+    if (Option.isNone(current)) return false;
+    const decision = rotationTick({
+      pool: current.value,
+      policy: "auto",
+      lastAutoRotationAt: null,
+      now: DateTime.formatIso(yield* DateTime.now),
+      stoppedOnLimit: true,
+    });
+    if (decision.outcome !== "rotate") return false;
+    const moved = yield* pool.value
+      .activate({
+        driver: CLAUDE,
+        key: decision.target.key,
+        reason: decision.reason,
+        workSessionId: null,
+      })
+      .pipe(Effect.option);
+    if (Option.isNone(moved)) return false;
+    const record = yield* Effect.serviceOption(TessayaRecordService);
+    if (Option.isSome(record))
+      yield* record.value.append({
+        kind: "account_switch",
+        actor: "tessaya",
+        subject: `Account ${decision.from?.label ?? "?"} → ${decision.target.label}`,
+        outcome: "moved on a limit (brain call)",
+        detail: why.slice(0, 200),
+      });
+    return true;
+  });
+
+  const once: TessayaOneShot["Service"]["run"] = ({
     prompt,
     outputSchema,
     role,
@@ -176,6 +226,12 @@ export const make = Effect.gen(function* () {
         try: () => resultOf(stdout),
         catch: () => new TessayaOneShotError({ detail: "claude returned output that is not JSON" }),
       });
+      // An exit 0 that is an error envelope (a limit says so here too) fails with its words.
+      const envelope = result as { is_error?: unknown; result?: unknown } | undefined;
+      if (envelope?.is_error === true)
+        return yield* new TessayaOneShotError({
+          detail: `claude: ${String(envelope.result ?? "").slice(0, 400)}`,
+        });
       for (const tokens of cliTokens(result, model)) yield* usage.record({ ...row, ...tokens });
       return yield* Schema.decodeUnknownEffect(outputSchema)(result?.structured_output).pipe(
         Effect.mapError(
@@ -183,6 +239,18 @@ export const make = Effect.gen(function* () {
         ),
       );
     });
+
+  // A limit moves the machine login to an account still active and tries the call once more.
+  const run: TessayaOneShot["Service"]["run"] = (input) =>
+    once(input).pipe(
+      Effect.catchIf(
+        (e) => LIMIT_TEXT.test(e.detail),
+        (e) =>
+          Effect.flatMap(rotateOnLimit(e.detail), (moved) =>
+            moved ? once(input) : Effect.fail(e),
+          ),
+      ),
+    );
 
   return { run } satisfies TessayaOneShot["Service"];
 });

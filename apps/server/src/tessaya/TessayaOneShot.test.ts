@@ -11,7 +11,11 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { expect } from "vite-plus/test";
 
 import { ClaudeExecutableFileCheck } from "../provider/Drivers/ClaudeExecutable.ts";
+import type { TessayaAccountPool } from "@t3tools/tessaya-contracts";
+import { AccountPoolService } from "./AccountPoolService.ts";
+import { AccountRotationPolicy } from "./AccountRotationPolicy.ts";
 import { BrainUsage, type UsageRow } from "./BrainUsage.ts";
+import { TessayaRecordService } from "./TessayaRecordService.ts";
 import * as TessayaOneShot from "./TessayaOneShot.ts";
 
 const encoder = new TextEncoder();
@@ -116,5 +120,97 @@ it.effect(
         Effect.provideService(ClaudeExecutableFileCheck, (file) => file === EXE),
       );
       expect(call.programs).toEqual([EXE]);
+    }),
+);
+
+it.effect(
+  "moves the machine login to an account with room on a limit, records it, and tries once more",
+  () =>
+    Effect.gen(function* () {
+      // 20 Nov: her private turn said the weekly limit was out, with another account free.
+      const limited = JSON.stringify({
+        type: "result",
+        is_error: true,
+        result: "You've hit your weekly limit · resets Mon 9am",
+      });
+      const ok = JSON.stringify({ type: "result", structured_output: { ok: true } });
+      let calls = 0;
+      const spawner = ChildProcessSpawner.make(() => {
+        calls += 1;
+        return Effect.succeed(
+          ChildProcessSpawner.makeHandle({
+            pid: ChildProcessSpawner.ProcessId(900_000_004),
+            exitCode: Effect.succeed(ChildProcessSpawner.ExitCode(calls === 1 ? 1 : 0)),
+            isRunning: Effect.succeed(false),
+            kill: () => Effect.void,
+            unref: Effect.succeed(Effect.void),
+            stdin: Sink.drain,
+            stdout: Stream.succeed(encoder.encode(calls === 1 ? limited : ok)),
+            stderr: Stream.empty,
+            all: Stream.empty,
+            getInputFd: () => Sink.drain,
+            getOutputFd: () => Stream.empty,
+          }),
+        );
+      });
+      const account = (key: string, active: boolean, used: number) => ({
+        key,
+        label: key,
+        email: null,
+        organizationName: null,
+        active,
+        usable: true,
+        unusableReason: null,
+        headroomPercent: 100 - used,
+        windows: [{ id: "weekly", label: "week", usedPercent: used, resetsAt: null }],
+        usageCheckedAt: "2026-11-20T02:00:00.000Z",
+      });
+      const pool = {
+        driver: "claudeAgent",
+        source: "cswap",
+        configDir: "/home/dev/.claude",
+        // His reading still shows room: the limit the call hit outranks it.
+        accounts: [account("a", true, 60), account("b", false, 10)],
+        checkedAt: "2026-11-20T02:00:00.000Z",
+      } as unknown as TessayaAccountPool;
+      const activated: Array<string> = [];
+      const recorded: Array<string> = [];
+      const service = yield* Effect.provide(
+        TessayaOneShot.TessayaOneShot,
+        Layer.effect(TessayaOneShot.TessayaOneShot, TessayaOneShot.make).pipe(
+          Layer.provide(Layer.mock(BrainUsage)({ record: () => Effect.void })),
+          Layer.provide(Layer.succeed(ChildProcessSpawner.ChildProcessSpawner, spawner)),
+        ),
+      );
+      const result = yield* service
+        .run({
+          prompt: "hi",
+          outputSchema: Schema.Struct({ ok: Schema.Boolean }),
+          role: "voice",
+          feature: "private-turn",
+        })
+        .pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.mock(AccountPoolService)({
+                read: () => Effect.succeed(pool),
+                activate: (input) =>
+                  Effect.sync(() => {
+                    activated.push(input.key);
+                    return { rotation: {}, pool } as never;
+                  }),
+              }),
+              Layer.mock(AccountRotationPolicy)({ read: Effect.succeed("auto") }),
+              Layer.mock(TessayaRecordService)({
+                append: (row) =>
+                  Effect.sync(() => void recorded.push(`${row.kind}: ${row.subject}`)),
+              }),
+            ),
+          ),
+        );
+      expect(result).toEqual({ ok: true });
+      expect(calls).toBe(2);
+      expect(activated).toEqual(["b"]);
+      expect(recorded).toEqual(["account_switch: Account a → b"]);
     }),
 );

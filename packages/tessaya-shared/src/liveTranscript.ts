@@ -288,6 +288,9 @@ export const parseLiveToolSteps = (line: string): ReadonlyArray<LiveToolStep> =>
  * The usage limit a terminal session last stopped on, from its transcript's tail: Claude writes the 429 as an assistant
  * line with `isApiErrorMessage` ("You've hit your weekly limit · resets …"). Null once anything later was said.
  */
+/** Claude's words when an account is out: a session's, a weekly or a usage limit. */
+export const LIMIT_TEXT = /\b(usage|weekly|session) limit\b|hit your (\w+ )?limit/i;
+
 export const liveLimitHit = (
   tail: string,
 ): { readonly text: string; readonly at: string } | null => {
@@ -309,9 +312,7 @@ export const liveLimitHit = (
           .join(" ")
       : "";
     const limited =
-      entry["error"] === "rate_limit" ||
-      entry["apiErrorStatus"] === 429 ||
-      /\b(usage|weekly|session) limit\b|hit your (\w+ )?limit/i.test(text);
+      entry["error"] === "rate_limit" || entry["apiErrorStatus"] === 429 || LIMIT_TEXT.test(text);
     return limited
       ? { text: text.trim() || "Usage limit reached.", at: String(entry["timestamp"] ?? "") }
       : null;
