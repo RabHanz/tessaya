@@ -1255,7 +1255,7 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     id: "my-state-bodies",
     proves: ["tessaya_my_state"],
     said: ["What about your other bodies? Where are they and what are they doing?"],
-    uses: [["tessaya_my_state"], ["tessaya_cast"]],
+    uses: [["tessaya_my_state", "tessaya_cast"]],
   },
   {
     // 20 Nov: "that wasn't me, it was the kids" moves what was put down to him; the live suite runs it as a rehearsal.

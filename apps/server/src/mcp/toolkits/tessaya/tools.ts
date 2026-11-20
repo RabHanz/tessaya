@@ -412,7 +412,7 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
 const MyStateTool = Tool.make("tessaya_my_state", {
   ...shared,
   description:
-    "Your own state now, live: every body you are in (the desk body on his screen or hidden, Tumble, the phone) and who wears each, your mood, what each body's face shows, what your desk body is doing, who is around and your devices. Call it when asked about yourself or your other bodies and the lines you were given do not cover it; never answer that from memory.",
+    "Your own state now, live: every body you are in (the desk body on his screen or hidden, Tumble, the phone) and who wears each, your mood, what each body's face shows, what your desk body is doing, who is around and your devices. Call it when asked about yourself or your other bodies and the lines you were given do not cover it; never answer that from memory. What one body is doing or how it is posed right now is tessaya_body_state.",
   success: Schema.Struct({ line: Schema.String }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
