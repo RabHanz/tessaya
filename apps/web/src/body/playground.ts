@@ -61,6 +61,8 @@ export interface PlaygroundHooks {
   readonly onModel?: (m: PlaygroundModel, json: Record<string, unknown>, buf: ArrayBuffer) => void;
   /** A hand on the first stage's body (vrmBody onTouch). */
   readonly onTouch?: NonNullable<Parameters<typeof mountBody>[1]>["onTouch"];
+  /** The pieces the first stage's model can take off, once it loads (vrmBody onOutfit): a layer's wardrobe. */
+  readonly onOutfit?: NonNullable<Parameters<typeof mountBody>[1]>["onOutfit"];
 }
 export interface Playground {
   readonly control: BodyControl;
@@ -616,9 +618,10 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     s.body = window.tessayaBody!.mount(canvas, {
       framing,
       ...(i === 0 && hooks.onTouch ? { onTouch: hooks.onTouch } : {}),
-      onOutfit: () => {
+      onOutfit: (pieces) => {
         s.loaded?.();
         s.loaded = null;
+        if (i === 0) hooks.onOutfit?.(pieces);
       },
       onSettle: () => {
         report(s);
