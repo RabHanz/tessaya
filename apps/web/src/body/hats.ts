@@ -227,6 +227,25 @@ const bump = (d: number, w: number) => Math.exp(-((d / w) ** 2));
 /** The shortest way round from u to a, in turns. */
 const off = (u: number, a: number) => ((((u - a) % 1) + 1.5) % 1) - 0.5;
 
+/**
+ * An unseen shell over a crown that marks the stencil her hair is tested against (vrmBody browsOverHair), so no strand
+ * shows through the hat. Only its near, outward side marks: the hat's own inner walls lie inside her hair and never do.
+ */
+const hairMask = (crown: THREE.BufferGeometry) => {
+  const m = new THREE.MeshBasicMaterial({
+    colorWrite: false,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  });
+  m.stencilWrite = true;
+  m.stencilRef = 1;
+  m.stencilFunc = THREE.AlwaysStencilFunc;
+  m.stencilZPass = THREE.ReplaceStencilOp;
+  const mesh = new THREE.Mesh(crown, m);
+  mesh.name = "hat:hair-mask";
+  return mesh;
+};
+
 type Hat = (f: HeadFit, look: Look) => THREE.Object3D[];
 
 const HATS: Readonly<Record<string, Hat>> = {
@@ -261,7 +280,7 @@ const HATS: Readonly<Record<string, Hat>> = {
       undefined,
       (_, v) => (v < 0.4 ? 0.62 : 1),
     );
-    return [part(look, shell, yellow), part(look, brim, yellow)];
+    return [part(look, shell, yellow), part(look, brim, yellow), hairMask(shell)];
   },
   // a knitted beanie pulled down to the brow, ribbed, with a turned-up cuff and a pompom
   beanie: (f, look) => {
@@ -290,7 +309,12 @@ const HATS: Readonly<Record<string, Hat>> = {
       [f.cx, body.boundingBox!.max.y + 0.05 * (f.rx + f.rz), f.cz],
       0.085 * (f.rx + f.rz),
     );
-    return [part(look, body, "#2A8C96"), part(look, cuff, "#23767F"), part(look, pom, "#F3EBDD")];
+    return [
+      part(look, body, "#2A8C96"),
+      part(look, cuff, "#23767F"),
+      part(look, pom, "#F3EBDD"),
+      hairMask(body),
+    ];
   },
   // a long soft nightcap: a fitted crown whose tip flops over to one side and hangs, a fur cuff and a pompom
   nightcap: (f, look) => {
@@ -338,6 +362,7 @@ const HATS: Readonly<Record<string, Hat>> = {
     const pom = ball([end.x, end.y - 0.12 * R, end.z], 0.2 * R, 0.16);
     return [
       part(look, crown, "#3D4F9A"),
+      hairMask(crown),
       part(look, tail, "#3D4F9A"),
       part(look, cuff, "#F4EFE6"),
       part(look, pom, "#F4EFE6"),
@@ -490,17 +515,6 @@ export const wearHat = (vrm: VRM, id: string, frame: THREE.Object3D) => {
   const fit = headOf(vrm, frame, turn);
   const hat = fit === null ? null : hatFor(id, fit, vrm);
   hat?.rotation.set(0, turn === -1 ? Math.PI : 0, 0);
-  // the hat marks the stencil her hair is tested against (vrmBody browsOverHair): no strand shows through it
-  hat?.traverse((o) => {
-    for (const m of [(o as THREE.Mesh).material ?? []].flat()) {
-      // only its outside masks: seen from below, its inside must not hide the fringe under the brim
-      if ((m as { isOutline?: boolean }).isOutline === true) continue;
-      m.side = THREE.FrontSide;
-      m.stencilWrite = true;
-      m.stencilRef = 1;
-      m.stencilFunc = THREE.AlwaysStencilFunc;
-      m.stencilZPass = THREE.ReplaceStencilOp;
-    }
-  });
+
   return hat;
 };
