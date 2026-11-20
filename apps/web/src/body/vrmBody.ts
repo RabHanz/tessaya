@@ -191,6 +191,8 @@ const reachOf = (vrm: VRM, name: string) => {
 };
 /** The whole-face mood presets a model's mixed parts stand in for. */
 const MOOD_PRESETS = new Set<string>(["happy", "angry", "sad", "relaxed", "surprised"]);
+/** Low moods: her blinks come seldom and slow. */
+const LOW = new Set(["sad", "hurt", "crying", "lonely", "sleepy"]);
 /** Moods that colour her cheeks, and those that tip her head. */
 const BLUSHING = new Set(["love", "shy", "embarrassed", "affectionate"]);
 const WONDERING = new Set(["curious", "thinking", "searching", "confused"]);
@@ -674,6 +676,7 @@ export function mountBody(
   let parts: Record<string, number> = {};
   let partsLast: ReadonlyArray<string> = [];
   let tilt = 0;
+  const blinkMs = () => (LOW.has(mood.mood) ? BLINK_MS * 1.8 : BLINK_MS);
   let seqTimers: Array<ReturnType<typeof setTimeout>> = [];
   let settledSent = true;
   // his hand: the last frame from whatever drives it (pointer now; an agent, a tracker or a controller later),
@@ -1269,7 +1272,7 @@ export function mountBody(
     level !== null ||
     gestures.length > 0 ||
     now - faceAt < BLEND_MS ||
-    now - blinkAt < BLINK_MS ||
+    now - blinkAt < blinkMs() ||
     now - lastMove < SETTLE_MS ||
     (touch !== null && now - touch.at < TOUCH_MS) ||
     springing ||
@@ -1661,7 +1664,7 @@ export function mountBody(
 
     // blink: a short close and open, every few seconds
     const b = now - blinkAt;
-    const blink = b < BLINK_MS ? Math.sin((Math.PI * b) / BLINK_MS) : 0;
+    const blink = b < blinkMs() ? Math.sin((Math.PI * b) / blinkMs()) : 0;
 
     // the intimate set eases toward where the layer (or a word-timed face) wants it
     const to = target();
@@ -2024,7 +2027,8 @@ export function mountBody(
         glance = { yaw: (Math.random() - 0.5) * 4, pitch: (Math.random() - 0.5) * 2.5 };
       invalidate();
     };
-    blinkTimer = setTimeout(fire, 2500 + Math.random() * 3500);
+    // sad, she blinks less often and more slowly
+    blinkTimer = setTimeout(fire, (2500 + Math.random() * 3500) * (LOW.has(mood.mood) ? 1.6 : 1));
   };
 
   const setFace = (to: Weights, now = performance.now()) => {

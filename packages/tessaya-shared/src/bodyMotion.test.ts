@@ -157,6 +157,8 @@ describe("motion set", () => {
     ["playful", { mood: "playful", intensity: 0.7 }],
     ["affectionate", { mood: "love", intensity: 0.7 }],
     ["sad", { mood: "sad", intensity: 0.8 }],
+    ["angry", { mood: "frustrated", intensity: 0.7 }],
+    ["worried", { mood: "worried", intensity: 0.6 }],
     ["sleepy", { mood: "sleepy", intensity: 0.6 }],
     ["aroused", { mood: "happy", intensity: 0.6, arousal: 0.7, comfort: 0.8 }],
     // ill at ease guards whatever her mood or arousal says

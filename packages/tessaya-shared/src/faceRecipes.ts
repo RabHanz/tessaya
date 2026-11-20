@@ -1,17 +1,40 @@
 /**
- * Her face per mood as a mix of a VRoid model's own part shapes (its `Fcl_…` keys: brows, eyes, mouth, teeth), so a
- * mood reads in all three at once, and asymmetrically where a person's would (one eye narrower when curious or smug).
- * Keys are named without the `Fcl_` prefix; a pair named without its side (`EYE_Joy`) means both eyes. A model draws
- * what it has (vrmBody discovers its keys); one without these keys keeps the VRM preset faces (bodyCues BODY_FACES).
+ * Her face per mood as a mix of a VRoid model's own part shapes (`Fcl_…` brows, eyes, mouth, teeth), asymmetric where
+ * a person's is. Keys drop the `Fcl_` prefix; a pair without its side means both. A model draws what it has; one with
+ * none keeps the preset faces. BRW_Knit, BRW_Grief, MTH_Frown, MTH_Pout and MTH_O_Big are optional authored shapes.
  */
 export type FaceRecipe = Readonly<Record<string, number>>;
 
 // open-eyed: the closed-eye smile is for delight and laughter, or at a desk's distance she reads as sleepy
 const happy = { BRW_Joy: 0.7, EYE_Joy: 0.2, MTH_Up: 0.8, MTH_Joy: 0.85, MTH_Large: 0.15 };
-const sad = { BRW_Sorrow: 1, EYE_Sorrow: 1, EYE_Close: 0.15, MTH_Down: 0.9, MTH_Sorrow: 0.9 };
-const angry = { BRW_Angry: 1, EYE_Angry: 1, EYE_Close: 0.2, MTH_Angry: 0.9, MTH_Down: 0.6 };
+const sad = {
+  BRW_Sorrow: 1,
+  BRW_Grief: 0.7,
+  EYE_Sorrow: 1,
+  EYE_Close: 0.15,
+  MTH_Down: 0.9,
+  MTH_Sorrow: 0.9,
+  MTH_Frown: 0.6,
+};
+const angry = {
+  BRW_Angry: 1,
+  BRW_Knit: 0.8,
+  EYE_Angry: 1,
+  EYE_Close: 0.2,
+  MTH_Angry: 0.9,
+  MTH_Down: 0.6,
+  MTH_Frown: 0.45,
+};
 const fond = { BRW_Fun: 0.35, EYE_Joy: 0.25, MTH_Up: 0.4 };
-const worry = { BRW_Sorrow: 0.85, EYE_Spread: 0.2, MTH_Sorrow: 0.4, MTH_Down: 0.5, MTH_Small: 0.2 };
+const worry = {
+  BRW_Sorrow: 0.85,
+  BRW_Grief: 0.5,
+  EYE_Spread: 0.2,
+  MTH_Sorrow: 0.4,
+  MTH_Down: 0.5,
+  MTH_Small: 0.2,
+  MTH_Frown: 0.3,
+};
 
 export const FACE_RECIPES: Readonly<Record<string, FaceRecipe>> = {
   neutral: {},
@@ -53,8 +76,9 @@ export const FACE_RECIPES: Readonly<Record<string, FaceRecipe>> = {
     BRW_Surprised: 1,
     EYE_Surprised: 1,
     EYE_Spread: 1,
-    MTH_Surprised: 0.35,
-    MTH_Large: 0.35,
+    MTH_Surprised: 0.3,
+    MTH_Large: 0.2,
+    MTH_O_Big: 0.3,
   },
   amazed: { BRW_Surprised: 0.9, EYE_Spread: 0.8, MTH_Joy: 0.4, MTH_A: 0.35 },
   nervous: { ...worry, EYE_Spread: 0.35 },
@@ -66,7 +90,7 @@ export const FACE_RECIPES: Readonly<Record<string, FaceRecipe>> = {
   lonely: { ...sad, MTH_Down: 0.5 },
   sulky: { BRW_Angry: 0.4, BRW_Sorrow: 0.3, MTH_Down: 0.6, MTH_U: 0.3 },
   putout: { BRW_Angry: 0.4, MTH_Down: 0.5 },
-  pout: { BRW_Angry: 0.35, MTH_U: 0.55 },
+  pout: { BRW_Angry: 0.35, MTH_U: 0.55, MTH_Pout: 0.6 },
   annoyed: { ...angry, BRW_Angry: 0.6, MTH_Angry: 0.3 },
   frustrated: { ...angry, BRW_Angry: 0.8 },
   angry: { ...angry, HA_Fung1: 0.4 },
@@ -76,7 +100,7 @@ export const FACE_RECIPES: Readonly<Record<string, FaceRecipe>> = {
 };
 
 /** Shapes that open her mouth: a feeling stays within these together, so a face never gapes (bodyCues face limits). */
-export const OPENING = ["MTH_A", "MTH_O", "MTH_Large", "MTH_Surprised"];
+export const OPENING = ["MTH_A", "MTH_O", "MTH_Large", "MTH_Surprised", "MTH_O_Big"];
 const FEELING_OPEN = 0.7;
 
 /**
