@@ -1,10 +1,11 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
 
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { createOpenWakeWordScorer } from "../providers/onnx.ts";
 import {
+  CONFIRM_BUDGET_MS,
   createWakeStream,
   kwsSettingsCommand,
   parseWakeGate,
@@ -434,6 +435,45 @@ describe("waking her by name with no session open", () => {
     for (let i = 0; i < 4; i += 1) neither.stream.frame("r1", frame(7));
     await neither.stream.drained("r1");
     expect(neither.woken).toEqual([]);
+  });
+
+  it("wakes on the first recogniser to hear her name, and on a near-certain score when none answers (20 Nov 13:26)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const run = async (score: number, answer: (each?: (text: string) => void) => void) => {
+        const woken: string[] = [];
+        const stream = createWakeStream({
+          words: [{ word: "Freya", threshold: 0.95 }],
+          scorer: async (): Promise<WakeScorer> => ({
+            chunkSamples: 1280,
+            reset: () => undefined,
+            score: async (chunk) => [chunk.includes(7) ? score : 0],
+          }),
+          // The loaded recogniser never answers here: the wake must not wait on it.
+          confirm: (_pcm, each) => {
+            answer(each);
+            return new Promise<ReadonlyArray<string>>(() => undefined);
+          },
+          onWake: (id, word) => woken.push(`${id} ${word}`),
+          log: () => undefined,
+        });
+        for (let i = 0; i < 4; i += 1) stream.frame("r1", frame(7));
+        await vi.advanceTimersByTimeAsync(0);
+        const first = [...woken];
+        await vi.advanceTimersByTimeAsync(CONFIRM_BUDGET_MS);
+        return { first, after: woken };
+      };
+      // One recogniser heard "Freya." while the other was still busy: she wakes then.
+      const quick = await run(0.97, (each) => each?.("Freya."));
+      expect(quick.first).toEqual(["r1 Freya"]);
+      // None answered in the budget: 0.998 wakes her on its score; 0.97 keeps waiting.
+      expect((await run(0.998, () => undefined)).after).toEqual(["r1 Freya"]);
+      expect((await run(0.97, () => undefined)).after).toEqual([]);
+      // One answered without her name: the score alone never overrules a recogniser.
+      expect((await run(0.998, (each) => each?.("Fair enough."))).after).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("hears his name in a segment shorter than the model's 1.28 s of context (01:41, 13 Nov)", async () => {

@@ -1,3 +1,4 @@
+// @effect-diagnostics globalTimers:off
 /**
  * Her name heard with no session open: the R1 sends only voiced segments (`voice/wake`, ended on `voice/wake/end`),
  * the desktop's own wake models score them, and a fire is confirmed in text from the clip just before it, as the
@@ -46,6 +47,14 @@ const END_SILENCE_MS = 480;
  * in 1,745 kept segments had a second name over 0.3x.
  */
 const RIVAL_SHARE = 0.5;
+/**
+ * How long a near-certain fire waits for any recogniser before it wakes her on its score alone. They answer in 0.3-0.7 s;
+ * 20 Nov 13:26, with the box loaded, 2.9 s and 5.3 s, and she woke 5 s after his "Freya". A false fire scores this high
+ * too (12 of 41 such fires in 16-20 Nov were not her name), so it only decides when no recogniser has answered at all.
+ */
+export const CONFIRM_BUDGET_MS = 1_500;
+/** A model output this high may wake her on its own once the budget is spent. */
+const SURE_OUTPUT = 0.995;
 
 /** What he asked in the same breath as her name ("Tessaya, what time is it?"), said from `startedAt` to `endedAt`. */
 export interface WakeRequest {
@@ -124,6 +133,12 @@ export interface KwsEvent {
   readonly early?: boolean;
 }
 
+/** What the confirm heard; `late`: no recogniser answered within CONFIRM_BUDGET_MS. */
+interface Confirmed {
+  readonly texts: ReadonlyArray<string>;
+  readonly late?: true;
+}
+
 export interface WakeScorer {
   /** One score per word (in `words` order) for a chunk of `chunkSamples`. */
   readonly score: (chunk: Int16Array) => Promise<ReadonlyArray<number>>;
@@ -135,8 +150,14 @@ export interface WakeStreamDeps {
   readonly words: ReadonlyArray<{ readonly word: string; readonly threshold: number }>;
   /** A fresh scorer per R1 (openWakeWord is stateful). */
   readonly scorer: () => Promise<WakeScorer>;
-  /** The confirm clip only, read by each recogniser asked (general, and his personal one): any may hear the name. */
-  readonly confirm: (pcm: Int16Array) => Promise<ReadonlyArray<string>>;
+  /**
+   * The confirm clip only, read by each recogniser asked (general, and his personal one): any may hear the name.
+   * `each` hears every recogniser's text as it comes, so the first to hear her name need not wait for the rest.
+   */
+  readonly confirm: (
+    pcm: Int16Array,
+    each?: (text: string) => void,
+  ) => Promise<ReadonlyArray<string>>;
   /**
    * `level`: how loud his name was (dBFS), so the session can tell his voice from a far-off room. `request`: on a kws
    * wake, what he said after her name in the same segment (null for her name alone), still being recognised.
@@ -210,7 +231,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   /** The Tessels whose `voice/wake/end` says how many frames it sent: their segments are cut to that, not to gaps. */
   const sentSeen = new Set<string>();
   /** An early kws pass's confirm, begun when it came, before the segment ended. */
-  const earlyConfirm = new Map<string, Promise<ReadonlyArray<string>>>();
+  const earlyConfirm = new Map<string, Promise<Confirmed>>();
   const kwsWord = (name: unknown) =>
     deps.kwsWake?.find((w) => w.word.toLowerCase() === String(name ?? "").toLowerCase());
   const byKws = (id: string, word: string) => {
@@ -279,6 +300,28 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     d.pending = new Int16Array(PRIME_SAMPLES);
   };
 
+  /**
+   * The confirm, answered by the first recogniser whose text `heard` takes; with none, all their texts. `sure`: past
+   * CONFIRM_BUDGET_MS with no recogniser answered, it resolves `late` instead of waiting on them.
+   */
+  const confirmFirst = (pcm: Int16Array, heard: (text: string) => boolean, sure = false) =>
+    new Promise<Confirmed>((resolve) => {
+      let answered = 0;
+      const budget = sure
+        ? setTimeout(() => answered === 0 && resolve({ texts: [], late: true }), CONFIRM_BUDGET_MS)
+        : undefined;
+      const done = (texts: ReadonlyArray<string>) => {
+        clearTimeout(budget);
+        resolve({ texts });
+      };
+      deps
+        .confirm(pcm, (text) => {
+          answered += 1;
+          if (heard(text)) done([text]);
+        })
+        .then(done, () => done([]));
+    });
+
   const fired = async (
     id: string,
     d: ReturnType<typeof of>,
@@ -306,11 +349,15 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     }
     const ratio = output / threshold;
     const trusted = wakeTrusted([{ word, threshold }], word, ratio);
-    const texts = trusted ? [] : await deps.confirm(clip).catch(() => []);
-    if (trusted || texts.some((text) => wakeWordHeard(text, word, ratio))) {
-      d.outcome = `woken by ${word} (${at})`;
+    const heard = (text: string) => wakeWordHeard(text, word, ratio);
+    const { texts, late }: Confirmed = trusted
+      ? { texts: [] }
+      : await confirmFirst(clip, heard, output >= SURE_OUTPUT);
+    if (trusted || late === true || texts.some(heard)) {
+      const how = late === true ? `${at}, recognisers over ${CONFIRM_BUDGET_MS} ms` : at;
+      d.outcome = `woken by ${word} (${how})`;
       d.woke = true;
-      deps.log(`[${id}] woken by ${word} (${at})`);
+      deps.log(`[${id}] woken by ${word} (${how})`);
       deps.onWake(id, word, speechLevel(clip), Math.min(1, output), clip);
     } else {
       d.outcome = `${word} fired (${at}), not confirmed`;
@@ -346,11 +393,23 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     const trusted = !near && w.also !== true && wakeTrusted([w], w.word, best / w.threshold);
     return { w, best, near, trusted };
   };
-  const confirmClip = (event: KwsEvent, pcm: Int16Array, trusted: boolean) => {
+  /** What hears a kws pass's name: it said plainly, or leading his words ("Tessaya, are you there?"). */
+  const hears = (word: string, ratio: number) => (text: string) =>
+    wakeWordHeard(text, word, ratio) ||
+    wakeWordLead(text.trim().split(/\s+/).filter(Boolean), [word]) > 0;
+  const confirmClip = (
+    event: KwsEvent,
+    pcm: Int16Array,
+    pass: NonNullable<ReturnType<typeof kwsPass>>,
+  ): Promise<Confirmed> => {
     const end = kwsClipEnd(event, pcm.length);
-    return trusted
-      ? Promise.resolve([])
-      : deps.confirm(pcm.slice(Math.max(0, end - CONFIRM_SAMPLES), end)).catch(() => []);
+    return pass.trusted
+      ? Promise.resolve({ texts: [] })
+      : confirmFirst(
+          pcm.slice(Math.max(0, end - CONFIRM_SAMPLES), end),
+          hears(pass.w.word, pass.best / pass.w.threshold),
+          pass.w.also !== true && pass.best >= SURE_OUTPUT,
+        );
   };
 
   /** Stage 1 by the Tessel's kws on a whole ended segment, then the same confirm as an openWakeWord fire. */
@@ -376,14 +435,18 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
     // The whole segment, for his request after her name; it also confirms a name the 2 s clip cut into.
     const whole = deps.confirm(pcm).catch((): ReadonlyArray<string> => []);
     // Under the bar, only her name leading the whole segment's words will do.
-    const texts = near ? [] : await (early ?? confirmClip(event, pcm, trusted));
+    const { texts, late }: Confirmed = near
+      ? { texts: [] }
+      : await (early ?? confirmClip(event, pcm, pass));
     const at = `kws ${best.toFixed(3)}/${w.threshold}, segment ${(pcm.length / RATE).toFixed(1)} s`;
     // His name then his request in one breath ("Tessaya, are you there?") leads the text instead of ending it.
     const leads = (text: string) =>
       wakeWordLead(text.trim().split(/\s+/).filter(Boolean), [w.word]) > 0;
-    const heard = (text: string) => wakeWordHeard(text, w.word, ratio) || leads(text);
-    if (trusted || texts.some(heard) || (await whole).some(leads)) {
-      deps.log(`[${id}] woken by ${w.word} (${at})`);
+    const heard = hears(w.word, ratio);
+    if (trusted || late === true || texts.some(heard) || (await whole).some(leads)) {
+      deps.log(
+        `[${id}] woken by ${w.word} (${late === true ? `${at}, recognisers over ${CONFIRM_BUDGET_MS} ms` : at})`,
+      );
       const request = whole.then((all) => {
         const text = requestAfterName(all, w.word);
         if (text !== null)
@@ -454,7 +517,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
           if (pass !== undefined && !pass.near && d !== undefined)
             d.chain = d.chain.then(() => {
               if (d.seg.length >= kwsClipEnd(event, Number.POSITIVE_INFINITY))
-                earlyConfirm.set(key, confirmClip(event, d.seg, pass.trusted));
+                earlyConfirm.set(key, confirmClip(event, d.seg, pass));
               if (earlyConfirm.size > 8) earlyConfirm.delete(earlyConfirm.keys().next().value!);
             });
         }

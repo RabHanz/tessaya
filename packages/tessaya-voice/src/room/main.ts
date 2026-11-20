@@ -1099,12 +1099,12 @@ const main = async () => {
           scorer: scorerFor(words),
           // His personal model beside the general one: the general one leaves some of his names empty. W2 cascade (15 Nov):
           // 31 of his 41 names against 27 behind the kws, the same false wakes on his speech and LibriSpeech (ML-001).
-          confirm: (pcm) =>
+          confirm: (pcm, each) =>
             Promise.all(
               (personalConfirm ? [false, true] : [false]).map((owner) => {
                 const turn = recognise({ owner, only: true });
                 turn.feed(pcm);
-                return turn.finish();
+                return turn.finish().then((text) => (each?.(text), text));
               }),
             ),
           onWake: (id, word, level, score, clip, request, voice) => {

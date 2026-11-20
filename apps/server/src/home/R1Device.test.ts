@@ -415,6 +415,40 @@ effectIt.effect(
 );
 
 effectIt.effect(
+  "the time alone is said from the house clock at once, never by the model (20 Nov 13:26: 15 s)",
+  () =>
+    Effect.gen(function* () {
+      const touched: Array<string> = [];
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        session: () => Stream.suspend(() => (touched.push("brain"), Stream.make("no"))),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
+      const said = yield* r1TurnStream(
+        { heard: "Freya, what time is it?", history: [], device: "bedroom" },
+        brain,
+        { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+      ).pipe(
+        Stream.runCollect,
+        Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+      );
+      // The test clock's 0 is 05:00 in Karachi.
+      expect([...said].join("")).toBe("It's 5:00 am.");
+      expect(touched).toEqual([]);
+    }),
+);
+
+effectIt.effect(
   "the house matching his words and what needs him are in the model's message before it starts, unless a read is slow",
   () =>
     Effect.gen(function* () {
@@ -607,10 +641,14 @@ effectIt.effect(
         timeZone: Effect.succeed("Asia/Karachi"),
       });
       const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
-      const said = yield* r1TurnStream({ heard: "what time is it?", history: [] }, brain, {
-        specs: [],
-        run: () => Effect.succeed({ text: "{}", isError: false }),
-      }).pipe(
+      const said = yield* r1TurnStream(
+        { heard: "how is the weather looking?", history: [] },
+        brain,
+        {
+          specs: [],
+          run: () => Effect.succeed({ text: "{}", isError: false }),
+        },
+      ).pipe(
         Stream.runCollect,
         Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
       );
@@ -973,7 +1011,11 @@ effectIt.effect(
       const services = Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}));
       const guess = (callId: string) =>
         r1TurnStream(
-          { heard: "what time is it", history: [], voice: { speculative: true, callId } },
+          {
+            heard: "how is the weather looking",
+            history: [],
+            voice: { speculative: true, callId },
+          },
           brain,
           { specs: [], run: () => Effect.die("no tools") },
         ).pipe(Stream.runDrain, Effect.provide(services));
@@ -986,7 +1028,7 @@ effectIt.effect(
       expect(yield* r1Played("kept").pipe(Effect.provide(services))).toBe(false);
       expect(recorded).toEqual(["It's four PM."]);
       // His final turn (no guess) is written as it ends, as before.
-      yield* r1TurnStream({ heard: "what time is it", history: [] }, brain, {
+      yield* r1TurnStream({ heard: "how is the weather looking", history: [] }, brain, {
         specs: [],
         run: () => Effect.die("no tools"),
       }).pipe(Stream.runDrain, Effect.provide(services));

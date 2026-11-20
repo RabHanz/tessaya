@@ -10883,6 +10883,33 @@
         "mood": "putout",
         "gesture": "shrug"
       }
+    ],
+    "clock.now": [
+      {
+        "text": "It's {now}.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{now}.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "It's {now} right now.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Right now it's {now}.",
+        "mood": "steady",
+        "gesture": "none"
+      },
+      {
+        "text": "{now}, as it happens.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      }
     ]
   },
   "butler": {
@@ -21914,6 +21941,33 @@
         "mood": "curious",
         "gesture": "tilt"
       }
+    ],
+    "clock.now": [
+      {
+        "text": "It is {now}, sir.",
+        "mood": "steady",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{now}, sir.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "The clock says {now}.",
+        "mood": "steady",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "It's {now}, sir.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Presently {now}.",
+        "mood": "steady",
+        "gesture": "none"
+      }
     ]
   },
   "engineering": {
@@ -32889,6 +32943,33 @@
         "text": "This is a deploy gone sideways. Literally.",
         "mood": "frustrated",
         "gesture": "shrug"
+      }
+    ],
+    "clock.now": [
+      {
+        "text": "It's {now}.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{now}.",
+        "mood": "focused",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "Clock says {now}.",
+        "mood": "neutral",
+        "gesture": "none"
+      },
+      {
+        "text": "Says {now} here.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "It's {now} now.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
       }
     ]
   },
@@ -43936,6 +44017,33 @@
         "mood": "curious",
         "gesture": "tilt"
       }
+    ],
+    "clock.now": [
+      {
+        "text": "It's {now}.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{now}, love.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "Mm, {now}.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "{now} already.",
+        "mood": "neutral",
+        "gesture": "tilt"
+      },
+      {
+        "text": "It's {now}, why?",
+        "mood": "curious",
+        "gesture": "tilt"
+      }
     ]
   },
   "companion": {
@@ -54901,6 +55009,33 @@
         "text": "Okay, joke's over. Set me upright?",
         "mood": "frustrated",
         "gesture": "sigh"
+      }
+    ],
+    "clock.now": [
+      {
+        "text": "It's {now}.",
+        "mood": "happy",
+        "gesture": "nodSmall"
+      },
+      {
+        "text": "{now}, love.",
+        "mood": "happy",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "It's {now} now.",
+        "mood": "neutral",
+        "gesture": "nodSoft"
+      },
+      {
+        "text": "Mm, it's {now}.",
+        "mood": "happy",
+        "gesture": "tilt"
+      },
+      {
+        "text": "{now}.",
+        "mood": "neutral",
+        "gesture": "nodSmall"
       }
     ]
   }
