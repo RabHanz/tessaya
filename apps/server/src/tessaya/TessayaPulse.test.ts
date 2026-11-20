@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
@@ -231,7 +232,8 @@ it.effect(
   () =>
     Effect.gen(function* () {
       yield* TestClock.setTime(NOON);
-      const at = (minutesAgo: number) => new Date(NOON - minutesAgo * 60_000).toISOString();
+      const at = (minutesAgo: number) =>
+        DateTime.formatIso(DateTime.makeUnsafe(NOON - minutesAgo * 60_000));
       const device = (deviceId: string, minutesAgo: number, asleep = false) => ({
         deviceId,
         kind: "r1",

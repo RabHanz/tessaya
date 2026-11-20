@@ -223,7 +223,7 @@ it.effect(
       yield* registry.seen("tumble", false);
       yield* registry.report("mqtt", "tumble", [{ itemId: "power.battery_pct", value: 99 }]);
       assert.strictEqual((yield* registry.get("tumble"))!.lastSeenAt, left.lastSeenAt);
-      assert.strictEqual(new Date(left.lastSeenAt!).getTime(), 60_000);
+      assert.strictEqual(Date.parse(left.lastSeenAt!), 60_000);
       // Says online but has sent nothing for 10 minutes: its session dropped without a word.
       yield* registry.seen("dock", true);
       assert.isTrue((yield* registry.get("dock"))!.online);
