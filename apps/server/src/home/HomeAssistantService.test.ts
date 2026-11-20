@@ -1,6 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
+import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -1167,3 +1168,26 @@ it.effect(
     });
   },
 );
+
+it.effect("the room gate's own lamp is there only on a server started for the gate", () => {
+  const { layer } = setup();
+  const find = Effect.gen(function* () {
+    const home = yield* connected;
+    return (yield* home.find({ text: "suite lamp" })).map((e) => e.entityId);
+  });
+  return Effect.gen(function* () {
+    assert.notInclude(yield* find.pipe(Effect.provide(layer)), HomeAssistantService.SUITE_LAMP);
+    assert.include(
+      yield* find.pipe(
+        Effect.provide(
+          layer.pipe(
+            Layer.provide(
+              ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_SUITE_FIXTURES: "1" })),
+            ),
+          ),
+        ),
+      ),
+      HomeAssistantService.SUITE_LAMP,
+    );
+  });
+});

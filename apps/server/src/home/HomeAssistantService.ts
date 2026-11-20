@@ -28,6 +28,7 @@ import {
   type HomeVerdict,
 } from "@t3tools/tessaya-shared/homeRisk";
 import * as Clock from "effect/Clock";
+import * as Config from "effect/Config";
 import * as Deferred from "effect/Deferred";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -456,7 +457,12 @@ const expectedAfter = (request: {
   return null;
 };
 
+/** The room gate's fixture light, only on a server started with TESSAYA_SUITE_FIXTURES=1 (its writes are dry runs). */
+export const SUITE_LAMP = "light.tessaya_suite_lamp";
+
 const make = Effect.gen(function* () {
+  const suiteFixtures =
+    (yield* Config.String("TESSAYA_SUITE_FIXTURES").pipe(Config.withDefault(""))) === "1";
   const sql = yield* SqlClient.SqlClient;
   const secrets = yield* ServerSecretStore;
   const deviceLock = yield* Semaphore.make(1);
@@ -750,6 +756,12 @@ const make = Effect.gen(function* () {
         yield* loadRegistries(l).pipe(Effect.ignore);
         states.clear();
         yield* l.subscribe({ type: "subscribe_entities" }, applyDiff).pipe(Effect.ignore);
+        // The room gate's own lamp (room-suite sets it): its light and timer cases never wait on his real house.
+        if (suiteFixtures)
+          states.set(SUITE_LAMP, {
+            s: "off",
+            a: { friendly_name: "Suite Lamp", supported_color_modes: ["brightness"] },
+          });
         yield* l
           .subscribe({ type: "subscribe_events", event_type: DONE_EVENT }, sweepOnce)
           .pipe(Effect.ignore);
