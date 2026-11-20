@@ -11,6 +11,8 @@ type Incoming =
   | { readonly type: "visible"; readonly on: boolean }
   | { readonly type: "inset"; readonly bottom: number };
 
+const tell = (data: object) => window.ReactNativeWebView?.postMessage(JSON.stringify(data));
+
 // every frame the renderer draws, counted for the app's own cost check (talkCost.ts), sent every ten seconds
 let frames = 0;
 const raf = window.requestAnimationFrame.bind(window);
@@ -36,6 +38,8 @@ const body = mountBody(canvas, {
       cmPerS: t.felt?.cmPerS ?? 0,
       ...(t.self === true ? { self: true } : {}),
     }),
+  // her model has loaded and drawn: the app takes away her face placeholder
+  onOutfit: () => tell({ type: "shown" }),
 });
 body.orbit(0.35);
 let whole = false;
@@ -65,7 +69,6 @@ canvas.addEventListener("touchmove", (e) => {
   }
 });
 let shownUrl: string | null = null;
-const tell = (data: object) => window.ReactNativeWebView?.postMessage(JSON.stringify(data));
 
 const onMessage = (raw: unknown) => {
   let m: Incoming;
