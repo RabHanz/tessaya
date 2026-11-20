@@ -15,6 +15,14 @@ const sample = (s: Partial<RoomSample>): RoomSample => ({
 });
 
 describe("tessaya-room grader", () => {
+  it("fails a body question answered without reading her state or the cast", () => {
+    const c = caseOf("bodies-read-state");
+    expect(failureOf(c, sample({ calls: [] }))).toBe(
+      "called none of tessaya_my_state, tessaya_cast",
+    );
+    expect(failureOf(c, sample({ calls: ["tessaya_cast"] }))).toBeNull();
+  });
+
   it("fails her saying the same thing twice where a case asks for distinct replies", () => {
     const c = caseOf("presence-missed-you");
     const said = (replies: ReadonlyArray<string>) =>
