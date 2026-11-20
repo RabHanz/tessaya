@@ -2535,8 +2535,13 @@ export const startScreenCompanion = (input: {
   // The assistant's last numbered tree: a click by number is refused once any other caller numbered a list.
   let lastTree: number | undefined;
   const toolHost: ToolHost = {
-    acted: (tool, outcome) =>
-      deskAction(input.direct, { kind: "desk.tool", subject: tool, outcome }),
+    acted: (tool, outcome, ms, look) =>
+      deskAction(input.direct, {
+        kind: look === true ? "desk.look" : "desk.tool",
+        subject: tool,
+        outcome,
+        ms,
+      }),
     // The index lives on one server (D5); this machine's server answers from it or from the paired peer that holds it.
     history: async (ask) => {
       if (input.direct === undefined) return "The history index is not available here.";

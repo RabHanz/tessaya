@@ -369,9 +369,10 @@ export const routes = HttpRouter.use((router) =>
     // What the desktop did on its own (a hands step, an app command, a Settings save): names and outcomes, no content.
     const decodeDeskAction = Schema.decodeUnknownOption(
       Schema.Struct({
-        kind: Schema.Literals(["desk.tool", "settings.changed"]),
+        kind: Schema.Literals(["desk.tool", "desk.look", "settings.changed"]),
         subject: Schema.String.check(Schema.isPattern(/^[\w.-]{1,80}$/)),
         outcome: Schema.optional(Schema.Literals(["ok", "fail"])),
+        ms: Schema.optional(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 3_600_000 }))),
       }),
     );
     const decodePeerTurn = Schema.decodeUnknownOption(PeerTurnBody);
@@ -467,11 +468,13 @@ export const routes = HttpRouter.use((router) =>
         if (body._tag === "None")
           return HttpServerResponse.jsonUnsafe({ message: "Not an action." }, { status: 400 });
         const member = memberOfSubject(session.value.subject);
+        const { ms, ...action } = body.value;
         yield* emitAction({
-          ...body.value,
-          // A hands step is hers; a Settings save is whoever signed this desktop in.
+          ...action,
+          ...(ms === undefined ? {} : { data: { ms } }),
+          // A hands step or look is hers; a Settings save is whoever signed this desktop in.
           actor:
-            body.value.kind === "desk.tool"
+            action.kind !== "settings.changed"
               ? { kind: "persona", certainty: 1 }
               : {
                   kind: member === null ? "owner" : "member",

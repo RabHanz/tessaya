@@ -140,8 +140,11 @@ export interface ToolHost {
   /** He closed the conversation: her voice rests once this reply has played. */
   readonly rest?: () => void;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
-  /** Each of this table's own tools that changes something, as it ends: into his action log. */
-  readonly acted?: (tool: string, outcome: "ok" | "fail") => void;
+  /**
+   * Each of this table's own tools that changes something, as it ends, with how long it took: into his action log.
+   * A screen look (`look`) is timed too, since that is where a turn's seconds go, but it changed nothing.
+   */
+  readonly acted?: (tool: string, outcome: "ok" | "fail", ms: number, look?: boolean) => void;
   /** His server's shared tools (the one registry every vessel uses): as last listed, and one call to them. */
   readonly shared?: {
     readonly specs: ReadonlyArray<SharedToolSpec>;
@@ -399,15 +402,24 @@ const DESK_READS = new Set([
   "morning_brief",
 ]);
 
-const withActed = (tool: TessayaTool, acted: NonNullable<ToolHost["acted"]>): TessayaTool => ({
+/** The reads that look at his screen: timed into the log as looks, the rest of DESK_READS not at all. */
+const SCREEN_LOOKS: ReadonlySet<string> = new Set(["screen_capture", "ui_tree", "wait_for"]);
+
+const withActed = (
+  tool: TessayaTool,
+  acted: NonNullable<ToolHost["acted"]>,
+  look = false,
+): TessayaTool => ({
   ...tool,
   run: async (a) => {
+    const started = performance.now();
+    const ms = () => Math.round(performance.now() - started);
     try {
       const out = await tool.run(a);
-      acted(tool.name, "ok");
+      acted(tool.name, "ok", ms(), look);
       return out;
     } catch (error) {
-      acted(tool.name, "fail");
+      acted(tool.name, "fail", ms(), look);
       throw error;
     }
   },
@@ -1679,7 +1691,13 @@ export const buildTessayaTools = (
   const own =
     acted === undefined
       ? batched
-      : batched.map((t) => (DESK_READS.has(t.name) ? t : withActed(t, acted)));
+      : batched.map((t) =>
+          SCREEN_LOOKS.has(t.name)
+            ? withActed(t, acted, true)
+            : DESK_READS.has(t.name)
+              ? t
+              : withActed(t, acted),
+        );
   return options.remote === true ? own : [...own, ...sharedTools(host, own)];
 };
 
