@@ -1870,7 +1870,10 @@ export function mountBody(
       frame === null
         ? a.lerp(b, r.at).add(new THREE.Vector3(0, r.up * (rig?.height ?? 1.6), 0))
         : frame.at.clone().add(out!);
-    const side = out !== null && out.length() > 0.01 ? out.clone().normalize() : new THREE.Vector3(...r.dir).normalize();
+    const side =
+      out !== null && out.length() > 0.01
+        ? out.clone().normalize()
+        : new THREE.Vector3(...r.dir).normalize();
     // reached from that part's own side, from a little way off her
     const from = p.clone().addScaledVector(side, 0.6);
     ray.set(from, p.clone().sub(from).normalize());
