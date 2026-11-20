@@ -21,6 +21,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 
 /** Every member with their name and own devices (the `devices` preference), for the feeders to tie a device to them. */
@@ -43,6 +44,7 @@ export const make = Effect.gen(function* () {
   const home = yield* Effect.serviceOption(HomeAssistantService);
   const registry = yield* Effect.serviceOption(DeviceRegistry);
   const fs = yield* Effect.serviceOption(FileSystem.FileSystem);
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
   // Home Assistant's "away" is noted when it changes, so a minute's sweep never cancels a newer sign they are back.
   const lastHa = new Map<string, string>();
   const sweep = Effect.gen(function* () {
@@ -55,10 +57,16 @@ export const make = Effect.gen(function* () {
     const signals = [...lanSignals(arpMacs(table), members, at)];
     if (Option.isSome(home)) {
       const vessels = Option.isNone(registry) ? [] : yield* registry.value.list;
+      const areas = Option.isNone(settings)
+        ? {}
+        : yield* settings.value.getSettings.pipe(
+            Effect.map((s) => s.tessayaVesselAreas),
+            Effect.orElseSucceed(() => ({})),
+          );
       for (const s of homeAssistantSignals({
         entities: yield* home.value.presenceEntities,
         members,
-        vessels: vessels.map((v) => ({ id: v.deviceId, name: v.name })),
+        vessels: vessels.map((v) => ({ id: v.deviceId, name: v.name, area: areas[v.deviceId] })),
         owner: OWNER_MEMBER_ID,
         at,
       })) {

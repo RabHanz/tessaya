@@ -329,6 +329,10 @@ describe("the watching feeders", () => {
       vessels: [
         { id: "t-1", name: "Office Tessel" },
         { id: "t-2", name: "Kitchen Tessel" },
+        // Named for nowhere, but he set its area: the study's sensor places it.
+        { id: "t-3", name: "Tumble", area: "office" },
+        // Named "Office" but set to the kitchen: his setting wins over the name.
+        { id: "t-4", name: "Office spare", area: "Kitchen" },
       ],
       owner: "owner",
       at: NOW,
@@ -338,6 +342,7 @@ describe("the watching feeders", () => {
       ["sara", "haAway", null],
       ["owner", "lan", null],
       [null, "occupied", "t-1"],
+      [null, "occupied", "t-3"],
       ["owner", "meeting", null],
       ["sara", "outOfOffice", null],
     ]);

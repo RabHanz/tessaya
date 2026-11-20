@@ -53,6 +53,7 @@ import { HomeDevices } from "../home/HomeDevices.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { BrainUsage, periodStarts } from "./BrainUsage.ts";
 import { houseZone } from "./houseZone.ts";
+import { toneFor } from "@t3tools/tessaya-shared/expressionMap";
 import { LATE_RUN_MS } from "@t3tools/tessaya-shared/upcoming";
 import { readDndUntil, readQuietHours } from "./quietHours.ts";
 import { TessayaCommitmentService } from "./TessayaCommitmentService.ts";
@@ -575,14 +576,22 @@ export const review = Effect.fn("TessayaPulse.review")(function* (state: PulseSt
         decision = { ...decision, action: "note" };
         held = "nobody to tell nearby";
       }
-    } else
+    } else {
+      // A welcome back carries her feeling's tone; anything that warns, reminds or asks is said plainly.
+      const felt =
+        decision.action === "speak" && decision.category === "people"
+          ? yield* Effect.serviceOption(TessayaMood)
+          : Option.none();
+      const view = Option.isNone(felt) ? null : yield* felt.value.view(undefined, zone, member);
+      const tone = view === null ? null : toneFor(view.label, view.intensity);
       yield* devices.value
         .command(
           where,
-          { op: "say", text: decision.text },
+          { op: "say", text: decision.text, ...(tone === null ? {} : { tone }) },
           { who: "Tessaya", surface: "assistant" },
         )
         .pipe(Effect.ignoreCause({ log: true }));
+    }
   }
   if (decision.action === "act" && decision.remindInMinutes !== null) {
     const commitments = yield* Effect.serviceOption(TessayaCommitmentService);
