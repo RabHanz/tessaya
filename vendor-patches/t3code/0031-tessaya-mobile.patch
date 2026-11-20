@@ -104,7 +104,7 @@ index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb223718
    }
  }
 diff --git a/apps/mobile/metro.config.js b/apps/mobile/metro.config.js
-index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..46753e0388f57e59abca313b827cf0593a8a7d58 100644
+index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..e2a5df5d507fcdf7481e9afa554696801a1eee08 100644
 --- a/apps/mobile/metro.config.js
 +++ b/apps/mobile/metro.config.js
 @@ -18,7 +18,10 @@ const licenseGeneratorSource = path.join(
@@ -157,6 +157,30 @@ index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..46753e0388f57e59abca313b827cf059
        ["packages/client-runtime/src/device", ["stream.ts", "hubAccess.ts"], generateAll],
        [
          "packages/client-runtime/src/preview",
+@@ -110,11 +122,16 @@ async function prepareStreamScripts() {
+   }
+ }
+ 
+-module.exports = Promise.all([generateMobileThirdPartyLicenses(), prepareStreamScripts()]).then(
+-  () =>
+-    withUniwindConfig(config, {
+-      cssEntryFile: "./global.css",
+-      extraThemes,
+-      polyfills: { rem: 14 },
+-    }),
++// knip loads this file only to read it: the generators bundle whole client trees, so a commit hook never runs them.
++const readOnly = process.argv.some((arg) => /[/\\]knip([/\\.]|$)/.test(arg));
++module.exports = (
++  readOnly
++    ? Promise.resolve()
++    : Promise.all([generateMobileThirdPartyLicenses(), prepareStreamScripts()])
++).then(() =>
++  withUniwindConfig(config, {
++    cssEntryFile: "./global.css",
++    extraThemes,
++    polyfills: { rem: 14 },
++  }),
+ );
 diff --git a/apps/mobile/modules/t3-agent-notifications/android/src/main/java/expo/modules/t3agentnotifications/AgentNotifications.kt b/apps/mobile/modules/t3-agent-notifications/android/src/main/java/expo/modules/t3agentnotifications/AgentNotifications.kt
 index fdfd144ebb9ccebdf8dff2b2daadd86e60549497..3d1c13e29eeb519ae4f0673e503154b04324aec0 100644
 --- a/apps/mobile/modules/t3-agent-notifications/android/src/main/java/expo/modules/t3agentnotifications/AgentNotifications.kt
