@@ -6,6 +6,7 @@ import {
   COVERED_BY_OWN,
   clickTargetsField,
   focusIsOn,
+  pressCovered,
   treeText,
   type FocusState,
   type ToolHost,
@@ -222,6 +223,25 @@ describe("the assistant's tool table", () => {
     expect(clickTargetsField(['[5] edit: Notes = "draft"'], { id: 5 })).toBe(true);
     expect(clickTargetsField(tree, { label: "Send" })).toBe(false);
     expect(clickTargetsField(tree, { x: 1, y: 2 })).toBe(false);
+  });
+
+  it("a covered control is pressed by its pattern, and refused when only a real click would do or nothing pressed it", async () => {
+    const covered = { name: "New tab", coveredBy: "another window" };
+    const asked: string[] = [];
+    const press = (out: { name: string; invoked?: string } | null) => async () => {
+      asked.push("press");
+      return out;
+    };
+    expect(await pressCovered(covered, press({ name: "New tab", invoked: "invoke" }))).toEqual({
+      name: "New tab",
+      invoked: "invoke",
+    });
+    await expect(pressCovered(covered, null)).rejects.toThrow('is covered by "another window"');
+    await expect(pressCovered(covered, press({ name: "New tab" }))).rejects.toThrow("covered");
+    await expect(
+      pressCovered(covered, async () => Promise.reject(new Error("sidecar gone"))),
+    ).rejects.toThrow("covered");
+    expect(asked).toEqual(["press", "press"]);
   });
 
   it("clicks a tree line by its number and says when the tree was cut", async () => {
