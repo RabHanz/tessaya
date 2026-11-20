@@ -830,6 +830,10 @@ it.effect(
       // Nothing like it in the kitchen: the whole house.
       yield* fromDock({ text: "fan" });
       expect(asked).toEqual(["kitchen", "kitchen", undefined]);
+      // Something in the kitchen, but not what he named: the house is looked at too, so it is never hidden ("water
+      // pump" asked from the bedroom, 20 Nov).
+      yield* fromDock({ text: "water pump" });
+      expect(asked.slice(-2)).toEqual(["kitchen", undefined]);
       // A room he names wins.
       yield* fromDock({ text: "light", area: "bedroom" });
       expect(asked.at(-1)).toBe("bedroom");

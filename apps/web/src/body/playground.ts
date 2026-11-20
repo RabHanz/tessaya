@@ -43,6 +43,16 @@ export interface Licence {
   readonly redistribution?: string;
   readonly commercial?: string;
 }
+/** A clip a layer offers the clip browser (its own, in the body's axes: a layer converts with its loader first). */
+export interface PlaygroundClip {
+  readonly id: string;
+  readonly fps: number;
+  readonly loop?: boolean;
+  readonly grounded?: boolean;
+  readonly frames: ReadonlyArray<Record<string, readonly [number, number, number]>>;
+  /** Where it comes from, in his words ("Your packs"). */
+  readonly from?: string;
+}
 export interface PlaygroundTab {
   readonly id: string;
   readonly label: string;
@@ -57,6 +67,8 @@ export interface PlaygroundHooks {
   readonly direct?: (text: string) => Promise<{ readonly move: unknown; readonly by: string }>;
   readonly record?: (action: string, subject?: string, data?: object) => void;
   readonly tabs?: ReadonlyArray<PlaygroundTab>;
+  /** Its own clips for the clip browser, beside her library. */
+  readonly clips?: () => Promise<ReadonlyArray<PlaygroundClip>>;
   /** A model opened, with its glTF JSON and bytes (a layer may judge it or keep a dropped file). */
   readonly onModel?: (m: PlaygroundModel, json: Record<string, unknown>, buf: ArrayBuffer) => void;
   /** A hand on the first stage's body (vrmBody onTouch). */
@@ -159,6 +171,9 @@ const CSS = `
 .pg .list{display:flex;flex-direction:column}
 .pg .item{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);font-size:13px}
 .pg .item:last-child{border-bottom:0}.pg .item .grow{min-width:0;overflow-wrap:anywhere}
+.pg button.item{width:100%;background:transparent;border:0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);text-align:left;cursor:pointer}.pg button.item[aria-pressed=true] .grow{color:var(--accent)}
+.pg .badge{font:11px var(--mono);border:1px solid var(--line);border-radius:999px;padding:0 7px;color:var(--soft);white-space:nowrap}
+.pg .badge.good{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}.pg .badge.bad{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 45%,transparent)}
 .pg .dot{width:7px;height:7px;border-radius:50%;background:var(--line);flex:none}.pg .dot.on{background:var(--accent)}.pg .dot.bad{background:var(--bad)}
 .pg .kv{display:grid;grid-template-columns:42% 1fr;gap:3px 10px;font-size:13px}.pg .kv dt{color:var(--soft)}.pg .kv dd{margin:0;overflow-wrap:anywhere}
 .pg .tl{position:relative;height:46px;margin:8px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -1830,11 +1845,173 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     }
   };
 
+  // The clip browser: her library (a physics-trained take where a policy played it) and a layer's own clips, each
+  // checked joint by joint on the reference body, a few at a time so the page never stalls.
+  interface ClipRow {
+    readonly id: string;
+    readonly title: string;
+    readonly from: string;
+    readonly trained: boolean;
+    readonly clip: () => Parameters<BodyControl["clipCheck"]>[0];
+    readonly play: () => void;
+  }
+  let layerClips: ReadonlyArray<PlaygroundClip> | null = hooks.clips === undefined ? [] : null;
+  let pickedClip: string | null = null;
+  const clipChecks = new Map<string, ReturnType<BodyControl["clipCheck"]>>();
+  const clipBadges = new Map<string, HTMLElement>();
+  const libraryClip = (move: unknown) => {
+    const d = T.decodeBodyMove(move);
+    const all = d.ok ? T.clipsOf(T.expand(T.moveCues(d.move, "playground"))) : [];
+    return { fps: all[0]?.fps ?? 30, loop: false, frames: all.flatMap((c) => c.frames) };
+  };
+  const clipRows = (): ClipRow[] => [
+    ...T.MOTION_LIBRARY.map((e) => {
+      const baked = T.bakedClip(e.id);
+      return {
+        id: `library:${e.id}`,
+        title: e.text,
+        from: "Her library",
+        trained: baked !== undefined,
+        clip: () =>
+          baked ? { fps: baked.fps, loop: false, frames: baked.frames } : libraryClip(e.move),
+        play: () => void play(e.move, e.id),
+      };
+    }),
+    ...(layerClips ?? []).map((c) => ({
+      id: `own:${c.id}`,
+      title: human(c.id),
+      from: c.from ?? "Yours",
+      trained: false,
+      clip: () => ({ fps: c.fps, loop: c.loop === true, frames: c.frames }),
+      play: () => {
+        cue({
+          kind: "clip",
+          id: c.id,
+          fps: c.fps,
+          loop: c.loop === true,
+          grounded: c.grounded === true,
+          frames: c.frames,
+        });
+        record("clip.played", c.id);
+      },
+    })),
+  ];
+  const badgesOf = (r: ClipRow, into: HTMLElement) => {
+    const c = clipChecks.get(r.id);
+    const b = (text: string, tone: string) => el("span", `badge ${tone}`, text);
+    into.replaceChildren(
+      ...(r.trained ? [b("physics-trained", "good")] : []),
+      ...(c === undefined
+        ? [b("checking", "")]
+        : [
+            c.joints.length === 0
+              ? b("joints fine", "good")
+              : b(
+                  ((n) => `${n} ${n === 1 ? "joint bends" : "joints bend"} wrong`)(
+                    new Set(c.joints.map((j) => j.bone)).size,
+                  ),
+                  "bad",
+                ),
+            ...(c.overSpeed.length > 0 ? [b("too fast", "bad")] : []),
+            ...(c.seam > 0.2 ? [b("loop jumps", "bad")] : []),
+          ]),
+    );
+  };
+  const checkClips = () => {
+    const todo = clipRows()
+      .filter((r) => !clipChecks.has(r.id))
+      .slice(0, 4);
+    for (const r of todo) {
+      clipChecks.set(r.id, T.clipCheck(r.clip()));
+      const into = clipBadges.get(r.id);
+      if (into?.isConnected) badgesOf(r, into);
+      if (r.id === pickedClip && tab === "clips") render("clips");
+    }
+    if (todo.length > 0) setTimeout(checkClips, 0);
+  };
+  function renderClips() {
+    const p = pane("clips");
+    if (layerClips === null && hooks.clips) {
+      layerClips = [];
+      void hooks
+        .clips()
+        .then((x) => {
+          layerClips = x;
+          if (tab === "clips") render("clips");
+          checkClips();
+        })
+        .catch(() => note("Your own clips didn't load."));
+    }
+    const rows = clipRows();
+    const picked = rows.find((r) => r.id === pickedClip);
+    if (picked) {
+      const c = clipChecks.get(picked.id);
+      const n = picked.clip().frames.length;
+      const d = sec(picked.title, el("span", "act", picked.from));
+      if (c === undefined) d.append(el("p", "sub", "Checking it…"));
+      else {
+        d.append(
+          el(
+            "p",
+            "sub",
+            c.joints.length === 0
+              ? "Every joint stays inside a person's reach in all its frames."
+              : "What bends wrong, worst first (the body keeps each inside her reach when it plays):",
+          ),
+        );
+        for (const j of c.joints.slice(0, 16))
+          d.append(
+            el(
+              "p",
+              "warn",
+              `${boneWord(j.bone)}: ${ISSUE_WORDS[j.kind] ?? "corrected"} by up to ${deg(j.by)}, in ${j.frames} of ${n} frames`,
+            ),
+          );
+        if (c.overSpeed.length > 0)
+          d.append(
+            el("p", "warn", `Faster than a person: ${c.overSpeed.map(boneWord).join(", ")}`),
+          );
+        if (c.seam > 0.2)
+          d.append(
+            el("p", "warn", `Its loop jumps ${deg(c.seam)} from the last frame back to the first`),
+          );
+      }
+      d.append(btn("Play it again", "btn", picked.play));
+      p.append(d);
+    }
+    clipBadges.clear();
+    for (const from of new Set(rows.map((r) => r.from))) {
+      const mine = rows.filter((r) => r.from === from);
+      const s = sec(from, el("span", "act", String(mine.length)));
+      const list = el("div", "list");
+      for (const r of mine) {
+        const row = el("button", "item");
+        row.type = "button";
+        row.setAttribute("aria-pressed", String(r.id === pickedClip));
+        const t = el("div", "grow", r.title);
+        const badges = el("div", "row");
+        clipBadges.set(r.id, badges);
+        badgesOf(r, badges);
+        row.append(t, badges);
+        row.onclick = () => {
+          pickedClip = r.id;
+          r.play();
+          render("clips");
+        };
+        list.append(row);
+      }
+      s.append(list);
+      p.append(s);
+    }
+    checkClips();
+  }
+
   const own: Record<string, () => void> = {
     move: renderMove,
     pose: renderPose,
     face: renderFace,
     scenes: renderScenes,
+    clips: renderClips,
     check: renderCheck,
     body: renderBody,
     agent: renderAgent,
@@ -1844,6 +2021,7 @@ export function mountPlayground(host: HTMLElement, hooks: PlaygroundHooks = {}):
     ["pose", "Pose"],
     ["face", "Face"],
     ["scenes", "Scenes"],
+    ["clips", "Clips"],
     ["check", "Check"],
     ["body", "Body"],
     ["agent", "Agent"],
