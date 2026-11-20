@@ -166,6 +166,7 @@ import {
   clickTargetsField,
   COVERED_BY_OWN,
   focusIsOn,
+  pressCovered,
   treeText,
   type OpenWindow,
   typeByValue,
@@ -2721,19 +2722,16 @@ export const startScreenCompanion = (input: {
       const found =
         a.label === undefined ? null : await actions?.locate?.(a.label, point).catch(() => null);
       if (found?.coveredBy !== undefined) {
-        // A press by its own pattern needs no clear spot, so a covered control can still be pressed.
-        const pressed =
-          a.label === undefined || a.button === "right" || a.double === true
+        const label = a.label;
+        const pressed = await pressCovered(
+          { name: found.name, coveredBy: found.coveredBy },
+          label === undefined || a.button === "right" || a.double === true
             ? null
-            : await actions?.locate?.(a.label, point, false, true).catch(() => null);
-        if (pressed?.invoked !== undefined) {
-          void showAct({ kind: "click", name: pressed.name }, pressed);
-          await followOwnClick();
-          return `Pressed ${pressed.name} (${pressed.invoked}, no pointer, no focus change)${pressed.state ? `; it now reads ${pressed.state}` : ""}.`;
-        }
-        throw new Error(
-          `"${found.name}" is covered by "${found.coveredBy}", so a click would land there. Take a screenshot, deal with what covers it, then click.`,
+            : async () => actions?.locate?.(label, point, false, true),
         );
+        void showAct({ kind: "click", name: pressed.name }, pressed);
+        await followOwnClick();
+        return `Pressed ${pressed.name} (${pressed.invoked}, no pointer, no focus change)${pressed.state ? `; it now reads ${pressed.state}` : ""}.`;
       }
       const to = found === null || found === undefined ? point : { x: found.x, y: found.y };
       // A picture of one window says nothing about what is on top of it now: the click must reach that window.

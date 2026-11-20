@@ -354,6 +354,21 @@ export const treeText = (tree: {
   return [tree.window ?? "", ...controls, ...cut, ...open].join("\n");
 };
 
+/**
+ * A control the cover check says is covered: pressed by its own UI Automation pattern, which needs no clear spot and
+ * leaves his pointer alone, else refused. `press` is null when only a real click will do (a right or double click).
+ */
+export const pressCovered = async <P extends { readonly name: string; readonly invoked?: string }>(
+  found: { readonly name: string; readonly coveredBy: string },
+  press: (() => Promise<P | null | undefined>) | null,
+): Promise<P & { readonly invoked: string }> => {
+  const pressed = press === null ? null : await press().catch(() => null);
+  if (pressed?.invoked !== undefined) return pressed as P & { readonly invoked: string };
+  throw new Error(
+    `"${found.name}" is covered by "${found.coveredBy}", so a click would land there. Take a screenshot, deal with what covers it, then click.`,
+  );
+};
+
 /** What an action changed, from the keyboard's place before and after it (cua's confirmed or suspected no-op). */
 export const effectLine = (before: FocusState, after: FocusState): string => {
   const focus = after.focus ?? "nothing";
