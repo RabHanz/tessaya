@@ -18,6 +18,7 @@ export interface Device {
   readonly entityId: string;
   readonly name: string;
   readonly state: string;
+  readonly area?: string | null;
 }
 
 export type Slot = "fan" | "light" | "switch" | "media" | "cover" | "climate" | "scene" | "script";
