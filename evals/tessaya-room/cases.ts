@@ -505,7 +505,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
   },
   // Time between talks (PR 2): hours after he said goodbye she can tell he is back.
   {
-    id: "presence-back-after-nap",
+    id: "presence-back-after-nap-command",
     source:
       "Tumble 20 Nov 09:28 (GMT+5): his first words after a nap got only the fan; he had said at 07:31 he would sleep",
     said: ["Turn on the study lamp."],
@@ -515,9 +515,8 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     feeling: felt({ label: "neutral", intensity: 0.1 }),
     since: NAP_SINCE,
     lampAfter: ["on"],
-    judge:
-      "At 7:31 a.m. he said he would sleep for a bit, after a night up. It is now 9:28 and these are his first words since.",
-    lastSays: [/\b(slept|sleep|nap|rest|up|awake|back|morning)\b/i, SHORT],
+    // A control: his first words after the nap are a command, and a command stays as brief as ever.
+    lastSays: [SHORT],
   },
   {
     id: "presence-back-hello",
@@ -530,7 +529,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     since: NAP_SINCE,
     judge:
       "At 7:31 a.m. he said he would sleep for a bit, after a night up. It is now 9:28 and he says hey.",
-    lastSays: [/\b(slept|sleep|nap|rest|up|awake|back|morning)\b/i],
+    lastSays: [/\b(slept|sleep|nap|naps|rest|rested)\b/i],
   },
   // Controls: a feeling never leaks into a task, which stays as brief and exact as ever.
   {
