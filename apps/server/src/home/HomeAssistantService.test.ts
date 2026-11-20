@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import { EnvironmentId } from "@t3tools/contracts";
@@ -43,6 +44,11 @@ const makeHouse = () => {
     ["fan.fan", { s: "on", a: { friendly_name: "Fan" } }],
     ["script.office_fan_toggle", { s: "off", a: { friendly_name: "Office Fan Toggle" } }],
     ["automation.kitten", { s: "on", a: { friendly_name: "Kitten litter", id: "kitten_1" } }],
+    [
+      "binary_sensor.front_door_person",
+      { s: "off", a: { friendly_name: "Front door person", device_class: "occupancy" } },
+    ],
+    ["camera.front_door", { s: "idle", a: { friendly_name: "Front door" } }],
   ]);
   const configs = new Map<string, Record<string, unknown>>([
     ["kitten_1", { id: "kitten_1", alias: "Kitten litter" }],
@@ -98,6 +104,12 @@ const makeHouse = () => {
             { entity_id: "fan.office_fan", area_id: "office", name: "Office Fan" },
             { entity_id: "light.desk_lamp", area_id: "office" },
             { entity_id: "light.bedside_lamp", area_id: "bedroom" },
+            {
+              entity_id: "binary_sensor.front_door_person",
+              device_id: "doorcam",
+              area_id: "office",
+            },
+            { entity_id: "camera.front_door", device_id: "doorcam", area_id: "office" },
           ]);
         case "validate_config": {
           const empty = Array.isArray(m["triggers"]) && m["triggers"].length === 0;
@@ -618,6 +630,27 @@ it.effect(
       assert.strictEqual(yield* statusOf(unheard), "finished");
       assert.strictEqual(house.calls.filter((c) => c === "automation.trigger").length, triggers);
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "tells a rule who arrived at the door, with the camera beside it, and says nothing on the first read",
+  () => {
+    const { house, layer } = setup();
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const events = yield* home.events;
+      house.put("light.study", { ...house.states.get("light.study")!, s: "off" });
+      house.put("binary_sensor.front_door_person", {
+        ...house.states.get("binary_sensor.front_door_person")!,
+        s: "on",
+      });
+      const seen = yield* PubSub.takeAll(events);
+      assert.deepStrictEqual(
+        seen.map((e) => [e.entityId, e.kind, e.from, e.to, e.camera, e.area]),
+        [["binary_sensor.front_door_person", "person", "off", "on", "camera.front_door", "Office"]],
+      );
+    }).pipe(Effect.scoped, Effect.provide(layer));
   },
 );
 
