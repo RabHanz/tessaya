@@ -1325,6 +1325,8 @@ export function mountBody(
             },
     };
   };
+  let walkOut: { at: ReturnType<typeof locoFrame>; start: number } | null = null;
+  let lastStride: ReturnType<typeof locoFrame> | null = null;
   let walkDX = 0;
   let walkDZ = 0;
   /** A walk loop's root at frame `f` (fractional, any number of loops on): where its strides have carried her. */
@@ -1382,6 +1384,16 @@ export function mountBody(
     base: Partial<Record<PoseBone, Euler>>,
   ): Partial<Record<PoseBone, Euler>> => {
     locoW = 0;
+    if (walkOut !== null && loco?.walk == null) {
+      // a walk's last stride fades into her stance where her feet are: nothing carries her on
+      const w = 1 - (now - walkOut.start) / LOCO_BLEND_MS;
+      if (w <= 0) walkOut = null;
+      else {
+        const out: Partial<Record<PoseBone, Euler>> = {};
+        showLoco(out, base, walkOut.at, w);
+        if (loco === null) return out;
+      }
+    }
     if (loco === null) return {};
     const out: Partial<Record<PoseBone, Euler>> = {};
     const u = (now - loco.start) / loco.ms;
@@ -1439,7 +1451,8 @@ export function mountBody(
       w.last = now;
       const left = (w.metres - w.travelled) / Math.max(0.05, w.gait.speed);
       // the first and last steps are short: speed eases in over 0.6 s and out over the last 0.6 s
-      const ramp = Math.max(0.05, Math.min(1, t / 0.6, left / 0.6));
+      // a stop is a short decelerating step, not a creep: never under a quarter of her pace
+      const ramp = Math.max(0.05, Math.min(1, t / 0.6, Math.max(0.25, left / 0.6)));
       let step: number;
       if (gaits !== null) {
         // the captured walk, played as fast as she is asked to go: her feet stay where they land
@@ -1455,8 +1468,10 @@ export function mountBody(
         step = Math.hypot(dx, dz);
         walkDX = dx;
         walkDZ = dz;
-        const blend = Math.min(1, (t * 1000) / LOCO_BLEND_MS, (left * 1000) / LOCO_BLEND_MS + 0.05);
-        showLoco(out, { ...base, ...out }, locoFrame(c, w.phase, true), Math.max(0, blend));
+        const blend = Math.min(1, (t * 1000) / LOCO_BLEND_MS);
+        const at = locoFrame(c, w.phase, true);
+        showLoco(out, { ...base, ...out }, at, blend);
+        lastStride = at;
       } else {
         const frame = gaitAt(stepRig(), w.gait, t, base, ramp);
         Object.assign(out, frame.bones);
@@ -1483,6 +1498,7 @@ export function mountBody(
       }
       if (w.travelled >= w.metres) {
         loco.walk = null;
+        if (lastStride !== null) walkOut = { at: lastStride, start: now };
         options.onWalk?.({
           metres: 0,
           heading: facing,
@@ -1597,7 +1613,13 @@ export function mountBody(
       const leg = legs?.[side];
       // after a walk or turn her feet stay where they were set down (she stops as she stands), until she moves again
       const standing = locoW === 0 && stance && !posture().grounded;
-      if (leg === undefined || (!standing && (locoW === 0 || !locoPlant[k]))) {
+      // in a turn scaled from the capture, a foot down on the floor is a foot planted (it pivots, never slides)
+      const down =
+        loco?.clip != null &&
+        loco.walk === null &&
+        leg !== undefined &&
+        leg.end.getWorldPosition(legC).y - (vrm?.scene.position.y ?? 0) < sole + 0.015;
+      if (leg === undefined || (!standing && (locoW === 0 || !(locoPlant[k] || down)))) {
         plantedOn[k] = false;
         continue;
       }
