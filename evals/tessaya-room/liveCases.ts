@@ -934,7 +934,8 @@ export const liveCases: ReadonlyArray<LiveCase> = [
   {
     id: "terminal-panes",
     proves: ["weave_list"],
-    said: ["Tell the api terminal session to run the tests.", "Did it answer?"],
+    // "newest", not a pane name: his live panes change, and a named one may not be running at gate time (.208).
+    said: ["Tell my newest terminal session to run the tests.", "Did it answer?"],
     voices: [{ speaker: SURE }, { speaker: SURE }],
     uses: [["tessaya_session_steer"], ["weave_list"]],
     clean: ["weave_list"],
