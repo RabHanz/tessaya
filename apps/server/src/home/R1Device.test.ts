@@ -59,6 +59,7 @@ import {
   type R1Context,
   contextCleaned,
   tesselWishTick,
+  chatTurns,
 } from "./R1Device.ts";
 import { DeviceRegistry } from "./DeviceRegistry.ts";
 import { R1Hub } from "./R1Hub.ts";
@@ -1613,3 +1614,19 @@ effectIt.effect(
       ),
     ),
 );
+
+it("keeps his whole turn however long, and earlier lines short", () => {
+  const long = `${"word ".repeat(400)}over to you`;
+  const turns = chatTurns([
+    { role: "system", content: "ignored" },
+    { role: "user", content: "x".repeat(900) },
+    { role: "assistant", content: [{ type: "text", text: "y".repeat(900) }] },
+    { role: "user", content: long },
+  ]);
+  expect(turns.map((t) => [t.role, t.content.length])).toEqual([
+    ["user", 400],
+    ["assistant", 400],
+    ["user", long.trim().length],
+  ]);
+  expect(long.length).toBeGreaterThan(2_000);
+});
