@@ -8,6 +8,7 @@ import {
   moneyMovement,
   SOCIAL_PER_HOUR,
   type ChromeContext,
+  addressBarHost,
 } from "./webPolicy.ts";
 
 const P = "mcp__claude-in-chrome__";
@@ -94,5 +95,22 @@ describe("the assistant in his own Chrome", () => {
     ).toBe("deny");
     expect(hostOf("javascript:alert(1)")).toBeNull();
     expect(j("navigate", { url: "javascript:alert(1)" }, on).verdict).toBe("deny");
+  });
+});
+
+describe("the site a browser window is on", () => {
+  it("reads the address bar as ui_tree lists it, and nothing else", () => {
+    expect(
+      addressBarHost([
+        "[2] button: Reload",
+        '[3] edit: Address and search bar = "github.com/acme/app"',
+      ]),
+    ).toBe("github.com");
+    expect(
+      addressBarHost(['[3] edit: Address and search bar = "https://Shop.Example.com/a"']),
+    ).toBe("shop.example.com");
+    expect(addressBarHost(["[1] edit: Address and search bar"])).toBeNull();
+    expect(addressBarHost(['[1] edit: Address = "C:\\Users\\rabee"'])).toBeNull();
+    expect(addressBarHost(['[1] edit: Search = "github.com"'])).toBeNull();
   });
 });

@@ -56,6 +56,22 @@ export const hostOf = (raw: string): string | null => {
   }
 };
 
+/**
+ * The site a browser window is on, from its address bar as ui_tree lists it (`edit: Address and search bar = "…"`):
+ * Chrome and Edge show it without the scheme. Null when no address bar with a web address is listed.
+ */
+export const addressBarHost = (controls: ReadonlyArray<string>): string | null => {
+  for (const line of controls) {
+    const m = /\b(?:edit|combo box)\b[^:]*:\s*[^=]*\baddress\b[^=]*=\s*"([^"\s…]+)/i.exec(line);
+    if (m === null) continue;
+    const raw = m[1]!;
+    const host = hostOf(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`);
+    // A site has a dot in its name: a folder path in a file window's address box is not one.
+    return host !== null && host.includes(".") ? host : null;
+  }
+  return null;
+};
+
 export const isSocialHost = (host: string): boolean =>
   SOCIAL.some((d) => host === d || host.endsWith(`.${d}`));
 
