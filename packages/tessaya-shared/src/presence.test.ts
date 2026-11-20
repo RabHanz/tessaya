@@ -206,6 +206,18 @@ describe("routeProactive", () => {
     });
   });
 
+  it("a welcome back after his plan speaks where he is: the Tessel, the desk, or nowhere", () => {
+    expect(route("personal", [sig("omid", "voice", "study", 1)], null)).toMatchObject({
+      action: "speak",
+      vessel: "study",
+    });
+    expect(route("personal", [sig("omid", "voice", "desk", 1)], null)).toMatchObject({
+      action: "speak",
+      vessel: "desk",
+    });
+    expect(route("personal", [], null)).toMatchObject({ action: "quiet" });
+  });
+
   it("with follow off, speaks only where it started", () => {
     expect(route("personal", here, "study", false)).toMatchObject({ action: "quiet" });
     expect(route("personal", [sig("omid", "voice", "study", 1)], "study", false)).toMatchObject({

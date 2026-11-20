@@ -352,8 +352,8 @@ export const readPrompt = (
               ]
             : []),
           context.opinion === null
-            ? `And opinion: the assistant has just met them. From how they talk, a first impression: {"lean": -1 (wary) to 1 (fond), 0 when nothing shows, "text": a few kind, honest words about them, "why": what in their words it rests on}. Tentative and fair. Write text and why as the assistant\'s own thought, in the first person ("they\'re patient with me"), never "the assistant". ${FAIR}`
-            : `And opinion: the assistant's opinion of them so far is ${tag("opinion", context.opinion, 300)}. Answer null when this turn shows nothing new about them (a plain request shows nothing; the opinion is kept). Otherwise give it again in the same shape, moved only by what this shows, and change its direction only if this clearly shows it was wrong. Write text and why as the assistant\'s own thought, in the first person, never "the assistant". ${FAIR}`,
+            ? `And opinion: the assistant has just met them. From how they talk, a first impression: {"lean": -1 (wary) to 1 (fond), 0 when nothing shows, "text": a few kind, honest words about them, "why": what in their words it rests on}. Tentative and fair. Write text and why as the assistant's own thought, in the first person ("they're patient with me"), never "the assistant". ${FAIR}`
+            : `And opinion: the assistant's opinion of them so far is ${tag("opinion", context.opinion, 300)}. Answer null when this turn shows nothing new about them (a plain request shows nothing; the opinion is kept). Otherwise give it again in the same shape, moved only by what this shows, and change its direction only if this clearly shows it was wrong. Write text and why as the assistant's own thought, in the first person, never "the assistant". ${FAIR}`,
         ]),
     ...(context.before === undefined || context.before === ""
       ? []

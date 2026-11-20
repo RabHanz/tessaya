@@ -169,6 +169,13 @@ describe("gate", () => {
       decision: { action: "note" },
     });
     expect(gate({ quiet: true, decision: speak({ category: "reminders" }) }).held).toBeNull();
+    // A welcome back after his plan is personal, never a reminder: quiet hours hold it.
+    expect(
+      gate({
+        quiet: true,
+        decision: speak({ category: "people", text: "Welcome back. How was the nap?" }),
+      }).held,
+    ).toBe("quiet hours");
     expect(gate({ level: "important", digest: [ev({ weight: 60 })] }).held).toBe(
       "not important enough to interrupt",
     );
