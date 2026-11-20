@@ -70,7 +70,8 @@ import {
   voiceFor,
 } from "../../../tessaya/TessayaVoiceLibrary.ts";
 import { Consent, grantWho, hisOwnTurn } from "../../../tessaya/consent.ts";
-import { grantLabel, grantNamed } from "@t3tools/tessaya-shared/consent";
+import { grantLabel, grantNamed, houseGrant } from "@t3tools/tessaya-shared/consent";
+import { HomeAssistantService } from "../../../home/HomeAssistantService.ts";
 import { pronunciations } from "../../../tessaya/Pronunciations.ts";
 import { scratchpad } from "../../../tessaya/TessayaScratchpad.ts";
 import * as ServerConfig from "../../../config.ts";
@@ -1195,6 +1196,29 @@ export const layer = McpToolAccess.toLayer(
             return yield* failed({ reason: "This server keeps no standing yeses." });
           const keys = yield* consent.value.read;
           const said = (list: ReadonlyArray<string>) => list.map(grantLabel);
+          if (input.allow !== undefined) {
+            // A new standing yes is his alone, in his own verified voice (or at his keyboard), never a held one.
+            const turn = yield* TurnOrigin;
+            if (turn !== null && (turn.tainted === true || !hisOwnTurn(turn)))
+              return yield* failed({ reason: "Only he can say that, in his own voice." });
+            const home =
+              runtime === null ? Option.none() : Context.getOption(runtime, HomeAssistantService);
+            const found = Option.isNone(home)
+              ? []
+              : yield* home.value
+                  .find({ text: input.allow, limit: 1 })
+                  .pipe(Effect.orElseSucceed(() => []));
+            const device = found[0];
+            if (device === undefined)
+              return { allowed: said(keys), line: "I couldn't find that device at home." };
+            const after = yield* consent.value.set(houseGrant(device.entityId, device.name), true, {
+              member: OWNER_MEMBER_ID,
+            });
+            return {
+              allowed: said(after),
+              line: `Got it. I won't ask before ${device.name} again.`,
+            };
+          }
           if (input.revoke === undefined)
             return {
               allowed: said(keys),

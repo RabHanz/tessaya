@@ -47,7 +47,9 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaPhoneInbox } from "../tessaya/TessayaPhoneInbox.ts";
 import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
+import { Consent } from "../tessaya/consent.ts";
 import { TurnOrigin } from "../tessaya/TurnOrigin.ts";
+import { houseGrantEntity } from "@t3tools/tessaya-shared/consent";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { arbitrate, ARBITRATION_MS, type RecentAct } from "./homeArbitration.ts";
 import {
@@ -424,6 +426,8 @@ const make = Effect.gen(function* () {
   const connection = yield* HomeAssistantConnection;
   const record = yield* Effect.serviceOption(TessayaRecordService);
   const inbox = yield* Effect.serviceOption(TessayaPhoneInbox);
+  // His standing yeses, the one store "Always allow" writes (B-034).
+  const consent = yield* Effect.serviceOption(Consent);
   const peerLinks = yield* Effect.serviceOption(PeerLinks.PeerLinks);
   const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
   const scope = yield* Effect.scope;
@@ -900,6 +904,19 @@ const make = Effect.gen(function* () {
     );
   });
 
+  /** Every device this act reaches has his standing yes, and it holds for this turn (his own voice or keyboard). */
+  const grantedAll = Effect.fn("HomeAssistant.grantedAll")(function* (deferred: Later) {
+    const reach = reachOf(deferred);
+    if (consent._tag === "None" || reach.length === 0) return false;
+    const keys = yield* consent.value.read;
+    const origin = yield* TurnOrigin;
+    for (const entity of reach) {
+      const key = keys.find((k) => houseGrantEntity(k) === entity);
+      if (key === undefined || !(yield* consent.value.holds(key, origin))) return false;
+    }
+    return true;
+  });
+
   /**
    * One door for every write: refused for never; asked (a phone card, and Settings → Home) for ask without his yes;
    * held for an unattended job; otherwise run. The R1 can never carry a yes: anyone in the room can speak to it.
@@ -971,7 +988,12 @@ const make = Effect.gen(function* () {
         `Waits on the same yes as ${first.line}: one answer on his phone does both.`,
       );
     }
-    if (input.verdict.tier === "ask" && !approved && first === null) {
+    // He said once he needn't be asked for these devices ("remember you don't need approval for the pump").
+    const granted =
+      input.verdict.tier === "ask" && !approved && first === null && input.by.surface !== "standing"
+        ? yield* grantedAll(input.deferred)
+        : false;
+    if (input.verdict.tier === "ask" && !approved && first === null && !granted) {
       if (input.by.surface === "standing") {
         yield* saveAction({ ...base, status: "held" });
         yield* audit({ id, by: input.by, line: input.line, status: "held", why: input.why });

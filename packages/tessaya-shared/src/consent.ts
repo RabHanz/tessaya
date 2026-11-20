@@ -16,6 +16,15 @@ export const GRANTS_MAX = 50;
 /** One act he answered "Always allow" to: the tool, the reason it asks, and the app (none for a job act). */
 export const standingKey = (tool: string, why: string, app = ""): string => `${tool}|${why}|${app}`;
 
+/** His standing yes for changing one house device without a card ("remember you don't need approval for the pump"). */
+export const houseGrant = (entityId: string, name: string): string =>
+  standingKey("house", name.replace(/\|/g, " ").slice(0, 80), entityId);
+/** The house device a key is his standing yes for, or null. */
+export const houseGrantEntity = (key: string): string | null => {
+  const [tool, , entity] = key.split("|");
+  return tool === "house" && entity !== undefined && entity !== "" ? entity : null;
+};
+
 export const withGrant = (keys: ReadonlyArray<string>, key: string, allow: boolean): string[] =>
   allow
     ? [...keys.filter((k) => k !== key), key].slice(-GRANTS_MAX)
@@ -115,6 +124,7 @@ export const grantLabel = (key: string): string => {
   if (key === LOOK_GRANT) return "Seeing your screen";
   if (key.startsWith(cloneGrant(""))) return "A cloned voice (yours, or theirs with permission)";
   const [tool = key, why = "", app = ""] = key.split("|");
+  if (tool === "house") return `Changing ${why} at home`;
   const what = tool.replace(/^tessaya_/, "").replace(/_/g, " ");
   return `${what[0]?.toUpperCase() ?? ""}${what.slice(1)}${app === "" ? "" : ` in ${app}`}${why === "" ? "" : ` (${why.replace(/\.$/, "")})`}`;
 };

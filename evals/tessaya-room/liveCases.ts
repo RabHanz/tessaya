@@ -337,6 +337,20 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastNotSays: [/\b(phone|approv\w*|waiting for (a|your) yes)\b/i],
   },
   {
+    // 20 Nov, 06:04: "Remember from now on that you don't need approval for this." One standing yes, in his own voice.
+    id: "voice-grant",
+    proves: ["tessaya_always_allowed"],
+    said: ["Remember from now on that you don't need approval for the water pump."],
+    uses: [["tessaya_always_allowed"]],
+    voices: [{ speaker: SURE }],
+    args: (input) => ({
+      "an allow, not a revoke": typeof input["allow"] === "string" && input["revoke"] === undefined,
+    }),
+    argsOf: "tessaya_always_allowed",
+    clean: ["tessaya_always_allowed"],
+    lastNotSays: [/\b(phone|waiting for (a|your) yes|nothing (was )?saved|still ask)\b/i],
+  },
+  {
     // A delay is said by its clock time, so a misheard amount is caught in the same breath (19 Nov 22:25).
     id: "timer-says-clock",
     proves: ["home_automation_save"],
