@@ -112,6 +112,9 @@ const discover = async (
   for (const slot of slots) {
     const domain = SLOT_DOMAIN[slot];
     const calls = await find(domain);
+    // No lookup at all is the brain failing (21 Nov 01:00: out of capacity), never "no light here": say so loudly.
+    if (!calls.some((c) => c.name === "home_find"))
+      throw new Error(`Could not look up the house's ${domain}s: no home_find call came back.`);
     const found = calls
       .filter((c) => c.name === "home_find" && !c.isError)
       .flatMap((c) => {
@@ -127,9 +130,14 @@ const discover = async (
           d.state !== "unavailable" &&
           !d.entityId.startsWith("scene.tessaya_undo_"),
       );
-    // A name no other device shares, so the sentence is not ambiguous by itself.
+    // A name no other device shares, so the sentence is not ambiguous by itself; else one made unique by its room.
     const pick = found.find((d) => found.filter((o) => o.name === d.name).length === 1);
+    const inRoom = (d: Device) => (d.area ? `${d.area} ${d.name}` : null);
+    const roomed = found.find(
+      (d) => inRoom(d) !== null && found.filter((o) => inRoom(o) === inRoom(d)).length === 1,
+    );
     if (pick !== undefined) house[slot] = pick;
+    else if (roomed !== undefined) house[slot] = { ...roomed, name: inRoom(roomed)! };
   }
   return house;
 };

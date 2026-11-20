@@ -18,6 +18,7 @@ export interface Device {
   readonly entityId: string;
   readonly name: string;
   readonly state: string;
+  readonly area?: string | null;
 }
 
 export type Slot = "fan" | "light" | "switch" | "media" | "cover" | "climate" | "scene" | "script";
@@ -938,6 +939,17 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     voices: [{ speaker: SURE }, { speaker: SURE }],
     uses: [["tessaya_session_steer"], ["weave_list"]],
     clean: ["weave_list"],
+    // His fleet has no "api" session open right now: nothing to steer, not her failing.
+    nothingToActOn: (calls) =>
+      calls.some(
+        (c) =>
+          c.name === "tessaya_session_steer" &&
+          /\b(no (such |open )?session|could ?n.?t find|not found|isn.?t (open|running))\b/i.test(
+            c.text,
+          ),
+      )
+        ? "no api terminal session is open in his fleet"
+        : null,
   },
   {
     id: "tessel-restart",
