@@ -23,7 +23,7 @@ export const MASCOT_SCRIPT = String.raw`(() => {
  };
  window.cancelAnimationFrame = () => { queued = []; };
  const svg = document.getElementById("c");
- let rig = null, held = false, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false, moodProp = null;
+ let gone = false, rig = null, held = false, persona = "", level = 0, sound = { zcr: 0, bright: 0 }, speaking = false, moodProp = null;
  // her body's sounds and her bed (sounds.js), silent until the main process sends his levels
  const snd = TCS.SOUND ? TCS.SOUND.create({ P: () => (rig && rig.physics ? rig.physics() : null) }) : null;
  const ipc = window.mascotIpc;
@@ -77,6 +77,21 @@ export const MASCOT_SCRIPT = String.raw`(() => {
   },
   // he is away (desktopMascot HOLD_AWAY_S): her blinks and idle acts wait; anything asked of her still plays
   hold(on) { held = on; if (rig) rig.hold(on); },
+  // her shapeshift between this form and another (M-122): out collapses her into a bright squash and fades; in springs her
+  // back with one overshoot. A CSS transition, so it starts on this frame and nothing runs once it settles.
+  morph(dir) {
+   const out = dir === "out", s = svg.style;
+   if (out === gone) return;
+   gone = out;
+   const squashed = () => { s.transform = "scale(1.4,.15)"; s.opacity = "0"; s.filter = "blur(6px) brightness(1.7)"; };
+   s.transformOrigin = "50% 92%";
+   if (out) { s.transition = "transform 360ms cubic-bezier(.2,.7,.4,1), opacity 280ms ease-in 80ms, filter 300ms ease-out"; squashed(); return; }
+   s.transition = "none"; squashed(); void svg.getBoundingClientRect();
+   s.transition = "transform 440ms cubic-bezier(.34,1.56,.64,1), opacity 200ms ease-out, filter 380ms ease-out";
+   s.transform = s.opacity = s.filter = "";
+  },
+  // for the timing probe (TESSAYA_MORPH_PROBE): the morph, then when its first frame was drawn (epoch ms)
+  morphProbe(dir) { return new Promise((done) => { this.morph(dir); raf((t) => done(performance.timeOrigin + t)); }); },
   cue(c) {
    if (!rig) return;
    still = c.expression === "asleep" ? 6 : c.expression === "thinking" ? 15 : Infinity;

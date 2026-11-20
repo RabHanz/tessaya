@@ -426,6 +426,10 @@ export interface DesktopMascot {
    * An owner-only persona layer's body for her (PersonaLayers.ts): its page, out of capture, drawn over her in place,
    * her own rig hidden underneath; null puts her back. `waitShown`: her rig stays until the page says she stands.
    */
+  /** Her shapeshift out of this form or back into it (M-122), starting on the frame it is asked for. */
+  readonly morph: (dir: "out" | "in") => void;
+  /** Steps away from the desk (fades out, then hides) while another's private form shows, and back when it ends. */
+  readonly aside: (on: boolean) => void;
   readonly layerBody: (
     page: {
       readonly url: string;
@@ -454,6 +458,8 @@ const HIT_NEAR_MS = 80;
 const HIT_FAR_MS = 400;
 const NEAR_PX = 60;
 const FRAME_MS = 16;
+/** Her shapeshift out (mascotPage `morph`): the window hides once it has played. */
+const MORPH_MS = 360;
 const DRAG_MS = 16;
 /** A landing or a wall at least this fast is felt as an impact (a squash by its speed). */
 const IMPACT_SPEED = 300;
@@ -499,6 +505,34 @@ const displays = (): ReadonlyArray<DisplayArea> =>
   Electron.screen
     .getAllDisplays()
     .map((d) => ({ id: d.id, bounds: d.bounds, workArea: d.workArea, scaleFactor: d.scaleFactor }));
+
+/**
+ * M-122's timing check, run only with TESSAYA_MORPH_PROBE=1: ten shapeshifts out and back, each from the main process's
+ * call to the frame that first draws it, written to the temp folder as tessaya-morph-probe.json.
+ */
+const probeMorph = async (target: Electron.BrowserWindow) => {
+  const ms: Record<"out" | "in", Array<number>> = { out: [], in: [] };
+  for (let i = 0; i < 10; i++)
+    for (const dir of ["out", "in"] as const) {
+      if (target.isDestroyed()) return;
+      const t0 = performance.timeOrigin + performance.now();
+      const drawn = Number(
+        await target.webContents.executeJavaScript(
+          `window.mascot.morphProbe(${JSON.stringify(dir)})`,
+        ),
+      );
+      ms[dir].push(Math.max(0, Math.round((drawn - t0) * 10) / 10));
+      await new Promise((r) => setTimeout(r, 700));
+    }
+  const median = (xs: Array<number>) => xs.toSorted((a, b) => a - b)[Math.floor(xs.length / 2)];
+  NodeFS.writeFileSync(
+    NodePath.join(Electron.app.getPath("temp"), "tessaya-morph-probe.json"),
+    JSON.stringify({
+      open: { medianMs: median(ms.out), ms: ms.out },
+      close: { medianMs: median(ms.in), ms: ms.in },
+    }),
+  );
+};
 
 export const createDesktopMascot = (input: {
   /** Her characters' folder (COMPANION_DIR): the stage page and the studio's scripts. */
@@ -588,7 +622,10 @@ export const createDesktopMascot = (input: {
   const bodyBox = (target: Electron.BrowserWindow) => bodyWithin(target.getBounds(), size());
   const snoozed = () => (saved.snoozeUntil ?? 0) > Date.now();
   const hidden = () => (saved.hiddenUntil ?? 0) > Date.now();
-  const wanted = () => options.on && !hidden() && !fullscreen;
+  /** While his private layer shows its own form of her, the others on the desk step away, and come back after. */
+  let aside = false;
+  let asideTimer: ReturnType<typeof setTimeout> | undefined;
+  const wanted = () => options.on && !hidden() && !fullscreen && !aside;
   const others = () => [...(input.crowd ?? [])].filter((m) => m !== self);
   /** The heads of the others at rest: edges she can land and stand on. */
   const heads = () => others().flatMap((m) => m.head() ?? []);
@@ -674,7 +711,7 @@ export const createDesktopMascot = (input: {
         const at = Electron.screen.getCursorScreenPoint();
         target.setBounds({ ...b, x: b.x + at.x - from.x, y: b.y + at.y - from.y });
       }, DRAG_MS);
-    } else if ("shown" in ask) call(`document.body.style.opacity = ${ask.shown ? '"0"' : '""'}`);
+    } else if ("shown" in ask) morph(ask.shown ? "out" : "in");
     else if ("shape" in ask) {
       // Windows and Linux shape a window; macOS has no setShape, and there her whole box takes clicks
       if (typeof target.setShape === "function")
@@ -729,8 +766,10 @@ export const createDesktopMascot = (input: {
     placesTimer = null;
     if (veil !== null && !veil.isDestroyed()) veil.destroy();
     veil = null;
-    call(`document.body.style.opacity = ""`);
+    morph("in");
   };
+  /** Her shapeshift on the desk (M-122): sent at once, so it starts on the frame it is asked for. */
+  const morph = (dir: "out" | "in") => call(`window.mascot.morph(${JSON.stringify(dir)})`);
 
   const call = (code: string) => {
     const target = win;
@@ -962,8 +1001,13 @@ export const createDesktopMascot = (input: {
       profile = flightProfile(
         await target.webContents.executeJavaScript("window.mascot.physics()").catch(() => null),
       );
+      if (process.env["TESSAYA_MORPH_PROBE"] === "1" && !probed) {
+        probed = true;
+        void probeMorph(target);
+      }
     });
   };
+  let probed = false;
 
   /** His sound levels, and whether the bed steps back: she shows, and he is talking to her or dictating (the mic). */
   const audio = () =>
@@ -1637,6 +1681,20 @@ export const createDesktopMascot = (input: {
       else funny(what === "funny" ? undefined : what);
       return true;
     },
+    morph: (dir) => morph(dir),
+    aside: (on) => {
+      if (on === aside) return;
+      aside = on;
+      clearTimeout(asideTimer);
+      // she fades away where she stands, then her window goes; back, it shows and she springs in
+      if (on) {
+        morph("out");
+        asideTimer = setTimeout(apply, MORPH_MS);
+      } else {
+        apply();
+        morph("in");
+      }
+    },
     layerBody: (page) => {
       if (page === null) return dropVeil();
       if (veil !== null && !veil.isDestroyed()) return;
@@ -1662,6 +1720,10 @@ export const createDesktopMascot = (input: {
       shown.on("closed", () => {
         if (veil === shown) dropVeil();
       });
+      // its page dying abruptly snaps her back to her public form, never a private one left showing
+      shown.webContents.on("render-process-gone", () => {
+        if (veil === shown) dropVeil();
+      });
       veil = shown;
       shown.webContents.on("page-title-updated", (event, title) => {
         const ask = readBodyAsk(title);
@@ -1678,7 +1740,7 @@ export const createDesktopMascot = (input: {
           sendPlaces();
           // shortcut: every 2 s, not on each crew move; a walk aims at where she was then
           if (placesTimer === null) placesTimer = setInterval(sendPlaces, 2_000);
-          if (page.waitShown !== true) call(`document.body.style.opacity = "0"`);
+          if (page.waitShown !== true) morph("out");
         })
         .catch(() => dropVeil());
     },
@@ -1700,6 +1762,7 @@ export const createDesktopMascot = (input: {
       clearInterval(wander);
       clearInterval(awayCheck);
       if (wakeTimer !== null) clearTimeout(wakeTimer);
+      clearTimeout(asideTimer);
       Electron.ipcMain.removeListener("baton-mascot:press", onPress);
       Electron.ipcMain.removeListener("baton-mascot:release", onRelease);
       Electron.ipcMain.removeListener("baton-mascot:menu", onMenu);
