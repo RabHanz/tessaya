@@ -128,9 +128,8 @@ export const bakeLoco = (
       const b = raw[Math.min(n - 1, i + 1)]!.feet[k]!;
       return Math.hypot(b.x - a.x, b.z - a.z) * (fps / 2);
     };
-    // flat on the floor (the ankle within 2 cm of its lowest: once the heel lifts, the foot rolls onto its ball) and
-    // moving under 20 cm/s: standing on it, or pivoting on it
-    const plant = [0, 1].map((k) => r.feet[k]!.y < floor + 0.02 && step(k) < 0.2) as [boolean, boolean];
+    // on the floor (within 4 cm of its lowest) and moving under 20 cm/s: standing on it, or pivoting on it
+    const plant = [0, 1].map((k) => r.feet[k]!.y < floor + 0.04 && step(k) < 0.2) as [boolean, boolean];
     return {
       bones,
       hips: [h.x, h.y, h.z],
