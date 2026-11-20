@@ -37,7 +37,7 @@ import * as PeerLinks from "../../../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../../../peer/PeerMcpClient.ts";
 import { TurnOrigin } from "../../../tessaya/TessayaTurn.ts";
 import { Consent, layer as ConsentLayer } from "../../../tessaya/consent.ts";
-import { LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
+import { houseGrant, LOOK_GRANT } from "@t3tools/tessaya-shared/consent";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { TessayaVoiceLibrary } from "../../../tessaya/TessayaVoiceLibrary.ts";
 import * as ServerConfig from "../../../config.ts";
@@ -173,6 +173,39 @@ it.effect("his voice takes back a standing yes in his words, and a guest's canno
     expect((yield* revoke({ member: OWNER_MEMBER_ID, assurance: 1 })).isFailure).toBe(false);
     expect(yield* consent.read).toEqual([]);
   }).pipe(Effect.provide(Layer.provideMerge(ConsentLayer, SqlitePersistenceMemory))),
+);
+
+it.effect(
+  "his own voice says she needn't ask about a device again: one standing yes; a held voice or guest cannot",
+  () =>
+    Effect.gen(function* () {
+      const consent = yield* Consent;
+      const home = {
+        find: () => Effect.succeed([{ entityId: "switch.water_pump_switch", name: "Water Pump" }]),
+      };
+      const runtime = Context.make(Consent, consent).pipe(
+        Context.add(HomeAssistantService, home as never),
+      ) as never;
+      const allow = (turn: Record<string, unknown>) =>
+        callTool("room", runtime, "tessaya_always_allowed", {
+          allow: "the water pump",
+        }).pipe(
+          Effect.provideService(TurnOrigin, {
+            kind: "device",
+            id: "r1",
+            label: "R1",
+            ...turn,
+          } as never),
+        );
+      // 20 Nov, 06:04: "Remember from now on that you don't need approval for this."
+      expect((yield* allow({ member: OWNER_MEMBER_ID, assurance: 1 })).isFailure).toBe(true);
+      expect((yield* allow({ member: null, assurance: 0 })).isFailure).toBe(true);
+      expect(yield* consent.read).toEqual([]);
+      expect(
+        (yield* allow({ member: OWNER_MEMBER_ID, assurance: 2, hisVoice: true })).isFailure,
+      ).toBe(false);
+      expect(yield* consent.read).toEqual([houseGrant("switch.water_pump_switch", "Water Pump")]);
+    }).pipe(Effect.provide(Layer.provideMerge(ConsentLayer, SqlitePersistenceMemory))),
 );
 
 it.effect("says a line in the voice he names, only on his own turn, through the one library", () =>

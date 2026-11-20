@@ -24,6 +24,8 @@ import {
 import * as HomeAssistantService from "./HomeAssistantService.ts";
 import { TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { TurnOrigin } from "../tessaya/TessayaTurn.ts";
+import { Consent, layer as ConsentLayer } from "../tessaya/consent.ts";
+import { houseGrant } from "@t3tools/tessaya-shared/consent";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 
 interface Entity {
@@ -852,6 +854,55 @@ it.effect(
       assert.strictEqual(house.states.get("switch.sonoff_1")?.s, "on");
       assert.lengthOf(yield* home.pending, 0);
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "his standing yes for a device runs it with no card from his own turn, and only his",
+  () => {
+    const { house, layer } = setup();
+    const his = {
+      kind: "device",
+      id: "r1",
+      label: "Tessel",
+      member: OWNER_MEMBER_ID,
+      assurance: 2,
+      hisVoice: true,
+    } as const;
+    return Effect.gen(function* () {
+      const home = yield* connected;
+      const consent = yield* Consent;
+      const unlock = {
+        domain: "lock",
+        service: "unlock",
+        target: { entity_id: "lock.front" },
+        why: "let me in",
+      };
+      const tessel: HomeAssistantService.HomeActor = { who: "Tessaya via Tessel", surface: "r1" };
+      assert.strictEqual(
+        (yield* home.call(unlock, tessel).pipe(Effect.provideService(TurnOrigin, his))).status,
+        "asked",
+      );
+      // "Remember, you don't need approval for the front door."
+      yield* consent.set(houseGrant("lock.front", "Front door"), true, { member: OWNER_MEMBER_ID });
+      yield* TestClock.adjust("2 minutes");
+      assert.strictEqual(
+        (yield* home.call(unlock, tessel).pipe(Effect.provideService(TurnOrigin, his))).status,
+        "done",
+      );
+      assert.strictEqual(house.states.get("lock.front")?.s, "unlocked");
+      // A guest's voice is asked as before.
+      const guest = { ...his, member: null, assurance: 0 as const, hisVoice: false };
+      yield* TestClock.adjust("2 minutes");
+      assert.strictEqual(
+        (yield* home.call(unlock, tessel).pipe(Effect.provideService(TurnOrigin, guest))).status,
+        "asked",
+      );
+    }).pipe(
+      Effect.provide(
+        layer.pipe(Layer.provideMerge(ConsentLayer.pipe(Layer.provide(TessayaDatabaseMemory)))),
+      ),
+    );
   },
 );
 

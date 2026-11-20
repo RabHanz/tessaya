@@ -899,9 +899,10 @@ const NoteSearchTool = Tool.make("tessaya_note_search", {
 const AlwaysAllowedTool = Tool.make("tessaya_always_allowed", {
   ...shared,
   description:
-    'What he has allowed Tessaya to do without asking ("Always allow": seeing his screen, scheduling a job, and so on). Without `revoke` it lists them. When he takes one back ("stop letting you look at my screen", "ask me again before scheduling"), pass his words as `revoke`; she asks him again from then on. Only the owner may revoke. Returns the list after and a line to say.',
+    'What he has allowed Tessaya to do without asking ("Always allow": seeing his screen, scheduling a job, and so on). Without `revoke` or `allow` it lists them. When he takes one back ("stop letting you look at my screen", "ask me again before scheduling"), pass his words as `revoke`; she asks him again from then on. When he says she needn\'t ask him again about a device at home ("remember you don\'t need approval for the water pump", "from now on just do it for this"), pass the device as `allow`; only his own verified voice can. Returns the list after and a line to say: say it in one short line.',
   parameters: Schema.Struct({
     revoke: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
+    allow: Schema.optional(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(120))),
   }),
   success: Schema.Struct({ allowed: Schema.Array(Schema.String), line: Schema.String }),
 })
