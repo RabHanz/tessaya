@@ -1577,6 +1577,19 @@ const houseLook = Effect.fn("R1Device.houseLook")(function* (args: unknown) {
   } as ToolOutcome;
 });
 
+/** The room's house_look: the tool suite's replay never looks through a real camera of his house. */
+export const houseLookTool = (replay: boolean) => ({
+  spec: HOUSE_LOOK,
+  run: replay
+    ? () =>
+        Effect.succeed({
+          text: "A replay: no camera was looked through.",
+          isError: false,
+          status: "looked (replay)",
+        } as ToolOutcome)
+    : houseLook,
+});
+
 const SHOT_WAIT = "10 seconds";
 
 /**
@@ -1697,7 +1710,7 @@ const r1Vessel = (
           : [],
       own: [
         { spec: LOOK, run: () => roomLook(device, input.voice) },
-        { spec: HOUSE_LOOK, run: houseLook },
+        houseLookTool(isReplay(input)),
       ],
       finish: (said: string, outcomes: ReadonlyArray<ActOutcome>, done: TurnEnvelope) =>
         r1Finish(device, input, said, outcomes, done),
