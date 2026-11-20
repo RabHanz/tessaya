@@ -1382,10 +1382,15 @@ export const TessayaPersonaDials = Schema.Record(
 );
 
 /** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
+/** The form she takes on a body (one self, any form): her cartoon, a human (VRM) body, or Tumble's own. */
+export const TessayaBodyForm = Schema.Literals(["cartoon", "human", "tumble"]);
+export type TessayaBodyForm = typeof TessayaBodyForm.Type;
+
 export const TessayaCast = Schema.Record(
   Schema.String.check(Schema.isMaxLength(128)),
   Schema.Struct({
     home: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(60))),
+    form: Schema.optionalKey(TessayaBodyForm),
     follows: Schema.optionalKey(Schema.Boolean),
     crew: Schema.optionalKey(
       Schema.Array(Schema.String.check(Schema.isMaxLength(60))).check(Schema.isMaxLength(12)),

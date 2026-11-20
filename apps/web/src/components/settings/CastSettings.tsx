@@ -175,6 +175,27 @@ export function CastSection({ environmentId }: { readonly environmentId: Environ
                 />
               }
             />
+            {b.form !== undefined && b.form !== "tumble" ? (
+              <SettingsRow
+                title="Form"
+                description="How she shows here. She is the same self, with the same mood, in any form."
+                control={
+                  <span className="flex gap-1">
+                    {(["cartoon", "human"] as const).map((form) => (
+                      <Button
+                        key={form}
+                        size="xs"
+                        variant={b.form === form ? "default" : "outline"}
+                        aria-pressed={b.form === form}
+                        onClick={() => act({ op: "form", body: b.id, form })}
+                      >
+                        {form === "cartoon" ? "Cartoon" : "Full body"}
+                      </Button>
+                    ))}
+                  </span>
+                }
+              />
+            ) : null}
             {b.holds > 1 ? (
               <SettingsRow
                 title="Beside it"

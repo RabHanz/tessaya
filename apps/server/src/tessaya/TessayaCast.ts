@@ -4,9 +4,11 @@
  * own companion settings, set through TessayaDesktopSettings. Calls are visits that lapse with the conversation unless
  * "stay". Mood is not here: a body asks TessayaMood with the persona it wears.
  */
+import type { TessayaBodyForm } from "@t3tools/contracts";
 import type { CastBody, CastCallInput, CastView } from "@t3tools/tessaya-contracts";
 import {
   type BodyCast,
+  formOf,
   mayRecast,
   onBody,
   personaIn,
@@ -50,6 +52,8 @@ export class TessayaCast extends Context.Service<
     readonly view: Effect.Effect<CastView>;
     /** The persona a body wears now, for its face, its mood and its next session. */
     readonly wearing: (body: string) => Effect.Effect<string | null>;
+    /** The form she takes on a vessel ("desktop" is this server's desk body), whose nerves read a touch there. */
+    readonly form: (vessel: string) => Effect.Effect<TessayaBodyForm>;
     /**
      * His change; refused unless `mayRecast` (only his verified ask, never a wake word). A visit for this conversation
      * only needs `visitOk`: it is as harmless as the wake word that does the same (18 Nov).
@@ -103,7 +107,8 @@ export const crewValue = (crew: ReadonlyArray<string>) =>
   crew.length === 0 ? "none" : crew.join(",");
 
 interface CastToolInput {
-  readonly action: "who" | "call" | "home" | "follows" | "crew" | "sendHome";
+  readonly action: "who" | "call" | "home" | "follows" | "crew" | "form" | "sendHome";
+  readonly form?: TessayaBodyForm | undefined;
   readonly persona?: string | null | undefined;
   readonly stay?: boolean | undefined;
   readonly on?: boolean | undefined;
@@ -124,9 +129,17 @@ export const castOp = (input: CastToolInput, body: string | undefined): CastCall
       return { op: "follows", body: b, on: input.on !== false };
     case "crew":
       return { op: "crew", body: b, personas: input.personas ?? [] };
+    case "form":
+      return { op: "form", body: b, form: input.form ?? "cartoon" };
     case "sendHome":
       return body === undefined ? { op: "sendHome" } : { op: "sendHome", body };
   }
+};
+
+const FORM_WORDS: Readonly<Record<TessayaBodyForm, string>> = {
+  cartoon: "cartoon form",
+  human: "full body",
+  tumble: "Tumble form",
 };
 
 /** One plain line for what a Cast call did, for her to say. */
@@ -152,6 +165,8 @@ export const castLine = (op: CastCallInput, v: CastView): string => {
         : `${where} stays with its own persona.`;
     case "crew":
       return `On ${where}: ${body?.on.map((p) => name(p)).join(", ") ?? "nobody"}.`;
+    case "form":
+      return `${where} now shows her ${FORM_WORDS[op.form]}.`;
     case "sendHome":
       return body === undefined
         ? "Everyone is back home."
@@ -223,6 +238,12 @@ const make = Effect.gen(function* () {
         follows: rule.follows === true,
         crew: (rule.crew ?? []).flatMap((c) => personaIn(personas, c) ?? []),
         wearing: worn?.persona ?? null,
+        // the desktop's form is its own companion setting: her full body ("body") or her cartoon
+        form: isDesktop
+          ? controls.find((c) => c.id === "v.mascotCharacter")?.value === "body"
+            ? "human"
+            : "cartoon"
+          : formOf(d.kind, s?.tessayaCast[d.deviceId]),
         // A desktop visit stands beside her in the sandbox, so the worn one keeps its own reason.
         why:
           !isDesktop || !visitLive(visit, now)
@@ -356,6 +377,21 @@ const make = Effect.gen(function* () {
         }
         break;
       }
+      case "form":
+        // Tumble is a Tessel's own form and only a Tessel's: no other body can draw it, nor a Tessel anything else
+        if ((formOf(body!.kind, undefined) === "tumble") !== (input.form === "tumble"))
+          return yield* Effect.fail(
+            input.form === "tumble"
+              ? "Only a Tessel can take Tumble's form."
+              : `${body!.name} is a Tessel: its form is Tumble's own.`,
+          );
+        if (body!.kind !== "desktop") yield* setRule(body!.id, { form: input.form });
+        // the desktop's own setting: a character he picked stays, unless it was her full body
+        else if (input.form === "human" || body!.form === "human")
+          yield* setDesktop([
+            { id: "v.mascotCharacter", value: input.form === "human" ? "body" : "persona" },
+          ]);
+        break;
       case "sendHome":
         for (const id of body === undefined ? [...visits.keys()] : [body.id]) yield* leave(id);
         break;
@@ -451,6 +487,14 @@ const make = Effect.gen(function* () {
     view,
     wearing: Effect.fn("TessayaCast.wearing")(function* (body: string) {
       return (yield* view).bodies.find((b) => b.id === body)?.wearing ?? null;
+    }),
+    form: Effect.fn("TessayaCast.form")(function* (vessel: string) {
+      // the desk body is answered here, without asking the brain on every touch
+      const here = desks(yield* bodies);
+      const desk =
+        here.find((d) => d.id === vessel) ?? (vessel === "desktop" ? here[0] : undefined);
+      const b = desk ?? (yield* view).bodies.find((x) => x.id === vessel);
+      return b?.form ?? "cartoon";
     }),
     call: Effect.fn("TessayaCast.oneCall")(function* (
       input: CastCallInput,

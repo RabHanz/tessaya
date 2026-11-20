@@ -20,6 +20,7 @@ import {
   wishTick,
   type BodyCaller,
 } from "./TessayaBody.ts";
+import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -585,6 +586,29 @@ describe("TessayaBody", () => {
           yield* live.take({ vessel: "tessel-1", persona: "sebastian", spend: false }),
         ).not.toMatch(/patted your shoulder/);
         expect(onTumble).toMatch(/held your hair \(you felt a pull that hurts\)/);
+      }).pipe(Effect.provide(TurnLiveContext.layer)),
+  );
+  it.effect(
+    "reads a touch through the form its vessel shows: Tumble's shell has no hair to caress",
+    () =>
+      Effect.gen(function* () {
+        const live = yield* TurnLiveContext.TurnLiveContext;
+        const forms: Record<string, "cartoon" | "tumble"> = {
+          desktop: "cartoon",
+          "r1-a": "tumble",
+        };
+        const cast = {
+          form: (v: string) => Effect.succeed(forms[v]!),
+        } as unknown as TessayaCast["Service"];
+        const stroke = (vessel: string, persona: string) =>
+          feel({ vessel, part: "head", kind: "stroke", persona }).pipe(
+            Effect.provideService(TessayaCast, cast),
+          );
+        expect(yield* stroke("desktop", "freya")).toMatchObject({ tone: "pleasant" });
+        expect(yield* stroke("r1-a", "sebastian")).toMatchObject({ tone: "firm" });
+        const told = yield* live.take({ vessel: "x", persona: null, spend: true });
+        expect(told).toMatch(/on his desktop, he stroked your head \(you felt a slow stroke/);
+        expect(told).toMatch(/on r1-a, he stroked your head \(you felt a firm press\)/);
       }).pipe(Effect.provide(TurnLiveContext.layer)),
   );
 });

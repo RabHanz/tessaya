@@ -660,6 +660,24 @@ export const MASCOT_SENSE: SensePack = {
   ],
 };
 
+/**
+ * Tumble's own form: its nerves are the top touch pad (`event/touch`, pad "top") under a hard shell, with no hair, so
+ * a stroke there is a touch, never a caress. Being picked up, shaken or dropped is all of her (affect.ts `handled`).
+ */
+export const TUMBLE_SENSE: SensePack = {
+  version: 1,
+  id: "tumble",
+  regions: [{ ...HUMAN_SENSE.regions.find((r) => r.id === "head")!, twoPointMm: 30, hairy: false }],
+};
+
+/** Every form's nerves by pack id (a vessel's manifest names one, expressionMap.ts `sense`), each over the human map. */
+export const SENSE_PACKS = {
+  human: HUMAN_SENSE,
+  mascot: MASCOT_SENSE,
+  tumble: TUMBLE_SENSE,
+} as const satisfies Readonly<Record<string, SensePack>>;
+export type SensePackId = keyof typeof SENSE_PACKS;
+
 /** The private layer's older `zones` cue (a bone and a radius each) as a pack, so one registry holds them all. */
 export const zonesPack = (
   zones: ReadonlyArray<{

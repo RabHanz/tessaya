@@ -86,7 +86,8 @@ import { DeviceRefusedError, DeviceRegistry, offlineWhy } from "./DeviceRegistry
 import { HomeAssistantService, type R1Device } from "./HomeAssistantService.ts";
 import { connectMqtt } from "@t3tools/tessaya-shared/mqtt";
 import { expressOr } from "../tessaya/TessayaExpression.ts";
-import { interruptBody, noteTesselHandled } from "../tessaya/TessayaBody.ts";
+import { feel, interruptBody, noteTesselHandled } from "../tessaya/TessayaBody.ts";
+import { AffectCause } from "../tessaya/AffectCause.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { TessayaCast } from "../tessaya/TessayaCast.ts";
 import { LINE_EVENTS, sayPayload, type LineEvent } from "@t3tools/tessaya-shared/expression";
@@ -1730,6 +1731,28 @@ const make = Effect.gen(function* () {
         ),
       );
     }).pipe(Effect.ignore, Effect.forkIn(scope));
+  const feltOnTumble = Effect.fn("HomeDevices.feltOnTumble")(function* (
+    id: string,
+    gesture: "tap" | "long",
+    now: number,
+  ) {
+    const persona = cast._tag === "Some" ? yield* cast.value.wearing(id) : null;
+    // whoever its face is for here, assumed (anyone may be at a Tessel), so "that wasn't me" moves it
+    const face =
+      mood._tag === "Some" ? yield* mood.value.atDevice(id, persona ?? undefined, undefined) : null;
+    const member =
+      face === null || face.faceFor === "room" || face.faceFor === "general" ? null : face.faceFor;
+    yield* feel({
+      vessel: id,
+      part: "head",
+      kind: gesture === "tap" ? "pat" : "rest",
+      persona,
+      // nobody in particular: the owner, assumed, as at his desk
+      ...(member === null ? {} : { member }),
+    }).pipe(
+      Effect.provideService(AffectCause, { ref: `touch-${id}-${now}`, vessel: id, assumed: true }),
+    );
+  });
   const moved = Effect.fn("HomeDevices.moved")(function* (
     id: string,
     m: MotionMoment,
@@ -1896,6 +1919,9 @@ const make = Effect.gen(function* () {
     // A long touch on the head is Tessaya's (the firmware stops her on a tap itself).
     else if (tail === "event/touch" && json(payload)?.["gesture"] === "long")
       yield* runKey(result.id, { key: "head", act: "long", did: "none" });
+    // and either is felt, through Tumble's own nerves (TUMBLE_SENSE): a tap a pat, a long touch a hand resting there
+    const touchedAs = tail === "event/touch" ? json(payload)?.["gesture"] : undefined;
+    if (touchedAs === "tap" || touchedAs === "long") yield* feltOnTumble(result.id, touchedAs, now);
     // On every change the R1 says whether it is on an entry other than its first (firmware 0.3.66).
     else if (tail === "event/net/away" && json(payload)?.["away"] === true)
       yield* offerAway(result.id);

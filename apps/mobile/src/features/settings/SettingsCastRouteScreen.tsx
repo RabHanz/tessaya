@@ -129,6 +129,30 @@ function CastSection(props: {
                   >
                     <ControlPill variant="pill" label={`Home: ${name(b.home)}`} />
                   </Menu>
+                  {b.form !== undefined && b.form !== "tumble" ? (
+                    <Menu
+                      accessible
+                      accessibilityRole="button"
+                      accessibilityLabel={`${b.name} form`}
+                      title="Form"
+                      actions={[
+                        { id: "cartoon", title: "Cartoon" },
+                        { id: "human", title: "Full body" },
+                      ]}
+                      onPressAction={({ nativeEvent }) =>
+                        void act({
+                          op: "form",
+                          body: b.id,
+                          form: nativeEvent.event === "human" ? "human" : "cartoon",
+                        })
+                      }
+                    >
+                      <ControlPill
+                        variant="pill"
+                        label={`Form: ${b.form === "human" ? "Full body" : "Cartoon"}`}
+                      />
+                    </Menu>
+                  ) : null}
                   {b.why === "visit" || b.why === "stay" ? (
                     <Menu
                       accessible

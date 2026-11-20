@@ -43,6 +43,7 @@ const setup = (extra: Layer.Layer<DeviceSync> | Layer.Layer<never> = Layer.empty
     { id: "v.mascotPersona", value: "freya" },
     { id: "v.mascotFollows", value: false },
     { id: "v.mascotCrew", value: "none" },
+    { id: "v.mascotCharacter", value: "persona" },
   ];
   const devices = [
     device("r1-tumble", "agora-r1", "Tumble"),
@@ -189,6 +190,33 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+it.effect("switches the form a body shows; Tumble's form is a Tessel's alone", () => {
+  const { layer, controls } = setup();
+  return Effect.gen(function* () {
+    const cast = yield* TessayaCast;
+    expect(yield* cast.form("desktop")).toBe("cartoon");
+    yield* cast.call({ op: "form", body: "Desk", form: "human" }, true);
+    // the desktop's own setting: her full body on the desk
+    expect(controls.find((c) => c.id === "v.mascotCharacter")?.value).toBe("body");
+    expect(yield* cast.form("desktop")).toBe("human");
+    expect(yield* cast.form("desk-1")).toBe("human");
+    expect(yield* cast.form("r1-tumble")).toBe("tumble");
+    // the self it wears is untouched by the form
+    expect(yield* cast.wearing("desk-1")).toBe("companion");
+    expect(
+      yield* Effect.flip(cast.call({ op: "form", body: "Tumble", form: "cartoon" }, true)),
+    ).toContain("Tumble's own");
+    expect(
+      yield* Effect.flip(cast.call({ op: "form", body: "Desk", form: "tumble" }, true)),
+    ).toContain("Only a Tessel");
+    // a lasting change: never on an unverified voice
+    expect(
+      yield* Effect.flip(cast.call({ op: "form", body: "Desk", form: "cartoon" }, false)),
+    ).toContain("voice she knows");
+    expect(yield* cast.form("desktop")).toBe("human");
+  }).pipe(Effect.provide(layer));
+});
 
 it.effect(
   "one Cast on her brain: a worker's rule moves up once with a copy kept, and its calls change the brain's",
