@@ -16,6 +16,7 @@ import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-sha
 import { CONVERSATION_END, REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import { plainExpression } from "@t3tools/tessaya-shared/expression";
 import { clockAsk } from "@t3tools/tessaya-shared/turnTier";
+import { CORE_TOOLS } from "@t3tools/tessaya-shared/toolIndex";
 import * as Cause from "effect/Cause";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -75,6 +76,13 @@ const workKept = new WeakMap<
   RoomToolSet,
   Map<string, { readonly at: number; readonly read: WorkRead | null }>
 >();
+/**
+ * The deferred tools each conversation has loaded, for its next turns: a turn starts a fresh session, so what tool
+ * search found last turn is gone, and naming it lets her load it by exact name instead of searching (BRAIN-DESIGN §3.1).
+ */
+const loadedTools = new Map<string, { readonly at: number; readonly names: ReadonlySet<string> }>();
+/** As long as her server holds a conversation. */
+const LOADED_KEPT_MS = 10 * 60_000;
 interface WorkRead {
   readonly name: string;
   readonly text: string;
@@ -377,8 +385,13 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
     return line;
   }
   const toolNames = [...tools.specs, ...own.map((t) => t.spec)].map((t) => t.name);
+  const loaded = loadedTools.get(key);
+  const carried =
+    loaded !== undefined && startedAt - loaded.at < LOADED_KEPT_MS && loaded.names.size > 0
+      ? `Tools you loaded earlier in this conversation (load again by exact name): ${[...loaded.names].join(" ")}.`
+      : "";
   const user = gathered.user({
-    skills: yield* turnSkills(turn, toolNames),
+    skills: [yield* turnSkills(turn, toolNames), carried].filter((s) => s !== "").join("\n"),
     brain: escalationNote(
       escalationRulesLine(escalationSettings),
       escalations.get(key),
@@ -516,6 +529,14 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
         Effect.map(capToolText),
         Effect.tap((o: ToolOutcome) =>
           Effect.sync(() => {
+            if (!CORE_TOOLS.has(name) && tools.specs.some((t) => t.name === name)) {
+              const held = loadedTools.get(key)?.names ?? new Set<string>();
+              loadedTools.set(key, {
+                at: clock.currentTimeMillisUnsafe(),
+                names: new Set([...held, name].slice(-6)),
+              });
+              if (loadedTools.size > 200) loadedTools.delete(loadedTools.keys().next().value!);
+            }
             calls?.push({
               name,
               input: args,

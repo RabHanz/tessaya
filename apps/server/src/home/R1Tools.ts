@@ -22,6 +22,7 @@ import {
 import { BATON_TOOL_PREFIX } from "@t3tools/tessaya-shared/operator";
 import { standingKey } from "@t3tools/tessaya-shared/consent";
 import { recordText } from "@t3tools/tessaya-shared/audit";
+import { CORE_TOOLS } from "@t3tools/tessaya-shared/toolIndex";
 import { volumeAfter, volumeLine, type VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import type { McpInvocationScope } from "../mcp/McpInvocationContext.ts";
 import * as Cause from "effect/Cause";
@@ -263,12 +264,6 @@ const DESK_TOOLS = [
   "device_act",
 ] satisfies ReadonlyArray<keyof typeof TessayaToolkit.tools>;
 type SharedName = (typeof ROOM_TOOLS)[number] | (typeof DESK_TOOLS)[number];
-
-/**
- * The tools every vessel keeps loaded when tool search is on (BRAIN-DESIGN §3.1): MCP advertises them with
- * `anthropic/alwaysLoad`, the API route leaves them without `defer_loading`. Empty until the brain lane's B0 counts.
- */
-export const CORE_TOOLS: ReadonlySet<string> = new Set<SharedName>([]);
 
 const LAPTOP: RoomTool = {
   name: "laptop_ask",

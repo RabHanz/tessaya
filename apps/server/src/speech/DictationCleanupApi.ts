@@ -1,4 +1,5 @@
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
+import { CORE_TOOLS } from "@t3tools/tessaya-shared/toolIndex";
 import { cleanupApiLimitMs, refusedNote } from "@t3tools/tessaya-shared/dictationCleanup";
 import { brainRoute, keyRefusal, type BrainRoute } from "@t3tools/tessaya-shared/brainRoutes";
 import {
@@ -31,7 +32,9 @@ export type ConversePart =
   | { readonly type: "text"; readonly text: string }
   | { readonly type: "tool"; readonly id: string; readonly name: string; readonly input: unknown }
   /** A thinking block, whole, to send back unchanged with its tool calls' results. */
-  | { readonly type: "thinking"; readonly block: Readonly<Record<string, unknown>> };
+  | { readonly type: "thinking"; readonly block: Readonly<Record<string, unknown>> }
+  /** A server tool's call or result (tool search), whole, sent back unchanged so what it loaded stays loaded. */
+  | { readonly type: "server"; readonly block: Readonly<Record<string, unknown>> };
 
 /** What a streamed turn used: `message_start`'s model and usage, with each `message_delta`'s counts on top. */
 export interface StreamUsage {
@@ -39,9 +42,29 @@ export interface StreamUsage {
   usage?: Record<string, unknown>;
 }
 
+/**
+ * The tools as sent: with some core and some not, the core tools first and cached (the breakpoint on the last of them,
+ * as a deferred tool can't carry one), the rest `defer_loading` behind BM25 tool search (BRAIN-DESIGN §3.1).
+ */
+export const withToolSearch = (tools: ConverseRequest["tools"]): ReadonlyArray<unknown> => {
+  const core = tools.filter((t) => CORE_TOOLS.has(t.name));
+  const deferred = tools.filter((t) => !CORE_TOOLS.has(t.name));
+  const cached = (list: ConverseRequest["tools"]) =>
+    list.map((tool, i) =>
+      i === list.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : tool,
+    );
+  if (core.length === 0 || deferred.length === 0) return cached(tools);
+  return [
+    { type: "tool_search_tool_bm25_20251119", name: "tool_search_tool_bm25" },
+    ...cached(core),
+    ...deferred.map((tool) => ({ ...tool, defer_loading: true })),
+  ];
+};
+
 /** Reads one turn's stream lines in order; holds a tool call's input until its block stops. */
 export const converseReader = (seen: StreamUsage = {}) => {
   const open = new Map<number, { id: string; name: string; json: string }>();
+  const server = new Map<number, { block: Record<string, unknown>; json: string }>();
   const thinking = new Map<number, Record<string, unknown>>();
   return (line: string): ReadonlyArray<ConversePart> => {
     if (!line.startsWith("data:")) return [];
@@ -78,6 +101,14 @@ export const converseReader = (seen: StreamUsage = {}) => {
       });
       return [];
     }
+    const started = event.content_block as Record<string, unknown> | undefined;
+    if (
+      event.type === "content_block_start" &&
+      (started?.["type"] === "server_tool_use" || started?.["type"] === "tool_search_tool_result")
+    ) {
+      server.set(index, { block: { ...started }, json: "" });
+      return [];
+    }
     if (event.type === "content_block_start" && event.content_block?.type === "thinking") {
       thinking.set(index, { type: "thinking", thinking: "", signature: "" });
       return [];
@@ -94,12 +125,28 @@ export const converseReader = (seen: StreamUsage = {}) => {
         thought["thinking"] = `${String(thought["thinking"])}${event.delta.thinking ?? ""}`;
       if (event.delta?.type === "signature_delta" && thought !== undefined)
         thought["signature"] = `${String(thought["signature"])}${event.delta.signature ?? ""}`;
-      const tool = open.get(index);
+      const tool = open.get(index) ?? server.get(index);
       if (event.delta?.type === "input_json_delta" && tool !== undefined)
         tool.json += event.delta.partial_json ?? "";
       return [];
     }
     if (event.type === "content_block_stop") {
+      const held = server.get(index);
+      if (held !== undefined) {
+        server.delete(index);
+        let input: unknown = held.block["input"];
+        try {
+          if (held.json.trim() !== "") input = JSON.parse(held.json);
+        } catch {
+          input = {};
+        }
+        return [
+          {
+            type: "server",
+            block: held.block["type"] === "server_tool_use" ? { ...held.block, input } : held.block,
+          },
+        ];
+      }
       const thought = thinking.get(index);
       if (thought !== undefined) {
         thinking.delete(index);
@@ -371,10 +418,7 @@ export const make = Effect.gen(function* () {
     Stream.unwrap(
       Effect.gen(function* () {
         yield* allow(route.role);
-        const tools = input.tools.map((tool, i) =>
-          // The tools are the same every turn: cached with the system prompt.
-          i === input.tools.length - 1 ? { ...tool, cache_control: { type: "ephemeral" } } : tool,
-        );
+        const tools = withToolSearch(input.tools);
         const request = yield* authorized(
           HttpClientRequest.post(`${API}/messages`).pipe(
             HttpClientRequest.bodyJsonUnsafe({

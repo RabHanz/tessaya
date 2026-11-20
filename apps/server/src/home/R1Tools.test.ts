@@ -5,7 +5,6 @@ import { describe, expect, it } from "vite-plus/test";
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
 import {
   asAdvertised,
-  CORE_TOOLS,
   DESK_TOOL_SPECS,
   jobVerdict,
   NOT_IN_ROOM,
@@ -16,6 +15,7 @@ import {
   stepUpNeeds,
 } from "./R1Tools.ts";
 import { it as effectIt } from "@effect/vitest";
+import { CORE_TOOLS } from "@t3tools/tessaya-shared/toolIndex";
 import * as Effect from "effect/Effect";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import * as Layer from "effect/Layer";

@@ -28,6 +28,7 @@ import {
   layer as brainUsageLayer,
 } from "../tessaya/BrainUsage.ts";
 import type { BrainRole } from "@t3tools/contracts";
+import { toolIndex } from "@t3tools/tessaya-shared/toolIndex";
 import { createVoiceSessions, type SessionSpec } from "./VoiceSessions.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import {
@@ -140,7 +141,9 @@ export const toolLoop = <E>(
         const content: Array<Record<string, unknown>> = [];
         let text = "";
         const ran = yield* converse({
-          system: turn.system,
+          system: [turn.system, toolIndex(turn.tools.map((t) => t.name))]
+            .filter((part) => part !== "")
+            .join("\n\n"),
           messages,
           tools: turn.tools,
           maxTokens,
@@ -149,7 +152,8 @@ export const toolLoop = <E>(
         }).pipe(
           Stream.runForEach((part) =>
             Effect.map(Clock.currentTimeMillis, (now) => {
-              if (part.type === "thinking") return void content.push(part.block);
+              if (part.type === "thinking" || part.type === "server")
+                return void content.push(part.block);
               if (part.type === "tool") {
                 calls.push(part);
                 return void content.push({

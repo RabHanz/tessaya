@@ -95,10 +95,19 @@ describe("warm subscription sessions for spoken turns", () => {
   });
 
   it("gives Claude Code's own file tools, in his folder, only to a session whose spec asks for them", async () => {
-    const started: Array<{ cmd: string; args: ReadonlyArray<string>; cwd: unknown }> = [];
+    const started: Array<{
+      cmd: string;
+      args: ReadonlyArray<string>;
+      cwd: unknown;
+      env: Record<string, string> | undefined;
+    }> = [];
     const claude = fakeClaude([], { count: 0 });
-    const spawn = ((cmd: string, args: ReadonlyArray<string>, options: { cwd?: unknown }) => {
-      started.push({ cmd, args, cwd: options.cwd });
+    const spawn = ((
+      cmd: string,
+      args: ReadonlyArray<string>,
+      options: { cwd?: unknown; env?: Record<string, string> },
+    ) => {
+      started.push({ cmd, args, cwd: options.cwd, env: options.env });
       return claude(cmd, args as Array<string>, options as never);
     }) as unknown as typeof NodeChildProcess.spawn;
     const sessions = createVoiceSessions({ spawn, retryMs: 1, lean: true });
@@ -109,9 +118,11 @@ describe("warm subscription sessions for spoken turns", () => {
     });
     await sessions.close();
     const toolsOf = (i: number) => started[i]!.args[started[i]!.args.indexOf("--tools") + 1];
-    expect(toolsOf(0)).toBe("WebSearch,WebFetch");
+    // Tool search is on in every session: the core tools load, the rest are found by name.
+    expect(toolsOf(0)).toBe("WebSearch,WebFetch,ToolSearch");
+    expect(started[0]!.env?.["ENABLE_TOOL_SEARCH"]).toBe("true");
     expect(started[0]!.cwd).not.toBe("/home/him");
-    expect(toolsOf(1)).toBe("Read,Bash");
+    expect(toolsOf(1)).toBe("Read,Bash,ToolSearch");
     expect(started[1]!.cwd).toBe("/home/him");
     expect(started.find((st) => st.cwd === "/home/him")?.cmd).toBe("/opt/claude");
     expect(started.find((st) => st.cwd !== "/home/him")?.cmd).toBe("claude");

@@ -10,11 +10,13 @@ import { BrainUsage } from "../tessaya/BrainUsage.ts";
 import {
   DictationCleanupApi,
   converseReader,
+  withToolSearch,
   type ConversePart,
   type ConverseRequest,
   type StreamUsage,
 } from "../speech/DictationCleanupApi.ts";
 import { MAX_ROUNDS, make, readLine, toolLoop, type ToolTurn } from "./R1Brain.ts";
+import { toolIndex } from "@t3tools/tessaya-shared/toolIndex";
 
 it("takes text deltas and the end of the turn from Claude Code's stream-json, and nothing else", () => {
   const delta = (text: string) =>
@@ -79,6 +81,36 @@ it("reads a Messages API turn: words as they come, each tool call once its input
       delta: { type: "input_json_delta", partial_json: '"light.study"}' },
     }),
     data({ type: "content_block_stop", index: 1 }),
+    // Tool search found a deferred tool: its call and result go back whole, so what it loaded stays loaded.
+    data({
+      type: "content_block_start",
+      index: 2,
+      content_block: {
+        type: "server_tool_use",
+        id: "s1",
+        name: "tool_search_tool_bm25",
+        input: {},
+      },
+    }),
+    data({
+      type: "content_block_delta",
+      index: 2,
+      delta: { type: "input_json_delta", partial_json: '{"query":"device_watch"}' },
+    }),
+    data({ type: "content_block_stop", index: 2 }),
+    data({
+      type: "content_block_start",
+      index: 3,
+      content_block: {
+        type: "tool_search_tool_result",
+        tool_use_id: "s1",
+        content: {
+          type: "tool_search_tool_search_result",
+          tool_references: [{ type: "tool_reference", tool_name: "device_watch" }],
+        },
+      },
+    }),
+    data({ type: "content_block_stop", index: 3 }),
     "event: content_block_delta",
     "data: {broken",
     data({ type: "message_delta", usage: { output_tokens: 22 } }),
@@ -87,12 +119,57 @@ it("reads a Messages API turn: words as they come, each tool call once its input
     { type: "thinking", block: { type: "thinking", thinking: "", signature: "sig" } },
     { type: "text", text: "Let me check." },
     { type: "tool", id: "t1", name: "home_state", input: { entityId: "light.study" } },
+    {
+      type: "server",
+      block: {
+        type: "server_tool_use",
+        id: "s1",
+        name: "tool_search_tool_bm25",
+        input: { query: "device_watch" },
+      },
+    },
+    {
+      type: "server",
+      block: {
+        type: "tool_search_tool_result",
+        tool_use_id: "s1",
+        content: {
+          type: "tool_search_tool_search_result",
+          tool_references: [{ type: "tool_reference", tool_name: "device_watch" }],
+        },
+      },
+    },
   ]);
   // Its usage row's counts: the start's input, the last delta's output.
   expect(seen).toEqual({
     model: "claude-haiku-5-5",
     usage: { input_tokens: 40, output_tokens: 22 },
   });
+});
+
+it("sends the core tools loaded and cached, and every other tool deferred behind tool search", () => {
+  const tool = (name: string) => ({ name, description: name, input_schema: {} });
+  const sent = withToolSearch([
+    tool("device_watch"),
+    tool("home_find"),
+    tool("home_do"),
+  ]) as ReadonlyArray<Record<string, unknown>>;
+  expect(
+    sent.map((t) => [t["name"], t["defer_loading"] ?? false, t["cache_control"] !== undefined]),
+  ).toEqual([
+    ["tool_search_tool_bm25", false, false],
+    ["home_find", false, false],
+    ["home_do", false, true],
+    ["device_watch", true, false],
+  ]);
+  // Only core or only deferred: no search tool, sent as before.
+  expect(withToolSearch([tool("home_find")])).toEqual([
+    { ...tool("home_find"), cache_control: { type: "ephemeral" } },
+  ]);
+  // Her index names only the deferred ones, by family.
+  expect(
+    toolIndex(["home_find", "home_undo", "device_watch", "tessaya_cast_set"]).split("\n").slice(1),
+  ).toEqual(["device: device_watch", "home: home_undo", "cast: tessaya_cast_set"]);
 });
 
 /** A model that plays its rounds in order and records every request it was sent. */

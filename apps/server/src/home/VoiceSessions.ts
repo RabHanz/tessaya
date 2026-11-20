@@ -10,6 +10,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 
+import { CORE_TOOLS, toolIndex } from "@t3tools/tessaya-shared/toolIndex";
+
 import {
   startTessayaMcp,
   type TessayaMcp,
@@ -29,6 +31,8 @@ export type SessionEvent =
 
 const MCP_NAME = "room";
 const WEB_TOOLS = ["WebSearch", "WebFetch"];
+/** Claude Code's own tool search, which loads a deferred tool by name (ENABLE_TOOL_SEARCH). */
+const SEARCH_TOOL = "ToolSearch";
 
 export const sessionEvent = (line: string): SessionEvent | null => {
   let event: Record<string, any>;
@@ -126,7 +130,13 @@ const sessionArgs = (spec: SessionSpec, mcpConfig: string): ReadonlyArray<string
   "--system-prompt",
   // Live (13 Nov), a first call by the short name the prompt uses failed with "No such tool available" in about half
   // of the suite's runs; naming the server's prefix took that to 0 of 6. The API route's tools have no prefix.
-  `${spec.system}\n\nthe tools named here are short names: each one's full name starts with mcp__${MCP_NAME}__ (home_find is mcp__${MCP_NAME}__home_find); always call the full name.`,
+  [
+    spec.system,
+    toolIndex(spec.tools.map((t) => t.name)),
+    `the tools named here are short names: each one's full name starts with mcp__${MCP_NAME}__ (home_find is mcp__${MCP_NAME}__home_find); always call the full name.`,
+  ]
+    .filter((part) => part !== "")
+    .join("\n\n"),
   // Thinking off before the first word (B0: on, p95 10.8 s); no hooks of his.
   "--settings",
   JSON.stringify({ disableAllHooks: true, alwaysThinkingEnabled: false }),
@@ -135,9 +145,9 @@ const sessionArgs = (spec: SessionSpec, mcpConfig: string): ReadonlyArray<string
   "--strict-mcp-config",
   // Her own web search and fetch, on the subscription (BRAIN-DESIGN §13).
   "--tools",
-  (spec.builtins?.tools ?? WEB_TOOLS).join(","),
+  [...(spec.builtins?.tools ?? WEB_TOOLS), SEARCH_TOOL].join(","),
   "--allowedTools",
-  [`mcp__${MCP_NAME}__*`, ...(spec.builtins?.tools ?? WEB_TOOLS)].join(","),
+  [`mcp__${MCP_NAME}__*`, ...(spec.builtins?.tools ?? WEB_TOOLS), SEARCH_TOOL].join(","),
   "--disable-slash-commands",
   "--permission-mode",
   "dontAsk",
@@ -183,6 +193,7 @@ export const createVoiceSessions = (
     const mcp: TessayaMcp = await startTessayaMcp({
       tools: spec.tools.map((tool) => ({
         ...tool,
+        core: CORE_TOOLS.has(tool.name),
         run: (args) =>
           turn === null
             ? Promise.resolve({ text: "No turn is in progress." })
@@ -212,7 +223,8 @@ export const createVoiceSessions = (
     for (let tries = 1; child === null; tries += 1) {
       const proc = spawn(spec.builtins?.binary ?? "claude", [...sessionArgs(spec, config)], {
         cwd: spec.builtins?.cwd ?? dir,
-        env: { ...env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
+        // Tool search: only the core tools' definitions load; the rest are found by name (BRAIN-DESIGN §3.1).
+        env: { ...env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", ENABLE_TOOL_SEARCH: "true" },
         stdio: ["pipe", "pipe", "ignore"],
         windowsHide: true,
       });
