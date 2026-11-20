@@ -41,6 +41,7 @@ import {
   namedIn,
   r1Confirmed,
   HOUSE_LOOK,
+  houseLookTool,
   LOOK,
   r1Played,
   r1TurnStream,
@@ -1533,4 +1534,20 @@ effectIt.effect(
       expect((yield* tick().pipe(Effect.provide(registryWith(() => power)))).length).toBe(1);
       off();
     }),
+);
+
+effectIt.effect(
+  "the tool suite's replay never looks through a real camera of his house (.207 gate)",
+  () =>
+    Effect.gen(function* () {
+      const out = yield* houseLookTool(true).run({ why: "who's at the door?" });
+      expect(out.image).toBeUndefined();
+      expect(out.text).toContain("replay");
+    }).pipe(
+      Effect.provide(
+        Layer.mock(HomeAssistantService)({
+          snapshot: () => Effect.die("a replay must not take a real still"),
+        }),
+      ),
+    ),
 );
