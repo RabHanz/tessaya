@@ -31,7 +31,7 @@ import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import { memberOfSpeaker, OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { speakerMark } from "@t3tools/tessaya-shared/groupTalk";
-import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
+import { CONVERSATION_END, PRIVATE_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import {
   repairBoundsFor,
   repairVerdict,
@@ -1756,7 +1756,8 @@ export const r1TurnStream = (
       const group = tools === null ? null : yield* r1Group(input);
       const layered = group === null ? yield* r1Layer(input) : null;
       if (layered !== null) {
-        Queue.offerUnsafe(queue, (yield* r1Route(input, layered.text))!);
+        // A layer is her private self: the loop keeps no audio of a private moment.
+        Queue.offerUnsafe(queue, `${PRIVATE_MARK}${(yield* r1Route(input, layered.text))!}`);
         return yield* Queue.end(queue);
       }
       yield* r1Route(input, null);

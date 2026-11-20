@@ -249,9 +249,17 @@ describe("the room voice loop", () => {
   });
 
   it("keeps his own verified turns for his voice models, never a guest's, and not once he turns it off", async () => {
-    const run = async (kind: "owner" | "guest", capture?: boolean) => {
+    const run = async (kind: "owner" | "guest", capture?: boolean, privately = false) => {
       const kept: Array<{ speaker: string; samples: number }> = [];
       const t = setup({
+        ...(privately
+          ? {
+              // Her private self answered: the brain marks the turn private.
+              brain: async function* () {
+                yield "[private]Just between us.";
+              },
+            }
+          : {}),
         speaker: async () => ({
           ...UNVERIFIED(0),
           kind,
@@ -275,6 +283,29 @@ describe("the room voice loop", () => {
     expect((await run("owner"))[0]!.samples).toBeGreaterThan(0);
     expect(await run("guest")).toEqual([]);
     expect(await run("owner", false)).toEqual([]);
+    // A private moment is never kept, his own verified voice included.
+    expect(await run("owner", undefined, true)).toEqual([]);
+  });
+
+  it("keeps a turn it could not place only in a session where he was verified, marked unverified", async () => {
+    const kept: Array<{ speaker: string; verified: boolean | undefined }> = [];
+    let n = 0;
+    const t = setup({
+      speaker: async () =>
+        n++ === 0
+          ? { ...UNVERIFIED(0), kind: "owner", personId: "owner", confidence: 0.6, verified: true }
+          : { ...UNVERIFIED(0), confidence: 0.05 },
+      keepTurn: (_id, _pcm, meta) => kept.push({ speaker: meta.speaker, verified: meta.verified }),
+    });
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 30);
+    await t.feed(true, 20);
+    await t.feed(false, 30);
+    expect(kept).toEqual([
+      { speaker: "owner", verified: undefined },
+      { speaker: "unverified", verified: false },
+    ]);
   });
 
   it("tells her and her health when his uplink lost audio mid-turn: he was breaking up (18 Nov)", async () => {

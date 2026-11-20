@@ -23,7 +23,12 @@ import {
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { pronounce, pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
-import { REST_MARK, stopIntent, stopMatch } from "@t3tools/tessaya-shared/stopPhrases";
+import {
+  PRIVATE_MARK,
+  REST_MARK,
+  stopIntent,
+  stopMatch,
+} from "@t3tools/tessaya-shared/stopPhrases";
 import {
   repairBoundsFor,
   repairVerdict,
@@ -987,6 +992,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let asleep = false;
     /** He opened this session himself (her name or S2), not audio alone: a voice over hers is presumed his. */
     let opened = false;
+    /** A turn here verified him at 0.5 or more: an unplaced voice in this session may be his. */
+    let verifiedHere = false;
+    /** Her brain said this turn is a private moment (PRIVATE_MARK): none of it is kept. */
+    let privateTurn = false;
     const personas = roster;
     // The persona this R1 wears (Settings → Cast), else the roster's lead.
     const lead = personas.find((p) => p.id === castOf.get(id)?.persona) ?? personas[0];
@@ -2614,6 +2623,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           if (toned.tone !== null && said === "") toneNow = toned.tone;
           buffer = toned.text;
           // Her brain heard him close the conversation: her sign-off plays, then the session rests by itself.
+          // A private moment (her private self answered): nothing of this turn is kept.
+          if (buffer.includes(PRIVATE_MARK)) {
+            buffer = buffer.replaceAll(PRIVATE_MARK, "");
+            privateTurn = true;
+          }
           if (buffer.includes(REST_MARK)) {
             buffer = buffer.replaceAll(REST_MARK, "");
             dismissed = true;
@@ -2744,13 +2758,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const his = identity.kind === "owner" && identity.verified && identity.test !== true;
       const overHis =
         bargedIn && hisSession() && identity.kind !== "saved" && identity.kind !== "guest";
-      // His unverified turns are not kept until the loop knows a private moment from the brain (the condition he set).
+      if (his && (score ?? 0) >= 0.5) verifiedHere = true;
+      // A turn Voice ID could not place, in a session where another turn verified him at 0.5 or more: his far and soft
+      // turns are the ones it misses (20 Nov 13:26, 17:44). Kept apart, 14 days, never to shape his voice.
+      const doubtful =
+        !his && !overHis && verifiedHere && identity.kind === "unverified" && !bargedIn;
+      // Never a private moment's audio, whoever spoke (the condition he set).
       if (
         given === undefined &&
         text !== "" &&
         capturing.get(id) !== false &&
         !muted.has(id) &&
-        (his || overHis)
+        !privateTurn &&
+        (his || overHis || doubtful)
       )
         deps.keepTurn?.(id, pcm, {
           turn,
@@ -2758,7 +2778,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           speaker: identity.kind,
           score: score === null ? null : r3(score),
           overHer: bargedIn,
+          ...(doubtful ? { verified: false } : {}),
         });
+      privateTurn = false;
       bargedIn = false;
       deps.publish(topic(id, "event/voice/metrics"), JSON.stringify(metrics));
       deps.log(`[${id}] metrics ${JSON.stringify(metrics)}`);

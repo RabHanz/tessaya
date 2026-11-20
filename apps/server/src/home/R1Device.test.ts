@@ -412,7 +412,8 @@ effectIt.effect(
           ),
         ),
       );
-      expect([...said].join("")).toBe("Only the layer.");
+      // Marked private for the loop, which keeps none of it.
+      expect([...said].join("")).toBe("[private]Only the layer.");
       // Only the Tessel list, for her eyes to follow her: no brain, no house act, no Record.
       expect(touched).toEqual(["house"]);
     }),
