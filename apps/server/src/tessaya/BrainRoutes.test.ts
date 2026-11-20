@@ -198,7 +198,7 @@ describe("her brain's turns when the machine login is at its limit", () => {
   const instances = { claudeAgent_b: "2", claudeAgent_c: "3" };
 
   it("runs on the account with room, by its config dir, and leaves the machine login alone otherwise", () => {
-    // Signzart (1) at 4%: the turn runs in the config dir of the account with the most room; nothing is activated.
+    // The machine login (1) at 4%: the turn runs in the config dir of the account with the most room; nothing is activated.
     const spent = {
       accounts: [account("1", true, 4), account("2", false, 60), account("3", false, 10)],
     };
