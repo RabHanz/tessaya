@@ -735,7 +735,10 @@ export interface Felt {
     | "grab"
     | "squeeze"
     | "throw"
-    | "carry";
+    | "carry"
+    | "clap";
+  /** Her own hands on herself (a clap): her own act, never anyone's touch on her. */
+  readonly self?: true | undefined;
   /** An agent's hand names the agent; a person's is the session's member (SessionMember) unless given. */
   readonly agent?: string | undefined;
   /** Another persona's hand, body to body (architecture §2b.5): her id. */
@@ -758,6 +761,7 @@ const FELT_VERB: Readonly<Record<Felt["kind"], string>> = {
   squeeze: "squashed",
   throw: "threw",
   carry: "carried",
+  clap: "clapped",
 };
 const WHERE: Readonly<Record<string, string>> = {
   desktop: "on his desktop",
@@ -816,19 +820,21 @@ const nervesFor = (f: Felt, now: number) => {
 };
 
 export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
-  const hand = f.by ?? f.agent;
+  const hand = f.self === true ? "self" : (f.by ?? f.agent);
   const member = hand === undefined ? (f.member ?? (yield* SessionMember)) : null;
   const owner = hand === undefined && (member === null || member === OWNER_MEMBER_ID);
   yield* emitAction({
     kind: "body.felt",
     actor:
-      f.by !== undefined
-        ? { kind: "persona", id: f.by, certainty: 1 }
-        : f.agent !== undefined
-          ? { kind: "agent", id: f.agent, certainty: 1 }
-          : owner
-            ? { kind: "owner", certainty: 1 }
-            : { kind: "member", id: member!, certainty: 1 },
+      f.self === true
+        ? { kind: "persona", id: f.persona ?? "her", certainty: 1 }
+        : f.by !== undefined
+          ? { kind: "persona", id: f.by, certainty: 1 }
+          : f.agent !== undefined
+            ? { kind: "agent", id: f.agent, certainty: 1 }
+            : owner
+              ? { kind: "owner", certainty: 1 }
+              : { kind: "member", id: member!, certainty: 1 },
     persona: f.persona ?? null,
     subject: f.part,
     outcome: f.kind,
@@ -837,9 +843,9 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
   });
   if (f.private === true) return;
   const nerves = nervesFor(f, yield* Clock.currentTimeMillis);
-  // how it felt moves her quick reaction (never her mood), keyed to whoever's hand it was
+  // how it felt moves her quick reaction (never her mood), keyed to whoever's hand it was; her own is no one's
   const mood = yield* Effect.serviceOption(TessayaMood);
-  if (nerves?.tone != null && mood._tag === "Some")
+  if (nerves?.tone != null && mood._tag === "Some" && f.self !== true)
     yield* mood.value.note(f.persona ?? undefined, { kind: "felt", tone: nerves.tone }, member);
   // his own hand on her is him being with her: when he was last with her, for every body's wishes
   if (owner && f.by === undefined && mood._tag === "Some")
@@ -847,18 +853,20 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
   const live = yield* Effect.serviceOption(TurnLiveContext);
   if (live._tag === "None") return;
   const who =
-    f.by !== undefined
-      ? `${f.by}'s hand`
-      : f.agent !== undefined
-        ? "an agent's hand"
-        : owner
-          ? "he"
-          : "someone in the household";
+    f.self === true
+      ? "your own hand"
+      : f.by !== undefined
+        ? `${f.by}'s hand`
+        : f.agent !== undefined
+          ? "an agent's hand"
+          : owner
+            ? "he"
+            : "someone in the household";
   yield* live.value.inject({
     key: `felt:${f.vessel}`,
-    ...(f.by === undefined ? {} : { persona: f.persona ?? undefined }),
+    ...(f.by === undefined && f.self !== true ? {} : { persona: f.persona ?? undefined }),
     source: "touch",
     expiresAfterTurns: 3,
-    line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}${nerves === null ? "" : ` (you felt ${nerves.words})`}: mention it only if it fits.`,
+    line: `A moment ago ${WHERE[f.vessel] ?? `on ${f.vessel}`}, ${f.self === true && f.kind === "clap" ? "you clapped your hands" : `${who} ${FELT_VERB[f.kind]} ${f.part === "body" ? "your body" : `your ${f.part}`}`}${nerves === null ? "" : ` (you felt ${nerves.words})`}: mention it only if it fits.`,
   });
 });

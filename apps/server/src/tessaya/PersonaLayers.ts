@@ -148,10 +148,14 @@ export interface LayerHost {
     readonly layer: string;
     readonly name: string;
   }) => Promise<string | null>;
-  /** He touched her public body (no private moment): an everyday touch, felt by her one self (TessayaBody.feel). */
+  /**
+   * He touched her public body (no private moment): an everyday touch, felt by her one self (TessayaBody.feel).
+   * `self`: her own hands on herself (a clap), felt as her own act.
+   */
   readonly touched?: (touch: {
     readonly part: string;
-    readonly kind: "poke" | "pat" | "stroke" | "hold" | "squeeze";
+    readonly kind: "poke" | "pat" | "stroke" | "hold" | "squeeze" | "clap";
+    readonly self?: true;
   }) => Promise<void>;
   /** What this system can do today: its personas and the tools a turn can reach, read live from the server. */
   readonly capabilities?: () => Promise<{

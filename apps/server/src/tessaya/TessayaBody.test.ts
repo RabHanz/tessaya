@@ -545,6 +545,22 @@ describe("TessayaBody", () => {
         expect(
           shown.find((m) => m.persona === undefined)?.cues.some((c) => c.kind === "hand"),
         ).toBe(false);
+        // her own clap is her own act: hers in the record and in her turn, and no one's hand on her
+        yield* feel({
+          vessel: "desktop",
+          part: "hand",
+          kind: "clap",
+          self: true,
+          persona: "freya",
+          pressure: 0.9,
+        }).pipe(
+          Effect.provideService(SessionMember, "member-sam"),
+          Effect.provideService(TessayaMood, mood),
+        );
+        expect(noted).toHaveLength(2);
+        expect(yield* live.take({ vessel: "tessel-1", persona: "freya", spend: false })).toMatch(
+          /on his desktop, you clapped your hands/,
+        );
         // a private moment's touch is sealed: recorded, but never in shared context
         yield* feel({ vessel: "window", part: "hand", kind: "hold", private: true });
         off();
@@ -553,8 +569,9 @@ describe("TessayaBody", () => {
           ["member", "member-sam", { vessel: "phone" }],
           ["agent", "desktop:a", { vessel: "window", pressure: 0.4 }],
           ["persona", "sebastian", { vessel: "window", pressure: 0.4 }],
+          ["persona", "freya", { vessel: "desktop", pressure: 0.9 }],
         ]);
-        expect(rows.at(-1)).toMatchObject({ persona: "freya" });
+        expect(rows.at(-2)).toMatchObject({ persona: "freya" });
         const onTumble = yield* live.take({ vessel: "tessel-1", persona: null, spend: true });
         expect(onTumble).toMatch(/on his desktop, someone in the household patted your head/);
         // her nerves say what it was like: a slow stroke on hairy skin reaches her caress fibres
