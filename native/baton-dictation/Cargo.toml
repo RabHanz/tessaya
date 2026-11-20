@@ -30,6 +30,7 @@ gpu = ["transcribe-cpp/vulkan", "transcribe-cpp/dynamic-backends"]
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Dwm",
   "Win32_Graphics_Gdi",
   "Win32_Storage_Xps",
   "Win32_System_Com",

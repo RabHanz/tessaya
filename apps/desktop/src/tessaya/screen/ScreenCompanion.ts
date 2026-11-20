@@ -167,6 +167,7 @@ import {
   COVERED_BY_OWN,
   focusIsOn,
   treeText,
+  type OpenWindow,
   typeByValue,
   type FocusState,
   type SharedToolSpec,
@@ -424,11 +425,14 @@ export interface AssistantActions {
   readonly uiTree?: (
     find?: string,
     numbered?: boolean,
+    /** A window by part of its title, read where it is (another monitor, behind others) without bringing it forward. */
+    window?: string,
   ) => Promise<{
     readonly window: string;
     readonly controls: ReadonlyArray<string>;
     readonly shown?: number;
     readonly tree?: number;
+    readonly windows?: ReadonlyArray<OpenWindow>;
   } | null>;
   /** Where the keyboard is, read cheaply after an action; null when it cannot be read. */
   readonly focusState?: () => Promise<FocusState | null>;
@@ -2597,11 +2601,11 @@ export const startScreenCompanion = (input: {
         images: captured.map((c) => ({ data: c.jpeg.toString("base64"), mimeType: "image/jpeg" })),
       };
     },
-    uiTree: async (_window, find) => {
+    uiTree: async (window, find) => {
       if (!(await approveCapture("what is on your screen", null))) {
         throw new Error("He did not allow looking at his screen.");
       }
-      const tree = await actions?.uiTree?.(find, true);
+      const tree = await actions?.uiTree?.(find, true, window);
       if (tree === null || tree === undefined) {
         throw new Error("The window's controls can't be read here. Take a screenshot instead.");
       }

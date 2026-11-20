@@ -8,6 +8,7 @@
  */
 import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
+import { screenOfBox } from "@t3tools/tessaya-shared/screenCompanion";
 import { effectFor, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 import type { Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
@@ -308,7 +309,7 @@ import {
   stillInterrupted,
   type Interrupted,
 } from "../lifecycle/recovery.ts";
-import { buildTessayaTools, type ToolHost } from "../agent/tessayaTools.ts";
+import { buildTessayaTools, type OpenWindow, type ToolHost } from "../agent/tessayaTools.ts";
 import { helpControls } from "../help/helpRows.ts";
 import {
   BUILT_INS,
@@ -484,6 +485,7 @@ import {
   type RecordingEntry,
   type PasteMethod,
   type SidecarDevice,
+  type UiTree,
 } from "./dictationSidecar.ts";
 import { startRoomRecognizer, tailnetAddress } from "./roomRecognizer.ts";
 import { stillOurs, watchField, WATCH_EVERY_MS, WATCH_MS } from "./fieldWatch.ts";
@@ -707,6 +709,21 @@ import {
 import { createCloudKeys } from "./cloudKeys.ts";
 import { CLOUD_TEST_CLIP_WEBM_BASE64 } from "./cloudTestClip.ts";
 import type { AudioInputDevice, AudioInputProvider, VoiceState } from "./voiceTypes.ts";
+
+/** His open windows with the screen each is on, numbered as the screenshots number them. */
+const placeWindows = (windows: NonNullable<UiTree["windows"]>): ReadonlyArray<OpenWindow> => {
+  const displays = Electron.screen.getAllDisplays().map((d) => d.bounds);
+  return windows.map((w) => {
+    const at = screenOfBox(Electron.screen.screenToDipRect(null, w), displays);
+    return {
+      title: w.title,
+      minimized: w.minimized,
+      ...(at === null
+        ? {}
+        : { screen: at.screen, ...(at.place === undefined ? {} : { place: at.place }) }),
+    };
+  });
+};
 
 /** His zone on this computer: days ahead are counted in it. */
 const hisZone = (): string => Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -3923,10 +3940,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       ]).catch(() => null);
       return typeof out?.count === "number" ? out.count : null;
     },
-    uiTree: async (find, numbered) => {
+    uiTree: async (find, numbered, window) => {
       if (sidecar === null) return null;
       const tree = await Promise.race([
-        sidecar.uiTree(undefined, find, numbered),
+        sidecar.uiTree(window, find, numbered),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), LOCATE_TIMEOUT_MS * 2)),
       ]).catch(() => null);
       if (tree === null || tree.controls === undefined) return null;
@@ -3935,6 +3952,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         controls: tree.controls,
         ...(tree.shown === undefined ? {} : { shown: tree.shown }),
         ...(tree.tree === undefined ? {} : { tree: tree.tree }),
+        ...(tree.windows === undefined ? {} : { windows: placeWindows(tree.windows) }),
       };
     },
     focusState: async () => {

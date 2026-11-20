@@ -621,6 +621,54 @@ fn popups_of(top: HWND) -> Vec<HWND> {
     }
 }
 
+/// His open windows, front first, across every monitor: title and box in physical pixels, from the window list alone
+/// (no UI Automation, so a hung app costs nothing). Tool windows, owned popups and cloaked (hidden UWP) windows are
+/// left out.
+fn open_windows(max: usize) -> Vec<Value> {
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongW, GetWindowRect, IsIconic, GWL_EXSTYLE, WS_EX_TOOLWINDOW};
+    unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let found = &mut *(lparam.0 as *mut Vec<HWND>);
+        found.push(hwnd);
+        BOOL(1)
+    }
+    let mut all: Vec<HWND> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(Some(each), LPARAM(&mut all as *mut Vec<HWND> as isize));
+    }
+    let mut out = Vec::new();
+    for hwnd in all {
+        if out.len() >= max {
+            break;
+        }
+        unsafe {
+            if !IsWindowVisible(hwnd).as_bool() || GetWindow(hwnd, GW_OWNER).is_ok_and(|o| !o.0.is_null()) {
+                continue;
+            }
+            if GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0 != 0 {
+                continue;
+            }
+            let mut cloaked = 0u32;
+            let size = std::mem::size_of::<u32>() as u32;
+            if DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &mut cloaked as *mut u32 as *mut _, size).is_ok() && cloaked != 0 {
+                continue;
+            }
+            let mut title = [0u16; 256];
+            let length = GetWindowTextW(hwnd, &mut title).max(0) as usize;
+            let title = String::from_utf16_lossy(&title[..length]);
+            let mut r = RECT::default();
+            if title.trim().is_empty() || GetWindowRect(hwnd, &mut r).is_err() || r.right - r.left < MIN_SIDE || r.bottom - r.top < MIN_SIDE {
+                continue;
+            }
+            out.push(json!({
+                "title": clip(&title), "x": r.left, "y": r.top, "width": r.right - r.left, "height": r.bottom - r.top,
+                "minimized": IsIconic(hwnd).as_bool(),
+            }));
+        }
+    }
+    out
+}
+
 /// What the keyboard's window and its open popups offer, one numbered line per named control with its value and
 /// states: the agent reads this before it takes a screenshot, and clicks a line by its number with `locate`. No
 /// coordinates leave here; the numbers stay in the sidecar until the next tree. `find` keeps only names that contain it.
@@ -680,6 +728,10 @@ pub fn tree(max: usize, window: Option<&str>, find: Option<&str>, numbered: bool
             }
         }
         let mut out = json!({"window": title, "controls": lines, "total": read, "shown": shown});
+        // The plain read of the window he is using also says what else is open, and where, on every monitor.
+        if window.is_none() && want.is_none() {
+            out["windows"] = json!(open_windows(12));
+        }
         if numbered {
             if let Ok(mut kept) = LISTED.lock() {
                 let id = kept.0 + 1;

@@ -126,6 +126,19 @@ export const screenPlaces = (
   return out;
 };
 
+/** The screen (as `screenPlaces` numbers it) that holds most of a window's box; null when it is on none. */
+export const screenOfBox = (
+  box: Bounds,
+  displays: ReadonlyArray<Bounds>,
+): { readonly screen: number; readonly place: string | undefined } | null => {
+  const overlap = (d: Bounds) =>
+    Math.max(0, Math.min(box.x + box.width, d.x + d.width) - Math.max(box.x, d.x)) *
+    Math.max(0, Math.min(box.y + box.height, d.y + d.height) - Math.max(box.y, d.y));
+  const areas = displays.map(overlap);
+  const best = areas.indexOf(Math.max(0, ...areas));
+  return best < 0 || areas[best] === 0 ? null : screenPlaces(displays)[best]!;
+};
+
 // ── Reply parsing ───────────────────────────────────────────────────────────
 
 // farzaa's end-anchored pattern, loosened to accept the tag anywhere and a missing label.

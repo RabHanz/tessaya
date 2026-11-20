@@ -230,6 +230,18 @@ describe("the assistant's tool table", () => {
     expect(treeText({ window: "Files", controls: ["[1] list item: a"], shown: 1 })).toBe(
       "Files\n[1] list item: a",
     );
+    expect(
+      treeText({
+        window: "Files",
+        controls: [],
+        windows: [
+          { title: "New Tab - Google Chrome", minimized: false, screen: 2, place: "right" },
+          { title: "Notes", minimized: true, screen: 1 },
+        ],
+      })
+        .split("\n")
+        .slice(2),
+    ).toEqual(["- New Tab - Google Chrome (screen 2, right)", "- Notes (minimised)"]);
   });
 
   it("an action says what it changed, or that nothing changed; a batch step does not read back", async () => {
