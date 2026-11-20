@@ -122,11 +122,16 @@ async function prepareStreamScripts() {
   }
 }
 
-module.exports = Promise.all([generateMobileThirdPartyLicenses(), prepareStreamScripts()]).then(
-  () =>
-    withUniwindConfig(config, {
-      cssEntryFile: "./global.css",
-      extraThemes,
-      polyfills: { rem: 14 },
-    }),
+// knip loads this file only to read it: the generators bundle whole client trees, so a commit hook never runs them.
+const readOnly = process.argv.some((arg) => /[/\\]knip([/\\.]|$)/.test(arg));
+module.exports = (
+  readOnly
+    ? Promise.resolve()
+    : Promise.all([generateMobileThirdPartyLicenses(), prepareStreamScripts()])
+).then(() =>
+  withUniwindConfig(config, {
+    cssEntryFile: "./global.css",
+    extraThemes,
+    polyfills: { rem: 14 },
+  }),
 );
