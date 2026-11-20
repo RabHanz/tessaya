@@ -11,6 +11,7 @@ import bodyStreamScript from "@t3tools/mobile-body-stream";
 import { lineCues } from "@t3tools/tessaya-shared/bodyCues";
 import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
 import { modelOrder, type OfferedModel } from "@t3tools/tessaya-shared/playgroundOrder";
+import * as Battery from "expo-battery";
 import * as Device from "expo-device";
 import { createAudioPlayer } from "expo-audio";
 import { File, Paths } from "expo-file-system";
@@ -28,6 +29,8 @@ import { useVoiceInputController } from "../../voice-input/useVoiceInputControll
 import { askOutcome, talkPersona, toBase64 } from "./talk.logic";
 import {
   addFrames,
+  batteryDrain,
+  type BatteryRead,
   startStretch,
   STRETCH_MS,
   stretchSummary,
@@ -64,6 +67,9 @@ export function TalkRouteScreen() {
   const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, { reportFailure: false });
   const cost = useRef<Stretch | null>(null);
   const awayAt = useRef<number | null>(null);
+  // the battery at the start of the stretch on screen, and when she went off it
+  const batteryAt = useRef<BatteryRead | null>(null);
+  const awayBattery = useRef<BatteryRead | null>(null);
   const reportCost = (line: string) => {
     if (environmentId === null) return;
     const manifest = phoneManifest({
@@ -86,29 +92,50 @@ export function TalkRouteScreen() {
     });
   };
 
+  const readBattery = (): Promise<BatteryRead | null> =>
+    Promise.all([Battery.getBatteryLevelAsync(), Battery.getBatteryStateAsync()]).then(
+      ([level, state]) => ({
+        level,
+        charging: state === Battery.BatteryState.CHARGING || state === Battery.BatteryState.FULL,
+        at: Date.now(),
+      }),
+      () => null,
+    );
+  const withBattery = (line: string, from: BatteryRead | null) =>
+    void readBattery().then((now) => {
+      const drain = batteryDrain(from, now);
+      reportCost(drain === null ? line : `${line}, ${drain}`);
+    });
+
   // her cost while she is on screen: frames from the page, busy time from a timer, one report per ten minutes
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a timer measures the JS thread only while she is drawn
   useEffect(() => {
     if (!drawing) {
       cost.current = null;
-      if (awayAt.current === null) awayAt.current = Date.now();
+      if (awayAt.current === null) {
+        awayAt.current = Date.now();
+        void readBattery().then((b) => (awayBattery.current = b));
+      }
       return;
     }
     // back from ten minutes or more away: her page was closed the whole time, so it drew nothing
     if (awayAt.current !== null && Date.now() - awayAt.current >= STRETCH_MS)
-      reportCost(
+      withBattery(
         `background: 0 frames (her page closed) over ${Math.round((Date.now() - awayAt.current) / 60_000)} min`,
+        awayBattery.current,
       );
     awayAt.current = null;
     cost.current = startStretch(Date.now());
+    void readBattery().then((b) => (batteryAt.current = b));
     const timer = setInterval(() => {
       if (cost.current === null) return;
       const now = Date.now();
       cost.current = tick(cost.current, now);
       const line = stretchSummary(cost.current, now, "visible");
       if (line !== null) {
-        reportCost(line);
+        withBattery(line, batteryAt.current);
         cost.current = startStretch(now);
+        void readBattery().then((b) => (batteryAt.current = b));
       }
     }, TICK_MS);
     return () => clearInterval(timer);
