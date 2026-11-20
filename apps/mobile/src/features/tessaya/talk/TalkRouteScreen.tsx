@@ -265,7 +265,11 @@ export function TalkRouteScreen() {
         }
         const base64 = await kept.base64().catch(() => null);
         if (base64 === null) continue;
-        if (!cancelled) setModel({ persona: persona.id, base64 });
+        if (cancelled) return;
+        const next = { persona: persona.id, base64 };
+        setModel(next);
+        // her page may already have said "ready" while the model was still on its way: send it now too
+        webView.current?.postMessage(JSON.stringify({ type: "model", ...next }));
         return;
       }
     })();
