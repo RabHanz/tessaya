@@ -126,7 +126,7 @@ describe("every action reaches the log", () => {
     expect(src("tessaya/TessayaRoutes.ts")).toContain('if (calledAs === "action")');
     const desktop = (file: string) => src(`../../desktop/src/tessaya/${file}`);
     expect(desktop("agent/tessayaTools.ts")).toContain("withActed(t, acted)");
-    expect(desktop("screen/ScreenCompanion.ts")).toMatch(/acted: \(tool, outcome\) =>/);
+    expect(desktop("screen/ScreenCompanion.ts")).toMatch(/acted: \(tool, outcome, ms, look\) =>/);
     for (const file of ["screen/ScreenCompanion.ts", "voice/DesktopTessayaVoice.ts"])
       expect(desktop(file), file).toMatch(/const save = [^\n]+\n\s+settingsSaved\(/);
   });

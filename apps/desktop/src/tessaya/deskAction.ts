@@ -7,9 +7,11 @@ type Direct = ((method: string, body: unknown) => Promise<unknown>) | undefined;
 export const deskAction = (
   direct: Direct,
   action: {
-    readonly kind: "desk.tool" | "settings.changed";
+    readonly kind: "desk.tool" | "desk.look" | "settings.changed";
     readonly subject: string;
     readonly outcome?: "ok" | "fail";
+    /** How long the step took, so where a turn's seconds go can be read back (D-004). */
+    readonly ms?: number;
   },
 ): void => void direct?.("action", action).catch(() => undefined);
 

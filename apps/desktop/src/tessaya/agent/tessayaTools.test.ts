@@ -135,12 +135,15 @@ describe("the assistant's tool table", () => {
       ).some((t) => t.name === "settings_set"),
     ).toBe(false);
   });
-  it("logs each own change with its outcome, never a look or a shared tool (the server logs those)", async () => {
+  it("logs each own change with its outcome and time, a screen look only as a timed look, never a shared tool", async () => {
     const acted: string[] = [];
     const tools = new Map(
       buildTessayaTools({
         ...host([]),
-        acted: (tool, outcome) => acted.push(`${tool} ${outcome}`),
+        acted: (tool, outcome, ms, look) =>
+          acted.push(
+            `${look === true ? "look " : ""}${tool} ${outcome}${ms >= 0 ? "" : " no time"}`,
+          ),
         shared: {
           specs: [{ name: "settings_set", description: "", input_schema: {}, readonly: false }],
           call: async () => "set",
@@ -154,7 +157,12 @@ describe("the assistant's tool table", () => {
     await tools.get("act_batch")!.run({
       steps: [{ tool: "click_element", args: { label: "Save", why: "w" } }],
     });
-    expect(acted).toEqual(["dictation_start ok", "click fail", "act_batch ok"]);
+    expect(acted).toEqual([
+      "dictation_start ok",
+      "click fail",
+      "look screen_capture ok",
+      "act_batch ok",
+    ]);
   });
   it("checks arguments before touching anything", async () => {
     const log: string[] = [];
