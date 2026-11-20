@@ -90,6 +90,7 @@ const run = (
               }).pipe(
                 Effect.as({
                   block: "he likes short answers",
+                  feeling: "",
                   ids: [],
                   privateBlock: "",
                   conversation: {

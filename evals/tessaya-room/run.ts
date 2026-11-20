@@ -44,6 +44,7 @@ import { reportLine } from "../../packages/tessaya-shared/src/problemReport.ts";
 import { HEALTHY, OWNER, ROOM_NOW, roomCases, type RoomCase } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
 import { answerOf, retried } from "../shared/retry.ts";
+import { judge, meanScores } from "./judge.ts";
 
 const { values } = NodeUtil.parseArgs({
   options: {
@@ -53,6 +54,7 @@ const { values } = NodeUtil.parseArgs({
     case: { type: "string", multiple: true },
     samples: { type: "string", default: "2" },
     claude: { type: "string", default: "claude" },
+    "judge-model": { type: "string", default: "sonnet" },
   },
 });
 if (values.out === undefined) throw new Error("Use --out <directory>.");
@@ -684,6 +686,13 @@ const context = (
   ]
     .filter((l) => l !== "")
     .join("\n\n"),
+  // As r1Gather gives them: her feeling, and who the answering persona is (the lead's when none was called).
+  ...(c.feeling === undefined ? {} : { feeling: c.feeling }),
+  self:
+    (c.persona === undefined
+      ? DEFAULT_OS_PACK.personas.find((p) => p.lead)
+      : DEFAULT_OS_PACK.personas.find((p) => p.id === c.persona)
+    )?.self ?? "",
   ...(c.notice === undefined ? {} : { notice: c.notice }),
   preferences: {},
   voice:
@@ -693,7 +702,7 @@ const context = (
         ? { speaker: { kind: "guest", personId: null, verified: false, inherited: false } }
         : undefined,
   // His clock as the server gives it (clockLine), with the time as it is said; 10:15 on 12 Nov in Karachi.
-  now: clockLine(ROOM_NOW, "Asia/Karachi", c.clock ?? "12h"),
+  now: clockLine(c.at ?? ROOM_NOW, "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
   persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
   switched: c.persona !== undefined && turn === 0,
@@ -888,9 +897,23 @@ for (const c of cases) {
       })),
     );
   const pass = casePasses(c, runs);
+  const judged =
+    c.judge === undefined
+      ? undefined
+      : await Promise.all(
+          runs.map((s) =>
+            s.replies.length === 0
+              ? null
+              : judge(
+                  { about: c.judge!, said: c.said, replies: s.replies },
+                  { model: values["judge-model"]!, claude: values.claude! },
+                ),
+          ),
+        );
   rows.push({
     id: c.id,
     pass,
+    ...(judged === undefined ? {} : { judged, scores: meanScores(judged) }),
     failures: runs.map((s) => failureOf(c, s)),
     calls: runs.map((s) => s.calls),
     replies: runs.map((s) => s.replies),
@@ -905,6 +928,9 @@ const first = rows
   .filter((ms): ms is number => ms !== null)
   .toSorted((a, b) => a - b);
 NodeFS.writeFileSync(NodePath.join(out, "results.json"), JSON.stringify(rows, null, 2));
+const scored = rows.flatMap((r) => ("judged" in r && r.judged !== undefined ? r.judged : []));
+if (scored.length > 0)
+  console.log(`judge (${values["judge-model"]}): ${JSON.stringify(meanScores(scored))}`);
 console.log(
   `${rows.filter((r) => r.pass).length} of ${rows.length} pass (brain ${values.brain}, ${values.model}); median first word ${first[Math.floor(first.length / 2)] ?? "n/a"} ms`,
 );

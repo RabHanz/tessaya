@@ -395,7 +395,7 @@ export const layerBrain = Effect.fn("PersonaLayers.layerBrain")(function* (
               ? Effect.succeed({ memory: "", notice: "", preferences: {}, conversation: [] })
               : pipeline.value.begin(privateTurn).pipe(
                   Effect.map((c) => ({
-                    memory: [c.block, c.privateBlock, c.owner ?? ""]
+                    memory: [c.feeling, c.block, c.privateBlock, c.owner ?? ""]
                       .filter((b) => b !== "")
                       .join("\n\n"),
                     notice: c.notice ?? "",

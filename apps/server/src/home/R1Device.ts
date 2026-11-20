@@ -21,6 +21,7 @@ import {
   NO_EMPTY_PROMISES,
   NO_NARRATION,
   NO_SELF_INTRO,
+  PRESENCE,
   SELF,
   TOOL_FAILED,
   WAKE_WORD,
@@ -495,6 +496,10 @@ export interface R1Context {
   readonly automations: unknown;
   /** The memory block every vessel gets for these words and this persona (`TessayaTurn.begin`). */
   readonly memory: string;
+  /** Her feeling toward the speaker and why (`TurnContext.feeling`), her own line rather than quoted memory. */
+  readonly feeling?: string;
+  /** Who the answering persona is as a person (`Persona.self`; the lead's when none was called). */
+  readonly self?: string;
   /** What to tell the speaker now (messages that waited), as her own instruction (`TessayaTurn.begin`'s notice). */
   readonly notice?: string;
   /** How the person speaking likes things (their own preferences; empty for a guest). */
@@ -599,6 +604,8 @@ const R1_RULES = [
 /** @public The acts form's turn as data (the subscription route); the room eval drives it too. */
 export const r1Data = (input: R1Context) => [
   ...personaLine(input.persona, input.switched).map((l) => `${l} The acts and rules are the same.`),
+  ...(input.self === undefined || input.self === "" ? [] : [input.self]),
+  ...(input.feeling === undefined || input.feeling === "" ? [] : [input.feeling]),
   `Now: ${input.now}.`,
   `Who else he can talk to here, by saying their name: ${input.roster}.`,
   `Devices that may match: ${quoted(input.devices)}`,
@@ -625,6 +632,7 @@ export const ROOM_SYSTEM = [
   `${TOOL_FAILED}. ${NEVER_MISSING}`,
   ANSWER_ONLY,
   LIKE_A_PERSON,
+  PRESENCE,
   NO_SELF_INTRO,
   NO_NARRATION,
   `${NO_EMPTY_PROMISES} tessaya_pronounce keeps how a word is said, for this device and his others.`,
@@ -648,6 +656,8 @@ const ROOM_HISTORY = 16;
 export const roomData = (input: R1Context) =>
   [
     ...personaLine(input.persona, input.switched),
+    ...(input.self === undefined || input.self === "" ? [] : [input.self]),
+    ...(input.feeling === undefined || input.feeling === "" ? [] : [input.feeling]),
     ...(input.owner === undefined || input.owner === "" ? [] : [input.owner]),
     `Now, on the house's clock: ${input.now}.`,
     `Who else he can talk to here, by saying their name: ${input.roster}.`,
@@ -1231,6 +1241,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
   const begun = Option.isNone(pipeline)
     ? {
         block: "",
+        feeling: "",
         ids: [],
         privateBlock: "",
         conversation: { key: "household", turns: [] },
@@ -1270,12 +1281,14 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     lastAction,
     automations,
     memory: begun.block,
+    feeling: begun.feeling,
     // Messages that waited are one person's: not told to a room of several voices.
     ...(people.length > 0 || begun.notice === undefined ? {} : { notice: begun.notice }),
     preferences: people.length > 0 ? {} : begun.preferences,
     ...(people.length > 0 ? { people } : {}),
     voice: input.voice,
     persona,
+    self: (persona ?? pack.personas.find((p) => p.lead))?.self ?? "",
     switched: switchedPersona(input.voice),
     roster: rosterLine(pack.personas, persona?.id ?? ""),
     names: hisNames(

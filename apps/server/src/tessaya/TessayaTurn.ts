@@ -336,6 +336,11 @@ export interface TurnContext {
    * (COMMS-DESIGN §2.4). Empty or absent when there is nothing.
    */
   readonly notice?: string;
+  /**
+   * How she feels toward the speaker and why, and how to be with them (mood, understanding, the room): hers, so a
+   * vessel puts it as her own line, not inside the quoted memory. "" when the mood is off or nobody is addressed.
+   */
+  readonly feeling: string;
   /** The ids matched to this sentence, best first: the same for every vessel given the same words and persona. */
   readonly ids: ReadonlyArray<string>;
   /** The speaker's own private memories, only when the gate allows it; else "". */
@@ -1378,6 +1383,7 @@ export const make = Effect.gen(function* () {
     if (repair?.kind === "drop")
       return {
         block: "",
+        feeling: "",
         ids: [],
         privateBlock: "",
         conversation,
@@ -1451,14 +1457,10 @@ export const make = Effect.gen(function* () {
     const who: Who = identified
       ? { name: preferences.name ?? (yield* memberName(member)), pronouns: preferences.pronouns }
       : { name: person?.name ?? null };
-    const here = [
-      yield* hereFor(turn, member),
-      yield* moodFor(turn, person?.id ?? null, who).pipe(
-        Effect.provideService(AffectCause, yield* causeOf(turn)),
-      ),
-    ]
-      .filter((l) => l !== "")
-      .join(" ");
+    const here = yield* hereFor(turn, member);
+    const feeling = yield* moodFor(turn, person?.id ?? null, who).pipe(
+      Effect.provideService(AffectCause, yield* causeOf(turn)),
+    );
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
       .filter((l) => l !== "")
       .join(" ");
@@ -1479,6 +1481,7 @@ export const make = Effect.gen(function* () {
       ]
         .filter((l) => l !== "")
         .join(" "),
+      feeling,
       block: [
         here,
         live,

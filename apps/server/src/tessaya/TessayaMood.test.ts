@@ -68,7 +68,7 @@ const his: TurnEnvelope = {
 const blockOf = (turn: TurnEnvelope) =>
   Effect.map(
     Effect.flatMap(TessayaTurn, (t) => t.begin(turn)),
-    (c) => c.block,
+    (c) => `${c.feeling}\n\n${c.block}`,
   );
 
 it.effect("his return after hours is in his next turn once; nobody else hears or sees it", () =>
@@ -82,7 +82,7 @@ it.effect("his return after hours is in his next turn once; nobody else hears or
     // Named, and "they" with no pronouns of their own: never "he" for everyone (16 Nov).
     assert.include(back, "Owner was away 9 h");
     assert.include(back, "never ask where they were");
-    assert.include(back, "Your mood now: sulky");
+    assert.include(back, "How you feel right now: sulky");
     assert.notInclude(yield* blockOf(his), "away");
     const mood = yield* TessayaMood;
     assert.strictEqual((yield* mood.view("companion", "UTC", OWNER_MEMBER_ID)).label, "sulky");

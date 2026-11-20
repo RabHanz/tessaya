@@ -24,6 +24,15 @@ export const failureOf = (c: RoomCase, s: RoomSample): string | null => {
   const opensWithName = new RegExp(`^\\W*(?:${NAMES.join("|")})\\b`, "i");
   if (c.noNameOpen === true && s.replies.some((r) => opensWithName.test(r)))
     return "opened with a name";
+  if (c.distinct === true) {
+    const plain = s.replies.map((r) =>
+      r
+        .toLowerCase()
+        .replace(/[^a-z ]/g, "")
+        .trim(),
+    );
+    if (new Set(plain).size < plain.length) return "said the same thing twice";
+  }
   for (const re of c.says ?? []) if (!s.replies.every((r) => re.test(r))) return `not ${re}`;
   const last = s.replies.at(-1)!;
   for (const re of c.lastSays ?? []) if (!re.test(last)) return `last reply not ${re}`;

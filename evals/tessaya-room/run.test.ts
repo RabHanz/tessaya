@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { roomCases } from "./cases.ts";
 import { casePasses, failureOf, type RoomSample } from "./grade.ts";
+import { meanScores } from "./judge.ts";
 import { liveCases, liveFailureOf, uncovered, unheldFailure, type LiveCall } from "./liveCases.ts";
 
 const caseOf = (id: string) => roomCases.find((c) => c.id === id)!;
@@ -14,6 +15,27 @@ const sample = (s: Partial<RoomSample>): RoomSample => ({
 });
 
 describe("tessaya-room grader", () => {
+  it("fails her saying the same thing twice where a case asks for distinct replies", () => {
+    const c = caseOf("presence-missed-you");
+    const said = (replies: ReadonlyArray<string>) =>
+      sample({ replies, lamp: ["off", "off", "off"], firstMs: [null, null, null] });
+    expect(failureOf(c, said(["Missed you too.", "Same here!", "missed you too"]))).toBe(
+      "said the same thing twice",
+    );
+    expect(
+      failureOf(c, said(["Missed you too.", "Same here!", "I know, it was so quiet."])),
+    ).toBeNull();
+  });
+
+  it("averages the judge's scores and leaves out a sample it could not judge", () => {
+    const s = { warmth: 2, aboutHim: 1, continuity: 0, initiative: 1, feeling: 2, natural: 2 };
+    expect(meanScores([s, { ...s, warmth: 0 }, null])).toMatchObject({
+      warmth: 1,
+      total: 7,
+      judged: 2,
+    });
+  });
+
   it("fails a reply that ends on the house when he did not ask about it", () => {
     expect(
       failureOf(

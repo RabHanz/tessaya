@@ -927,7 +927,11 @@ export const makeHandlers = Effect.gen(function* () {
                   timeZone: input.timeZone,
                   turnRef: input.turnRef,
                 }),
-                (c) => ({ block: c.block, ids: c.ids }),
+                // The web's turn reads one block: her feeling leads it, as it did before it had its own line.
+                (c) => ({
+                  block: [c.feeling, c.block].filter((b) => b !== "").join("\n\n"),
+                  ids: c.ids,
+                }),
               ),
             ),
       ),
