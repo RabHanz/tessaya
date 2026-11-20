@@ -354,11 +354,6 @@ export const GESTURES: Readonly<
       { bone: "chest", axis: "x", rad: -0.1, cycles: 0.5 },
       { bone: "leftShoulder", axis: "z", rad: 0.14, cycles: 0.5 },
       { bone: "rightShoulder", axis: "z", rad: -0.14, cycles: 0.5 },
-      // her right hand comes up to her chin, elbow low by her side (fitted on the reference body)
-      { bone: "rightUpperArm", axis: "x", rad: -0.7, cycles: 0.5 },
-      { bone: "rightUpperArm", axis: "y", rad: 0.5, cycles: 0.5 },
-      { bone: "rightUpperArm", axis: "z", rad: 0.4, cycles: 0.5 },
-      { bone: "rightLowerArm", axis: "y", rad: 2.5, cycles: 0.5 },
     ],
     act: { face: { aa: 1, oh: 0.7, blink: 1 }, shapes: [BROWS_UP, MOUTH_TALL], jaw: 0.45 },
   },
