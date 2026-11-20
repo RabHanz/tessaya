@@ -5,14 +5,24 @@
  */
 import * as NodePath from "node:path";
 
-import { deferNearLimit, instancePool } from "@t3tools/tessaya-shared/accountRotation";
+import {
+  DEFAULT_ROTATION_THRESHOLDS,
+  deferNearLimit,
+  instancePool,
+  rankRotationTargets,
+} from "@t3tools/tessaya-shared/accountRotation";
 import {
   brainRoute,
   credentialLabel,
   credentialOf,
   type BrainRoute,
 } from "@t3tools/tessaya-shared/brainRoutes";
-import { BATON_DEFAULT_CLAUDE_INSTANCE, ProviderDriverKind } from "@t3tools/tessaya-contracts";
+import {
+  BATON_CLAUDE_ACCOUNT_INSTANCES,
+  BATON_DEFAULT_CLAUDE_INSTANCE,
+  ProviderDriverKind,
+  type TessayaAccountPool,
+} from "@t3tools/tessaya-contracts";
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
 import { DEFAULT_SERVER_SETTINGS, type BrainRole } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -74,6 +84,49 @@ export const readInstancePool = Effect.fn("BrainRoutes.readInstancePool")(functi
   if (Option.isNone(registry)) return null;
   const now = DateTime.formatIso(yield* DateTime.now);
   return instancePool(yield* registry.value.getProviders, instanceId, now);
+});
+
+/**
+ * Where her own spoken and typed turns run when the machine login is at its limit: another account's instance config
+ * dir with room, for that turn's session only. The machine login is never switched and no thread moves, so with
+ * rotation off everywhere (Director, 20 Nov: on_limit=ask) she still answers. Null: the machine login as before.
+ */
+export const failoverDir = (
+  pool: Pick<TessayaAccountPool, "accounts">,
+  instances: Readonly<Record<string, string>>,
+  homes: ReadonlyArray<{ readonly instanceId: string; readonly home: string | undefined }>,
+): { readonly dir: string; readonly account: string } | null => {
+  const active = pool.accounts.find((a) => a.active);
+  if (
+    active === undefined ||
+    (active.usable &&
+      (active.headroomPercent ?? 100) > DEFAULT_ROTATION_THRESHOLDS.rotateHeadroomPercent)
+  )
+    return null;
+  for (const target of rankRotationTargets(
+    pool,
+    DEFAULT_ROTATION_THRESHOLDS.minimumTargetHeadroomPercent,
+  )) {
+    const instance = Object.entries(instances).find(([, slot]) => slot === target.key)?.[0];
+    const dir = homes.find((h) => h.instanceId === instance)?.home;
+    if (dir !== undefined) return { dir, account: target.label };
+  }
+  return null;
+};
+
+/** The config dir her brain's session runs in this turn (failoverDir), read from the pool and this server's instances. */
+export const brainConfigDir = Effect.fn("BrainRoutes.brainConfigDir")(function* () {
+  const pool = yield* Effect.serviceOption(AccountPoolService);
+  const registry = yield* Effect.serviceOption(ProviderRegistry.ProviderRegistry);
+  if (Option.isNone(pool) || Option.isNone(registry)) return null;
+  const read = yield* pool.value.read(ProviderDriverKind.make("claudeAgent")).pipe(Effect.option);
+  if (Option.isNone(read)) return null;
+  const providers = yield* registry.value.getProviders;
+  return failoverDir(
+    read.value,
+    BATON_CLAUDE_ACCOUNT_INSTANCES,
+    providers.map((p) => ({ instanceId: String(p.instanceId), home: p.runtimePaths?.homePath })),
+  );
 });
 
 /** Work nobody is waiting on: it can wait for the reset. Talking, hard tasks and reading a sentence never wait. */

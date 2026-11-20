@@ -4,6 +4,8 @@ import * as NodePath from "node:path";
 
 import { describe, expect, it } from "vite-plus/test";
 
+import { failoverDir } from "./BrainRoutes.ts";
+
 /**
  * Every place Tessaya reaches a model, and how it asks the brain's routing table (BRAIN-DESIGN §13.4). A new file that
  * calls a model, names a model id or spawns `claude --model` fails here until it is listed: routed through the table,
@@ -172,5 +174,41 @@ describe("every model call goes through the brain's routing table", () => {
 
   it("keeps no stale entries", () => {
     expect(Object.keys(SITES).filter((path) => !reaching.includes(path))).toEqual([]);
+  });
+});
+
+describe("her brain's turns when the machine login is at its limit", () => {
+  const account = (key: string, active: boolean, headroomPercent: number | null, usable = true) =>
+    ({
+      key,
+      label: `acct${key}`,
+      email: null,
+      organizationName: null,
+      active,
+      usable,
+      unusableReason: usable ? null : "spent",
+      headroomPercent,
+      windows: [],
+      usageCheckedAt: null,
+    }) as const;
+  const homes = [
+    { instanceId: "claudeAgent_b", home: "/cfg/b" },
+    { instanceId: "claudeAgent_c", home: "/cfg/c" },
+  ];
+  const instances = { claudeAgent_b: "2", claudeAgent_c: "3" };
+
+  it("runs on the account with room, by its config dir, and leaves the machine login alone otherwise", () => {
+    // The machine login (1) at 4%: the turn runs in the config dir of the account with the most room; nothing is activated.
+    const spent = {
+      accounts: [account("1", true, 4), account("2", false, 60), account("3", false, 10)],
+    };
+    expect(failoverDir(spent, instances, homes)).toEqual({ dir: "/cfg/b", account: "acct2" });
+    // Room on the machine login: as before.
+    const fine = { accounts: [account("1", true, 40), account("2", false, 60)] };
+    expect(failoverDir(fine, instances, homes)).toBeNull();
+    // Spent, and no other account with room, or no instance config dir for it: the machine login, as before.
+    const none = { accounts: [account("1", true, 0, false), account("2", false, 10)] };
+    expect(failoverDir(none, instances, homes)).toBeNull();
+    expect(failoverDir(spent, {}, homes)).toBeNull();
   });
 });

@@ -95,10 +95,19 @@ describe("warm subscription sessions for spoken turns", () => {
   });
 
   it("gives Claude Code's own file tools, in his folder, only to a session whose spec asks for them", async () => {
-    const started: Array<{ cmd: string; args: ReadonlyArray<string>; cwd: unknown }> = [];
+    const started: Array<{
+      cmd: string;
+      args: ReadonlyArray<string>;
+      cwd: unknown;
+      env: Record<string, string> | undefined;
+    }> = [];
     const claude = fakeClaude([], { count: 0 });
-    const spawn = ((cmd: string, args: ReadonlyArray<string>, options: { cwd?: unknown }) => {
-      started.push({ cmd, args, cwd: options.cwd });
+    const spawn = ((
+      cmd: string,
+      args: ReadonlyArray<string>,
+      options: { cwd?: unknown; env?: Record<string, string> },
+    ) => {
+      started.push({ cmd, args, cwd: options.cwd, env: options.env });
       return claude(cmd, args as Array<string>, options as never);
     }) as unknown as typeof NodeChildProcess.spawn;
     const sessions = createVoiceSessions({ spawn, retryMs: 1, lean: true });
@@ -107,7 +116,11 @@ describe("warm subscription sessions for spoken turns", () => {
       ...spec,
       builtins: { tools: ["Read", "Bash"], cwd: "/home/him", binary: "/opt/claude" },
     });
+    // The machine login at its limit: her turn's own session runs in another account's config dir (failoverDir).
+    await sessions.warm("room", { ...spec, configDir: "/cfg/b" });
     await sessions.close();
+    expect(started[0]!.env?.["CLAUDE_CONFIG_DIR"]).toBeUndefined();
+    expect(started.at(-1)!.env?.["CLAUDE_CONFIG_DIR"]).toBe("/cfg/b");
     const toolsOf = (i: number) => started[i]!.args[started[i]!.args.indexOf("--tools") + 1];
     expect(toolsOf(0)).toBe("WebSearch,WebFetch");
     expect(started[0]!.cwd).not.toBe("/home/him");
