@@ -8,14 +8,12 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import { resolveSpeechPostProcessingModelSelection } from "@t3tools/shared/serverSettings";
 
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { buildTranscriptionPostProcessingPrompt } from "../textGeneration/TranscriptionPostProcessing.ts";
 import { applySpeechAliases } from "./customWords.ts";
-import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
 import { DictationCleanupApi } from "./DictationCleanupApi.ts";
 import { SpeechOperationError } from "./SpeechService.ts";
 
@@ -80,11 +78,6 @@ const make = Effect.gen(function* () {
         const context = {
           before: input.draft.text.slice(0, Math.max(0, input.draft.selection.start)),
         };
-        // His past dictations most like this one, from her brain's copy of his style pairs, as the desktop shows them.
-        const vocabulary = yield* Effect.serviceOption(TessayaVocabulary);
-        const examples = Option.isSome(vocabulary)
-          ? yield* vocabulary.value.examples(input.transcript, "default")
-          : [];
         const run = Effect.runPromiseWith(yield* Effect.context<never>());
         const cleaned = yield* Effect.promise(() =>
           cleanDictation({
@@ -94,7 +87,7 @@ const make = Effect.gen(function* () {
             dictionary,
             context,
             ask: (text, mode, refused) => {
-              const message = rewriteMessage(text, mode, context, examples, refused);
+              const message = rewriteMessage(text, mode, context, [], refused);
               // His plan first, his key only when the plan fails (the desktop's route).
               return run(
                 generate(`${system}\n\n${message}`, onPlan(modelSelection)).pipe(
@@ -103,7 +96,7 @@ const make = Effect.gen(function* () {
                     cleanupApi
                       .cleanup({
                         system,
-                        message: rewriteMessage(text, mode, context, examples),
+                        message: rewriteMessage(text, mode, context),
                         maxTokens: 64 + Math.ceil(text.length / 2),
                         refused,
                       })

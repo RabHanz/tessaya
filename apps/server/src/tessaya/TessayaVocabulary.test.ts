@@ -139,7 +139,7 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
   );
 
   it.effect(
-    "keeps his style pairs from the desktop and a worker, for every vessel's words and examples",
+    "keeps his style pairs from the desktop and a worker, for every vessel's plain words",
     () =>
       withStore((file) =>
         Effect.gen(function* () {
@@ -176,8 +176,6 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
               ],
             })).ok,
           ).toBe(true);
-          const near = yield* store.examples("send the invoice please", "default");
-          expect(near.map((p) => p.id)).toEqual(["b"]);
           expect((yield* store.ordinary).has("optimal")).toBe(false);
           // His own words: only he can read the file.
           const pairsFile = NodePath.join(NodePath.dirname(file), "style-pairs.json");

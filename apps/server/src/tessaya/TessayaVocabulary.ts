@@ -21,7 +21,7 @@ import {
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
 import { DICTATION_MODES, type DictationMode } from "@t3tools/tessaya-shared/dictationCleanup";
-import { makeStyleIndex, ordinaryWords, type StylePair } from "@t3tools/tessaya-shared/stylePairs";
+import { ordinaryWords, type StylePair } from "@t3tools/tessaya-shared/stylePairs";
 import { NAME_SOUNDALIKES } from "@t3tools/tessaya-shared/wakeVerify";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -66,11 +66,6 @@ export class TessayaVocabulary extends Context.Service<
     readonly addPairs: (pairs: ReadonlyArray<unknown>) => Effect.Effect<number>;
     /** Words he keeps in lower case in his own text, for `biasTranscript` on every vessel. */
     readonly ordinary: Effect.Effect<ReadonlySet<string>>;
-    /** His past dictations most like this one, for a clean-up's examples. */
-    readonly examples: (
-      text: string,
-      mode: DictationMode,
-    ) => Effect.Effect<ReadonlyArray<StylePair>>;
   }
 >()("t3/tessaya/TessayaVocabulary") {}
 
@@ -193,7 +188,7 @@ const writeStored = (file: string, entries: ReadonlyArray<VocabularyEntry>) => {
   NodeFS.renameSync(part, file);
 };
 
-/** The newest this many pairs are kept: enough for every style, small enough to index on each change. */
+/** The newest this many pairs are kept: enough for every style, small enough to count on each change. */
 const MAX_PAIRS = 20_000;
 
 /** A pair as the desktop builds it (`stylePairs.ts`); anything else is dropped. */
@@ -239,12 +234,8 @@ export const make = Effect.gen(function* () {
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   const file = NodePath.join(config.stateDir, "voice", "dictionary.json");
   const pairsFile = NodePath.join(config.stateDir, "voice", "style-pairs.json");
-  /** The pairs, their index and his plain words, rebuilt only when the file changes. */
-  let pairsCache: {
-    readonly at: number;
-    readonly index: ReturnType<typeof makeStyleIndex>;
-    readonly ordinary: ReadonlySet<string>;
-  } | null = null;
+  /** His plain words, rebuilt only when the pairs file changes. */
+  let pairsCache: { readonly at: number; readonly ordinary: ReadonlySet<string> } | null = null;
   const readPairs = (): ReadonlyArray<StylePair> => {
     try {
       return parsePairs(JSON.parse(NodeFS.readFileSync(pairsFile, "utf8")));
@@ -259,7 +250,7 @@ export const make = Effect.gen(function* () {
     } catch {}
     if (pairsCache === null || pairsCache.at !== at) {
       const pairs = readPairs();
-      pairsCache = { at, index: makeStyleIndex(pairs), ordinary: ordinaryWords(pairs) };
+      pairsCache = { at, ordinary: ordinaryWords(pairs) };
     }
     return pairsCache;
   });
@@ -429,11 +420,9 @@ export const make = Effect.gen(function* () {
     return kept;
   });
   const ordinary = Effect.map(pairsNow, (c) => c.ordinary);
-  const examples = (text: string, mode: DictationMode) =>
-    Effect.map(pairsNow, (c) => c.index.nearest(text, mode, 4));
 
   const stored = Effect.sync(() => readStored(file) ?? []);
-  return TessayaVocabulary.of({ read, stored, change, addPairs, ordinary, examples });
+  return TessayaVocabulary.of({ read, stored, change, addPairs, ordinary });
 });
 
 export const layer = Layer.effect(TessayaVocabulary, make);
