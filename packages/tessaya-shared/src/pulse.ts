@@ -50,6 +50,8 @@ const NOTICE_WEIGHT: Readonly<Record<string, readonly [PulseCategory, number]>> 
   commitment_due: ["reminders", 75],
   // The action log's gap detector (B-046): a likely bug, kept low so it waits for a quiet moment.
   finding: ["jobs", 40],
+  // A Tessel on battery under 20, 10 or 5 % (firmware event/power/low): said once, in her words, where he is.
+  battery_low: ["reminders", 65],
 };
 
 const WATCH_KIND: Readonly<

@@ -90,6 +90,13 @@ describe("digest", () => {
     expect(
       eventFromRecord({ ...row("notice", "session_waiting"), detail: "Waiting 20 min" }),
     ).toMatchObject({ category: "sessions", weight: 75, text: "Waiting 20 min", told: false });
+    // A Tessel's low battery is a reminder she says, not a session.
+    expect(
+      eventFromRecord({
+        ...row("notice", "battery_low"),
+        detail: "The Tessel's battery is at 18%.",
+      }),
+    ).toMatchObject({ category: "reminders", weight: 65 });
   });
 
   it("keeps one event per id and the weightiest past the cap", () => {

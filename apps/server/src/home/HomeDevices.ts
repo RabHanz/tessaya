@@ -1818,6 +1818,21 @@ const make = Effect.gen(function* () {
       const action = roomActionOf(result.id, tail, payload);
       if (action !== null) yield* emitAction(action);
     }
+    // On battery under 20, 10 or 5 %: a notice her pulse says once, in her own words (firmware 0.3.167).
+    if (tail === "event/power/low" && record._tag === "Some") {
+      const low = json(payload);
+      const pct = typeof low?.["pct"] === "number" ? low["pct"] : null;
+      const level = typeof low?.["level"] === "number" ? low["level"] : null;
+      if (pct !== null && level !== null)
+        yield* record.value.append({
+          kind: "notice",
+          actor: "tessel",
+          ref: `battery-low-${result.id}-${level}`,
+          subject: `${result.id} battery`,
+          outcome: "battery_low",
+          detail: `The Tessel's battery is at ${pct}%${level <= 5 ? "; it is shutting down to save its state" : level <= 10 ? "; it is resting to last longer" : ""}.`,
+        });
+    }
     // He talked over her on this Tessel: a layer's acts timed to her words stop there and then (VOXTA I4).
     if (tail === "event/voice/barge") {
       if (Option.isSome(layers))

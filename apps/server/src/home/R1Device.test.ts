@@ -57,6 +57,7 @@ import {
   contextCleaned,
   tesselWishTick,
 } from "./R1Device.ts";
+import { DeviceRegistry } from "./DeviceRegistry.ts";
 import { R1Hub } from "./R1Hub.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import { noteTesselHandled } from "../tessaya/TessayaBody.ts";
@@ -1481,6 +1482,12 @@ effectIt.effect(
       const off = onAction((e) => void (e.kind === "body.want" && wants.push(e.data)));
       let seenAt: number | null = null;
       let energy = 0.1;
+      let power = "active";
+      const registryWith = (mode: () => string) =>
+        Layer.mock(DeviceRegistry)({
+          value: (_id: string, item: string) =>
+            Effect.sync(() => (item === "power.mode" ? mode() : null)),
+        } as never);
       const world = Layer.mergeAll(
         Layer.mock(HomeAssistantService)({
           devices: Effect.succeed([{ deviceId: "t1", mqttUrl: null }] as never),
@@ -1515,6 +1522,14 @@ effectIt.effect(
       yield* TestClock.adjust("4 minutes");
       seenAt = yield* Clock.currentTimeMillis;
       expect(yield* tick()).toEqual([]);
+      // resting on battery: no wish wakes the eyes, until she is active again
+      seenAt = null;
+      yield* TestClock.adjust("12 minutes");
+      power = "dim";
+      const resting = yield* tick().pipe(Effect.provide(registryWith(() => power)));
+      expect(resting).toEqual([]);
+      power = "active";
+      expect((yield* tick().pipe(Effect.provide(registryWith(() => power)))).length).toBe(1);
       off();
     }),
 );
