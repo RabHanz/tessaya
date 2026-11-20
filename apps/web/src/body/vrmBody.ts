@@ -89,6 +89,7 @@ import { gaitAt, gaitOf, type Gait } from "@t3tools/tessaya-shared/bodyGait";
 import type { BodyTarget } from "@t3tools/tessaya-shared/bodyLocomotion";
 import type { StageMount, StageSpot } from "@t3tools/tessaya-shared/rooms";
 import { meetPalms, palmOf, palmWorld, turnWorld, type Arm } from "./handIk.ts";
+import { clapSound, touchSound } from "./contactSound.ts";
 import { handSkinsOf, skinBetween, skinOverlap } from "./handSkin.ts";
 import { softenOnContact } from "./softContact.ts";
 import IDLE_URL from "./assets/idle-neutral.vrma?url";
@@ -1040,6 +1041,9 @@ export function mountBody(
         area: skinNow!.area,
         depth: Math.max(0, -skinNow!.gap),
       };
+      // heard where the palms meet: curled fingers make a hollow between them (a cupped clap)
+      palmWorld(arms.left, palmP, awayW);
+      clapSound(palmP, camera, speed, Math.max(0, Math.min(1, (fingerCurl - 0.06) / 0.34)));
       options.onTouch?.("leftHand", "hand", {
         kind: "clap",
         intensity: Math.min(1, speed / 3),
@@ -1303,6 +1307,8 @@ export function mountBody(
     return out;
   };
   const fingersBent = [false, false];
+  /** Her left hand's finger curl this frame (0..1), from the clip: what shapes a clap's sound. */
+  let fingerCurl = 0;
   const applyPose = (now: number) => {
     if (vrm === null || rig === null) return;
     // her idle under her posture: a posture's own placements win, its plain hanging arms give way to the real ones
@@ -1323,6 +1329,7 @@ export function mountBody(
     const shapes = bones as Record<string, Euler | undefined>;
     for (const [i, k] of FINGER_KEYS.entries()) {
       const shape = shapes[k];
+      if (i === 0) fingerCurl = shape?.[0] ?? 0;
       delete shapes[k];
       if (shape === undefined && !fingersBent[i]) continue;
       const side = i === 0 ? "left" : "right";
@@ -2260,8 +2267,12 @@ export function mountBody(
     });
     handEuro = euroStep(handEuro, handFrame.palm, now);
     handHeld = true;
+    // each time the hand comes down on her (a touch landing, every pat) it is heard there
+    if (h.pressure >= 0.15 && agentPress < 0.15) touchSound(at, camera, a.pressure);
+    agentPress = h.pressure;
     return true;
   };
+  let agentPress = 0;
   /**
    * Her nerves, each frame a hand is on her (nothing at rest): the region under it fires (bodySense.ts), and the reflex
    * arcs that firing sets off act on her body after their own latency, before any word reaches her brain.
