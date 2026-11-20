@@ -21,6 +21,7 @@ import {
   type CloneResult,
   isAffectVariant,
   type TessayaVoiceCallInput,
+  StylePairsSync,
   VocabularyChange,
   type TessayaVoiceCallResult,
   type LibraryVoiceView,
@@ -986,6 +987,13 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
   const allowed = input.kind === "read" ? READ : input.kind === "owner" ? OWNER : ACT;
   const bad: TessayaVoiceCallResult = { ok: false, error: "That is not a voice request." };
   if (!allowed.has(input.op)) return bad;
+  if (input.op === "stylePairs") {
+    const store = yield* Effect.serviceOption(TessayaVocabulary);
+    if (Option.isNone(store)) return { ok: false, error: "This server keeps no dictionary." };
+    const a = decode(StylePairsSync);
+    if (Option.isNone(a)) return bad;
+    return { ok: true, value: yield* store.value.addPairs(a.value.pairs) };
+  }
   if (input.op === "vocabulary" || input.op === "vocabularyChange") {
     const store = yield* Effect.serviceOption(TessayaVocabulary);
     if (Option.isNone(store)) return { ok: false, error: "This server keeps no dictionary." };

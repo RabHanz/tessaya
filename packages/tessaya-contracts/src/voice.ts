@@ -43,7 +43,14 @@ export const BATON_VOICE_ACT_OPS = [
   "ended",
   "answerFrom",
   "vocabularyChange",
+  // His past dictations and what he kept, from the desktop to her brain, so every vessel reads them (ML-015).
+  "stylePairs",
 ] as const;
+
+/** Up to 2,000 style pairs ({ raw, kept, mode, id }) at a time; the store checks each one. */
+export const StylePairsSync = Schema.Struct({
+  pairs: Schema.Array(Schema.Unknown).check(Schema.isMaxLength(2_000)),
+});
 
 /** A device heard its wake or her name and asks to answer (R1-P7). */
 export const VoiceClaimInput = Schema.Struct({

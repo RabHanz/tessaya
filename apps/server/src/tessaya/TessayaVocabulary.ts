@@ -20,6 +20,8 @@ import {
   removeHeard,
   type VocabularyEntry,
 } from "@t3tools/tessaya-shared/vocabulary";
+import { DICTATION_MODES, type DictationMode } from "@t3tools/tessaya-shared/dictationCleanup";
+import { makeStyleIndex, ordinaryWords, type StylePair } from "@t3tools/tessaya-shared/stylePairs";
 import { NAME_SOUNDALIKES } from "@t3tools/tessaya-shared/wakeVerify";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -60,6 +62,15 @@ export class TessayaVocabulary extends Context.Service<
     readonly change: (
       change: VocabularyChange,
     ) => Effect.Effect<ReadonlyArray<VocabularyEntry>, VocabularyRefusedError>;
+    /** His style pairs from the desktop, merged by id; answers how many are kept. Sent on to her brain from a worker. */
+    readonly addPairs: (pairs: ReadonlyArray<unknown>) => Effect.Effect<number>;
+    /** Words he keeps in lower case in his own text, for `biasTranscript` on every vessel. */
+    readonly ordinary: Effect.Effect<ReadonlySet<string>>;
+    /** His past dictations most like this one, for a clean-up's examples. */
+    readonly examples: (
+      text: string,
+      mode: DictationMode,
+    ) => Effect.Effect<ReadonlyArray<StylePair>>;
   }
 >()("t3/tessaya/TessayaVocabulary") {}
 
@@ -182,11 +193,76 @@ const writeStored = (file: string, entries: ReadonlyArray<VocabularyEntry>) => {
   NodeFS.renameSync(part, file);
 };
 
+/** The newest this many pairs are kept: enough for every style, small enough to index on each change. */
+const MAX_PAIRS = 20_000;
+
+/** A pair as the desktop builds it (`stylePairs.ts`); anything else is dropped. */
+export const parsePairs = (value: unknown): ReadonlyArray<StylePair> =>
+  Array.isArray(value)
+    ? value.flatMap((p: unknown): ReadonlyArray<StylePair> => {
+        if (typeof p !== "object" || p === null) return [];
+        const { raw, kept, mode, id } = p as Record<string, unknown>;
+        if (
+          typeof raw !== "string" ||
+          typeof kept !== "string" ||
+          raw.trim() === "" ||
+          kept.trim() === ""
+        )
+          return [];
+        if (raw.length > 4_000 || kept.length > 8_000) return [];
+        return [
+          {
+            raw,
+            kept,
+            mode: DICTATION_MODES.includes(mode as DictationMode)
+              ? (mode as DictationMode)
+              : "default",
+            ...(typeof id === "string" && id.length <= 200 ? { id } : {}),
+          },
+        ];
+      })
+    : [];
+
+/** New pairs replace those with the same id (or the same words), newest last, capped. */
+export const mergePairs = (
+  stored: ReadonlyArray<StylePair>,
+  fresh: ReadonlyArray<StylePair>,
+): ReadonlyArray<StylePair> => {
+  const key = (p: StylePair) => p.id ?? `${p.raw}\u0000${p.kept}`;
+  const incoming = new Set(fresh.map(key));
+  return [...stored.filter((p) => !incoming.has(key(p))), ...fresh].slice(-MAX_PAIRS);
+};
+
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const settings = yield* Effect.serviceOption(ServerSettingsService);
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   const file = NodePath.join(config.stateDir, "voice", "dictionary.json");
+  const pairsFile = NodePath.join(config.stateDir, "voice", "style-pairs.json");
+  /** The pairs, their index and his plain words, rebuilt only when the file changes. */
+  let pairsCache: {
+    readonly at: number;
+    readonly index: ReturnType<typeof makeStyleIndex>;
+    readonly ordinary: ReadonlySet<string>;
+  } | null = null;
+  const readPairs = (): ReadonlyArray<StylePair> => {
+    try {
+      return parsePairs(JSON.parse(NodeFS.readFileSync(pairsFile, "utf8")));
+    } catch {
+      return [];
+    }
+  };
+  const pairsNow = Effect.sync(() => {
+    let at = 0;
+    try {
+      at = NodeFS.statSync(pairsFile).mtimeMs;
+    } catch {}
+    if (pairsCache === null || pairsCache.at !== at) {
+      const pairs = readPairs();
+      pairsCache = { at, index: makeStyleIndex(pairs), ordinary: ordinaryWords(pairs) };
+    }
+    return pairsCache;
+  });
   const oneAtATime = yield* Semaphore.make(1);
   const brain = yield* makeBrainLink;
   /** This server's own words have reached the brain; false at start and after a change made while it was away. */
@@ -330,14 +406,44 @@ export const make = Effect.gen(function* () {
   });
   yield* adopt.pipe(Effect.ignore);
 
+  const addPairs = Effect.fn("TessayaVocabulary.addPairs")(function* (
+    pairs: ReadonlyArray<unknown>,
+  ) {
+    const fresh = parsePairs(pairs);
+    const kept = yield* oneAtATime
+      .withPermits(1)(
+        Effect.sync(() => {
+          const next = mergePairs(readPairs(), fresh);
+          NodeFS.mkdirSync(NodePath.dirname(pairsFile), { recursive: true });
+          const part = `${pairsFile}.${process.pid}.part`;
+          // His own words: only he reads them.
+          NodeFS.writeFileSync(part, JSON.stringify(next), { mode: 0o600 });
+          NodeFS.renameSync(part, pairsFile);
+          return next.length;
+        }),
+      )
+      .pipe(Effect.orElseSucceed(() => 0));
+    // shortcut: a pair sent while her brain is away stays here until the desktop sends it again at its next start.
+    if (fresh.length > 0 && !(yield* brain.isBrain))
+      yield* brain.send("vocabulary", { change: null, pairs: fresh }).pipe(Effect.ignore);
+    return kept;
+  });
+  const ordinary = Effect.map(pairsNow, (c) => c.ordinary);
+  const examples = (text: string, mode: DictationMode) =>
+    Effect.map(pairsNow, (c) => c.index.nearest(text, mode, 4));
+
   const stored = Effect.sync(() => readStored(file) ?? []);
-  return TessayaVocabulary.of({ read, stored, change });
+  return TessayaVocabulary.of({ read, stored, change, addPairs, ordinary, examples });
 });
 
 export const layer = Layer.effect(TessayaVocabulary, make);
 
 /** What a worker sends her brain (`tessaya_brain` op `vocabulary`), and what the brain answers. */
-export const VocabularyAtBrain = Schema.Struct({ change: Schema.NullOr(VocabularyChangeSchema) });
+export const VocabularyAtBrain = Schema.Struct({
+  change: Schema.NullOr(VocabularyChangeSchema),
+  /** Style pairs a worker took from a desktop, for her brain's copy. */
+  pairs: Schema.optional(Schema.Array(Schema.Unknown).check(Schema.isMaxLength(2_000))),
+});
 const decodeAtBrain = Schema.decodeUnknownOption(
   Schema.Struct({ stored: Schema.Array(Schema.Unknown), all: Schema.Array(Schema.Unknown) }),
 );

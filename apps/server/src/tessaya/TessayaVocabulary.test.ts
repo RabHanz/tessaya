@@ -139,6 +139,54 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
   );
 
   it.effect(
+    "keeps his style pairs from the desktop and a worker, for every vessel's words and examples",
+    () =>
+      withStore((file) =>
+        Effect.gen(function* () {
+          const pair = (id: string, raw: string, kept: string) => ({
+            id,
+            raw,
+            kept,
+            mode: "default",
+          });
+          const sent = yield* serveVoiceCall({
+            kind: "act",
+            op: "stylePairs",
+            args: {
+              pairs: [
+                pair("a", "it is optimal to ship it friday", "It is optimal to ship it Friday."),
+                pair(
+                  "b",
+                  "the optimal plan is the cheap one",
+                  "The optimal plan is the cheap one.",
+                ),
+                { raw: 1, kept: "not a pair" },
+              ],
+            },
+          });
+          expect(sent).toEqual({ ok: true, value: 2 });
+          const store = yield* TessayaVocabulary;
+          expect((yield* store.ordinary).has("optimal")).toBe(true);
+          // A worker's pairs reach her brain the same way; the same id replaces the older pair.
+          expect(
+            (yield* receiveAtBrain("vocabulary", {
+              change: null,
+              pairs: [
+                pair("b", "send the invoice to the client", "Send the invoice to the client."),
+              ],
+            })).ok,
+          ).toBe(true);
+          const near = yield* store.examples("send the invoice please", "default");
+          expect(near.map((p) => p.id)).toEqual(["b"]);
+          expect((yield* store.ordinary).has("optimal")).toBe(false);
+          // His own words: only he can read the file.
+          const pairsFile = NodePath.join(NodePath.dirname(file), "style-pairs.json");
+          expect(NodeFS.statSync(pairsFile).mode & 0o077).toBe(0);
+        }),
+      ),
+  );
+
+  it.effect(
     "on her brain, a worker's change lands in the one list and the brain answers its words for the cache",
     () =>
       withStore((file) =>

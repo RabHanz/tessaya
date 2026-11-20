@@ -445,6 +445,7 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       if (Option.isNone(act)) return refused("Not a dictionary change.");
       const vocabulary = yield* Effect.serviceOption(TessayaVocabulary);
       if (Option.isNone(vocabulary)) return refused("No dictionary here.");
+      if (act.value.pairs !== undefined) yield* vocabulary.value.addPairs(act.value.pairs);
       const all =
         act.value.change === null
           ? Option.some(yield* vocabulary.value.read)
