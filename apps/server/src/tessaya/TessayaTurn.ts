@@ -5,7 +5,7 @@
  * for the same words and persona, and every addressed turn it carries is learned from the same way.
  */
 import { alsoLine, bodyLine, type BodyNow } from "@t3tools/tessaya-shared/embodiment";
-import { SAME_CONVERSATION_MS } from "@t3tools/tessaya-shared/agentPrompt";
+import { SAME_CONVERSATION_MS, sinceLine } from "@t3tools/tessaya-shared/agentPrompt";
 import {
   type Assurance,
   memberOfSpeaker,
@@ -924,6 +924,8 @@ export const make = Effect.gen(function* () {
     const turns = yield* parsedOr<Array<ConversationTurn>>(r.turns, []);
     if (turns.length > 0) conversations.set(r.key, { at: Number(r.at), turns });
   }
+  /** Conversations whose last turn here was not a private moment (sinceFor). */
+  const endedOpen = new Set<string>();
   /** The conversation each vessel last spoke in. */
   const lastOn = new Map<string, { key: string; at: number }>();
   /**
@@ -953,6 +955,25 @@ export const make = Effect.gen(function* () {
           ? [...turns]
           : turns.filter((t) => t.vessel === turn.vessel.id),
     };
+  });
+  /**
+   * After a quiet spell the conversation starts afresh, so how long it has been and what he said last is the turn's
+   * own line (`sinceLine`): hours after "I'll sleep for a bit" she can tell he is back (presence-diagnosis 20 Nov).
+   */
+  const sinceFor = Effect.fn("TessayaTurn.sinceFor")(function* (turn: TurnEnvelope) {
+    if (turn.rehearsal === true) return "";
+    const now = yield* Clock.currentTimeMillis;
+    const key = keyOf(turn, now);
+    const held = conversations.get(key);
+    // Only a conversation this server saw end in the open: a private moment's words never come back here.
+    if (held === undefined || now - held.at <= CONVERSATION_IDLE_MS || !endedOpen.has(key))
+      return "";
+    const said = held.turns.findLast((t) => t.role === "user")?.content;
+    if (said === undefined) return "";
+    const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
+    return (
+      sinceLine({ at: DateTime.formatIso(DateTime.makeUnsafe(held.at)), said }, now, zone) ?? ""
+    );
   });
   let transcriptSweptAt = 0;
   const transcriptHere = (from: number, to: number) =>
@@ -1015,6 +1036,8 @@ export const make = Effect.gen(function* () {
     ];
     const kept = [...turns, ...said].slice(-CONVERSATION_TURNS);
     conversations.set(key, { at: now, turns: kept });
+    if (turn.private === true) endedOpen.delete(key);
+    else endedOpen.add(key);
     // The day's transcript keeps every exchange (the conversation above keeps only its last few).
     if (turn.rehearsal !== true && said.length > 0) {
       const who = turnIdentity(turn).member;
@@ -1481,7 +1504,7 @@ export const make = Effect.gen(function* () {
       ]
         .filter((l) => l !== "")
         .join(" "),
-      feeling,
+      feeling: [feeling, yield* sinceFor(turn)].filter((l) => l !== "").join(" "),
       block: [
         here,
         live,

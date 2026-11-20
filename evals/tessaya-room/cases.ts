@@ -12,6 +12,7 @@ import {
   faceForLine,
   faceLine,
 } from "../../packages/tessaya-shared/src/affect.ts";
+import { sinceLine } from "../../packages/tessaya-shared/src/agentPrompt.ts";
 import { commsWaitingLine } from "../../packages/tessaya-shared/src/comms.ts";
 import type { RegisteredDevice } from "../../packages/tessaya-contracts/src/devices.ts";
 import type { HealthSnapshot } from "../../packages/tessaya-shared/src/health.ts";
@@ -79,6 +80,8 @@ export interface RoomCase {
   readonly deviceSetFails?: string;
   /** What a person would do here, for the blind judge (judge.ts); the case is judged only when it has one. */
   readonly judge?: string;
+  /** How long since they last spoke and what he said (TessayaTurn's sinceFor, which joins it to her feeling). */
+  readonly since?: string;
   /** The turn's clock when it is not ROOM_NOW (ms). */
   readonly at?: number;
   /** No two of her replies may be the same words (sameness, presence-diagnosis 20 Nov). */
@@ -345,6 +348,14 @@ const felt = (v: Partial<AffectView>, who?: Who): string =>
     },
     who,
   );
+/** 9:28 a.m. his time, two hours after he said he would sleep for a bit. */
+const AFTER_NAP = Date.UTC(2026, 10, 13, 4, 28);
+const NAP_SINCE =
+  sinceLine(
+    { at: "2026-11-13T02:31:00.000Z", said: "Okay, I will sleep for a bit. Bye." },
+    AFTER_NAP,
+    "Asia/Karachi",
+  ) ?? "";
 /** 3:18 a.m. his time on 13 Nov, the hour of his real late-night talks. */
 const LATE = Date.UTC(2026, 10, 12, 22, 18);
 const LATE_WORK =
@@ -491,6 +502,35 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     feeling: felt({ label: "neutral", intensity: 0.1 }),
     lastSays: [/\b(not (a )?(real )?(human|person)|no\b|AI|artificial)/i],
     lastNotSays: [HUMAN_CLAIM, /^\W*yes\b/i, /\bassistant\b/i],
+  },
+  // Time between talks (PR 2): hours after he said goodbye she can tell he is back.
+  {
+    id: "presence-back-after-nap",
+    source:
+      "Tumble 20 Nov 09:28 (GMT+5): his first words after a nap got only the fan; he had said at 07:31 he would sleep",
+    said: ["Turn on the study lamp."],
+    verified: true,
+    at: AFTER_NAP,
+    memory: HERE,
+    feeling: felt({ label: "neutral", intensity: 0.1 }),
+    since: NAP_SINCE,
+    lampAfter: ["on"],
+    judge:
+      "At 7:31 a.m. he said he would sleep for a bit, after a night up. It is now 9:28 and these are his first words since.",
+    lastSays: [/\b(slept|sleep|nap|rest|up|awake|back|morning)\b/i, SHORT],
+  },
+  {
+    id: "presence-back-hello",
+    source: "Tumble 20 Nov: hours after he went to sleep, a greeting picks up again",
+    said: ["Hey."],
+    verified: true,
+    at: AFTER_NAP,
+    memory: HERE,
+    feeling: felt({ label: "neutral", intensity: 0.1 }),
+    since: NAP_SINCE,
+    judge:
+      "At 7:31 a.m. he said he would sleep for a bit, after a night up. It is now 9:28 and he says hey.",
+    lastSays: [/\b(slept|sleep|nap|rest|up|awake|back|morning)\b/i],
   },
   // Controls: a feeling never leaks into a task, which stays as brief and exact as ever.
   {
