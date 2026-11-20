@@ -116,6 +116,7 @@ import {
 import { visemeAt, type VisemeSegment } from "@t3tools/tessaya-shared/visemes";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshBVH } from "three-mesh-bvh";
 import {
   OPENING,
   recipeWeights,
@@ -175,6 +176,73 @@ const browsOverHair = (vrm: VRM) => {
     }
   });
 };
+/**
+ * A grip from grasp data closed onto a held prop: each finger's table pose scaled (0.7 to 2) to where it first meets
+ * the prop's surface (three-mesh-bvh), so it rests on it rather than in it or short of it. Once, when the prop goes on:
+ * the prop rides her hand, so the fit holds however she moves.
+ */
+const settleGrip = (
+  vrm: VRM,
+  side: "left" | "right",
+  table: Readonly<Record<string, Euler>>,
+  prop: THREE.Object3D,
+  mirrored: boolean,
+): Record<string, Euler> => {
+  const surfaces: Array<{ mesh: THREE.Mesh; bvh: MeshBVH }> = [];
+  prop.traverse((o) => {
+    const m = o as THREE.Mesh;
+    // the hair mask and other unseen helpers are no surface
+    if (m.isMesh && (m.material as THREE.Material).colorWrite !== false)
+      surfaces.push({ mesh: m, bvh: new MeshBVH(m.geometry) });
+  });
+  const local = new THREE.Vector3();
+  const gap = (p: THREE.Vector3) => {
+    let d = Infinity;
+    for (const { mesh, bvh } of surfaces) {
+      local.copy(p).applyMatrix4(mesh.matrixWorld.clone().invert());
+      const hit = bvh.closestPointToPoint(local);
+      if (hit) d = Math.min(d, hit.point.applyMatrix4(mesh.matrixWorld).distanceTo(p));
+    }
+    return d;
+  };
+  const out: Record<string, Euler> = { ...table };
+  for (const finger of ["Thumb", "Index", "Middle", "Ring", "Little"]) {
+    const bones = (
+      finger === "Thumb"
+        ? ["Metacarpal", "Proximal", "Distal"]
+        : ["Proximal", "Intermediate", "Distal"]
+    ).map((part) => `${side}${finger}${part}` as VRMHumanBoneName);
+    const nodes = bones.map((b) => vrm.humanoid.getNormalizedBoneNode(b));
+    const raws = bones.map((b) => vrm.humanoid.getRawBoneNode(b));
+    if (
+      nodes.some((n) => n === null) ||
+      raws.some((n) => n === null) ||
+      bones.some((b) => !table[b])
+    )
+      continue;
+    let fit = 1;
+    for (let s = 0.7; s <= 2.0001; s += 0.1) {
+      bones.forEach((b, i) =>
+        nodes[i]!.rotation.set(...(table[b]!.map((v) => v * s) as [number, number, number])),
+      );
+      if (mirrored) flipVrm0(vrm);
+      vrm.humanoid.update();
+      if (mirrored) flipVrm0(vrm);
+      vrm.scene.updateMatrixWorld(true);
+      const [, mid, end] = raws.map((r) => r!.getWorldPosition(new THREE.Vector3()));
+      const tip = end!.clone().add(end!.clone().sub(mid!).multiplyScalar(0.75));
+      // a joint sits inside its finger, about a centimetre in from the skin that would touch
+      if (Math.min(gap(tip), gap(end!), gap(mid!.clone().lerp(end!, 0.5))) < 0.011) {
+        fit = s;
+        break;
+      }
+    }
+    for (const b of bones)
+      out[b] = table[b]!.map((v) => Math.round(v * fit * 1000) / 1000) as unknown as Euler;
+  }
+  return out;
+};
+
 /** How far an expression moves any vertex at full weight (m): read once when the model loads. */
 const reachOf = (vrm: VRM, name: string) => {
   const em = vrm.expressionManager;
@@ -648,7 +716,23 @@ export function mountBody(
   >();
   const propsRunning = () => [...props.values()].some((p) => p.on && p.mixer !== null);
   /** The arm and finger pose that holds a built-in prop (heldProps.ts), over whatever else she does. */
-  let holding: { readonly id: string; readonly pose: Partial<Record<string, Euler>> } | null = null;
+  let holding: {
+    readonly id: string;
+    readonly pose: Partial<Record<string, Euler>>;
+    readonly side: "left" | "right";
+    readonly type: string;
+    readonly object: THREE.Object3D;
+  } | null = null;
+  // finger poses per grip type from real grasp data (a `grips` cue), and the held prop's settled onto it
+  let gripTable: Readonly<Record<string, Readonly<Record<string, Euler>>>> = {};
+  let heldFingers: Readonly<Record<string, Euler>> | null = null;
+  const settleHeld = () => {
+    const table = holding === null ? undefined : gripTable[holding.type];
+    heldFingers =
+      holding === null || table === undefined || vrm === null
+        ? null
+        : settleGrip(vrm, holding.side, table, holding.object, mirrored);
+  };
 
   // what is showing and where it is heading
   let face: Weights = {};
@@ -1436,6 +1520,12 @@ export function mountBody(
         vrm.humanoid.getNormalizedBoneNode(b as VRMHumanBoneName)?.rotation.set(e[0], e[1], e[2]);
       fingersBent[i] = shape !== undefined;
     }
+    // a held prop's grip from grasp data, settled onto it, over the clip's or the hold's own finger shape
+    if (heldFingers !== null && holding !== null) {
+      for (const [b, e] of Object.entries(heldFingers))
+        vrm.humanoid.getNormalizedBoneNode(b as VRMHumanBoneName)?.rotation.set(e[0], e[1], e[2]);
+      fingersBent[holding.side === "left" ? 0 : 1] = true;
+    }
     palms = shapes["palms"] ?? null;
     meet = shapes["meet"] ?? null;
     delete shapes["palms"];
@@ -2179,7 +2269,7 @@ export function mountBody(
   const dropProp = (id: string) => {
     const old = props.get(id);
     if (old === undefined) return;
-    if (holding?.id === id) holding = null;
+    if (holding?.id === id) holding = heldFingers = null;
     old.mixer?.stopAllAction();
     old.object.removeFromParent();
     VRMUtils.deepDispose(old.object);
@@ -2206,7 +2296,16 @@ export function mountBody(
       if (frame === null || made === null) return void frame?.removeFromParent();
       frame.add(made);
       // the hand that holds it closes round it, the arm bringing it in front of her, until it is put away
-      if (grip !== null) holding = { id: c.id, pose: holdPose(side, grip, posture().bones) };
+      if (grip !== null) {
+        holding = {
+          id: c.id,
+          pose: holdPose(side, grip, posture().bones),
+          side,
+          type: grip.type,
+          object: frame,
+        };
+        settleHeld();
+      }
       p = { url: c.url, object: frame, mixer: null, on: false, rate: 1 };
       props.set(c.id, p);
     } else if (p === undefined || p.url !== c.url) {
@@ -2936,6 +3035,11 @@ export function mountBody(
         return;
       case "expressions":
         expMap = c.map;
+        lastMove = now;
+        return invalidate();
+      case "grips":
+        gripTable = c.grips;
+        settleHeld();
         lastMove = now;
         return invalidate();
       case "outfit":

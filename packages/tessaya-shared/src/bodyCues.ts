@@ -458,6 +458,14 @@ export type BodyCue =
   | { readonly kind: "act"; readonly act: Act }
   /** The outfit pieces she has off right now; every other piece is on. */
   | { readonly kind: "outfit"; readonly off: ReadonlyArray<OutfitPiece> }
+  /**
+   * Finger poses per grip type from real grasp data (a layer's own table, e.g. OakInk or ContactPose retargeted):
+   * normalized finger bone -> XYZ Euler, VRM 1.0 axes. A held prop of that grip type closes her hand by it.
+   */
+  | {
+      readonly kind: "grips";
+      readonly grips: Readonly<Record<string, Readonly<Record<string, Euler>>>>;
+    }
   /** A keyframed clip from the owner's extensions (humanoid Euler per bone), played now; held at its end unless it loops. */
   | {
       readonly kind: "clip";
@@ -595,6 +603,9 @@ const BONES = new Set<string>([
   "rightHand",
   "hips",
 ]);
+/** A finger bone a grip table may set (VRM humanoid names). */
+const FINGER_BONE =
+  /^(left|right)(Thumb(Metacarpal|Proximal|Distal)|(Index|Middle|Ring|Little)(Proximal|Intermediate|Distal))$/;
 // a blob: URL is minted only by this page's own script (a model it already fetched or he dropped in)
 const sameOrigin = (url: string) =>
   (url.startsWith("/") && !url.startsWith("//") && !url.includes("\\")) ||
@@ -834,6 +845,22 @@ export const parseCue = (raw: unknown): BodyCue | null => {
         ? c["off"].filter((p): p is OutfitPiece => typeof p === "string" && pieces.has(p))
         : null;
       return off === null ? null : { kind: "outfit", off: [...new Set(off)] };
+    }
+    case "grips": {
+      const g = c["grips"];
+      if (g === null || typeof g !== "object" || Array.isArray(g)) return null;
+      const grips: Record<string, Record<string, Euler>> = {};
+      for (const [type, bones] of Object.entries(g as Record<string, unknown>).slice(0, 16)) {
+        if (!/^[a-z]{1,24}$/.test(type) || bones === null || typeof bones !== "object") continue;
+        const out: Record<string, Euler> = {};
+        for (const [bone, e] of Object.entries(bones as Record<string, unknown>))
+          if (FINGER_BONE.test(bone) && Array.isArray(e) && e.length === 3) {
+            const v = e.map((n) => num(n, -Math.PI, Math.PI));
+            if (v.every((n) => n !== null)) out[bone] = v as unknown as Euler;
+          }
+        if (Object.keys(out).length > 0) grips[type] = out;
+      }
+      return Object.keys(grips).length > 0 ? { kind: "grips", grips } : null;
     }
     case "prop": {
       const id = str(c["id"], 64);

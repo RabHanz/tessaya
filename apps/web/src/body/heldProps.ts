@@ -21,6 +21,8 @@ export interface Grip {
   readonly curl: number;
   /** How far the thumb folds over the handle; with the curl when absent. */
   readonly thumb?: number;
+  /** Its grasp, for a grip table from real grasp data (a `grips` cue): handle, power or tool. */
+  readonly type: "handle" | "power" | "tool";
 }
 
 /** A prop in its grip's frame: y along the thumb, z out of the palm, origin where the hand closes round it. */
@@ -117,6 +119,7 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   // a morning mug of coffee, held by its handle at her middle
   coffee: {
     grip: {
+      type: "handle",
       at: [0.28, -0.06, -0.1],
       fingers: [1, 0, 0.35],
       normal: [0, 0, 1],
@@ -138,6 +141,7 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   // an evening cup of tea: a flared cup with a gold rim, held a little closer and lighter
   tea: {
     grip: {
+      type: "handle",
       at: [0.27, -0.03, -0.08],
       fingers: [1, 0.1, 0.45],
       normal: [0, 0, 1],
@@ -158,7 +162,13 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   },
   // an umbrella over her head: a J handle in her fist, the shaft up past her head, eight panels
   umbrella: {
-    grip: { at: [0.24, -0.08, -0.14], fingers: [1, 0, 0.2], normal: [0, 0, 1], curl: 0.85 },
+    grip: {
+      type: "power",
+      at: [0.24, -0.08, -0.14],
+      fingers: [1, 0, 0.2],
+      normal: [0, 0, 1],
+      curl: 0.85,
+    },
     make: (look) => {
       const top = 0.8;
       const R = 0.5;
@@ -214,7 +224,13 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   },
   // a reading magnifier held up at her side, clear of her face: a wooden handle, a brass ring and its glass
   magnifier: {
-    grip: { at: [0.26, 0, -0.2], fingers: [1, 0.25, 0.15], normal: [0, 0, 1], curl: 0.8 },
+    grip: {
+      type: "tool",
+      at: [0.26, 0, -0.2],
+      fingers: [1, 0.25, 0.15],
+      normal: [0, 0, 1],
+      curl: 0.8,
+    },
     make: (look) => {
       const c = 0.07 + 0.045;
       const handle = lathe(
@@ -252,7 +268,13 @@ const HELD: Readonly<Record<string, { readonly grip: Grip; readonly make: Make }
   },
   // a spanner for when the agents are building: an open jaw above the fist
   wrench: {
-    grip: { at: [0.28, -0.1, -0.14], fingers: [1, -0.2, 0.3], normal: [0, 0, 1], curl: 0.88 },
+    grip: {
+      type: "power",
+      at: [0.28, -0.1, -0.14],
+      fingers: [1, -0.2, 0.3],
+      normal: [0, 0, 1],
+      curl: 0.88,
+    },
     make: (look) => {
       const s = new THREE.Shape();
       s.moveTo(-0.009, -0.07);

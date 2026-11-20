@@ -171,6 +171,15 @@ describe("cue wire", () => {
       { kind: "prop", id: "p1", bone: "tail" },
       { kind: "prop", id: "p1" },
     ],
+    // a grip table keeps finger bones only, inside a turn either way
+    [
+      {
+        kind: "grips",
+        grips: { power: { rightIndexProximal: [0, 0.3, 4], leftHand: [0, 0, 1] }, "Bad Name": {} },
+      },
+      { kind: "grips", grips: { power: { rightIndexProximal: [0, 0.3, Math.PI] } } },
+    ],
+    [{ kind: "grips", grips: { power: { leftHand: [0, 0, 1] } } }, null],
     [{ kind: "pose", pose: "sit" }, "same"],
     [{ kind: "pose", pose: "auto" }, "same"],
     [{ kind: "pose", pose: "cartwheel" }, null],
