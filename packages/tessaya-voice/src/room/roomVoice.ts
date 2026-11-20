@@ -1383,6 +1383,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const start = Math.max(deps.now(), playUntil);
       if (start > playUntil) soundingFrom = start + config.downDelayMs;
       deps.publish(topic(id, "voice/down"), frame);
+      herVoice.set(id, deps.now());
       const samples = fromBytes(frame);
       echo.reference(samples, start + config.downDelayMs);
       for (let i = 0; i < samples.length; i += 1) down[(downSamples + i) % DOWN_RING] = samples[i]!;
@@ -3402,6 +3403,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   >();
   /** R1s muted from Tessaya: their audio is dropped unheard until unmuted, across sessions. */
   const muted = new Set<string>();
+  /** When her voice last went to each R1: a wake segment starting soon after can be her own words ringing. */
+  const herVoice = new Map<string, number>();
   /** Where each R1's replies play now ("bt" or "onboard"): a change while she speaks restarts her sentence there. */
   const playsOn = new Map<string, string>();
   const playsNow = (id: string, out: string, why: string) => {
@@ -3480,6 +3483,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
   return {
     /** Her server's roster changed: every session opened from now on uses it. */
+    /** When her voice last went to this R1 (ambient presence skips her own words); null when not lately. */
+    herVoiceAt: (id: string): number | null => herVoice.get(id) ?? null,
     personas: (next: ReadonlyArray<RoomPersona>) => {
       if (next.length > 0) roster = next;
     },

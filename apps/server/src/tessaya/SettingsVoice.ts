@@ -59,6 +59,9 @@ export const SERVER_SETTINGS_VOICE: {
     "whether she may use her own camera on the Tessel when you ask her, without a card to your phone",
   ),
   tessayaVoiceBreath: free("a soft breath between her sentences on the Tessel"),
+  tessayaAmbientPresence: owner(
+    "whether voices she hears without her name tell her who is near her Tessel (who and where only, never the words)",
+  ),
   tessayaTurnCapture: owner(
     "keeping your own voice from your turns on the Tessel, privately, to train your voice models",
   ),

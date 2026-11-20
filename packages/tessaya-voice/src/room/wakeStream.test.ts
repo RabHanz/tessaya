@@ -69,6 +69,26 @@ const rig = (
 };
 
 describe("waking her by name with no session open", () => {
+  it("hands each ended segment to ambient presence, a name or not (M-123)", async () => {
+    const heard: Array<[string, number]> = [];
+    const t = createWakeStream({
+      words: [{ word: "Tessaya", threshold: 0.99 }],
+      scorer: async (): Promise<WakeScorer> => ({
+        chunkSamples: 1280,
+        reset: () => undefined,
+        score: async () => [0],
+      }),
+      confirm: async () => [],
+      onWake: () => undefined,
+      ambient: (id, pcm) => heard.push([id, pcm.length]),
+      log: () => undefined,
+    });
+    for (let i = 0; i < 3; i += 1) t.frame("r1", frame(1));
+    t.end("r1");
+    await t.drained("r1");
+    expect(heard).toEqual([["r1", 3 * 960]]);
+  });
+
   it("wakes on a confirmed name once per segment, and hears nothing else of it", async () => {
     // The clip ends where the model fired, just after the name.
     const t = rig("Hey Tessaya.");

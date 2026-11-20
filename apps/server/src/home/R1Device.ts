@@ -84,7 +84,8 @@ import { TessayaVoiceLibrary } from "../tessaya/TessayaVoiceLibrary.ts";
 import { TessayaMood } from "../tessaya/TessayaMood.ts";
 import { CurrentPersona } from "../tessaya/CurrentPersona.ts";
 import { TessayaCast } from "../tessaya/TessayaCast.ts";
-import { peopleHere } from "../tessaya/TessayaPresence.ts";
+import { peopleHere, TessayaPresence } from "../tessaya/TessayaPresence.ts";
+import { ambientSignals } from "@t3tools/tessaya-shared/presence";
 import { groupFor, groupTurn } from "../tessaya/GroupTalk.ts";
 import { replyFor } from "../tessaya/PersonaLayers.ts";
 import {
@@ -1920,6 +1921,16 @@ const ChatBody = Schema.Struct({
   trace: Schema.optional(Schema.Boolean),
 });
 const decodeChat = Schema.decodeUnknownOption(Schema.fromJsonString(ChatBody));
+/** Voices the loop heard without her name (M-123): who only, at most a room's worth, never what was said. */
+const decodeHeard = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      voices: Schema.Array(
+        Schema.Struct({ member: Schema.NullOr(Schema.String.check(Schema.isMaxLength(80))) }),
+      ).check(Schema.isMaxLength(8)),
+    }),
+  ),
+);
 const decodePlayed = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ callId: Schema.String.check(Schema.isMaxLength(64)) })),
 );
@@ -2152,6 +2163,39 @@ export const routes = HttpRouter.use((router) =>
       return HttpServerResponse.jsonUnsafe({ committed: found });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/turns/played`, played);
+    // Voices heard at a Tessel without her name (M-123) renew presence there: one more source row, the owner's to turn off.
+    const heard = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.provideContext(context),
+      );
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      const device = r1ByKey(all, bearer);
+      if (device === null || device.deviceId === null) return error(401, "Wrong device key.");
+      const on = yield* Effect.serviceOption(ServerSettingsService).pipe(
+        Effect.flatMap((s) =>
+          Option.isNone(s)
+            ? Effect.succeed(true)
+            : Effect.map(s.value.getSettings, (v) => v.tessayaAmbientPresence),
+        ),
+        Effect.orElseSucceed(() => true),
+        Effect.provideContext(context),
+      );
+      // Off: the loop stops asking for a while, so no Voice ID runs for nothing.
+      if (!on) return HttpServerResponse.jsonUnsafe({ on: false });
+      const body = decodeHeard(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
+      if (body._tag === "None") return error(400, "That is not a list of voices.");
+      const presence = Context.getOption(context, TessayaPresence);
+      if (Option.isSome(presence))
+        for (const s of ambientSignals(
+          body.value.voices,
+          device.deviceId,
+          yield* Clock.currentTimeMillis,
+        ))
+          yield* presence.value.note(s);
+      return HttpServerResponse.jsonUnsafe({ on: true });
+    }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
+    for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/presence/heard`, heard);
     // The loop reached a stage direction's word (VOXTA-STUDY G7): her buzz plays at his haptic settings, and it is logged.
     const effect = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;

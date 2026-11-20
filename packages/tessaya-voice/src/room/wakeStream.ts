@@ -192,6 +192,8 @@ export interface WakeStreamDeps {
    * a restart openWakeWord's fire started every session before any came (16 Nov, 01:18).
    */
   readonly kwsReady?: (deviceId: string) => boolean;
+  /** Each ended segment, for ambient presence (who is near, never the words). */
+  readonly ambient?: (deviceId: string, pcm: Int16Array) => void;
   /** Keeps each whole segment for wake training when the host has it switched on. */
   readonly capture?: WakeCapture;
   readonly now?: () => number;
@@ -575,6 +577,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
           }
         }
         if (seg !== undefined) pair(id, seg, { ours });
+        if (d.seg.length > 0) deps.ambient?.(id, d.seg);
         restart(d, scorer);
       });
     },
