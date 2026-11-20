@@ -1966,6 +1966,22 @@ fn caret_at_event(id: Option<u64>) -> Value {
 }
 
 /// When he last pressed a key, clicked or moved the mouse, in the system's ms tick (0 off Windows).
+/// Milliseconds since the last keyboard or mouse input anyone made (hers included), or None where it cannot be read.
+#[cfg(windows)]
+fn input_idle_ms() -> Option<u32> {
+    let tick = last_input_tick();
+    if tick == 0 {
+        return None;
+    }
+    let now = unsafe { windows::Win32::System::SystemInformation::GetTickCount() };
+    Some(now.wrapping_sub(tick))
+}
+
+#[cfg(not(windows))]
+fn input_idle_ms() -> Option<u32> {
+    None
+}
+
 fn last_input_tick() -> u32 {
     #[cfg(windows)]
     unsafe {
@@ -2441,7 +2457,7 @@ fn serve() {
                         thread::spawn(move || emit(caret_at_event(id)));
                     }
                     "last_input" => {
-                        emit(json!({"ev": "last_input", "id": value["id"].as_u64(), "tick": last_input_tick()}));
+                        emit(json!({"ev": "last_input", "id": value["id"].as_u64(), "tick": last_input_tick(), "idle_ms": input_idle_ms()}));
                     }
                     "focus_state" => {
                         let id = value["id"].as_u64();

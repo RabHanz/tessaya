@@ -130,7 +130,7 @@ import {
   type ConversationRoute,
 } from "@t3tools/tessaya-shared/conversation";
 import { BATON_TOOL_PREFIX, isOwnTool } from "@t3tools/tessaya-shared/operator";
-import { createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
+import { createInputPause, createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
 import {
   createAgentGate,
   createCutInMark,
@@ -418,6 +418,8 @@ export interface AssistantActions {
         readonly pasteInto: (text: string, target: number) => Promise<boolean>;
         /** Into whatever window has the keyboard, kept out of clipboard history. */
         readonly paste: (text: string) => Promise<void>;
+        /** Milliseconds since anyone's last key or mouse input (hers too); null when it cannot be read. */
+        readonly inputIdleMs?: () => Promise<number | null>;
       })
     | null;
   /** The sidecar's running count of desktop changes; null where there is none. */
@@ -2429,12 +2431,27 @@ export const startScreenCompanion = (input: {
   );
   /** Where Baton last left the pointer this turn; null before its first move. */
   let leftPointer: { x: number; y: number } | null = null;
+  /** His keys stay his: before each of her inputs, she waits out his typing (or stops and says so). */
+  const inputPause = createInputPause({
+    idleMs: async () => (await actions?.hands?.()?.inputIdleMs?.()) ?? null,
+    now: () => Date.now(),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  });
+  /** Her own key or click input, after any typing of his has been waited out. */
+  const ownInput = async (act: () => Promise<void>) => {
+    await inputPause.before();
+    try {
+      await act();
+    } finally {
+      inputPause.acted();
+    }
+  };
   const pointerAction = async (to: { x: number; y: number }, act: () => Promise<void>) => {
     const here = Electron.screen.getCursorScreenPoint();
     if (pointerMoved(leftPointer, here)) {
       throw new Error("He moved the mouse, so I stopped. Tell him, and carry on only if he asks.");
     }
-    await act();
+    await ownInput(act);
     leftPointer = to;
   };
   const vaultState = vaultFor(input.stateDir);
@@ -2883,13 +2900,13 @@ export const startScreenCompanion = (input: {
       }
       await checkKeys(null);
       await showAct({ kind: "type" });
-      await driverFor().type(text);
+      await ownInput(() => driverFor().type(text));
       return "Typed.";
     },
     press: async (keys) => {
       await checkKeys(keys);
       await showAct({ kind: "press", keys });
-      await driverFor().press(keys);
+      await ownInput(() => driverFor().press(keys));
       return "Pressed.";
     },
     ...(input.direct === undefined ? {} : { threadSession: threadSessionVia(input.direct) }),
@@ -3201,6 +3218,7 @@ export const startScreenCompanion = (input: {
     toolFailures.clear();
     leftPointer = null;
     mouse.reset();
+    inputPause.reset();
     lastShots = [];
     shotWindow = null;
     lastTree = undefined;
