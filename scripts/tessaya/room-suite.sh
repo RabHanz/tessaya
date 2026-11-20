@@ -48,7 +48,7 @@ node -e "const f=require('fs');const d=JSON.parse(f.readFileSync(process.argv[1]
 port="$(node -e "const s=require('net').createServer().listen(0,'127.0.0.1',()=>{console.log(s.address().port);s.close()})")"
 # The machine's own Claude login, as her live server uses: a lane's thread login (CLAUDE_CONFIG_DIR) is not hers, and on
 # 21 Nov one spent until the 23rd made every gate turn "out of capacity" while her live login had room.
-env -u CLAUDE_CONFIG_DIR TESSAYA_VOICE_POOL=lean "$t3" serve --base-dir "$home" --port "$port" --host 127.0.0.1 > "$home/server.log" 2>&1 &
+env -u CLAUDE_CONFIG_DIR TESSAYA_VOICE_POOL=lean TESSAYA_SUITE_FIXTURES=1 "$t3" serve --base-dir "$home" --port "$port" --host 127.0.0.1 > "$home/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 1 60); do
   code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/devices/r1/v1/chat/completions" -d '{}' || true)"

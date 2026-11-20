@@ -131,7 +131,10 @@ const discover = async (
           !d.entityId.startsWith("scene.tessaya_undo_"),
       );
     // A name no other device shares, so the sentence is not ambiguous by itself; else one made unique by its room.
-    const pick = found.find((d) => found.filter((o) => o.name === d.name).length === 1);
+    // The gate's own lamp first (TESSAYA_SUITE_FIXTURES): the cases test her phrasing, not his house at night.
+    const pick =
+      found.find((d) => d.entityId === "light.tessaya_suite_lamp") ??
+      found.find((d) => found.filter((o) => o.name === d.name).length === 1);
     const inRoom = (d: Device) => (d.area ? `${d.area} ${d.name}` : null);
     const roomed = found.find(
       (d) => inRoom(d) !== null && found.filter((o) => inRoom(o) === inRoom(d)).length === 1,
