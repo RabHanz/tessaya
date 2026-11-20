@@ -11,9 +11,10 @@ import { useState, type ReactNode } from "react";
 
 import {
   useEnvironmentHttpBaseUrl,
-  usePrimaryEnvironment,
+  useEnvironments,
   usePrimaryEnvironmentId,
 } from "../../state/environments";
+import { pickTessayaEnvironment } from "@t3tools/tessaya-shared/householdClient";
 import { isTessayaGuest } from "../../tessayaGuestFlag";
 import { Button } from "../ui/button";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -99,12 +100,16 @@ function ForgottenPage() {
 }
 
 /**
- * Her household's pages: one brain, so no environment or project picker (D-038). They read this machine's server once
- * it is connected. shortcut: the primary server; swap for the household atom (householdClient) when web adopts it.
+ * Her household's pages: one brain, so no environment or project picker (D-038). They read this machine's server, and
+ * when it is down any other connected machine of his, since every one of them forwards her calls to the brain.
  */
 function useHouseholdEnvironmentId() {
-  const primary = usePrimaryEnvironment();
-  return primary?.connection.phase === "connected" ? primary.environmentId : null;
+  const primary = usePrimaryEnvironmentId();
+  const { environments } = useEnvironments();
+  const connected = environments
+    .filter((e) => e.connection.phase === "connected")
+    .map((e) => e.environmentId);
+  return pickTessayaEnvironment(connected, primary);
 }
 /** Personas › Personas: one card per persona (voice, body and place, mood), then where they are and how they feel. */
 function PersonasPage() {
@@ -225,8 +230,8 @@ export const isTessayaPage = (page: string): page is TessayaPage =>
 export function TessayaPageView({ page }: { readonly page: TessayaPage }) {
   // One household on one brain (D-038): her pages read this machine's server, which forwards to the brain, and never
   // offer a machine or project to pick. SettingsScopeSentence stays hidden on /tessaya/ pages.
-  const primary = usePrimaryEnvironmentId();
-  const search: SettingsScopeSearch = primary === null ? {} : { machine: primary };
+  const household = useHouseholdEnvironmentId();
+  const search: SettingsScopeSearch = household === null ? {} : { machine: household };
   const Page = TESSAYA_PAGES[page];
   // In a browser (not inside her window) each page has a way back to the list of her places.
   const back = isTessayaGuest() ? null : (
