@@ -255,7 +255,7 @@ import { settingsSaved } from "../deskAction.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
-import { makeStyleIndex, ordinaryWords, type StylePair } from "@t3tools/tessaya-shared/stylePairs";
+import { makeStyleIndex, type StylePair } from "@t3tools/tessaya-shared/stylePairs";
 import { historyPairs, loadStylePairs } from "./stylePairsStore.ts";
 import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
@@ -597,6 +597,7 @@ import {
   observeWording,
   addNever,
   biasTranscript,
+  ordinaryWords,
   parseNever,
   type NeverList,
   parseAddToDictionary,

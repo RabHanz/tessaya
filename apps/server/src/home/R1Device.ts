@@ -78,6 +78,7 @@ import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
 import { MemoryViewer } from "../tessaya/TessayaMemoryService.ts";
 import { houseZone } from "../tessaya/houseZone.ts";
 import { personasList, readPack } from "../tessaya/OperatingSystemPack.ts";
+import { ordinaryHere } from "../tessaya/stylePairsStore.ts";
 import { TessayaVocabulary } from "../tessaya/TessayaVocabulary.ts";
 import { TessayaTurn, moodMember, type TurnEnvelope } from "../tessaya/TessayaTurn.ts";
 import { TessayaVoiceLibrary } from "../tessaya/TessayaVoiceLibrary.ts";
@@ -995,12 +996,6 @@ const vocabularyEntries = Effect.gen(function* () {
   );
 });
 
-/** The words he writes himself (his style pairs on her brain), left as heard by the name rule. */
-const ordinaryWords = Effect.gen(function* () {
-  const store = yield* Effect.serviceOption(TessayaVocabulary);
-  return Option.isSome(store) ? yield* store.value.ordinary : new Set<string>();
-});
-
 const r1Pack = Effect.map(Effect.serviceOption(ServerConfig.ServerConfig), (config) =>
   Option.isNone(config) ? DEFAULT_OS_PACK : readPack(NodePath.dirname(config.value.dbPath)),
 );
@@ -1178,7 +1173,7 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
 ) {
   // His names, as dictation fixes them ("Tessa" → "Tessaya"), from his one dictionary.
   const entries = yield* vocabularyEntries;
-  const ordinary = yield* ordinaryWords;
+  const ordinary = yield* ordinaryHere;
   const pack = yield* r1Pack;
   // A device he named, misheard ("the battle van"), put right against the house's own names.
   const houseNames = withHouse
@@ -2219,7 +2214,7 @@ export const routes = HttpRouter.use((router) =>
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       return HttpServerResponse.jsonUnsafe({
         entries: yield* vocabularyEntries.pipe(Effect.provideContext(context)),
-        ordinary: [...(yield* ordinaryWords.pipe(Effect.provideContext(context)))],
+        ordinary: [...(yield* ordinaryHere.pipe(Effect.provideContext(context)))],
       });
     }).pipe(Effect.catchCause(() => Effect.succeed(error(500, "That did not work."))));
     for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/vocabulary`, vocabulary);

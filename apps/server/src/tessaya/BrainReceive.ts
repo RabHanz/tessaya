@@ -31,6 +31,7 @@ import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
 import { VoiceIdGateChange, voiceIdGateHere } from "./VoiceIdGate.ts";
 import { TessayaScratchpadAct } from "@t3tools/tessaya-contracts";
 import { scratchpadHere } from "./TessayaScratchpad.ts";
+import { storeStylePairs } from "./stylePairsStore.ts";
 import { TessayaVocabulary, VocabularyAtBrain } from "./TessayaVocabulary.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
@@ -445,7 +446,7 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       if (Option.isNone(act)) return refused("Not a dictionary change.");
       const vocabulary = yield* Effect.serviceOption(TessayaVocabulary);
       if (Option.isNone(vocabulary)) return refused("No dictionary here.");
-      if (act.value.pairs !== undefined) yield* vocabulary.value.addPairs(act.value.pairs);
+      if (act.value.pairs !== undefined) yield* storeStylePairs(act.value.pairs);
       const all =
         act.value.change === null
           ? Option.some(yield* vocabulary.value.read)

@@ -62,6 +62,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { emitAction } from "../provenance/ActionLog.ts";
 import { BrainUsage, type CallTokens } from "./BrainUsage.ts";
 import * as ServerConfig from "../config.ts";
+import { storeStylePairs } from "./stylePairsStore.ts";
 import { serveArbiter } from "../home/VoiceArbiter.ts";
 import { Consent, readGrants, setGrant } from "./consent.ts";
 import { readPack } from "./OperatingSystemPack.ts";
@@ -988,11 +989,9 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
   const bad: TessayaVoiceCallResult = { ok: false, error: "That is not a voice request." };
   if (!allowed.has(input.op)) return bad;
   if (input.op === "stylePairs") {
-    const store = yield* Effect.serviceOption(TessayaVocabulary);
-    if (Option.isNone(store)) return { ok: false, error: "This server keeps no dictionary." };
     const a = decode(StylePairsSync);
     if (Option.isNone(a)) return bad;
-    return { ok: true, value: yield* store.value.addPairs(a.value.pairs) };
+    return { ok: true, value: yield* storeStylePairs(a.value.pairs) };
   }
   if (input.op === "vocabulary" || input.op === "vocabularyChange") {
     const store = yield* Effect.serviceOption(TessayaVocabulary);
