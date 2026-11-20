@@ -506,7 +506,8 @@ const brain = (url: string, key: string): RoomDeps["brain"] =>
       body: JSON.stringify({
         messages: input.messages,
         stream: true,
-        tessaya: input.tessaya,
+        // This loop strips a `[tone:x]` mark and speaks the tone: an older one would read it aloud.
+        tessaya: { ...input.tessaya, tones: true },
         device: input.deviceId,
       }),
       signal,
