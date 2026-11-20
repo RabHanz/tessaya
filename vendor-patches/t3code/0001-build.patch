@@ -101,7 +101,7 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..522137a26d673e4cb2618894005c475f
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index 1892b649061f8cc8413805bceea774e7eaf04298..cedd6229cb9a76953db0f88dfb2e59971d00a80f 100644
+index 1892b649061f8cc8413805bceea774e7eaf04298..b1888ef3d8c6f4b179030910932fb84465051e00 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -79,6 +79,8 @@
@@ -113,7 +113,15 @@ index 1892b649061f8cc8413805bceea774e7eaf04298..cedd6229cb9a76953db0f88dfb2e5997
      "@tabler/icons-react-native": "^3.44.0",
      "clsx": "^2.1.1",
      "diff": "8.0.3",
-@@ -126,10 +128,12 @@
+@@ -88,6 +90,7 @@
+     "expo-asset": "~58.0.20",
+     "expo-audio": "58.0.11",
+     "expo-auth-session": "~58.0.17",
++    "expo-battery": "~58.0.4",
+     "expo-blur": "58.0.5",
+     "expo-build-properties": "~58.0.12",
+     "expo-camera": "~58.0.14",
+@@ -126,10 +129,12 @@
      "react": "catalog:",
      "react-dom": "catalog:",
      "react-native": "0.88.1",
