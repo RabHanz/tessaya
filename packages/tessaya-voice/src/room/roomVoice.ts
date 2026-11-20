@@ -985,6 +985,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       asking = invitesReply(text);
     };
     let asleep = false;
+    /** He opened this session himself (her name or S2), not audio alone: a voice over hers is presumed his. */
+    let opened = false;
     const personas = roster;
     // The persona this R1 wears (Settings → Cast), else the roster's lead.
     const lead = personas.find((p) => p.id === castOf.get(id)?.persona) ?? personas[0];
@@ -2981,6 +2983,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             best,
             quiet || seconds >= 2.5 ? Math.max(seconds, 2) : seconds,
             hisSession(),
+            opened,
           );
           deps.log(
             `[${id}] the voice over hers: ${verdict} (${best.toFixed(2)} at ${seconds.toFixed(1)} s)`,
@@ -3265,6 +3268,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** S2 or the R1's own wake: he is talking to her now. */
       /** `ack` false: the window only, no sound (the R1 back on the link refuses audio outside a session, 14 Nov). */
       wake: (ack = true) => {
+        opened = true;
         openUntil = Math.max(openUntil, deps.now() + config.followMs);
         firstUntil = deps.now() + config.firstTurnMs;
         if (!ack) return;
