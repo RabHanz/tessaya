@@ -194,7 +194,7 @@ export const make = Effect.gen(function* () {
     if (row.key.startsWith("work:") && Option.isSome(workSessions)) {
       const id = WorkSessionId.make(row.key.split(":").at(-1)!);
       synopsis = yield* workSessions.value.get(id).pipe(
-        Effect.map((ws) => ws.synopsis),
+        Effect.map((ws) => ws.synopsis ?? null),
         Effect.orElseSucceed(() => null),
       );
       if (synopsis !== null)
@@ -320,7 +320,7 @@ export const make = Effect.gen(function* () {
           line: `I'll send ${row.session} on ${row.box}: "${said}". Shall I send it?`,
         } as const;
       const link = yield* linkOf(row);
-      const sent = yield* (
+      const attempt: Effect.Effect<{ readonly status: string }, "failed"> =
         link === null && row.pane === null && row.thread !== null && !row.key.startsWith("claude:")
           ? // a T3 thread with no pane: his words are its next message
             engine
@@ -353,8 +353,8 @@ export const make = Effect.gen(function* () {
                   Effect.timeout(PEER_TIMEOUT),
                   Effect.map((r) => r.weave),
                   Effect.mapError(() => "failed" as const),
-                )
-      ).pipe(Effect.result);
+                );
+      const sent = yield* Effect.result(attempt);
       const status =
         sent._tag === "Failure"
           ? ("failed" as const)
