@@ -62,11 +62,19 @@ describe("workspace root navigation", () => {
     expect(workspaceUsesColumns("pullRequests")).toBe(true);
   });
 
-  it("keeps the registered defaults while customization is unavailable", () => {
-    expect(resolveWorkspaceTabOrder(undefined)).toEqual(["threads", "pullRequests", "usage"]);
-    expect(resolveWorkspaceTabOrder(["home", "usage", "issues", "threads"])).toEqual(
-      resolveWorkspaceTabOrder(undefined),
-    );
+  it("starts on Tessaya's order and keeps a saved order, now that six sections make it customizable", () => {
+    expect(resolveWorkspaceTabOrder(undefined)).toEqual([
+      "talk",
+      "threads",
+      "personas",
+      "devices",
+      "pullRequests",
+      "usage",
+    ]);
+    expect(resolveWorkspaceTabOrder(["usage", "threads"]).slice(0, 2)).toEqual([
+      "usage",
+      "threads",
+    ]);
   });
 
   it("retains separate queries and positions across tabs, and cancels only the current search", () => {

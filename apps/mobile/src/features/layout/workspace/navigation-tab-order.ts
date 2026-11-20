@@ -1,4 +1,12 @@
-export const NAVIGATION_TAB_ORDER = ["threads", "pullRequests", "usage"] as const;
+// Tessaya first (D-038): Talk, Chats, Personas, Devices; T3's PRs and Usage follow, under More once the bar is full.
+export const NAVIGATION_TAB_ORDER = [
+  "talk",
+  "threads",
+  "personas",
+  "devices",
+  "pullRequests",
+  "usage",
+] as const;
 export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
 
 export function navigationCustomizationAvailable(
@@ -8,7 +16,10 @@ export function navigationCustomizationAvailable(
 }
 
 export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
-  threads: "Threads",
+  talk: "Talk",
+  personas: "Personas",
+  devices: "Devices",
+  threads: "Chats",
   pullRequests: "Pulls",
   usage: "Usage",
 };

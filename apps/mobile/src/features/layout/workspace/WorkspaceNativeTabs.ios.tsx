@@ -134,10 +134,10 @@ export function WorkspaceNativeTabs(props: {
               key={slot}
               screenKey={slot}
               title=""
-              tabBarItemAccessibilityLabel={settings ? "Settings" : WORKSPACE_TAB_LABELS[tab]}
+              tabBarItemAccessibilityLabel={settings ? "More" : WORKSPACE_TAB_LABELS[tab]}
               ios={{
                 icon: settings
-                  ? { type: "sfSymbol", name: "gearshape" }
+                  ? { type: "sfSymbol", name: "ellipsis.circle" }
                   : tab === "pullRequests"
                     ? { type: "templateSource", templateSource: PULL_REQUEST_ICON }
                     : { type: "sfSymbol", name: NAVIGATION_TAB_ICONS[tab] },

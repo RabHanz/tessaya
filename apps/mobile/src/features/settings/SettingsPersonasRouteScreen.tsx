@@ -2,6 +2,7 @@
  * Settings → Personas, mirroring web's Voice › Personas: hire (by hand, from one sentence, or from a Character Card),
  * tune, export as a card, copy, retire and restore personas, and run his group. Every change goes to the environment's one registry (`baton.personas.change`); she does the same by voice.
  */
+import type { VoiceLibraryView } from "@t3tools/tessaya-contracts";
 import type {
   TessayaPersona,
   TessayaPersonaChangeInput,
@@ -26,9 +27,9 @@ import { ListToggleRow } from "../../components/ui/ListToggleRow";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
 import { SliderRow } from "../../components/ui/SliderRow";
+import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import { pickCharacterCard, shareCharacterCard } from "./personaCardFiles";
@@ -41,7 +42,6 @@ import {
   personaFormOfDraft,
   personaSave,
 } from "./personaForm";
-import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 
 /** How far a private persona comes into his private rooms (rooms.ts). */
 const PRIVATE_ROOMS = [
@@ -54,11 +54,12 @@ const QUIET = { reportFailure: false } as const;
 const INPUT = "rounded-lg bg-background px-3 py-2 text-foreground";
 
 export function SettingsPersonasRouteScreen() {
-  const environmentMenu = useSettingsEnvironmentMenu();
-  const { selectedTargets } = useSettingsEnvironmentFilter();
+  // one household on one brain (D-038): her personas come from the household's environment, never a picked one
+  const household = useAtomValue(tessayaEnvironmentIdAtom);
+  const selectedTargets = household === null ? [] : [{ environmentId: household }];
   const insets = useSafeAreaInsets();
   return (
-    <SettingsScreen title="Personas" menus={[environmentMenu]}>
+    <SettingsScreen title="Personas">
       <ScreenScrollView
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"
@@ -71,16 +72,84 @@ export function SettingsPersonasRouteScreen() {
         ) : (
           selectedTargets.map((environment) => (
             <View key={environment.environmentId} className="gap-6">
-              <PersonasSection
-                environmentId={environment.environmentId}
-                label={selectedTargets.length > 1 ? environment.label : null}
-              />
+              <PersonasSection environmentId={environment.environmentId} label={null} />
               <PersonaOpsSection environmentId={environment.environmentId} />
             </View>
           ))
         )}
       </ScreenScrollView>
     </SettingsScreen>
+  );
+}
+
+/**
+ * A persona's voice, on its own card (D-038): the same library and the same `setPersona` as the desktop's Personas
+ * page, so a voice picked here is the one it speaks in on every body.
+ */
+function PersonaVoiceRow(props: {
+  readonly environmentId: EnvironmentId;
+  readonly persona: TessayaPersona;
+}) {
+  const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, QUIET);
+  const [library, setLibrary] = useState<VoiceLibraryView | null>(null);
+  const [note, setNote] = useState("");
+  const read = async () => {
+    const r = await voiceCall({
+      environmentId: props.environmentId,
+      input: { kind: "read", op: "library", args: {} },
+    });
+    if (r._tag === "Success" && r.value.ok) setLibrary(r.value.value as VoiceLibraryView);
+  };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the voice library once per environment
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- one read per environment; its answer lands after it returns
+    void read();
+  }, [props.environmentId]);
+  const row = library?.personas.find((x) => x.id === props.persona.id);
+  const clone = (library?.clones ?? []).find((c) => c.id === row?.cloneVoice);
+  const pocket = library?.pocket ?? [];
+  const speaks =
+    clone?.name ?? pocket.find((v) => v.id === row?.speaks)?.name ?? row?.speaks ?? "…";
+  const pick = async (engine: "pocket" | "clone", voice: string | null) => {
+    const r = await voiceCall({
+      environmentId: props.environmentId,
+      input: { kind: "act", op: "setPersona", args: { persona: props.persona.id, engine, voice } },
+    });
+    setNote(r._tag === "Success" && r.value.ok ? "" : "That voice was not saved.");
+    await read();
+  };
+  return (
+    <ListRowLayout
+      label="Voice"
+      description={note || `Speaks in ${speaks}.`}
+      accessory={
+        library === null ? undefined : (
+          <Menu
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel={`${props.persona.name}'s voice`}
+            title={`${props.persona.name}'s voice`}
+            actions={[
+              ...(library.clones ?? []).map((c) => ({
+                id: `clone:${c.id}`,
+                title: `${c.name} (your clone)`,
+              })),
+              ...(clone === undefined ? [] : [{ id: "clone:none", title: "No clone" }]),
+              ...pocket.map((v) => ({ id: `pocket:${v.id}`, title: v.name })),
+            ]}
+            onPressAction={({ nativeEvent }) => {
+              const [engine, id] = nativeEvent.event.split(":") as ["pocket" | "clone", string];
+              void pick(engine, id === "none" ? null : id);
+            }}
+          >
+            <ControlPill
+              icon="waveform.path.ecg"
+              accessibilityLabel={`${props.persona.name}'s voice`}
+            />
+          </Menu>
+        )
+      }
+    />
   );
 }
 
@@ -228,6 +297,7 @@ function PersonasSection(props: {
                   ) : undefined
                 }
               />
+              <PersonaVoiceRow environmentId={environmentId} persona={p} />
             </View>
           ))
         )}

@@ -7,7 +7,7 @@
 import type { RigManifest } from "@t3tools/tessaya-shared/bodyRig";
 
 import type { BodyControl } from "./entry";
-import { modelOrder } from "./playgroundOrder";
+import { modelOrder } from "@t3tools/tessaya-shared/playgroundOrder";
 import type { mountBody } from "./vrmBody";
 
 type Body = ReturnType<typeof mountBody>;

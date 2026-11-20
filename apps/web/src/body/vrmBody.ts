@@ -448,7 +448,8 @@ export function mountBody(
     /** The outfit pieces this model can take off, once it loads (none when clothing is painted on). */
     readonly onOutfit?: (pieces: ReadonlyArray<OutfitPiece>) => void;
     /** "body" frames all of her (the phone's touch view); the default frames head and shoulders. */
-    readonly framing?: "bust" | "body";
+    /** "half" is mid-thigh up, face in the upper third: a phone, where a whole small figure hides her face. */
+    readonly framing?: "bust" | "body" | "half";
     /** Each time she comes to rest after moving: what her body is doing now (proprioception), for the layer to keep. */
     readonly onSettle?: (state: BodyState) => void;
     /**
@@ -849,6 +850,8 @@ export function mountBody(
   let sole = Number.NaN;
   let idleUntil = 0;
   let framing = options.framing ?? "bust";
+  // how much of the view a panel over her bottom edge covers (0..0.6): the framing keeps her above it
+  let insetBottom = 0;
   let headY = 1.4;
   let camYaw = 0;
   let touchAs: string | null = null;
@@ -1178,13 +1181,25 @@ export function mountBody(
       const ys = pts.map((p) => p.y);
       const pad = 0.12 * headY;
       const [x0, x1] = [Math.min(...xs) - pad, Math.max(...xs) + pad];
-      const [y0, y1] = [Math.min(...ys) - pad * 0.6, Math.max(...ys) + pad * 1.4];
+      const y1 = Math.max(...ys) + pad * 1.4;
+      // a panel over the bottom of the view: the view reaches lower, so all of her stays above it
+      const y0 = y1 - (y1 - (Math.min(...ys) - pad * 0.6)) / (1 - insetBottom);
       const v = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
       want = {
         x: (x0 + x1) / 2,
         y: (y0 + y1) / 2,
         dist: Math.max((y1 - y0) / 2 / v, (x1 - x0) / 2 / (v * camera.aspect)) + 0.3,
       };
+    } else if (framing === "half") {
+      // mid-thigh to the top of her head, lifted clear of whatever covers the bottom of the view
+      const head = worldOf("head")?.y ?? headY;
+      const hips = worldOf("hips")?.y ?? headY * 0.53;
+      const knee = worldOf("leftLowerLeg")?.y ?? headY * 0.28;
+      const top = head + 0.22 * headY;
+      const span = top - (hips + knee) / 2;
+      const bottom = top - span / (1 - insetBottom);
+      const v = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      want = { x: worldOf("hips")?.x ?? 0, y: (top + bottom) / 2, dist: (top - bottom) / 2 / v };
     } else want = { x: 0, y: (worldOf("head")?.y ?? headY) - 0.08, dist: 1.4 };
     // a dead band, so her breath never nudges the camera
     const far =
@@ -2835,8 +2850,14 @@ export function mountBody(
     /** Her body now (proprioception): posture, every posed bone, face, gaze, contacts, corrections and manifest. */
     state: bodyState,
     /** Bust or whole body, at any time (the page's "whole body" button). */
-    frame: (next: "bust" | "body") => {
+    frame: (next: "bust" | "body" | "half") => {
       framing = next;
+      lastMove = performance.now();
+      invalidate();
+    },
+    /** The share of the view a panel covers at the bottom (the phone's reply and controls), so she stays above it. */
+    inset: (bottom: number) => {
+      insetBottom = Math.max(0, Math.min(0.6, bottom));
       lastMove = performance.now();
       invalidate();
     },

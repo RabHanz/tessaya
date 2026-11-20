@@ -269,7 +269,7 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..5c5430b41d41564ed92a78e45b0083ce
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..9bda0f1c0cff8565e18eed17f7bdcd0c4f2d725b 100644
+index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153148cceaf 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -41,6 +41,9 @@
@@ -373,7 +373,15 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..9bda0f1c0cff8565e18eed17f7bdcd0c
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -157,6 +189,19 @@
+@@ -120,6 +152,7 @@
+         "scripts/generate-device-stream.mts",
+         "src/features/devices/device-stream.browser.ts!",
+         "src/features/browser/preview-stream.browser.ts!",
++        "src/features/tessaya/talk/body-stream.browser.ts!",
+       ],
+       // Fonts are configured as asset paths; Expo autolinks the native packages.
+       "ignoreDependencies": [
+@@ -157,6 +190,19 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },

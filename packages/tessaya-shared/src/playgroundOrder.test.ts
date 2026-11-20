@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { EVERYDAY, modelOrder } from "./playgroundOrder";
+import { EVERYDAY, modelOrder } from "./playgroundOrder.ts";
 
 describe("the playground's first model", () => {
   const worn = {
