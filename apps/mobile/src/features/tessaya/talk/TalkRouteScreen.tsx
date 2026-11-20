@@ -85,6 +85,8 @@ export function TalkRouteScreen() {
   };
   // she shows as her face at once, until her body has loaded and drawn
   const [bodyShown, setBodyShown] = useState(false);
+  // his computer offered no body of his: her face stays, and says so rather than "on her way"
+  const [bodyless, setBodyless] = useState(false);
   const [model, setModel] = useState<{ readonly persona: string; readonly base64: string } | null>(
     null,
   );
@@ -236,7 +238,7 @@ export function TalkRouteScreen() {
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read per environment; the command is stable
   }, [environmentId]);
 
-  // Her body's model: what the server offers him first (his last-used, her worn body, else the CC0 fallback).
+  // Her body's model: what the server offers him first (his last-used, then her worn body).
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches the model's bytes once per environment and persona
   useEffect(() => {
     const base = connection?.httpBaseUrl;
@@ -268,6 +270,7 @@ export function TalkRouteScreen() {
         if (!cancelled) setModel({ persona: persona.id, base64 });
         return;
       }
+      if (!cancelled) setBodyless(true);
     })();
     return () => {
       cancelled = true;
@@ -387,7 +390,9 @@ export function TalkRouteScreen() {
           <Text className="text-base text-muted-foreground">
             {environmentId === null
               ? "Pair a computer to talk to her"
-              : `${persona?.name ?? "She"} is on her way…`}
+              : bodyless
+                ? `${persona?.name ?? "She"} has no body on your computer yet. You can still talk to her.`
+                : `${persona?.name ?? "She"} is on her way…`}
           </Text>
         </View>
       )}
