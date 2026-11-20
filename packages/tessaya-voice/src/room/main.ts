@@ -961,14 +961,20 @@ const main = async () => {
   const heard = recognisers(() => online.size > 0);
   const personalConfirm = (process.env["R1_PERSONAL_RECOGNIZERS"] ?? "").trim() !== "";
   // The room's words get dictation's own correction: his dictionary and the personas he can call (one ear).
-  let vocabulary: ReadonlyArray<VocabularyEntry> = [];
+  let vocabulary: {
+    readonly entries: ReadonlyArray<VocabularyEntry>;
+    readonly ordinary: ReadonlySet<string>;
+  } = { entries: [], ordinary: new Set() };
   const readVocabulary = async () => {
     vocabulary = (await servedVocabulary(env("R1_BRAIN_URL"), deviceKey)) ?? vocabulary;
   };
   void readVocabulary();
   setInterval(() => void readVocabulary(), VOCABULARY_EVERY_MS).unref();
   const fix = (text: string) =>
-    biasTranscript(text, vocabulary, { names: roster.map((p) => p.name) });
+    biasTranscript(text, vocabulary.entries, {
+      names: roster.map((p) => p.name),
+      ordinary: vocabulary.ordinary,
+    });
   const recognise = (who?: {
     readonly owner: boolean;
     readonly only?: boolean;

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { checkRewrite, rewriteMessage } from "./dictationCleanup.ts";
-import { makeStyleIndex, ordinaryWords, pairsFromWispr } from "./stylePairs.ts";
+import { makeStyleIndex, pairsFromWispr } from "./stylePairs.ts";
+import { ordinaryWords } from "./vocabulary.ts";
 
 const row = (
   id: string,

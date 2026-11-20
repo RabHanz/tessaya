@@ -255,7 +255,7 @@ import { settingsSaved } from "../deskAction.ts";
 import { createTransformStore } from "../writing/transformStore.ts";
 import { transformAction, transformControls } from "../writing/transformRows.ts";
 import { createSnippetStore } from "../writing/snippetStore.ts";
-import { makeStyleIndex, ordinaryWords } from "@t3tools/tessaya-shared/stylePairs";
+import { makeStyleIndex, type StylePair } from "@t3tools/tessaya-shared/stylePairs";
 import { historyPairs, loadStylePairs } from "./stylePairsStore.ts";
 import { snippetAction, snippetControls } from "../writing/snippetRows.ts";
 import { createExternalNeeds } from "../presence/needsSources.ts";
@@ -597,6 +597,7 @@ import {
   observeWording,
   addNever,
   biasTranscript,
+  ordinaryWords,
   parseNever,
   type NeverList,
   parseAddToDictionary,
@@ -1946,6 +1947,33 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       )
       // An older server without the store: the file stays the truth here, as before.
       .catch(() => undefined);
+  };
+  /**
+   * His style pairs to his server, which keeps them on her brain for every vessel (ML-015): the ones not sent before,
+   * 2,000 at a time. shortcut: pairs made during a session go at the next start.
+   */
+  const sentPairs = createJsonStore<ReadonlyArray<string>>(
+    NodePath.join(input.stateDir, "voice", "style-pairs.sent.json"),
+    [],
+    (v): v is ReadonlyArray<string> => Array.isArray(v) && v.every((x) => typeof x === "string"),
+  );
+  const sendPairs = async (pairs: ReadonlyArray<StylePair>) => {
+    const direct = input.direct;
+    if (direct === undefined) return;
+    const sent = new Set(sentPairs.read());
+    const fresh = pairs.filter((p) => p.id !== undefined && !sent.has(p.id));
+    for (let i = 0; i < fresh.length; i += 2_000) {
+      const chunk = fresh.slice(i, i + 2_000);
+      const answer = (await direct(
+        BATON_VOICE_WS_METHODS.call,
+        { kind: "act", op: "stylePairs", args: { pairs: chunk } },
+        30_000,
+      ).catch(() => null)) as { readonly ok?: boolean } | null;
+      // An older server without the store, or one away: the rest go at the next start.
+      if (answer?.ok !== true) return;
+      for (const p of chunk) if (p.id !== undefined) sent.add(p.id);
+      sentPairs.write([...sent]);
+    }
   };
   const saveVocabulary = (next: ReadonlyArray<VocabularyEntry>) => {
     saveDictionary(input.stateDir, next);
@@ -5124,6 +5152,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         const all = [...pairs, ...historyPairs(history?.list({ limit: 5_000 }) ?? [])];
         styleIndex = makeStyleIndex(all);
         ordinary = ordinaryWords(all);
+        void sendPairs(all);
       },
     );
     markPhase("dictation-devices:begin");

@@ -1147,6 +1147,18 @@ export const applyCalledNames = (said: string, names: ReadonlyArray<string>): st
   return out + text.slice(from);
 };
 
+/** Words he kept in lower case at least twice in his own text: ordinary words to him, never taken for one of his terms. */
+export const ordinaryWords = (
+  pairs: ReadonlyArray<{ readonly kept: string }>,
+  min = 2,
+): ReadonlySet<string> => {
+  const seen = new Map<string, number>();
+  for (const p of pairs)
+    for (const w of p.kept.match(/(?<![\p{L}\p{N}'’-])\p{Ll}[\p{Ll}'’-]*/gu) ?? [])
+      seen.set(w, (seen.get(w) ?? 0) + 1);
+  return new Set([...seen].filter(([, n]) => n >= min).map(([w]) => w));
+};
+
 export const biasTranscript = (
   heardText: string,
   entries: ReadonlyArray<VocabularyEntry>,
