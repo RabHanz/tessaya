@@ -810,7 +810,13 @@ const RootStackConfig = createWorkspaceStackNavigator({
     ConnectionsNew: createNativeStackScreen({
       screen: ConnectionsNewRouteScreen,
       linking: "connections/new",
-      options: sheetRoute({ title: "Add Environment", detent: 0.55, maxDetent: 0.7 }),
+      // Android's formSheet opened it collapsed behind the nav bar, so pairing could not finish (20 Nov): a card, as Environments.
+      options: sheetRoute({
+        title: "Add Environment",
+        detent: 0.55,
+        maxDetent: 0.7,
+        android: "card",
+      }),
     }),
     NotFound: createNativeStackScreen({
       screen: NotFoundScreen,

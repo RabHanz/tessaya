@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index b2ad65cf053741a30cda0333ad86ace107ab7ad6..ae033795849b0698fccff16017bf044646558be9 100644
+index b2ad65cf053741a30cda0333ad86ace107ab7ad6..caccd38fa929539bf9eb1469477a8854027e4f7b 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
 @@ -92,6 +92,19 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
@@ -94,6 +94,16 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..ae033795849b0698fccff16017bf0446
    SettingsEnvironmentMaintenance: createNativeStackScreen({
      screen: SettingsEnvironmentMaintenanceRouteScreen,
      linking: "settings/maintenance",
+@@ -732,7 +810,8 @@ const RootStackConfig = createWorkspaceStackNavigator({
+     ConnectionsNew: createNativeStackScreen({
+       screen: ConnectionsNewRouteScreen,
+       linking: "connections/new",
+-      options: sheetRoute({ title: "Add Environment", detent: 0.55, maxDetent: 0.7 }),
++      // Android's formSheet opened it collapsed behind the nav bar, so pairing could not finish (20 Nov): a card, as Environments.
++      options: sheetRoute({ title: "Add Environment", detent: 0.55, maxDetent: 0.7, android: "card" }),
+     }),
+     NotFound: createNativeStackScreen({
+       screen: NotFoundScreen,
 diff --git a/apps/mobile/src/components/ui/AppSymbol.android.tsx b/apps/mobile/src/components/ui/AppSymbol.android.tsx
 index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87799fc11f 100644
 --- a/apps/mobile/src/components/ui/AppSymbol.android.tsx
