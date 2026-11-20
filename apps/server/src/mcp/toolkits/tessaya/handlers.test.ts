@@ -1023,3 +1023,11 @@ it.effect(
       expect(nowhere.result).toEqual({ ok: false, error: NOT_HERE, notLinked: true });
     }),
 );
+
+it("reads a transcript day on the house's calendar, and refuses anything else", () => {
+  const now = Date.parse("2026-11-20T21:30:00Z"); // 02:30 on the 21st at GMT+5
+  expect(TessayaHandlers.transcriptDay("today", now, "Asia/Karachi")).toBe("2026-11-21");
+  expect(TessayaHandlers.transcriptDay("Yesterday", now, "Asia/Karachi")).toBe("2026-11-20");
+  expect(TessayaHandlers.transcriptDay("2026-11-19", now, "Asia/Karachi")).toBe("2026-11-19");
+  expect(TessayaHandlers.transcriptDay("last week", now, "Asia/Karachi")).toBeNull();
+});
