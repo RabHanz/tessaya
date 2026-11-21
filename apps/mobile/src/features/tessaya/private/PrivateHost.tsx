@@ -20,7 +20,6 @@ import {
   type LayerAnswer,
 } from "./privateLayer";
 
-const IDLE_MS = 5 * 60_000;
 const REPORT_MS = 10_000;
 
 /** Same-origin requests from the layer's page carry this phone's token; her sound is gated from here, not the page. */
@@ -74,7 +73,7 @@ function PrivateView(props: { readonly layer: ReturnType<typeof usePrivateLayer>
   const [answer, setAnswer] = useState<LayerAnswer | null>(null);
   const [covered, setCovered] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const touchedAt = useRef(0);
+  const wasOpen = useRef(false);
   const close = () => {
     void layer.report(["windowClosed"]);
     setPrivateShown(false);
@@ -94,13 +93,14 @@ function PrivateView(props: { readonly layer: ReturnType<typeof usePrivateLayer>
     };
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- close only reports and hides
   }, []);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows who is home and where the sound goes, and the idle clock
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows who is home, where the sound goes, and the moment ending
   useEffect(() => {
-    touchedAt.current = Date.now();
     const tick = async () => {
-      if (Date.now() - touchedAt.current > IDLE_MS) return close();
       const next = await layer.report();
       if (next === null) return;
+      // the layer's one idle timer, a lock or a doubt ended the moment: the screen goes with it
+      if (wasOpen.current && !next.open) return close();
+      wasOpen.current = next.open;
       setAnswer(next);
       const output = PhoneAudio?.getRoute().output ?? null;
       const sound = privateSoundAllowed(output, next.presence);
@@ -115,12 +115,7 @@ function PrivateView(props: { readonly layer: ReturnType<typeof usePrivateLayer>
   }, []);
   const page = answer?.page;
   return (
-    <View
-      className="absolute inset-0 bg-black"
-      onTouchStart={() => {
-        touchedAt.current = Date.now();
-      }}
-    >
+    <View className="absolute inset-0 bg-black">
       <StatusBar hidden />
       {page != null && layer.base !== null && layer.token !== null ? (
         <WebView<object>

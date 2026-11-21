@@ -5,7 +5,6 @@ import {
   createLayerHello,
   createWindowCloseEnd,
   startPersonaLayerLink,
-  WINDOW_CLOSE_GRACE_MS,
 } from "./personaLayerLink.ts";
 
 const REG = `
@@ -96,41 +95,19 @@ describe("startPersonaLayerLink", () => {
 });
 
 describe("createWindowCloseEnd", () => {
-  it("ends the private moment once his last private window stays closed past the grace", () => {
-    const timers: Array<{ fn: () => void; ms: number; live: boolean }> = [];
-    const schedule = (fn: () => void, ms: number) => {
-      const t = { fn, ms, live: true };
-      timers.push(t);
-      return () => void (t.live = false);
-    };
-    const fire = () => timers.filter((t) => t.live).forEach((t) => ((t.live = false), t.fn()));
+  it("ends the private moment the moment his last private window closes", () => {
     let ended = 0;
     const shown: Array<boolean> = [];
-    const w = createWindowCloseEnd({
-      end: () => void ended++,
-      schedule,
-      shown: (on) => void shown.push(on),
-    });
+    const w = createWindowCloseEnd({ end: () => void ended++, shown: (on) => void shown.push(on) });
     w.opened();
     w.opened();
     // one of two closed: the other still holds it
     w.closed();
-    fire();
-    expect(ended).toBe(0);
-    expect(shown).toEqual([true]);
-    // the last one closed, then reopened within the grace (a reload): nothing ends
+    expect([ended, shown]).toEqual([0, [true]]);
+    // the last one closed: her private form leaves and the moment ends on that call, once
     w.closed();
-    // her private form leaves the desk on the close itself, before any timer or server answer (M-122)
-    expect(shown).toEqual([true, false]);
-    expect(timers.at(-1)?.ms).toBe(WINDOW_CLOSE_GRACE_MS);
-    w.opened();
-    expect(shown).toEqual([true, false, true]);
-    fire();
-    expect(ended).toBe(0);
-    // closed for good: it ends, once
+    expect([ended, shown]).toEqual([1, [true, false]]);
     w.closed();
-    fire();
-    fire();
     expect(ended).toBe(1);
   });
 });

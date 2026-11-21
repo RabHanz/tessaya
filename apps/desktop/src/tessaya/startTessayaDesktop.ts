@@ -725,7 +725,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
     // Closing his private window ends that private moment; her desk body goes back to her everyday look or her character.
     const layerWindows = createWindowCloseEnd({
       end: () => void layerLink.signal("windowClosed"),
-      // her private form leaves the desk on the close itself; one reopened within the grace brings it back
+      // her private form leaves the desk on the close itself
       shown: (on) => void showLayerBody(on && layerLink.isOpen()),
     });
     const openLayerPage = async (chat = false) => {
