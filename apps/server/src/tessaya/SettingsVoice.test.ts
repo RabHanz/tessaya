@@ -46,6 +46,14 @@ it("finds a setting by his words", () => {
     findSettings("make her eyebrows stand out").map((s) => s.key),
     "tessayaBrows",
   );
+  for (const said of ["keep yourself on my phone", "stop listening on my phone"])
+    assert.include(
+      findSettings(said)
+        .slice(0, 3)
+        .map((s) => s.key),
+      "tessayaPhoneVessel",
+      said,
+    );
 });
 
 it("the model a kind of her work runs on lists the models he can name", () => {

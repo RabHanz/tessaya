@@ -175,6 +175,8 @@ export const loopPlan = (input: {
   readonly devices: ReadonlyArray<R1Device>;
   readonly port: number;
   readonly busKey: string;
+  /** A phone vessel has bound to this hub since boot: the loop runs for it with no Tessel, on the hub's own key. */
+  readonly phones?: boolean;
   readonly folderEnv: Readonly<Record<string, string>>;
   /** Installed from a release bundle: its own recogniser, Pocket and voice, unless the folder's env says otherwise. */
   readonly bundled?: boolean;
@@ -182,7 +184,7 @@ export const loopPlan = (input: {
   if (input.setting === "off" || !input.installed) return null;
   const onHub = input.devices.filter((d) => d.deviceId !== null && d.mqttUrl === null);
   const first = onHub[0];
-  if (first === undefined || input.busKey === "") return null;
+  if ((first === undefined && input.phones !== true) || input.busKey === "") return null;
   const secrets = NodePath.join(input.dir, "secrets");
   const base = `127.0.0.1:${input.port}`;
   return {
@@ -208,7 +210,7 @@ export const loopPlan = (input: {
     },
     secrets: [
       { path: NodePath.join(secrets, "hub-bus"), value: input.busKey },
-      { path: NodePath.join(secrets, "device-key"), value: first.deviceKey },
+      { path: NodePath.join(secrets, "device-key"), value: first?.deviceKey ?? input.busKey },
     ],
   };
 };
@@ -413,6 +415,7 @@ export const layer = Layer.effect(
     let servingGoneSince: number | null = null;
     let standby = false;
     let onHub = false;
+    let phones = false;
     let heardLoop = false;
     const bundle =
       R1_VOICE_BUNDLE !== null &&
@@ -472,7 +475,9 @@ export const layer = Layer.effect(
       }
       const busKey = yield* hub.busLogin.pipe(Effect.map((l) => l.key));
       const devices = yield* home.devices;
-      onHub = devices.some((d) => d.deviceId !== null && d.mqttUrl === null);
+      // Sticky, so a phone that drops and reconnects finds the loop still warm.
+      if (hub.vessels().length > 0) phones = true;
+      onHub = phones || devices.some((d) => d.deviceId !== null && d.mqttUrl === null);
       // Another loop hearing the R1s here (his own voice host) keeps ours silent; the hub drops one whose heartbeat stops.
       const ours = child?.pid === undefined ? null : `tessaya-room-${child.pid}`;
       const hearing = hub.busHears(VOICE_TOPIC);
@@ -582,6 +587,7 @@ export const layer = Layer.effect(
         devices,
         port: config.port,
         busKey,
+        phones,
         folderEnv,
         bundled: bundleMark !== null,
       });
