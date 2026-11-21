@@ -552,6 +552,8 @@ const outputItem = (out: string | null) => (out === "onboard" ? "speaker" : out)
 
 /** A phone holding the phone route (`phone:<deviceId>`): its app plays her replies and may lend its mic. */
 export const PHONE = "phone:";
+/** A phone with no Tessel near is a vessel of its own on the hub under this id prefix (PhoneLink.ts). */
+export const PHONE_VESSEL = "phone-";
 const isPhone = (o: string) => o.startsWith(PHONE);
 
 /** One phone's live link to an R1 (PhoneLink.ts); gone when its app lets go. */
@@ -578,7 +580,7 @@ export const UP_FLAG_PHONE = 32;
 
 /** The R1's mic frame with its PCM swapped for the phone's, its header (the R1's clock) kept. Pure. */
 /** The room loop's `voice/ctl` flush (`{"ev":"flush"}`). */
-const isFlush = (payload: Buffer): boolean => {
+export const isFlush = (payload: Buffer): boolean => {
   try {
     return (JSON.parse(payload.toString("utf8")) as { ev?: unknown }).ev === "flush";
   } catch {
@@ -1205,6 +1207,8 @@ export class HomeDevices extends Context.Service<
     readonly phoneLink: (id: string, link: PhoneLink, open: boolean) => Effect.Effect<void>;
     /** His headset's button on a linked phone: a talk on that R1, as its own talk button starts one. */
     readonly phoneTalk: (id: string, link: PhoneLink) => Effect.Effect<void>;
+    /** His headset's button on a phone with no Tessel near: a talk on the phone's own vessel, and he is at it. */
+    readonly vesselTalk: (vessel: string, link: PhoneLink) => Effect.Effect<void>;
     /** A private reply that could not play: kept in memory and said once a private output connects. */
     readonly holdPrivate: (id: string, text: string) => Effect.Effect<void>;
     /** A JPEG the device posted; taken only inside the window he opened. */
@@ -3836,6 +3840,20 @@ const make = Effect.gen(function* () {
           // A phone away from home, or a muted Tessel, starts nothing: no one is there to hear her.
           if (!link.near || (yield* readSaved).muted[id] === true) return;
           yield* publish(id, "cmd/voice/start", {});
+        }),
+      ),
+    ),
+    vesselTalk: Effect.fn("HomeDevices.vesselTalk")((vessel: string, link: PhoneLink) =>
+      traced({
+        kind: "device.talk",
+        actor: { kind: "owner", id: link.id, certainty: 0.8 },
+        subject: `a talk on ${link.name} itself from its headset button`,
+        evidence: [{ kind: "device", ref: vessel }],
+      })(
+        Effect.gen(function* () {
+          // shortcut: the phone's sign-in names no member yet, so it is the owner's (as phoneLink); per-member with B-002.
+          if (Option.isSome(presence))
+            yield* presence.value.note({ member: OWNER_MEMBER_ID, source: "phoneTalk", vessel });
         }),
       ),
     ),

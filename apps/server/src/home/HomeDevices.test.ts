@@ -2260,6 +2260,33 @@ it.effect(
 );
 
 it.effect(
+  "a talk on a phone vessel (no Tessel near) places him at the phone, not at a Tessel",
+  () => {
+    const { topics, sent, layer } = setup();
+    return Effect.gen(function* () {
+      const devices = yield* HomeDevices.HomeDevices;
+      yield* devices.tick;
+      sent.length = 0;
+      const vessel = `${HomeDevices.PHONE_VESSEL}iphone`;
+      yield* devices.vesselTalk(vessel, {
+        id: `${HomeDevices.PHONE}iphone`,
+        name: "iPhone",
+        kind: "headphones",
+        near: false,
+        play: () => {},
+        flush: () => {},
+        buzz: () => {},
+        mic: (bytes) => Buffer.alloc(bytes),
+      });
+      // The phone's own session opens on the hub (PhoneLink); nothing goes to any Tessel.
+      assert.notInclude(topics(), "cmd/voice/start");
+      assert.lengthOf(yield* peopleHere(vessel), 1);
+      assert.deepStrictEqual(yield* peopleHere(ID), []);
+    }).pipe(Effect.provide(layer.pipe(Layer.provideMerge(presenceLayer))));
+  },
+);
+
+it.effect(
   "starts a talk from a linked phone's headset button only when it is near and the Tessel is not muted",
   () => {
     const { topics, sent, layer } = setup();
