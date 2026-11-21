@@ -19,6 +19,11 @@ concurrency:
   group: baton-server-archive-${{ inputs.version }}
   cancel-in-progress: false
 
+# Releases are published to the public binaries-only repo; this source repo is private (CR-044).
+# RELEASES_TOKEN: a token with contents:write on that repo.
+env:
+  RELEASES_REPO: RabHanz/tessaya-releases
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -65,10 +70,15 @@ jobs:
       - name: Publish prerelease
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
           cd release-cli
           sha256sum "t3-$VERSION-linux-x64.tar.gz" > "t3-$VERSION-linux-x64.tar.gz.sha256"
-          # The R1 voice bundle beside it: the server built above fetches it by the pinned sha256.
+          # The R1 voice bundle beside it: the server built above fetches it anonymously from the public
+          # releases repo (build-r1-voice.sh) by the pinned sha256, so it goes there too.
+          GH_TOKEN="$RELEASES_TOKEN" gh release create "server-$VERSION" -R "$RELEASES_REPO" \
+            "r1-voice-$VERSION-linux-x64.tar.gz" "r1-voice-$VERSION-linux-x64.tar.gz.sha256" \
+            --prerelease --latest=false --title "Server $VERSION (R1 voice bundle)" --notes "Binaries only."
           gh release create "server-$VERSION" "t3-$VERSION-linux-x64.tar.gz" "t3-$VERSION-linux-x64.tar.gz.sha256" \
             "r1-voice-$VERSION-linux-x64.tar.gz" "r1-voice-$VERSION-linux-x64.tar.gz.sha256" \
             --target "$GITHUB_SHA" --prerelease --latest=false \

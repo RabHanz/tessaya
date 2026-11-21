@@ -25,8 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
+      # Firmware releases and the list live in the public binaries-only repo (CR-044).
+      GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      REPO: RabHanz/tessaya-releases
     steps:
       - uses: actions/checkout@v6
 

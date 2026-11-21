@@ -44,6 +44,13 @@ concurrency:
   group: baton-desktop-release-${{ github.ref }}
   cancel-in-progress: false
 
+# Releases are published to the public binaries-only repo; this source repo is private (CR-044).
+# RELEASES_TOKEN: a token with contents:write on that repo.
+env:
+  RELEASES_REPO: RabHanz/tessaya-releases
+  # Read by scripts/build-desktop-artifact.ts#resolveGitHubPublishConfig before GITHUB_REPOSITORY.
+  T3CODE_DESKTOP_UPDATE_REPOSITORY: RabHanz/tessaya-releases
+
 jobs:
   resolve_version:
     name: Resolve version
@@ -311,6 +318,7 @@ jobs:
       - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
         run: |
           set -euo pipefail
           tag="${{ needs.resolve_version.outputs.tag }}"
@@ -319,10 +327,11 @@ jobs:
             git tag "$tag"
             git push origin "$tag"
           fi
-          if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/* --clobber
+          export GH_TOKEN="$RELEASES_TOKEN"
+          if gh release view "$tag" -R "$RELEASES_REPO" >/dev/null 2>&1; then
+            gh release upload "$tag" -R "$RELEASES_REPO" dist/* --clobber
           else
-            gh release create "$tag" dist/* \
+            gh release create "$tag" -R "$RELEASES_REPO" dist/* \
               --title "Tessaya desktop v$version" \
               --notes "Tessaya desktop app v$version. Unsigned build — Windows SmartScreen / macOS Gatekeeper will warn on first run; click through (Windows: More info -> Run anyway; macOS: right-click -> Open)."
           fi

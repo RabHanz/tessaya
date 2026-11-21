@@ -13,7 +13,7 @@ cd "$(git rev-parse --show-toplevel)"
 version="${1:?usage: build-r1-voice.sh <version> <recognizer binary> [out dir]}"
 recognizer="${2:?usage: build-r1-voice.sh <version> <recognizer binary> [out dir]}"
 out="${3:-release-cli}"
-repo="${GITHUB_REPOSITORY:-RabHanz/tessaya}"
+repo="${TESSAYA_RELEASES_REPO:-RabHanz/tessaya-releases}"
 
 NODE_VERSION=24.22.3
 NODE_SHA256=4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb

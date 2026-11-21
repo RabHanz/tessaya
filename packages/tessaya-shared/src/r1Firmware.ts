@@ -62,14 +62,14 @@ export const R1_RELEASE: R1ReleaseManifest = {
   artifacts: {
     firmware: {
       version: "smp-0.3.95",
-      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.95/r1bt-smp-0.3.95.rbl",
+      url: "https://github.com/RabHanz/tessaya-releases/releases/download/r1-firmware-smp-0.3.95/r1bt-smp-0.3.95.rbl",
       size: 1637776,
       sha256: "3e5b398a3b5e3d5cec45b4d6944b12d96829771783489b19a51cdab6a77cb187",
       sig: "3b4db400008e64f6453cc647733f71ca873915af5c33d30e2a88ab27a750b3115185c6f7e20fdb8032f5de3fc6f2fd1571168256cba8532cc026ef448221a5cb",
     },
     kws: {
       version: 1,
-      url: "https://github.com/RabHanz/tessaya/releases/download/r1-kws-v1/r1-kws-v1.r1kw",
+      url: "https://github.com/RabHanz/tessaya-releases/releases/download/r1-kws-v1/r1-kws-v1.r1kw",
       size: 27228,
       sha256: "af4cc208dd115f8ead84d310847e34c0867a488b45cf04139fd1ce7e44a937f3",
       sig: "ccd09770dcdab708de0ec94bf7d15d4c5d9576a6f2c0104fd69a1777b39eca6adbe58b2d98fd25e82129cdd9dc7e195a41357111affb128dcc602ccabd20741a",
@@ -77,7 +77,7 @@ export const R1_RELEASE: R1ReleaseManifest = {
     },
     lines: {
       version: 1,
-      url: "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-smp-0.3.123/tessel-tones-1.r1ln",
+      url: "https://github.com/RabHanz/tessaya-releases/releases/download/r1-firmware-smp-0.3.123/tessel-tones-1.r1ln",
       size: 277884,
       sha256: "1e298e370f119db335a4d10c1a5276b128a05a9864ac2bf9bb29369eceb832ce",
       sig: "9031d4564521d36f5aca9e7045f6ccca6e9ed558065919f1e1c0cf3ddd53af334d1185753826244f7a8ec7523ab312223e110d54d4af6d93deb73c31ecfdc8ea",
@@ -114,7 +114,7 @@ export const R1_FIRMWARE_PUBLIC_KEY =
  * from before cable images were published). The list's own signature stops a label being moved to another image.
  */
 export const R1_RELEASE_INDEX_URL =
-  "https://github.com/RabHanz/tessaya/releases/download/r1-firmware-index/r1-releases.json";
+  "https://github.com/RabHanz/tessaya-releases/releases/download/r1-firmware-index/r1-releases.json";
 
 export interface R1ReleaseImage {
   readonly url: string;

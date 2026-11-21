@@ -72,7 +72,7 @@ jobs:
           tag=baton-v0.1.21
           echo "previous release: $tag"
           mkdir previous
-          gh release download "$tag" -R "$GITHUB_REPOSITORY" --dir previous --pattern '*-x64.exe'
+          gh release download "$tag" -R RabHanz/tessaya-releases --dir previous --pattern '*-x64.exe'
           ls previous
 
       - name: Build the Tessaya installer
