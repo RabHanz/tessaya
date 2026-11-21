@@ -1,6 +1,7 @@
 import "vite-plus/test/config";
-// @effect-diagnostics-next-line nodeBuiltinImport:off -- tsdown needs the asset path when it reads this config.
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- the build reads the commit it is cut from (git) once, at config time.
 import * as NodeChildProcess from "node:child_process";
+// @effect-diagnostics-next-line nodeBuiltinImport:off -- tsdown needs the asset path when it reads this config.
 import * as NodePath from "node:path";
 import { defineConfig, mergeConfig } from "vite-plus";
 
