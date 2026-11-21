@@ -12,6 +12,7 @@ import {
 } from "@t3tools/tessaya-shared/expression";
 import { effectFor, toneOf, VESSELS } from "@t3tools/tessaya-shared/expressionMap";
 import { atSpeakerMark } from "@t3tools/tessaya-shared/groupTalk";
+import { ownVoiceVerified } from "@t3tools/tessaya-shared/privateMemory";
 import { speechPieces, type Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { mostlyForeign } from "@t3tools/tessaya-shared/language";
 import {
@@ -2531,7 +2532,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (testAsk !== null) {
         kept?.control.abort();
         const who = (await speakerP) ?? UNVERIFIED(deps.now());
-        const his = who.kind === "owner" && who.verified && !who.inherited && who.test !== true;
+        // This turn's own score: a verdict his session carries never turns test mode on (REQ-13-089).
+        const his = who.kind === "owner" && ownVoiceVerified(who);
         speakNow(
           testAsk === "off" && (his || who.test === true)
             ? setTestMode(id, null, `by voice, ${who.test === true ? "the test speaker" : "his"}`)
