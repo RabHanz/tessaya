@@ -172,6 +172,10 @@ it("runs no loop when it is not installed, turned off, or no R1 is on this hub",
   // An R1 on a broker of its own has its loop elsewhere.
   expect(loopPlan({ ...base, devices: [r1("r1-a", "mqtt://broker.local:1883")] })).toBeNull();
   expect(loopPlan({ ...base, devices: [] })).toBeNull();
+  // His phone with no Tessel paired: the loop runs on the hub's own key and speaks through no Tessel.
+  const phoneOnly = loopPlan({ ...base, devices: [], phones: true })!;
+  expect(phoneOnly.secrets.map((s) => s.value)).toEqual(["bus", "bus"]);
+  expect(phoneOnly.env["R1_INHOUSE"]).toBe("");
 });
 
 it("runs a release bundle's own recogniser, Pocket and voice, unless the folder's env says otherwise", () => {
