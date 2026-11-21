@@ -105,6 +105,8 @@ describe("R1Device", () => {
       { ...owner, verified: false },
       { ...owner, verified: false, inherited: true },
       { ...owner, verified: false, lifted: true },
+      // Lifted inside his held session: his session's verdict for what she reads, never his memory or bond.
+      { ...owner, verified: true, session: true, lifted: true },
     ]) {
       const turn = r1Envelope({ ...heard, voice: { speaker: near } }, DEFAULT_OS_PACK, undefined);
       expect(notLearnable(turn), JSON.stringify(near)).toBe("his voice not verified");

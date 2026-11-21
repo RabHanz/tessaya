@@ -8,6 +8,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
@@ -1429,6 +1430,7 @@ const main = async () => {
       ...ROOM_CONFIG,
       personas: roster,
       inhouse,
+      host: NodeOS.hostname(),
       // The household's languages (R1_LANGUAGES=en,ur); her server can change them per R1 on voice/languages.
       languages: (process.env["R1_LANGUAGES"] ?? "en")
         .split(",")

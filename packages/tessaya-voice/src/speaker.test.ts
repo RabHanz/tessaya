@@ -360,6 +360,38 @@ describe("the speaker identity", () => {
     );
   });
 
+  it("gives every scored turn on his path one verdict while his verified session holds", () => {
+    // 21 Nov 21:23-21:24 (GMT+5), Tumble: verified by three turns at turn 5, then a 0.553 short turn read unverified.
+    const turn = (kind: SpeakerIdentity["kind"], score: number, ms: number): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      kind,
+      personId: kind === "owner" ? "owner" : null,
+      confidence: kind === "unverified" ? null : score,
+      own: { score, ms },
+    });
+    const session = [
+      turn("owner", 0.464, 2_400),
+      turn("owner", 0.63, 3_000),
+      turn("unverified", 0.476, 1_600),
+      turn("owner", 0.579, 2_880),
+      turn("owner", 0.62, 2_208),
+      turn("unverified", 0.553, 1_800),
+    ];
+    let hold = NO_HOLD;
+    const verified = session.map((identity, i) => {
+      const out = holdVoice(hold, identity, i * 15_000);
+      hold = out.hold;
+      return out.identity.verified;
+    });
+    expect(verified).toEqual([false, false, false, true, true, true]);
+    // His session's verdict, never this turn's own clips: nothing private opens on it.
+    expect(holdVoice(hold, turn("unverified", 0.5, 1_500), 100_000).identity).toMatchObject({
+      verified: true,
+      session: true,
+      lifted: true,
+    });
+  });
+
   it("takes his first turn on her name's clip scored with it, never a voice under the floor", () => {
     const turn = (score: number): SpeakerIdentity => ({
       ...UNVERIFIED(0),
@@ -462,9 +494,14 @@ describe("the speaker identity", () => {
       }) as SpeakerIdentity;
     const start = holdVoice(NO_HOLD, turn("owner", 0.6, 4_000, v(1, 0, 0)), 0);
     expect(start.identity.verified).toBe(true);
-    // Like his own first turn (cosine 0.8), whatever his profile says: his path, never an owner-only act.
+    // Like his own first turn (cosine 0.8), whatever his profile says: his path, verified only as his session.
     const reply = holdVoice(start.hold, turn("guest", 0.2, 1_800, v(0.8, 0.6, 0)), 10_000);
-    expect(reply.identity).toMatchObject({ kind: "owner", lifted: true, verified: false });
+    expect(reply.identity).toMatchObject({
+      kind: "owner",
+      lifted: true,
+      verified: true,
+      session: true,
+    });
     expect(reply.identity.same).toBeCloseTo(0.8);
     // His own turns in the session carry their likeness to it too, so the metrics show it on every turn.
     const ownTurn = holdVoice(start.hold, turn("owner", 0.6, 4_000, v(0.6, 0.8, 0)), 5_000);

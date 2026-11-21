@@ -82,13 +82,17 @@ describe("every action reaches the log", () => {
       text: "my bank pin is four four",
       speaker: "owner",
       speakerScore: 0.93,
+      verified: false,
+      host: "tessel-host",
       voiceIdMs: 120,
     });
     const action = roomActionOf("t1", "event/voice/metrics", metrics);
+    // The verdict her brain acted on and the loop's host, so a turn is findable whichever host served it (G-30).
     expect(action).toMatchObject({
       kind: "room.voice_id",
       actor: { kind: "owner", certainty: 0.93 },
       outcome: "owner",
+      data: { verified: false, host: "tessel-host" },
     });
     expect(JSON.stringify(action)).not.toContain("bank");
     expect(roomActionOf("t1", "event/button", JSON.stringify({ b: 1, long: true }))?.kind).toBe(

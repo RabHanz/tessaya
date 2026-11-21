@@ -526,6 +526,8 @@ export interface RoomConfig {
   readonly inhouse: ReadonlySet<string>;
   /** The house's time zone, sent with every turn. */
   readonly tz: string;
+  /** The machine this loop runs on, in every turn's metrics: whichever host served a conversation is findable. */
+  readonly host: string;
   /**
    * The languages the household speaks to her (BCP 47, "en", "ur"): until a speaker can be told apart, a line in
    * another language is the room only when this is English alone. Changed per R1 by `voice/languages` (retained).
@@ -573,6 +575,7 @@ export const ROOM_CONFIG: RoomConfig = {
   historyTurns: 8,
   inhouse: new Set(),
   tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  host: "",
   languages: ["en"],
   talkOver: "open",
   personaFollows: false,
@@ -736,6 +739,10 @@ export interface TurnMetrics {
   readonly firstSoundMs: number | null;
   readonly text: string;
   readonly speaker: string;
+  /** The verdict her brain acted on: verified as him on this turn (own clips or his held session), or not. */
+  readonly verified: boolean;
+  /** The machine whose loop served the turn (absent when unknown). */
+  readonly host?: string;
   /** Cosine to his profile (null with no profile): how Voice ID is measured on his real room turns. */
   readonly speakerScore: number | null;
   readonly emotion: string;
@@ -2836,6 +2843,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         firstSoundMs: firstSound === null ? null : Math.round(firstSound),
         text,
         speaker: identity.kind,
+        verified: identity.verified,
+        ...(config.host === "" ? {} : { host: config.host }),
         ...(verdict.kind === identity.kind ? {} : { verdict: verdict.kind }),
         speakerScore: score === null ? null : r3(score),
         lifted: verdict.lifted === true,

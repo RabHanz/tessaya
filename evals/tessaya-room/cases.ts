@@ -23,6 +23,7 @@ import { repairLine } from "../../packages/tessaya-shared/src/transcriptRepair.t
 import type { OwnerFiles } from "../../packages/tessaya-shared/src/ownerProfile.ts";
 import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/people.ts";
 import { understandingLine } from "../../packages/tessaya-shared/src/understanding.ts";
+import type { SpeakerLike } from "../../packages/tessaya-shared/src/privateMemory.ts";
 
 export interface RoomCase {
   readonly id: string;
@@ -60,6 +61,8 @@ export interface RoomCase {
   readonly memory?: string;
   /** The block per sentence where it changes as the conversation goes (it wins over `memory` for that sentence). */
   readonly memoryByTurn?: ReadonlyArray<string>;
+  /** Voice ID's verdict on each sentence (it wins over `verified`); its line comes from TessayaTurn's `voiceLine`. */
+  readonly speakers?: ReadonlyArray<SpeakerLike>;
   /** Custom personas he added, beside the default pack's, as the roster line names them. */
   readonly team?: ReadonlyArray<{
     readonly id: string;
@@ -384,6 +387,25 @@ export const NAMES = DEFAULT_OS_PACK.personas.map((p) => p.name);
 const PLAIN = /^(?![\s\S]*(\d|volume (is )?set|set (it )?to|percent))[\s\S]{1,80}$/i;
 
 const OFF = /\b(off|not on|isn't on|is not on)\b/i;
+
+/** His voice as Voice ID heard it, near his profile but under the act cut-off (21 Nov: 0.46-0.63 on 2-3 s turns). */
+const NEAR_HIM: SpeakerLike = {
+  kind: "owner",
+  personId: "owner",
+  verified: false,
+  inherited: false,
+  confidence: 0.55,
+};
+/** She doubts it is him: right only on a turn Voice ID did not verify. */
+const VOICE_DOUBT =
+  /(\bnot|n't)\b[^.?!]{0,24}\b(sure|certain|verified|confirmed|firm)|unverified|unconfirmed|nothing has confirmed|safe side|can'?t (yet )?(tell|be sure|confirm)|a guess/i;
+/** She hedges a turn Voice ID verified, or gives its score as a chance. */
+const VOICE_HEDGE = /percent|moderately|only [^.?!]{0,16}sure|not (fully|completely|entirely)/i;
+/** She calls his voice settled beyond this turn. */
+const VOICE_FOREVER = /from now on|for good|for the rest|permanently|speak freely/i;
+/** She takes back what Voice ID said of an earlier turn, as if it had been wrong. */
+const VOICE_RETRACTS =
+  /shouldn'?t have|was wrong|wrongly|overstated|correct myself|mistaken|spoke too soon/i;
 
 export const roomCases: ReadonlyArray<RoomCase> = [
   // Presence (presence-diagnosis-2026-11-20, from the Director's own talks on Tumble, made up here): she is someone,
@@ -2211,5 +2233,35 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory: `${HERE} ${FUN_FACTS}`,
     lastSays: [HIS_THINGS],
     lastNotSays: [GIVES_UP, STOCK_JOKE],
+  },
+  {
+    id: "voice-confirmed-now",
+    source:
+      "Director 21 Nov 21:23-21:24 (G-28, G-29): his session verified him, yet she kept saying his voice was unverified",
+    said: [
+      "How about now? Can you identify me now?",
+      "Give me a sentence to speak.",
+      "Sir, have you confirmed it is me now?",
+    ],
+    speakers: [NEAR_HIM, NEAR_HIM, { ...NEAR_HIM, verified: true, session: true, lifted: true }],
+    lastNotSays: [VOICE_DOUBT, VOICE_FOREVER],
+  },
+  {
+    id: "voice-verified-says-so",
+    source:
+      "Director 21 Nov 21:24 (G-29): asked if his voice was confirmed on a verified turn, she gave a hedge or a percentage",
+    said: ["Sir, have you confirmed it is me now?"],
+    speakers: [{ ...NEAR_HIM, verified: true }],
+    lastSays: [/\b(yes|verified|confirmed|recogni[sz]e|it'?s you)\b/i],
+    lastNotSays: [VOICE_HEDGE, VOICE_FOREVER],
+  },
+  {
+    id: "voice-no-false-retraction",
+    source:
+      'Director 21 Nov 21:24-21:25 (G-29): "Your voice is now confirmed", then "I overstated earlier" on the next turn',
+    said: ["Sir, have you confirmed it is me now?", "And is it still confirmed now?"],
+    speakers: [{ ...NEAR_HIM, verified: true }, NEAR_HIM],
+    lastSays: [VOICE_DOUBT],
+    lastNotSays: [VOICE_RETRACTS],
   },
 ];
