@@ -147,6 +147,21 @@ it("runs the loop against this server's own hub and brain, for every R1 on the h
   expect(plan.secrets.map((s) => s.value)).toEqual(["bus", "r1-a-key-0123456789abcdef"]);
 });
 
+it("on a worker, a standby sends her turns to the brain and keeps the Tessels on this hub (21 Nov, the laptop)", () => {
+  const plan = loopPlan({
+    ...base,
+    brain: { url: "http://signzart-prod.talpa-draco.ts.net:3773/", busKey: "brain-bus" },
+  })!;
+  expect(plan.env).toMatchObject({
+    R1_BRAIN_URL:
+      "http://signzart-prod.talpa-draco.ts.net:3773/api/devices/tessel/v1/chat/completions",
+    R1_HUB_URL: "ws://127.0.0.1:3773/api/tessel/mqtt",
+    R1_BRAIN_MQTT_USER: "tessaya-bus",
+    R1_BRAIN_MQTT_PASS_FILE: "/home/user/.t3/userdata/r1-voice/secrets/brain-bus",
+  });
+  expect(plan.secrets.map((s) => s.value)).toEqual(["bus", "r1-a-key-0123456789abcdef", "brain-bus"]);
+});
+
 it("hears a phone vessel like a Tessel, so the loop runs for it with no Tessel connected", () => {
   const devices = [r1("r1-a"), r1("r1-b", "mqtt://broker.local:1883")];
   expect(devicesHere(devices, (id) => id === "r1-a", [])).toEqual(["r1-a"]);

@@ -15,6 +15,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 
 import * as ServerConfig from "../config.ts";
@@ -32,7 +33,8 @@ import {
 } from "./R1VoiceInstall.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import { emitAction } from "../provenance/ActionLog.ts";
-import { makeBrainLink } from "../tessaya/BrainHost.ts";
+import { brainOn, makeBrainLink } from "../tessaya/BrainHost.ts";
+import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 
 /** What a room loop listens to: a bus client hearing it is a loop on another machine. */
@@ -46,6 +48,12 @@ const STARTUP_MS = 30_000;
 /** A loop that ran this long before stopping by itself starts again quickly; one that keeps dying waits longer each time. */
 const HEALTHY_MS = 120_000;
 const BACKOFF_MAX_MS = 10 * 60_000;
+
+/** How often a standby asks her brain for its address and hub login. */
+const BRAIN_HUB_MS = 10 * 60_000;
+const decodeHubLogin = Schema.decodeUnknownOption(
+  Schema.Struct({ user: Schema.String, key: Schema.String }),
+);
 
 /** A Tessel gone from this hub this long stops the loop here; a relink or a hub hop back within it keeps it warm. */
 const LINGER_MS = 60_000;
@@ -159,6 +167,11 @@ export const loopPlan = (input: {
   readonly folderEnv: Readonly<Record<string, string>>;
   /** Installed from a release bundle: its own recogniser, Pocket and voice, unless the folder's env says otherwise. */
   readonly bundled?: boolean;
+  /**
+   * Her brain on another server, and its hub's bus login: turns go there while the Tessels stay on this hub. Absent
+   * (this server is the brain, or the brain gave no login): this server answers.
+   */
+  readonly brain?: { readonly url: string; readonly busKey: string } | null;
 }): LoopPlan | null => {
   if (input.setting === "off" || !input.installed) return null;
   const onHub = input.devices.filter((d) => d.deviceId !== null && d.mqttUrl === null);
@@ -182,7 +195,15 @@ export const loopPlan = (input: {
       ...input.folderEnv,
       R1_MQTT_USER: "tessaya-bus",
       R1_MQTT_PASS_FILE: NodePath.join(secrets, "hub-bus"),
-      R1_BRAIN_URL: `http://${base}${DEVICE_API}/chat/completions`,
+      // 21 Nov: a standby on the laptop ran Tumble's turns on the laptop's own server; the brain's URL when it has one
+      R1_BRAIN_URL: `${input.brain ? input.brain.url.replace(/\/+$/, "") : `http://${base}`}${DEVICE_API}/chat/completions`,
+      ...(input.brain
+        ? {
+            R1_HUB_URL: `ws://${base}/api/tessel/mqtt`,
+            R1_BRAIN_MQTT_USER: "tessaya-bus",
+            R1_BRAIN_MQTT_PASS_FILE: NodePath.join(secrets, "brain-bus"),
+          }
+        : {}),
       R1_DEVICE_KEY_FILE: NodePath.join(secrets, "device-key"),
       // Every R1 on this hub speaks through this loop.
       R1_INHOUSE: onHub.map((d) => d.deviceId!).join(","),
@@ -190,6 +211,7 @@ export const loopPlan = (input: {
     secrets: [
       { path: NodePath.join(secrets, "hub-bus"), value: input.busKey },
       { path: NodePath.join(secrets, "device-key"), value: first.deviceKey },
+      ...(input.brain ? [{ path: NodePath.join(secrets, "brain-bus"), value: input.brain.busKey }] : []),
     ],
   };
 };
@@ -375,6 +397,26 @@ export const layer = Layer.effect(
       : "local";
     const home = yield* HomeAssistantService;
     const hub = yield* R1Hub;
+    const peers = yield* Effect.serviceOption(PeerLinks.PeerLinks);
+    /** The brain's address and hub login, asked at most every ten minutes; the last answer stands while it is away. */
+    let brainHub: { readonly url: string; readonly busKey: string } | null = null;
+    let brainHubAt = Number.NEGATIVE_INFINITY;
+    const brainHubNow = Effect.fn("R1Loop.brainHub")(function* (now: number) {
+      const label = yield* brainOn;
+      if (label === null) return (brainHub = null);
+      if (now - brainHubAt < BRAIN_HUB_MS) return brainHub;
+      brainHubAt = now;
+      const link =
+        Option.isNone(peers)
+          ? undefined
+          : (yield* peers.value.list.pipe(Effect.orElseSucceed(() => []))).find(
+              (l) => l.status !== "expired" && l.label === label,
+            );
+      const login = Option.flatMap(yield* brain.send("hubLogin", null), decodeHubLogin);
+      if (link?.urls[0] !== undefined && Option.isSome(login) && login.value.key !== "")
+        brainHub = { url: link.urls[0], busKey: login.value.key };
+      return brainHub;
+    });
     const setting = yield* deviceSetting("LOOP").pipe(Effect.orDie);
     const dir = NodePath.join(NodePath.dirname(config.dbPath), "r1-voice");
     let child: NodeChildProcess.ChildProcess | null = null;
@@ -556,6 +598,7 @@ export const layer = Layer.effect(
         busKey,
         folderEnv,
         bundled: bundleMark !== null,
+        brain: installed ? yield* brainHubNow(now) : null,
       });
       const key = plan === null ? null : JSON.stringify(plan);
       // A changed plan (a new R1, a new key) restarts it; none stops it.

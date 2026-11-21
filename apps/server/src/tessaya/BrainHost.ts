@@ -58,6 +58,9 @@ export const BrainOp = Schema.Literals([
   "deviceRevoke",
   // his reminders and her promises: kept on her brain, whose pulse alone raises them when due (M-103)
   "commitments",
+  // her hub's bus login, for a standby room loop on another of his servers to reach her hub (21 Nov): full access only,
+  // never queued
+  "hubLogin",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
