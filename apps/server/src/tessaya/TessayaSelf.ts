@@ -17,6 +17,7 @@ import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { whatsNew } from "./TessayaWhatsNew.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
+import { TessayaSessionInsight } from "./TessayaSessionInsight.ts";
 
 /** Her state as lines, each ending with its source; `asker` is the member asking (only he hears whom a face was for). */
 export const myState = Effect.fn("TessayaSelf.myState")(function* (input: {
@@ -73,5 +74,11 @@ export const myState = Effect.fn("TessayaSelf.myState")(function* (input: {
       `Devices: ${all.filter((d) => d.online).length} online of ${all.length} (from the device registry here).`,
     );
   }
+  const sessions = yield* Effect.serviceOption(TessayaSessionInsight);
+  const talking = Option.isNone(sessions) ? null : yield* sessions.value.talkingWith;
+  if (talking !== null)
+    lines.push(
+      `You are talking with ${talking} for him: what he tells it goes straight to it (from his session conversation).`,
+    );
   return lines.join("\n");
 });

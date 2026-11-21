@@ -8,8 +8,10 @@ import type { TessayaSessionSummary } from "@t3tools/tessaya-contracts";
 import type { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
+import { HomeDevices } from "../home/HomeDevices.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
@@ -21,6 +23,7 @@ import { TessayaRecordService, layer as recordLayer } from "./TessayaRecordServi
 import { TessayaSessionInsight, layer } from "./TessayaSessionInsight.ts";
 import { TessayaSessionsAcross } from "./TessayaSessionsAcross.ts";
 import { TessayaWeaveService } from "./TessayaWeaveService.ts";
+import { TurnOrigin } from "./TurnOrigin.ts";
 
 const userdata = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-insight-"));
 NodeFS.mkdirSync(NodePath.join(userdata, "operating-system", "roles"), { recursive: true });
@@ -53,6 +56,8 @@ const setup = () => {
   const threadSends: Array<{ readonly threadId: ThreadId; readonly text: string }> = [];
   const prompts: Array<string> = [];
   const peerCalls: Array<[string, unknown]> = [];
+  /** A session's state now, by key, over the fixture's "working". */
+  const states = new Map<string, TessayaSessionSummary["state"]>();
   const services = Layer.mergeAll(
     Layer.succeed(TessayaSessionsAcross, {
       list: () =>
@@ -69,7 +74,7 @@ const setup = () => {
               thread: { environmentId: "env-laptop", threadId: "t-print" },
               access: "approval-required",
             },
-          ],
+          ].map((r): TessayaSessionSummary => ({ ...r, state: states.get(r.key) ?? r.state })),
           unreachable: [],
         }),
     }),
@@ -136,6 +141,9 @@ const setup = () => {
             waitingOn: "CI",
             files: [],
             errors: [],
+            ...(input.prompt.includes("answer: it was just told")
+              ? { answer: "The speed tests timed out on the slow runner; it raised the limit." }
+              : {}),
           } as never;
         }),
     }),
@@ -145,6 +153,7 @@ const setup = () => {
     threadSends,
     prompts,
     peerCalls,
+    states,
     layer: layer.pipe(
       Layer.provideMerge(services),
       Layer.provideMerge(recordLayer),
@@ -238,5 +247,59 @@ it.effect(
       ]);
       assert.lengthOf(threadSends, 0);
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "says a session's answer where he asked, once it is done, and takes his next words to it straight",
+  () => {
+    const { states, threadSends, layer } = setup();
+    const said: Array<[string, string]> = [];
+    const devices = HomeDevices.of({
+      command: (id: string, c: { readonly op: string; readonly text?: string }) =>
+        Effect.sync(() => void said.push([id, c.text ?? ""])),
+    } as never);
+    return Effect.gen(function* () {
+      const insight = yield* TessayaSessionInsight;
+      const go = yield* insight.steer({
+        session: "build",
+        text: "why did the speed tests fail?",
+        confirmed: true,
+      });
+      assert.include(go.line, "tell you its answer");
+      // Still at it: nothing is said yet.
+      yield* TestClock.adjust("40 seconds");
+      assert.deepStrictEqual(said, []);
+      states.set("work:env-here:t-build", "idle");
+      yield* TestClock.adjust("20 seconds");
+      assert.deepStrictEqual(said, [
+        [
+          "r1-a",
+          "Build lane says: The speed tests timed out on the slow runner; it raised the limit.",
+        ],
+      ]);
+      // Talking with it now: his next words go without a read-back.
+      const next = yield* insight.steer({ session: "build", text: "and post that on the PR" });
+      assert.strictEqual(next.status, "sent");
+      assert.lengthOf(threadSends, 2);
+      const rows = yield* (yield* TessayaRecordService).query({ kind: "steer", limit: 5 });
+      assert.include(
+        rows.map((r) => r.outcome),
+        "replied",
+      );
+      // The way to see it and the way out: "that's all" ends it, and the next words are read back again.
+      assert.strictEqual(yield* insight.talkingWith, "Build lane");
+      const done = yield* insight.steer({ session: "build", text: "that's all", end: true });
+      assert.deepStrictEqual([done.status, done.line], ["ended", "Done with Build lane."]);
+      assert.isNull(yield* insight.talkingWith);
+      assert.strictEqual(
+        (yield* insight.steer({ session: "build", text: "one more thing" })).status,
+        "read_back",
+      );
+    }).pipe(
+      Effect.provideService(TurnOrigin, { kind: "device", id: "r1-a", label: "Tumble" } as never),
+      Effect.provideService(HomeDevices, devices),
+      Effect.provide(layer),
+    );
   },
 );

@@ -34,6 +34,8 @@ import {
 } from "@t3tools/tessaya-shared/privateMemory";
 import { PRESENCE_BARS, presenceReason } from "@t3tools/tessaya-shared/presence";
 import { emitAction, type TurnAction } from "./turnActions.ts";
+import { TessayaSessionInsight } from "./TessayaSessionInsight.ts";
+import { talkingLine } from "@t3tools/tessaya-shared/sessionInsight";
 import { make as makeLive, TurnLiveContext } from "./TurnLiveContext.ts";
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import * as Clock from "effect/Clock";
@@ -1512,6 +1514,10 @@ export const make = Effect.gen(function* () {
         ? handOffLine(pending.from)
         : "";
     if (handed !== "") handedTo.delete(key);
+    // His conversation with a session through her: in every turn, so "who am I talking to?" needs no tool.
+    const sessions = yield* Effect.serviceOption(TessayaSessionInsight);
+    const talkingWith = Option.isNone(sessions) ? null : yield* sessions.value.talkingWith;
+    const talking = talkingWith === null ? "" : talkingLine(talkingWith);
     return {
       // An instruction, not remembered data: the brain reads `notice` as hers to act on, the block as his data.
       notice: [
@@ -1528,6 +1534,7 @@ export const make = Effect.gen(function* () {
         here,
         live,
         handed,
+        talking,
         board,
         standing.block,
         extra,
