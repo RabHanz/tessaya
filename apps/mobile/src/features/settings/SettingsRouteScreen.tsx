@@ -28,6 +28,7 @@ import { useSavedRemoteConnections } from "../../state/use-remote-environment-re
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
 import { setSleeveUnlocked, useSleeve } from "../tessaya/sleeve/useSleeve";
+import { setPrivateShown, useLayerKnown } from "../tessaya/private/privateLayer";
 import { SettingsScreen } from "./components/SettingsScreen";
 import type { SettingsPageTarget } from "./components/settings-page-targets";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
@@ -261,6 +262,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
       : (selectedProject?.label ?? gt("Unavailable project"));
   const overflowRows = useOverflowRows();
   const sleeve = useSleeve();
+  const layerKnown = useLayerKnown();
   const page = (
     target: SettingsPageTarget,
     icon: SettingsListRow["icon"],
@@ -277,6 +279,18 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage("SettingsUpcoming", "timer", "Coming up"),
         serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
         serverPage("SettingsMood", "face.smiling", "Her mood"),
+        // only where his server has a private layer; it opens over everything, after Face ID or his PIN
+        ...(layerKnown === false || layerKnown === null
+          ? []
+          : [
+              {
+                id: "private",
+                icon: "eye.slash" as const,
+                label: "Private",
+                value: "Locked",
+                onPress: () => setPrivateShown(true),
+              },
+            ]),
         serverPage("SettingsPulse", "bolt.circle", "Pulse"),
         serverPage("SettingsTeam", "person.2", "Team"),
         serverPage("SettingsCast", "person.crop.circle", "Cast"),

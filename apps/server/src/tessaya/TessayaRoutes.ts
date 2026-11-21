@@ -837,6 +837,22 @@ const DESK_SIGNALS = new Set([
   "windowClosed",
 ]);
 
+/**
+ * What the phone (any client vessel but the desktop) reports to the layers: its registry id and what just happened on
+ * it. The app leaving the front or closing the private screen ends that screen's private moment (M-133).
+ */
+export const vesselReport = (body: unknown) => {
+  const b = (body ?? {}) as { vessel?: unknown; signals?: unknown };
+  return {
+    vessel:
+      typeof b.vessel === "string" && /^phone-[a-z0-9]{1,24}$/.test(b.vessel) ? b.vessel : "phone",
+    signals: Array.isArray(b.signals)
+      ? b.signals.filter((k): k is string => typeof k === "string" && VESSEL_SIGNALS.has(k))
+      : [],
+  };
+};
+const VESSEL_SIGNALS = new Set(["windowClosed", "screenLocked", "bargeIn"]);
+
 const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
   router: HttpRouter.HttpRouter,
   context: Context.Context<TessayaRpcHandlers.TessayaServices>,
@@ -1076,6 +1092,35 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
             registry.value.all[0] === undefined
               ? null
               : `/tessaya/layer/${registry.value.all[0].id}`,
+        },
+        { headers: PAGE_HEADERS },
+      );
+    }
+    if (id === "_vessel") {
+      if (caller.desktop || caller.service || caller.member === null) return notHere;
+      const report = vesselReport(body);
+      for (const kind of report.signals)
+        for (const l of registry.value.all)
+          l.signal(
+            kind === "windowClosed"
+              ? { kind, session: caller.session }
+              : { kind, vessel: report.vessel },
+          );
+      return HttpServerResponse.jsonUnsafe(
+        {
+          open: registry.value.all.some((l) => l.active?.(report.vessel) === true),
+          persona:
+            registry.value.all
+              .map((l) => l.opened?.(report.vessel) ?? null)
+              .find((p) => p !== null) ?? null,
+          page:
+            registry.value.all[0] === undefined
+              ? null
+              : `/tessaya/layer/${registry.value.all[0].id}`,
+          // who else is home, so the phone keeps her private voice off its loudspeaker unless he is alone
+          presence: yield* Effect.promise(() =>
+            run(PersonaLayers.layerPresence(report.vessel)).catch(() => "unknown" as const),
+          ),
         },
         { headers: PAGE_HEADERS },
       );
