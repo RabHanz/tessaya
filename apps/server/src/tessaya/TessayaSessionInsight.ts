@@ -11,7 +11,7 @@ import {
   TessayaSessionInsightResult,
   TessayaWeaveSendResult,
   WorkSessionId,
-  type TessayaSessionSteerResult,
+  TessayaSessionSteerResult,
   type TessayaSessionSummary,
   type WorkSessionSynopsis,
 } from "@t3tools/tessaya-contracts";
@@ -108,6 +108,8 @@ export class TessayaSessionInsight extends Context.Service<
       readonly session: string;
       readonly text: string;
       readonly confirmed?: boolean | undefined;
+      /** Only this server's sessions: a linked server asking for one of ours. */
+      readonly here?: boolean | undefined;
     }) => Effect.Effect<TessayaSessionSteerResult>;
   }
 >()("t3/tessaya/TessayaSessionInsight") {}
@@ -294,8 +296,8 @@ export const make = Effect.gen(function* () {
   });
 
   const steer: TessayaSessionInsight["Service"]["steer"] = Effect.fn("TessayaSessionInsight.steer")(
-    function* ({ session, text, confirmed }) {
-      const row = yield* find(session, false);
+    function* ({ session, text, confirmed, here }) {
+      const row = yield* find(session, here);
       if (row === null)
         return { status: "not_found", text, session, line: notFound(session).line } as const;
       const owner = Option.isNone(household)
@@ -336,24 +338,43 @@ export const make = Effect.gen(function* () {
                     : Effect.fail("failed" as const),
                 ),
               )
-          : link === null
-            ? weave.send({ to: row.session, text: said, from: "Tessaya" }).pipe(
-                Effect.tap(() => weave.tick.pipe(Effect.ignore)),
-                Effect.mapError(() => "failed" as const),
-              )
-            : peers
+          : link !== null && row.key.startsWith("thread:")
+            ? // a T3 thread on a linked server: that server sends it, read back here already
+              peers
                 .call({
                   environmentId: EnvironmentId.make(link),
-                  tool: "weave_send",
-                  arguments: { to: row.session, text: said },
+                  tool: "tessaya_session_steer",
+                  arguments: { session: row.key, text, confirmed: true },
                   limits: LIMITS,
-                  success: TessayaWeaveSendResult,
+                  success: TessayaSessionSteerResult,
                 })
                 .pipe(
                   Effect.timeout(PEER_TIMEOUT),
-                  Effect.map((r) => r.weave),
+                  Effect.flatMap((r) =>
+                    r.status === "sent" || r.status === "queued"
+                      ? Effect.succeed({ status: r.status })
+                      : Effect.fail("failed" as const),
+                  ),
                   Effect.mapError(() => "failed" as const),
-                );
+                )
+            : link === null
+              ? weave.send({ to: row.session, text: said, from: "Tessaya" }).pipe(
+                  Effect.tap(() => weave.tick.pipe(Effect.ignore)),
+                  Effect.mapError(() => "failed" as const),
+                )
+              : peers
+                  .call({
+                    environmentId: EnvironmentId.make(link),
+                    tool: "weave_send",
+                    arguments: { to: row.session, text: said },
+                    limits: LIMITS,
+                    success: TessayaWeaveSendResult,
+                  })
+                  .pipe(
+                    Effect.timeout(PEER_TIMEOUT),
+                    Effect.map((r) => r.weave),
+                    Effect.mapError(() => "failed" as const),
+                  );
       const sent = yield* Effect.result(attempt);
       const status =
         sent._tag === "Failure"

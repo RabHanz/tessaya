@@ -180,6 +180,10 @@ export const PREFERENCE_KEYS: Readonly<Record<TessayaPreferenceKey, string>> = {
     "whether their phone may tell her when they arrive home or leave (on or off; off until they say on); never where they are",
   camera:
     "whether a camera may notice they are at a computer (on or off; off until they say on); she says when it is on and keeps no picture",
+  listenWait:
+    'in listen mode ("just listen"), how long a silence ends the thought, in seconds (5 to 120; 20 when unset)',
+  listenEnds:
+    'their own words that end listen mode, comma-separated (beside "over to you", "that\'s it", "your turn")',
 };
 /** An opt-in (location, camera): off until they say yes. */
 export const optedIn = (value: string | undefined): boolean =>

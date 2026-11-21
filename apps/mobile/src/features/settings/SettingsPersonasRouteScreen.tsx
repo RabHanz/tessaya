@@ -82,76 +82,11 @@ export function SettingsPersonasRouteScreen() {
   );
 }
 
-/**
- * A persona's voice, on its own card (D-038): the same library and the same `setPersona` as the desktop's Personas
- * page, so a voice picked here is the one it speaks in on every body.
- */
-function PersonaVoiceRow(props: {
-  readonly environmentId: EnvironmentId;
-  readonly persona: TessayaPersona;
-}) {
-  const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, QUIET);
-  const [library, setLibrary] = useState<VoiceLibraryView | null>(null);
-  const [note, setNote] = useState("");
-  const read = async () => {
-    const r = await voiceCall({
-      environmentId: props.environmentId,
-      input: { kind: "read", op: "library", args: {} },
-    });
-    if (r._tag === "Success" && r.value.ok) setLibrary(r.value.value as VoiceLibraryView);
-  };
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the voice library once per environment
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- one read per environment; its answer lands after it returns
-    void read();
-  }, [props.environmentId]);
-  const row = library?.personas.find((x) => x.id === props.persona.id);
-  const clone = (library?.clones ?? []).find((c) => c.id === row?.cloneVoice);
-  const pocket = library?.pocket ?? [];
-  const speaks =
-    clone?.name ?? pocket.find((v) => v.id === row?.speaks)?.name ?? row?.speaks ?? "…";
-  const pick = async (engine: "pocket" | "clone", voice: string | null) => {
-    const r = await voiceCall({
-      environmentId: props.environmentId,
-      input: { kind: "act", op: "setPersona", args: { persona: props.persona.id, engine, voice } },
-    });
-    setNote(r._tag === "Success" && r.value.ok ? "" : "That voice was not saved.");
-    await read();
-  };
-  return (
-    <ListRowLayout
-      label="Voice"
-      description={note || `Speaks in ${speaks}.`}
-      accessory={
-        library === null ? undefined : (
-          <Menu
-            accessible
-            accessibilityRole="button"
-            accessibilityLabel={`${props.persona.name}'s voice`}
-            title={`${props.persona.name}'s voice`}
-            actions={[
-              ...(library.clones ?? []).map((c) => ({
-                id: `clone:${c.id}`,
-                title: `${c.name} (your clone)`,
-              })),
-              ...(clone === undefined ? [] : [{ id: "clone:none", title: "No clone" }]),
-              ...pocket.map((v) => ({ id: `pocket:${v.id}`, title: v.name })),
-            ]}
-            onPressAction={({ nativeEvent }) => {
-              const [engine, id] = nativeEvent.event.split(":") as ["pocket" | "clone", string];
-              void pick(engine, id === "none" ? null : id);
-            }}
-          >
-            <ControlPill
-              icon="waveform.path.ecg"
-              accessibilityLabel={`${props.persona.name}'s voice`}
-            />
-          </Menu>
-        )
-      }
-    />
-  );
-}
+const PERSONA_ACTIONS = [
+  { id: "edit", title: "Edit" },
+  { id: "export-png", title: "Export card (PNG)" },
+  { id: "export-json", title: "Export card (JSON)" },
+];
 
 function PersonasSection(props: {
   readonly environmentId: EnvironmentId;
@@ -168,6 +103,27 @@ function PersonasSection(props: {
   const [note, setNote] = useState("");
   const [sentence, setSentence] = useState("");
   const [drafting, setDrafting] = useState(false);
+  // Each persona's voice comes from one library read: the same library and `setPersona` as the desktop's Personas page,
+  // so a voice picked here is the one it speaks in on every body.
+  const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, QUIET);
+  const [library, setLibrary] = useState<VoiceLibraryView | null>(null);
+  const readLibrary = async () => {
+    const r = await voiceCall({ environmentId, input: { kind: "read", op: "library", args: {} } });
+    if (r._tag === "Success" && r.value.ok) setLibrary(r.value.value as VoiceLibraryView);
+  };
+  const speaksAs = (id: string) => {
+    const row = library?.personas.find((x) => x.id === id);
+    const clone = (library?.clones ?? []).find((c) => c.id === row?.cloneVoice);
+    return clone?.name ?? library?.pocket.find((v) => v.id === row?.speaks)?.name ?? row?.speaks;
+  };
+  const pickVoice = async (persona: string, engine: "pocket" | "clone", voice: string | null) => {
+    const r = await voiceCall({
+      environmentId,
+      input: { kind: "act", op: "setPersona", args: { persona, engine, voice } },
+    });
+    setNote(r._tag === "Success" && r.value.ok ? "" : "That voice was not saved.");
+    await readLibrary();
+  };
 
   const ask = async (input: TessayaPersonaChangeInput): Promise<TessayaPersonaChangeResult> => {
     const result = await change({ environmentId, input });
@@ -192,7 +148,7 @@ function PersonasSection(props: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads the environment's roster and bin once per environment
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- one read per environment
-    void Promise.all([read(), canChange ? ask({ op: "bin" }) : null]);
+    void Promise.all([read(), readLibrary(), canChange ? ask({ op: "bin" }) : null]);
   }, [environmentId, canChange]);
 
   const save = async (f: PersonaForm) => {
@@ -230,7 +186,7 @@ function PersonasSection(props: {
   return (
     <>
       <SettingsSection
-        title={`${prefix}Your team`}
+        title={`${prefix}Who answers you`}
         trailing={
           canChange && form === null ? (
             <ControlPill
@@ -241,7 +197,7 @@ function PersonasSection(props: {
             />
           ) : undefined
         }
-        footer="You can also ask Tessaya: “make a new persona called Luna”, “make Freya warmer”, “retire Onyx”."
+        footer="They all share your one conversation. You can also ask Tessaya: “make a new persona called Luna”, “make Freya warmer”, “retire Onyx”."
       >
         {failed ? (
           <Muted>This server could not read the personas.</Muted>
@@ -251,27 +207,42 @@ function PersonasSection(props: {
           team.map((p, i) => (
             <View key={p.id} className={i > 0 ? "border-t border-border-subtle" : undefined}>
               <ListRowLayout
-                label={`${p.name}${p.lead ? " (lead)" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`}
+                label={`${p.name}${p.lead ? " · lead" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`}
                 description={[
                   p.role,
-                  p.brain === undefined
-                    ? null
-                    : `Thinks on ${p.brain.model}, ${p.brain.effort} effort.`,
+                  speaksAs(p.id) === undefined ? null : `voice ${speaksAs(p.id)}`,
                 ]
                   .filter(Boolean)
-                  .join(" ")}
+                  .join(" · ")}
                 accessory={
-                  canChange ? (
+                  canChange || library !== null ? (
                     <Menu
                       accessible
                       accessibilityRole="button"
                       accessibilityLabel={`Change ${p.name}`}
                       title={p.name}
                       actions={[
-                        { id: "edit", title: "Edit" },
-                        { id: "export-png", title: "Export card (PNG)" },
-                        { id: "export-json", title: "Export card (JSON)" },
-                        ...(p.lead
+                        ...(library === null
+                          ? []
+                          : [
+                              {
+                                id: "voice",
+                                title: "Voice",
+                                subactions: [
+                                  ...(library.clones ?? []).map((c) => ({
+                                    id: `clone:${c.id}`,
+                                    title: `${c.name} (your clone)`,
+                                  })),
+                                  { id: "clone:none", title: "No clone" },
+                                  ...library.pocket.map((v) => ({
+                                    id: `pocket:${v.id}`,
+                                    title: v.name,
+                                  })),
+                                ],
+                              },
+                            ]),
+                        ...(canChange ? PERSONA_ACTIONS : []),
+                        ...(!canChange || p.lead
                           ? []
                           : [
                               { id: "duplicate", title: "Duplicate" },
@@ -283,7 +254,10 @@ function PersonasSection(props: {
                             ]),
                       ]}
                       onPressAction={({ nativeEvent }) => {
-                        if (nativeEvent.event === "edit") setForm(personaFormFor(p));
+                        const [engine, voice] = nativeEvent.event.split(":");
+                        if (engine === "pocket" || engine === "clone")
+                          void pickVoice(p.id, engine, voice === "none" ? null : (voice ?? null));
+                        else if (nativeEvent.event === "edit") setForm(personaFormFor(p));
                         else if (nativeEvent.event === "export-png") void exportCard(p.id, "png");
                         else if (nativeEvent.event === "export-json") void exportCard(p.id, "json");
                         else if (nativeEvent.event === "duplicate")
@@ -297,7 +271,6 @@ function PersonasSection(props: {
                   ) : undefined
                 }
               />
-              <PersonaVoiceRow environmentId={environmentId} persona={p} />
             </View>
           ))
         )}

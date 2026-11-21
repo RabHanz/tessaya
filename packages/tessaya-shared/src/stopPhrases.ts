@@ -119,3 +119,25 @@ export const CONVERSATION_END = {
     },
   },
 } as const;
+
+/** The room brain's "he wants to think out loud": the vessel starts listen mode once her line has played, never said. */
+export const LISTEN_MARK = "[listen]";
+
+/**
+ * The model's way into listen mode (M-135) on every vessel: "just listen" and the other phrases are only its fast path.
+ * Evals: evals/tessaya-room/liveCases.ts (the listen-* cases).
+ */
+export const LISTEN_START = {
+  name: "listen_start",
+  description:
+    'Only listen while he thinks out loud: you say nothing and do nothing while he talks, however long he pauses, until he says "over to you" (or his own end words) or goes quiet for a while; then you get the whole thought at once. Call it when he asks you to just listen or hold your answer, however he puts it ("give me a minute to think this through out loud", "don\'t jump in yet", "let me brainstorm"). Not for a question about listening ("can you hear me?", "listen to this song"). Call it straight away, with at most a few words in line ("Go ahead, I\'m listening."), and write nothing else.',
+  input_schema: {
+    type: "object",
+    properties: {
+      line: {
+        type: "string",
+        description: "A few words before you listen, or leave it out to start in silence.",
+      },
+    },
+  },
+} as const;

@@ -1,7 +1,7 @@
 import { type NavigationTab } from "./navigation-tab-order";
 import { NativeStackScreenOptions } from "../../../native/StackHeader";
-import { SettingsHardwareRouteScreen } from "../../settings/SettingsHardwareRouteScreen";
 import { SettingsPersonasRouteScreen } from "../../settings/SettingsPersonasRouteScreen";
+import { DevicesRouteScreen } from "../../tessaya/devices/DevicesRouteScreen";
 import { TalkRouteScreen } from "../../tessaya/talk/TalkRouteScreen";
 import { UsageRouteScreen } from "../../usage/UsageRouteScreen";
 
@@ -16,7 +16,7 @@ export function WorkspaceExtraTab(props: {
       ) : props.tab === "personas" ? (
         <SettingsPersonasRouteScreen />
       ) : props.tab === "devices" ? (
-        <SettingsHardwareRouteScreen />
+        <DevicesRouteScreen />
       ) : (
         <UsageRouteScreen workspace />
       )}

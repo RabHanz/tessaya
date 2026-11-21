@@ -17,6 +17,7 @@ export type VoiceState =
   | "conversation"
   | "direct_session"
   | "dictation"
+  | "listen_mode"
   | "muted";
 
 export const VOICE_STATES: ReadonlyArray<VoiceState> = [
@@ -26,6 +27,7 @@ export const VOICE_STATES: ReadonlyArray<VoiceState> = [
   "conversation",
   "direct_session",
   "dictation",
+  "listen_mode",
   "muted",
 ];
 

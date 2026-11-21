@@ -14,7 +14,7 @@ import {
 import { ORCHESTRATION_V2_WS_METHODS, WsRpcGroup } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { roomActionOf } from "./roomActions.ts";
+import { repeatedFault, roomActionOf } from "./roomActions.ts";
 import { rpcChangesState } from "./rpcActions.ts";
 
 const src = (file: string) =>
@@ -60,6 +60,18 @@ describe("every action reaches the log", () => {
     expect(src("tessaya/TessayaRecordService.ts")).toMatch(/kind: `record\.\$\{entry\.kind\}`/);
     expect(src("tessaya/TessayaPlaybook.ts")).toMatch(/kind: "outcome\.job"/);
     expect(src("home/HomeDevices.ts")).toContain("roomActionOf(result.id, tail, payload)");
+  });
+
+  it("a fault the Tessel already reported is not recorded again when a reconnect replays it", () => {
+    const seen = new Map<string, string>();
+    const fault = JSON.stringify({ core: "ap", pc: "022f948e" });
+    expect(repeatedFault(seen, "t1", "event/wake/fault", fault)).toBe(false);
+    expect(repeatedFault(seen, "t1", "event/wake/fault", fault)).toBe(true);
+    expect(repeatedFault(seen, "t2", "event/wake/fault", fault)).toBe(false);
+    expect(
+      repeatedFault(seen, "t1", "event/wake/fault", JSON.stringify({ core: "ap", pc: "1" })),
+    ).toBe(false);
+    expect(repeatedFault(seen, "t1", "event/key", "{}")).toBe(false);
   });
 
   it("Tessel and room-loop events become actions, and what he said never does", () => {

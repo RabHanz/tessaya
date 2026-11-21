@@ -237,6 +237,7 @@ export const createVoiceRouter = (client: VoiceIntentClient): VoiceRouter => {
 
       case "speak":
       case "ignored":
+      case "listen":
         return { kind: "none" };
     }
   };

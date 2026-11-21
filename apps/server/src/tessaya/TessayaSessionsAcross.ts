@@ -78,6 +78,7 @@ export const summariesAcross = (input: {
       entries: env.fleet.entries,
       herdr: env.fleet.herdr ?? [],
       claude: env.fleet.claudeSessions ?? [],
+      plain: env.fleet.plainThreads ?? [],
     })),
     resolveWorkProject: (environmentId, projectId) => {
       const project = environmentId === here ? projects.get(projectId) : undefined;

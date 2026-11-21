@@ -55,6 +55,15 @@ const fleet = {
       foreground: said,
     },
   ],
+  plainThreads: [
+    {
+      threadId: "t9",
+      projectId: "p-secret",
+      title: "Payroll keys by hand",
+      state: "idle",
+      lastActivityAt: "2026-11-07T10:00:00.000Z",
+    },
+  ],
   claudeSessions: [
     {
       sessionId: "s1",
@@ -82,6 +91,7 @@ describe("the fleet an outside agent reads", () => {
     // Account names are personal.
     expect(text).not.toContain("alex@example.com");
     expect(out.entries.map((e) => e.title)).toEqual(["Payroll", "Tidy the README"]);
+    expect(out.plainThreads?.map((t) => t.title)).toEqual(["Payroll"]);
     expect(out.entries.map((e) => e.state)).toEqual(["running", "idle"]);
   });
   it("gives a linked server of his each entry's project and account, and keeps the Claude account, still saying nothing", () => {

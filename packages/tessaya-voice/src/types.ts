@@ -26,6 +26,7 @@ export type VoiceState =
   | "conversation"
   | "direct_session"
   | "dictation"
+  | "listen_mode"
   | "muted";
 
 export interface AudioInputDevice {

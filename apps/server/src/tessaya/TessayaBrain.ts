@@ -13,7 +13,12 @@ import {
   type EscalationAsk,
 } from "@t3tools/tessaya-shared/brainEscalation";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
-import { CONVERSATION_END, REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
+import {
+  CONVERSATION_END,
+  LISTEN_MARK,
+  LISTEN_START,
+  REST_MARK,
+} from "@t3tools/tessaya-shared/stopPhrases";
 import { plainExpression } from "@t3tools/tessaya-shared/expression";
 import { clockAsk } from "@t3tools/tessaya-shared/turnTier";
 import { toneOf } from "@t3tools/tessaya-shared/expressionMap";
@@ -175,6 +180,7 @@ export const sessionTools = (shared: ReadonlyArray<RoomTool>, own: ReadonlyArray
   ...own,
   ESCALATE,
   CONVERSATION_END,
+  LISTEN_START,
 ];
 
 /**
@@ -441,6 +447,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   let handOff: string | null = null;
   /** conversation_end was called, and what she had said by then: her goodbye. */
   let ended = false;
+  let listening = false;
   let goodbye = "";
   const escalate = Effect.fn("TessayaBrain.escalate")(function* (args: unknown) {
     const ask = escalationAsk(args);
@@ -515,8 +522,21 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
                   vessel.ended?.();
                   return { text: "Ended: say nothing more.", isError: false };
                 })
-              : (own.find((t) => t.spec.name === name)?.run(args) ??
-                tools.run(name, args, vessel.device)),
+              : name === LISTEN_START.name
+                ? Effect.sync((): ToolOutcome => {
+                    const words =
+                      typeof args === "object" && args !== null && "line" in args
+                        ? args.line
+                        : null;
+                    if (said.trim() === "" && typeof words === "string")
+                      sentences.push(words.slice(0, 120));
+                    sentences.flush();
+                    listening = true;
+                    vessel.ended?.();
+                    return { text: "Listening: say nothing more.", isError: false };
+                  })
+                : (own.find((t) => t.spec.name === name)?.run(args) ??
+                  tools.run(name, args, vessel.device)),
         ),
         vessel.hold(name),
         // Every tool the turn calls knows which vessel heard it.
@@ -607,7 +627,9 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   }
   // The vessel rests once her goodbye has played; a goodbye of no words still ends the turn.
   if (ended) say(REST_MARK);
-  if (said.trim() === "" && !ended) return null;
+  // The vessel listens once her line has played (listen mode, M-135).
+  else if (listening) say(LISTEN_MARK);
+  if (said.trim() === "" && !ended && !listening) return null;
   if (Exit.isFailure(ran)) {
     const sorry = " Sorry, something went wrong on my side.";
     said += sorry;

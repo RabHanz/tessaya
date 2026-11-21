@@ -19,6 +19,7 @@ const VIEWS: Record<VoiceState, HudView> = {
   conversation: { label: "Conversation", color: "#6366f1", pulsing: true },
   direct_session: { label: "Direct to session", color: "#f59e0b", pulsing: true },
   dictation: { label: "Dictating", color: "#14b8a6", pulsing: true },
+  listen_mode: { label: "Only listening", color: "#84cc16", pulsing: false },
   muted: { label: "Muted", color: "#ef4444", pulsing: false },
 };
 

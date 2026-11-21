@@ -66,7 +66,7 @@ import * as Layer from "effect/Layer";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import { emitAction, traced } from "../provenance/ActionLog.ts";
-import { roomActionOf } from "../provenance/roomActions.ts";
+import { repeatedFault, roomActionOf } from "../provenance/roomActions.ts";
 import { VoiceForgets } from "../tessaya/VoiceForgets.ts";
 import { MemberPreferences, type VoiceDefaults } from "../tessaya/MemberPreferences.ts";
 import { presenceMembers } from "../tessaya/PresenceFeeds.ts";
@@ -1663,6 +1663,7 @@ const make = Effect.gen(function* () {
   const mood = yield* Effect.serviceOption(TessayaMood);
   const liveContext = yield* Effect.serviceOption(TurnLiveContext);
   const motionSeen = new Map<string, MotionSeen>();
+  const faultsSeen = new Map<string, string>();
   const lastMoved = new Map<string, { at: number; said: number }>();
   const motionSettings =
     serverSettings._tag === "Some"
@@ -1896,7 +1897,10 @@ const make = Effect.gen(function* () {
     if (result.tag !== null) yield* runTag(result.id, result.tag);
     const tail = topic.slice(`freya/r1/${result.id}/`.length);
     // What the Tessel and its loop did, as actions (B-046); a retained "online" repeats, so only its changes count.
-    if (tail !== "state/online" || result.cameOnline || payload.trim() !== "1") {
+    if (
+      (tail !== "state/online" || result.cameOnline || payload.trim() !== "1") &&
+      !repeatedFault(faultsSeen, result.id, tail, payload)
+    ) {
       const action = roomActionOf(result.id, tail, payload);
       if (action !== null) yield* emitAction(action);
     }

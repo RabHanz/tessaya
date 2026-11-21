@@ -59,7 +59,7 @@ import {
 } from "@t3tools/tessaya-shared/turnTier";
 import type { CutIn } from "@t3tools/tessaya-shared/endOfTurn";
 import { atSpeakerMark } from "@t3tools/tessaya-shared/groupTalk";
-import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
+import { LISTEN_MARK, REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import { HOTKEY_PREFIX, hotkeyFor } from "../writing/transformRows.ts";
 import { redactFocusLabel } from "@t3tools/tessaya-shared/awareness";
 import { DEFAULT_POCKET_VOICE } from "@t3tools/tessaya-shared/voiceLibrary";
@@ -828,6 +828,8 @@ export const startScreenCompanion = (input: {
   readonly onDismissed?: () => void;
   /** Her brain heard him close the conversation: her voice rests once this reply is queued to play. */
   readonly onRest?: () => void;
+  /** Her brain heard him ask her to only listen: listen mode starts once this reply has played. */
+  readonly onListen?: () => void;
 }): ScreenCompanion => {
   const settingsPath = NodePath.join(input.stateDir, "baton-screen.json");
   const read = (): ScreenSettings => {
@@ -3073,10 +3075,13 @@ export const startScreenCompanion = (input: {
   };
   /** The model's conversation_end this turn, on either route: his conversation rests after the reply. */
   let rests = false;
+  /** The model's listen_start this turn: listen mode starts after the reply. */
+  let listens = false;
   /** His own session's tools: the team board is read as the persona answering him; the outside slot keeps `toolHost`. */
   const hisHost: ToolHost = {
     ...toolHost,
     rest: () => void (rests = true),
+    listen: () => void (listens = true),
     jobs: (op, args) => toolHost.jobs(op, op === "team" ? { ...args, agent: face.id } : args),
     // The player takes the setting as each sentence opens, so her next one is already at it. Here 100 is full scale, the default.
     speakingVolume: (to) => {
@@ -3588,8 +3593,10 @@ export const startScreenCompanion = (input: {
           placement: settings.serverBrainHome ? "home" : "here",
         },
         (said) => {
-          const words = said.replaceAll(REST_MARK, "");
-          if (words !== said) rests = true;
+          const kept = said.replaceAll(REST_MARK, "");
+          if (kept !== said) rests = true;
+          const words = kept.replaceAll(LISTEN_MARK, "");
+          if (words !== kept) listens = true;
           // A group's speaker mark (its own event) only steers the voice: never shown or kept.
           if (atSpeakerMark(words) === null) reply += words;
           if (words !== "") onDelta?.(words);
@@ -3694,6 +3701,7 @@ export const startScreenCompanion = (input: {
       };
       input.onNote?.("agent_turn_start", { said: text, ...who });
       rests = false;
+      listens = false;
       // The pill says it is working; nothing is drawn over the window it may be acting in (CU-1).
       activity("Thinking");
       const reply = await sayFor(outside, turn.onCancel)(
@@ -3744,6 +3752,7 @@ export const startScreenCompanion = (input: {
       voice.finish(reply);
       activity(null);
       if (rests && !outside) input.onRest?.();
+      else if (listens && !outside) input.onListen?.();
       if (runningMode() === null) voice.linger(reply);
       keepTurn(null);
       input.onNote?.("agent_turn", {

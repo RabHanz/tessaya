@@ -96,7 +96,7 @@ function TranslatedSettingsListScreen(props: {
     <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
       <View className="flex-1 bg-screen">
         <SettingsScreen
-          title={gt("Settings")}
+          title="More"
           workspaceRoot={props.sidebar}
           menus={[environmentMenu]}
           search={
@@ -191,13 +191,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[] 
   const bottomSafeArea = useNativeColumnLayoutMetrics()?.safeArea.bottom ?? insets.bottom;
   const workspace = useWorkspaceTabs();
   const query = workspace?.state.tabs.settings.query ?? "";
-  const overflowRows = useOverflowRows();
   const indexSections = useSettingsIndexSections();
   const sections = filterSettingsSections(
     [
-      { rows: overflowRows },
+      // her, his work and this phone; then how the phone connects, and the rest
+      ...indexSections.slice(0, 3),
       { title: gt("Connections"), rows: props.connections },
-      ...indexSections,
+      ...indexSections.slice(3),
     ],
     query,
   );
@@ -258,6 +258,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
           members: scopedProjectMembers,
         })
       : (selectedProject?.label ?? gt("Unavailable project"));
+  const overflowRows = useOverflowRows();
   const page = (
     target: SettingsPageTarget,
     icon: SettingsListRow["icon"],
@@ -266,64 +267,28 @@ function useSettingsIndexSections(): SettingsListSection[] {
   ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
   const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
     page(target, icon, label, { disabled: noServerTargets });
-  // Tessaya's own settings first, grouped as in her desktop window; then T3's, as on web.
+  // More, in three groups (phone redesign v2): her, his work, this phone. Personas and the house have their own tabs.
   return [
     {
-      title: "Talking to Tessaya",
-      rows: [
-        page("SettingsVoice", "mic", "Voice and dictation"),
-        serverPage("SettingsPersonas", "person.badge.plus", "Personas"),
-        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
-      ],
-    },
-    {
-      title: "Working for you",
+      title: "Her",
       rows: [
         serverPage("SettingsUpcoming", "timer", "Coming up"),
+        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
+        serverPage("SettingsMood", "face.smiling", "Her mood"),
+        serverPage("SettingsPulse", "bolt.circle", "Pulse"),
         serverPage("SettingsTeam", "person.2", "Team"),
         serverPage("SettingsCast", "person.crop.circle", "Cast"),
-        serverPage("SettingsPulse", "bolt.circle", "Pulse"),
-        serverPage("SettingsMood", "face.smiling", "Her mood"),
+      ],
+    },
+    {
+      title: "Your work",
+      rows: [
+        ...overflowRows,
         serverPage("SettingsActivity", "clock", "Activity"),
         serverPage("SettingsBrainUsage", "chart.bar.xaxis", "Brain usage"),
-      ],
-    },
-    {
-      title: "Home and devices",
-      rows: [
-        serverPage("SettingsHome", "house", "Home Assistant"),
-        serverPage("SettingsHardware", "face.smiling", "Tessels"),
-        serverPage("SettingsPresence", "person.fill.checkmark", "Presence"),
-        serverPage("SettingsHealth", "waveform.path.ecg", "Health"),
-      ],
-    },
-    {
-      rows: [
-        page("SettingsOrganization", "gearshape", gt("General")),
-        page("SettingsAppearance", "paintbrush", gt("Appearance")),
-        page("SettingsLanguage", "globe", gt("Language"), {
-          value: SUPPORTED_LOCALES.includes(language)
-            ? nativeLanguageName(language)
-            : gt("System default"),
-        }),
-        page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
-        ...(navigationCustomizationAvailable()
-          ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
-          : []),
-        page("SettingsKeyboard", "keyboard", gt("Keyboard")),
-      ],
-    },
-    {
-      title: gt("Agents"),
-      rows: [
         serverPage("SettingsProviderAccounts", "person.crop.circle", gt("Providers")),
         serverPage("SettingsThreads", "text.bubble", gt("Threads")),
         page("SettingsScheduledTasks", "clock", gt("Scheduled tasks")),
-      ],
-    },
-    {
-      title: gt("Code"),
-      rows: [
         page(
           "SettingsProjectOverview",
           "folder",
@@ -336,6 +301,24 @@ function useSettingsIndexSections(): SettingsListSection[] {
           gt("Source control"),
         ),
         serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
+      ],
+    },
+    {
+      title: "This phone",
+      rows: [
+        page("SettingsVoice", "mic", "Voice and microphone"),
+        page("SettingsAppearance", "paintbrush", gt("Appearance")),
+        page("SettingsLanguage", "globe", gt("Language"), {
+          value: SUPPORTED_LOCALES.includes(language)
+            ? nativeLanguageName(language)
+            : gt("System default"),
+        }),
+        page("SettingsOrganization", "gearshape", gt("General")),
+        page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
+        ...(navigationCustomizationAvailable()
+          ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
+          : []),
+        page("SettingsKeyboard", "keyboard", gt("Keyboard")),
       ],
     },
     {

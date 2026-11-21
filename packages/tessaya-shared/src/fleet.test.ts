@@ -339,3 +339,41 @@ describe("adopted sessions in the fleet", () => {
     expect(fleet.entries[0]?.adopted).toEqual([]);
   });
 });
+
+// 21 Nov: a thread he started by hand (the laptop's printer thread) was in no work session, so no search found it.
+describe("plain threads in the fleet", () => {
+  it("lists recent threads in no work session, newest first, and never an attached, hidden or old one", () => {
+    const fleet = build({
+      workSessions: [
+        workSession({ id: "w1", providerSessions: [providerSession({ threadId: "t-work" })] }),
+      ],
+      threads: [
+        thread({ threadId: "t-work", projectId }),
+        thread({
+          threadId: "t-print",
+          title: "V-Minion builds",
+          projectId,
+          sessionStatus: "running",
+          latestTurnState: "running",
+        }),
+        thread({
+          threadId: "t-new",
+          title: "Garden planner",
+          projectId,
+          updatedAt: "2026-09-18T04:09:00.000Z",
+        }),
+        thread({ threadId: "t-archived", projectId, hidden: true }),
+        thread({ threadId: "t-old", projectId, updatedAt: "2026-08-01T00:00:00.000Z" }),
+        thread({ threadId: "t-no-project" }),
+      ],
+    });
+    expect(fleet.plainThreads?.map((t) => [t.threadId, t.title, t.state])).toEqual([
+      ["t-new", "Garden planner", "idle"],
+      ["t-print", "V-Minion builds", "working"],
+    ]);
+  });
+
+  it("adds nothing to a fleet without any", () => {
+    expect(build({ workSessions: [], threads: [] })).not.toHaveProperty("plainThreads");
+  });
+});

@@ -82,8 +82,24 @@ export const TessayaFleetEntry = Schema.Struct({
 });
 export type TessayaFleetEntry = typeof TessayaFleetEntry.Type;
 
+/**
+ * A T3 thread in no work session (started by hand, or imported from a Claude session), so session search and steer
+ * reach it too. Recent and unarchived only, and a few at most: a listing, not the thread list.
+ */
+export const TessayaFleetPlainThread = Schema.Struct({
+  threadId: ThreadId,
+  projectId: ProjectId,
+  title: TrimmedNonEmptyString,
+  state: TessayaSessionState,
+  lastActivityAt: IsoDateTime,
+  /** Resolved by the server that runs it, as an entry's is. */
+  project: Schema.optionalKey(TessayaProjectRef),
+});
+export type TessayaFleetPlainThread = typeof TessayaFleetPlainThread.Type;
+
 export const TessayaFleet = Schema.Struct({
   entries: Schema.Array(TessayaFleetEntry),
+  plainThreads: Schema.optionalKey(Schema.Array(TessayaFleetPlainThread)),
   /**
    * Every agent and terminal Herdr is running on this environment, across its
    * spaces and named sessions, adopted or not (D65). Herdr is where they live;

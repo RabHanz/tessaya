@@ -11,7 +11,7 @@ import {
 } from "@t3tools/tessaya-shared/appCommands";
 import { DEVICE_TOOL_TEXT, VOLUME_INPUT_SCHEMA } from "@t3tools/tessaya-shared/deviceTools";
 import { JOB_TOOL_TEXT } from "@t3tools/tessaya-shared/jobTools";
-import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
+import { CONVERSATION_END, LISTEN_START } from "@t3tools/tessaya-shared/stopPhrases";
 import type { VolumeTo } from "@t3tools/tessaya-shared/speakingVolume";
 import { BATCH_STEP_TOOLS, batchSteps, MAX_BATCH_STEPS } from "@t3tools/tessaya-shared/operator";
 import { OPEN_WINDOWS_HEAD } from "@t3tools/tessaya-shared/screenCompanion";
@@ -138,6 +138,8 @@ export interface ToolHost {
   readonly speakingVolume?: (to: VolumeTo) => string;
   /** He closed the conversation: her voice rests once this reply has played. */
   readonly rest?: () => void;
+  /** Her listen_start: listen mode starts once her line has played. */
+  readonly listen?: () => void;
   readonly target: (label: string, workSessionId: string | undefined) => Promise<string>;
   /**
    * Each of this table's own tools that changes something, as it ends, with how long it took: into his action log.
@@ -851,6 +853,18 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
         // Her words are her reply here, so the goodbye goes back to be said.
         return {
           text: goodbye === "" ? "Ended: say nothing more." : `Ended: say only "${goodbye}".`,
+        };
+      },
+    },
+    {
+      name: LISTEN_START.name,
+      description: LISTEN_START.description,
+      inputSchema: LISTEN_START.input_schema,
+      run: async (a) => {
+        host.listen?.();
+        const line = typeof a["line"] === "string" ? str(a, "line", 120) : "";
+        return {
+          text: line === "" ? "Listening: say nothing more." : `Listening: say only "${line}".`,
         };
       },
     },

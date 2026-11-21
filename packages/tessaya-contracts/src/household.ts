@@ -27,6 +27,8 @@ export const TessayaPreferenceKey = Schema.Literals([
   "devices",
   "location",
   "camera",
+  "listenWait",
+  "listenEnds",
 ]);
 export type TessayaPreferenceKey = typeof TessayaPreferenceKey.Type;
 

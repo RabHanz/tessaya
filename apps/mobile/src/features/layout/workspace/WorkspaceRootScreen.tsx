@@ -49,7 +49,7 @@ function WorkspaceRootTitle(props: {
   const maxWidth = Math.max(0, props.columnWidth - (use(HeaderItemsWidthContext) ?? 160));
   const enabled = useEnabledNavigationTabs();
   const tabTitle = settingsOpen
-    ? "Settings"
+    ? "More"
     : enabled.length
       ? TAB_TITLES[state.selectedTab]
       : "Navigation";

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { EnrolCard } from "@t3tools/tessaya-contracts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { firstClause } from "@t3tools/tessaya-shared/narration";
 
 import type { SpeakerIdentity } from "../speaker.ts";
@@ -3748,5 +3749,91 @@ describe("her name alone, then nothing (16:36:43, 13 Nov: the red light and sile
       expect(bench.t.published.filter((p) => p.topic.endsWith("/voice/down"))).toEqual([]);
       expect(bench.logs.filter((l) => l.includes('her name alone: "'))).toEqual([]);
     }
+  });
+});
+
+// M-135: he thinks out loud and she only listens; the whole thought is one turn.
+describe("listen mode in the room", () => {
+  const said = (texts: ReadonlyArray<string>) => {
+    let n = 0;
+    return () => {
+      const text = texts[n++] ?? "";
+      return { feed: () => undefined, finish: async () => text, cancel: () => undefined };
+    };
+  };
+  const turn = async (t: ReturnType<typeof setup>) => {
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+  };
+
+  it("keeps every line through long pauses and answers once, on his end words, with all of it", async () => {
+    const t = setup({
+      recognise: said([
+        "Just listen.",
+        "I want a planner for the garden.",
+        "It should know the seasons here.",
+        "And remind me to water. Over to you.",
+      ]),
+    });
+    // His own silence setting, by voice ("wait a minute and a half"): longer than any conversation window.
+    t.room.message(
+      `freya/r1/${DEV}/voice/prefs/${OWNER_MEMBER_ID}`,
+      Buffer.from(JSON.stringify({ listenWait: "90" })),
+    );
+    t.s2();
+    await turn(t);
+    await turn(t);
+    await t.deps.sleep(ROOM_CONFIG.followMs + 5_000);
+    t.room.sweep();
+    await turn(t);
+    expect(t.brainCalls).toHaveLength(0);
+    await turn(t);
+    expect(t.brainCalls).toHaveLength(1);
+    const asked = t.brainCalls[0]!.messages.at(-1)!.content;
+    expect(asked).toMatch(/only listen/);
+    expect(asked).toMatch(
+      /I want a planner for the garden\. It should know the seasons here\. And remind me to water\.$/,
+    );
+  });
+
+  it("ends on his silence, and a cancel drops the thought with no turn", async () => {
+    const t = setup({ recognise: said(["Let me think out loud.", "A shed by the fence."]) });
+    t.s2();
+    await turn(t);
+    await turn(t);
+    await t.deps.sleep(25_000);
+    t.room.session(DEV)!.tick();
+    await t.metrics;
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      expect.stringMatching(/only listen[\s\S]*A shed by the fence\.$/),
+    ]);
+
+    const c = setup({ recognise: said(["Just listen.", "An idea.", "Never mind."]) });
+    c.s2();
+    await turn(c);
+    await turn(c);
+    await turn(c);
+    expect(c.brainCalls).toHaveLength(0);
+  });
+
+  it("listens after her line when her brain starts it (listen_start)", async () => {
+    const t = setup({
+      recognise: said([
+        "Give me a minute to work this through.",
+        "Solar on the roof.",
+        "Over to you.",
+      ]),
+      brain: async function* (input) {
+        t.brainCalls.push(input);
+        yield t.brainCalls.length === 1 ? "Go ahead, I'm listening.[listen]" : "Solar it is.";
+      },
+    });
+    t.s2();
+    await turn(t);
+    await turn(t);
+    expect(t.brainCalls).toHaveLength(1);
+    await turn(t);
+    expect(t.brainCalls).toHaveLength(2);
+    expect(t.brainCalls[1]!.messages.at(-1)!.content).toMatch(/Solar on the roof\.$/);
   });
 });
