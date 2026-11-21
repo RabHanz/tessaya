@@ -28,6 +28,7 @@ import {
   Linking,
   Pressable,
   ScrollView,
+  type ScrollViewInstance,
   TextInput,
   useWindowDimensions,
   View,
@@ -42,6 +43,7 @@ import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { useVoiceInputController } from "../../voice-input/useVoiceInputController";
 import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
+import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
 import {
   addFrames,
   batteryDrain,
@@ -67,8 +69,10 @@ export function TalkRouteScreen() {
   const [active, setActive] = useState(AppState.currentState === "active");
   const [personas, setPersonas] = useState<ReadonlyArray<TessayaPersona>>([]);
   const [picked, setPicked] = useState<string | null>(null);
-  const [heard, setHeard] = useState("");
-  const [said, setSaid] = useState("");
+  // his one conversation with her (M-124): the room transcript a page at a time, then this phone's own exchanges
+  const [lines, setLines] = useState<ReadonlyArray<TalkLine>>([]);
+  const [earliest, setEarliest] = useState<number | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
   // the microphone, asked for by a tap with its reason first, never as a system prompt in the middle of a hold
   const [mic, setMic] = useState<"unknown" | "ask" | "granted" | "denied">("unknown");
   const [typed, setTyped] = useState("");
@@ -286,6 +290,35 @@ export function TalkRouteScreen() {
 
   const post = (data: object) => webView.current?.postMessage(JSON.stringify(data));
 
+  const readHistory = async (before?: number) => {
+    if (environmentId === null) return;
+    const got = await voiceCall({
+      environmentId,
+      input: { kind: "read", op: "conversation", args: before === undefined ? {} : { before } },
+    });
+    const page =
+      got._tag === "Success"
+        ? ((got.value as TessayaVoiceCallResult).value as {
+            from?: unknown;
+            lines?: ReadonlyArray<TalkLine>;
+          } | null)
+        : null;
+    if (page === null || !Array.isArray(page.lines)) return;
+    setLines((held) => mergeLines(page.lines ?? [], held));
+    if (typeof page.from === "number") setEarliest(page.from);
+  };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads his conversation from her brain once per environment
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies -- the read closes over this environment
+    void readHistory();
+  }, [environmentId]);
+  const said = (role: "them" | "her", text: string) =>
+    setLines((held) =>
+      mergeLines(held, [
+        { at: Date.now(), vessel: manifestNow().deviceId, role, text, private: false },
+      ]),
+    );
+
   const speak = async (text: string) => {
     if (environmentId === null || persona === null || text.trim() === "") return;
     // her body speaks in the brain's one mood for this persona (as every other body does), neutral if unread
@@ -338,14 +371,14 @@ export function TalkRouteScreen() {
 
   const ask = async (text: string) => {
     if (environmentId === null || text.trim() === "") return;
-    setHeard(text);
-    setSaid("…");
+    said("them", text);
+    setPending("…");
     const id = `phone-${Date.now().toString(36)}`;
     const opened = await phoneCall({
       environmentId,
       input: { op: "ask", args: { id, text, origin: "phone talk" } },
     });
-    if (opened._tag !== "Success") return setSaid("She couldn't be reached. Try again.");
+    if (opened._tag !== "Success") return setPending("She couldn't be reached. Try again.");
     for (let i = 0; i < POLLS; i++) {
       await new Promise((r) => setTimeout(r, POLL_MS));
       const got = await phoneCall({ environmentId, input: { op: "askGet", args: { id } } });
@@ -354,8 +387,12 @@ export function TalkRouteScreen() {
           ? (got.value.value as { status?: string; line?: string } | null)
           : null,
       );
-      setSaid(outcome.line);
-      if (outcome.done) return void speak(outcome.line);
+      setPending(outcome.line);
+      if (outcome.done) {
+        setPending(null);
+        said("her", outcome.line);
+        return void speak(outcome.line);
+      }
     }
   };
 
@@ -436,16 +473,13 @@ export function TalkRouteScreen() {
           post({ type: "inset", bottom: inset.current });
         }}
       >
-        {heard === "" ? null : (
-          <Text className="text-sm text-muted-foreground" numberOfLines={2}>
-            {heard}
-          </Text>
-        )}
-        {said === "" ? null : (
-          <Text className="text-base text-foreground" numberOfLines={6}>
-            {said}
-          </Text>
-        )}
+        <TalkHistory
+          lines={lines}
+          pending={pending}
+          thisDevice={manifestNow().deviceId}
+          maxHeight={screenHeight * 0.38}
+          earlier={earliest === null ? null : () => void readHistory(earliest)}
+        />
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -526,5 +560,74 @@ export function TalkRouteScreen() {
         </Pressable>
       </SafeAreaView>
     </View>
+  );
+}
+
+/** His conversation with her, newest at the bottom: her last line is the largest thing here, his last words above it. */
+function TalkHistory(props: {
+  readonly lines: ReadonlyArray<TalkLine>;
+  readonly pending: string | null;
+  readonly thisDevice: string;
+  readonly maxHeight: number;
+  readonly earlier: (() => void) | null;
+}) {
+  const scroller = useRef<ScrollViewInstance>(null);
+  // follows the newest line unless he has scrolled up to read
+  const atEnd = useRef(true);
+  const [now] = useState(() => Date.now());
+  const rows = talkRows(props.lines, props.thisDevice, now);
+  const lastHer = rows.findLastIndex((r) => r.kind === "line" && r.role === "her");
+  if (rows.length === 0 && props.pending === null) return null;
+  return (
+    <ScrollView
+      ref={scroller}
+      style={{ maxHeight: props.maxHeight }}
+      contentContainerClassName="gap-2"
+      showsVerticalScrollIndicator={false}
+      onScroll={(e) => {
+        const n = e.nativeEvent;
+        atEnd.current = n.contentOffset.y + n.layoutMeasurement.height >= n.contentSize.height - 24;
+      }}
+      scrollEventThrottle={200}
+      onContentSizeChange={() => {
+        if (atEnd.current) scroller.current?.scrollToEnd({ animated: false });
+      }}
+    >
+      {props.earlier === null ? null : (
+        <Pressable accessibilityRole="button" onPress={props.earlier} className="py-1">
+          <Text className="text-center text-xs text-muted-foreground">Earlier</Text>
+        </Pressable>
+      )}
+      {rows.map((r, i) =>
+        r.kind === "day" ? (
+          <Text
+            key={r.key}
+            className="pt-2 text-center text-xs uppercase tracking-wide text-muted-foreground"
+          >
+            {r.label}
+          </Text>
+        ) : (
+          <View key={r.key} className={r.role === "them" ? "items-end" : "items-start"}>
+            <Text className="text-[11px] text-muted-foreground">{r.where}</Text>
+            <Text
+              className={
+                r.private
+                  ? "text-sm italic text-muted-foreground"
+                  : r.role === "them"
+                    ? "text-sm text-muted-foreground"
+                    : i === lastHer && props.pending === null
+                      ? "text-xl text-foreground"
+                      : "text-base text-foreground"
+              }
+            >
+              {r.text}
+            </Text>
+          </View>
+        ),
+      )}
+      {props.pending === null ? null : (
+        <Text className="text-xl text-foreground">{props.pending}</Text>
+      )}
+    </ScrollView>
   );
 }
