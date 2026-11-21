@@ -453,7 +453,29 @@ export const palmsIn = (
   return { left: one("left"), right: one("right") };
 };
 
-/** Finger bones for one hand's shape [curl, spread, thumb], as local Euler on the bones the model has (VRM 1.0 axes). */
+/**
+ * How far each finger joint folds in a resting hand (rad, proximal, intermediate, distal): the median of a person's
+ * hands over a minute of talking (BEAT speaker 1, retargeted with tessaya-ops/anim-pipeline/beat-hands.py; the data
+ * stays in tessaya-private-data). A real resting hand folds most at the middle joints, and the ring finger most of all.
+ */
+const RELAXED_FOLD = {
+  Index: [0.44, 0.67, 0.4],
+  Middle: [0.45, 0.67, 0.4],
+  Ring: [0.41, 0.81, 0.24],
+  Little: [0.23, 0.64, 0.42],
+} as const;
+/** How the knuckles fan out as a hand spreads, the little finger most. */
+const FAN = { Index: 1, Middle: 0.3, Ring: -0.4, Little: -1 } as const;
+/** Each joint's human range of flexion (MCP ~90°, PIP ~100°, DIP ~70°, AAOS normal ranges): the clamp on any shape. */
+const FINGER_LIMITS = [1.57, 1.75, 1.22] as const;
+const SPREAD_MAX = 0.3;
+/** Her hands when nothing shapes them: the captured resting fold (curl), a little fan, the thumb eased in. */
+export const RELAXED_FINGERS: Euler = [0.22, 0.15, 0.3] as unknown as Euler;
+
+/**
+ * Finger bones for one hand's shape [curl, spread, thumb], as local Euler on the bones the model has (VRM 1.0 axes):
+ * the captured resting fold, scaled toward flat (curl 0) or a fist (curl 1) joint by joint, within each joint's range.
+ */
 export const fingerBones = (
   s: Side,
   shape: Euler,
@@ -461,22 +483,26 @@ export const fingerBones = (
 ): Record<string, Euler> => {
   const [curl, spread, thumb] = shape;
   const sg = s === "left" ? -1 : 1;
+  const k = Math.max(0, curl) / RELAXED_FINGERS[0];
   const out: Record<string, Euler> = {};
-  const fan = { Index: 1, Middle: 0.3, Ring: -0.4, Little: -1 } as const;
-  for (const [finger, k] of Object.entries(fan))
+  for (const [finger, fan] of Object.entries(FAN))
     for (const [i, part] of ["Proximal", "Intermediate", "Distal"].entries()) {
       const b = `${s}${finger}${part}`;
       if (!has(b)) continue;
-      // each joint folds toward the palm (about z), the knuckles fan out in the palm's plane (about y)
+      // the capture's fold, joint by joint; its small twists and splay are left out (they differ from rig to rig and
+      // cross neighbouring fingers on some), the knuckles fanning out by the spread instead
+      const z = RELAXED_FOLD[finger as keyof typeof FAN][i]!;
       out[b] = [
         0,
-        i === 0 ? sg * -0.18 * spread * k : 0,
-        sg * (i === 0 ? 1.2 : i === 1 ? 1.4 : 0.9) * curl,
+        i === 0 ? sg * -Math.min(SPREAD_MAX, 0.18 * spread) * fan : 0,
+        sg * Math.min(FINGER_LIMITS[i]!, z * k),
       ];
     }
+  // the thumb stays the anatomical model's: the capture's thumb rest differs from VRM's, and retargeted it juts forward
   for (const [i, part] of ["Metacarpal", "Proximal", "Distal"].entries()) {
     const b = `${s}Thumb${part}`;
-    if (has(b)) out[b] = [0.5 * thumb * (i === 0 ? 0.6 : 1), sg * 0.25 * thumb, sg * 0.3 * thumb];
+    const t = Math.min(1, thumb);
+    if (has(b)) out[b] = [0.5 * t * (i === 0 ? 0.6 : 1), sg * 0.25 * t, sg * 0.3 * t];
   }
   return out;
 };
