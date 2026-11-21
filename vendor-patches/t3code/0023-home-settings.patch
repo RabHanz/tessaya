@@ -130,10 +130,27 @@ index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 50ad81383addc75250b37025d1bfb43ce05a9da5..bd0b97ef28e90b8f9f21513dfe09f7a286c28233 100644
+index 50ad81383addc75250b37025d1bfb43ce05a9da5..14cbe0e91aa934f89989bd0d7369c63986579cf7 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-@@ -96,7 +96,7 @@ function TranslatedSettingsListScreen(props: {
+@@ -17,7 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
+ import { useAuth, useUser } from "@clerk/expo";
+ import { useNavigation, useNavigationState } from "@react-navigation/native";
+ import { use, type ComponentProps } from "react";
+-import { Platform, View } from "react-native";
++import { Alert, Platform, View } from "react-native";
+ import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
+ import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
+ import { useSafeAreaInsets } from "react-native-safe-area-context";
+@@ -27,6 +27,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context
+ import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
+ import { SettingsRow } from "./components/SettingsRow";
+ import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
++import { setSleeveUnlocked, useSleeve } from "../tessaya/sleeve/useSleeve";
+ import { SettingsScreen } from "./components/SettingsScreen";
+ import type { SettingsPageTarget } from "./components/settings-page-targets";
+ import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
+@@ -96,7 +97,7 @@ function TranslatedSettingsListScreen(props: {
      <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
        <View className="flex-1 bg-screen">
          <SettingsScreen
@@ -142,7 +159,7 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..bd0b97ef28e90b8f9f21513dfe09f7a2
            workspaceRoot={props.sidebar}
            menus={[environmentMenu]}
            search={
-@@ -191,13 +191,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
+@@ -191,13 +192,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
    const bottomSafeArea = useNativeColumnLayoutMetrics()?.safeArea.bottom ?? insets.bottom;
    const workspace = useWorkspaceTabs();
    const query = workspace?.state.tabs.settings.query ?? "";
@@ -159,15 +176,16 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..bd0b97ef28e90b8f9f21513dfe09f7a2
      ],
      query,
    );
-@@ -258,6 +258,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -258,6 +259,8 @@ function useSettingsIndexSections(): SettingsListSection[] {
            members: scopedProjectMembers,
          })
        : (selectedProject?.label ?? gt("Unavailable project"));
 +  const overflowRows = useOverflowRows();
++  const sleeve = useSleeve();
    const page = (
      target: SettingsPageTarget,
      icon: SettingsListRow["icon"],
-@@ -266,36 +267,28 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -266,36 +269,28 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
@@ -216,13 +234,37 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..bd0b97ef28e90b8f9f21513dfe09f7a2
          page(
            "SettingsProjectOverview",
            "folder",
-@@ -310,6 +303,24 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -310,6 +305,48 @@ function useSettingsIndexSections(): SettingsListSection[] {
          serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
        ],
      },
 +    {
 +      title: "This phone",
 +      rows: [
++        {
++          id: "sleeve",
++          icon: "iphone",
++          label: "Mode",
++          value: sleeve.sleeve ? "Sleeve: only her" : "Full",
++          onPress: () =>
++            Alert.alert(
++              sleeve.sleeve ? "Give this phone back?" : "Make this phone her Sleeve?",
++              sleeve.sleeve
++                ? "It shows everything again: your work, her personas and every setting."
++                : "It shows only her, full screen. Hold the dot at the top, then Face ID or your PIN, to reach settings. You can also say “make this phone her sleeve” or “give me my phone back” on any device.",
++              [
++                { text: "Cancel", style: "cancel" },
++                {
++                  text: sleeve.sleeve ? "Give it back" : "Make it her Sleeve",
++                  onPress: () => {
++                    // a new Sleeve covers the app at once, locked, as it will after every restart
++                    if (!sleeve.sleeve) setSleeveUnlocked(false);
++                    void sleeve.set(!sleeve.sleeve);
++                  },
++                },
++              ],
++            ),
++        },
 +        page("SettingsVoice", "mic", "Voice and microphone"),
 +        page("SettingsAppearance", "paintbrush", gt("Appearance")),
 +        page("SettingsLanguage", "globe", gt("Language"), {
