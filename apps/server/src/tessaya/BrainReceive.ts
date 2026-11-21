@@ -33,6 +33,7 @@ import { TessayaScratchpadAct } from "@t3tools/tessaya-contracts";
 import { scratchpadHere } from "./TessayaScratchpad.ts";
 import { storeStylePairs } from "./stylePairsStore.ts";
 import { TessayaVocabulary, VocabularyAtBrain } from "./TessayaVocabulary.ts";
+import { decodeFingerprint, FleetCoherence } from "./FleetCoherence.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
@@ -217,6 +218,13 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
   }
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   switch (op) {
+    case "fingerprint": {
+      const fp = decodeFingerprint(payload);
+      if (Option.isNone(fp)) return refused("Not a fingerprint.");
+      const fleet = yield* Effect.serviceOption(FleetCoherence);
+      if (Option.isSome(fleet)) yield* fleet.value.record(fp.value);
+      return done();
+    }
     case "roomLoop": {
       const act = decodeRoomLoop(payload);
       if (Option.isNone(act)) return refused("Not a room-loop claim.");

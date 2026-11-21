@@ -62,6 +62,45 @@ export type InputQuality = typeof InputQuality.Type;
 export const StageStat = Schema.Struct({ p50: Num, p90: Num, n: Schema.Number });
 export type StageStat = typeof StageStat.Type;
 
+/** One store a machine holds, as a short digest, so the brain can tell a copy that drifted from hers. */
+export const FleetStore = Schema.Struct({
+  digest: Schema.String,
+  count: Schema.Number,
+  /** A few words on what is in it ("owner: 61 samples"), for her evidence. */
+  summary: Schema.optionalKey(Schema.String),
+});
+export type FleetStore = typeof FleetStore.Type;
+
+/**
+ * What one machine or device believes (M-146): its build, the brain it talks to, the login it spends and a digest of
+ * each store it keeps. The brain compares every one with its own; new hardware joins by sending the same shape.
+ */
+export const FleetFingerprint = Schema.Struct({
+  id: Schema.String,
+  /** What she calls it: "the laptop's server", "Tumble's room loop". */
+  name: Schema.String,
+  /** "server", "loop", "tessel", "phone" or any new kind. */
+  kind: Schema.String,
+  /** The hostname it runs on, so a loopback brain on the brain's own host reads as right. */
+  host: Schema.String,
+  /** Its own IPs and names, so a brain target naming any of them is recognised as it. */
+  addresses: Schema.optionalKey(Schema.Array(Schema.String)),
+  version: Schema.String,
+  commit: Schema.NullOr(Schema.String),
+  /** When this build started running here. */
+  startedAt: Schema.Number,
+  /** The brain it sends to: `env:<environment id>`, `url:<host[:port]>`, or null for "I am the brain". */
+  brain: Schema.NullOr(Schema.String),
+  /** The provider login it spends: a readable label and a digest of the credential, never the secret. */
+  account: Schema.NullOr(Schema.Struct({ label: Schema.String, digest: Schema.String })),
+  stores: Schema.Record(Schema.String, FleetStore),
+  /** Its own clock when it sent this. */
+  sentAt: Schema.Number,
+  /** The brain's clock when it arrived; set by the brain. */
+  receivedAt: Schema.optionalKey(Schema.Number),
+});
+export type FleetFingerprint = typeof FleetFingerprint.Type;
+
 /** A room loop's report on its host and one Tessel it serves (`freya/r1/<id>/state/voicehost`, each minute). */
 export const VoiceHostReport = Schema.Struct({
   host: HostHealth,
@@ -72,6 +111,7 @@ export const VoiceHostReport = Schema.Struct({
   /** Her server as the loop sees it: median health-check round trip, and when turns could not reach it. */
   brain: Schema.Struct({ rttMs: Num, failures: Schema.Array(Schema.Number) }),
   at: Schema.Number,
+  fingerprint: Schema.optionalKey(FleetFingerprint),
 });
 export type VoiceHostReport = typeof VoiceHostReport.Type;
 
@@ -156,6 +196,8 @@ export const HealthSnapshot = Schema.Struct({
   notes: Schema.Array(HealthNote),
   /** The last dictation this server transcribed (desktop, web, phone mics), and how it sounded. */
   dictation: Schema.optionalKey(Schema.Struct({ at: Schema.Number, input: InputQuality })),
+  /** Every machine's and device's fingerprint, this server's first (M-146). */
+  fleet: Schema.optionalKey(Schema.Array(FleetFingerprint)),
 });
 export type HealthSnapshot = typeof HealthSnapshot.Type;
 

@@ -8,6 +8,7 @@
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 
+import type { FleetFingerprint } from "@t3tools/tessaya-contracts";
 import type { ServiceHealth, VoiceHostReport } from "@t3tools/tessaya-shared/health";
 import { hostHealthOf } from "@t3tools/tessaya-shared/hostHealth";
 
@@ -65,6 +66,7 @@ export const createHealthReport = (now: () => number = Date.now) => {
         readonly host: VoiceHostReport["host"];
         readonly services: ReadonlyArray<ServiceHealth>;
         readonly replay: VoiceHostReport["replay"];
+        readonly fingerprint?: FleetFingerprint;
       },
     ): VoiceHostReport => {
       if (now() - since > WAKE_WINDOW_MS) {

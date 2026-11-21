@@ -20,6 +20,7 @@ import {
   VoiceIdTurn,
 } from "@t3tools/tessaya-contracts";
 
+import { fleetFindings } from "./coherence.ts";
 import { hostHealthOf } from "./hostHealth.ts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -388,6 +389,7 @@ export const diagnose = (s: HealthSnapshot, symptom: HealthSymptom = "any"): Hea
         fix: null,
         symptoms: ["slow"],
       })),
+    ...fleetFindings(s.fleet ?? [], s.at),
   ];
   const relevant = all
     .filter((f) => symptom === "any" || f.symptoms.includes(symptom))
