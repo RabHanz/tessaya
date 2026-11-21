@@ -6,6 +6,8 @@
 import { alsoLine, type BodyNow } from "@t3tools/tessaya-shared/embodiment";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { PRESENCE_BARS } from "@t3tools/tessaya-shared/presence";
+import { whatsNewLine } from "@t3tools/tessaya-shared/whatsNew";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
@@ -13,6 +15,7 @@ import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { bodyHolderLine } from "./TessayaBody.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { whatsNew } from "./TessayaWhatsNew.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
 
 /** Her state as lines, each ending with its source; `asker` is the member asking (only he hears whom a face was for). */
@@ -61,6 +64,8 @@ export const myState = Effect.fn("TessayaSelf.myState")(function* (input: {
     ).length;
     lines.push(`People around: ${around} (from presence).`);
   }
+  const news = whatsNewLine(yield* whatsNew(), yield* Clock.currentTimeMillis);
+  if (news !== "") lines.push(`${news} (from her releases, kept on her brain)`);
   const registry = yield* Effect.serviceOption(DeviceRegistry);
   if (Option.isSome(registry)) {
     const all = (yield* registry.value.list).filter((d) => d.stale !== true);

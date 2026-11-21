@@ -626,6 +626,17 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     calls: ["tessaya_memory_remember"],
     lastNotSays: [/\b(rest|sleep|wind down|earned|take it easy|go easy|look after yourself)\b/i],
   },
+  // 21 Nov 06:29 (GMT+5): "any new capabilities? I updated some things" got "not that I can see" after .209.
+  {
+    id: "whats-new-capabilities",
+    source: "Tumble 21 Nov 06:29: 'Do you have any new capabilities?' got 'nothing new in either'",
+    said: ["Do you have any new capabilities? You should have had now. I updated some things."],
+    verified: true,
+    memory: HERE,
+    calls: ["tessaya_my_state"],
+    lastSays: [/\b(voice|room|desktop|feel|hear)/i],
+    lastNotSays: [/\b(nothing new|not that I can see|no new)\b/i, /\b(PR|#\d|version \d|0\.\d)/],
+  },
   // Controls: a feeling never leaks into a task, which stays as brief and exact as ever.
   {
     id: "presence-control-lamp-sad",

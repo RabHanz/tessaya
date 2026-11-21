@@ -94,6 +94,7 @@ import * as EnvironmentAuth from "../../../auth/EnvironmentAuth.ts";
 import * as PhonePairing from "../../../tessaya/PhonePairing.ts";
 import * as HouseholdDevices from "../../../tessaya/HouseholdDevices.ts";
 import { myState } from "../../../tessaya/TessayaSelf.ts";
+import { recordRelease } from "../../../tessaya/TessayaWhatsNew.ts";
 import { readCaller } from "../../threadAccess.ts";
 import * as BodyHandlers from "../body/handlers.ts";
 import * as DeviceHandlers from "../devices/handlers.ts";
@@ -1168,6 +1169,25 @@ export const layer = McpToolAccess.toLayer(
               found.length === 0
                 ? "There's nothing like that in your notes."
                 : `${found.length} found.`,
+          };
+        }),
+      ),
+      tessaya_whats_new_record: McpToolAccess.writes((input) =>
+        Effect.gen(function* () {
+          if (runtime === null)
+            return yield* failed({ reason: "Her self-state is not kept on this server." });
+          const items = yield* recordRelease({
+            surface: input.surface,
+            version: input.version,
+            ...(input.titles === undefined ? {} : { titles: input.titles }),
+            ...(input.items === undefined ? {} : { items: input.items }),
+          }).pipe(Effect.provideContext(runtime));
+          return {
+            items,
+            line:
+              items.length === 0
+                ? "Nothing in that release was worth telling him, so nothing was kept."
+                : `Kept ${items.length} line${items.length === 1 ? "" : "s"} of what's new in the ${input.surface}.`,
           };
         }),
       ),

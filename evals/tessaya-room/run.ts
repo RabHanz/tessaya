@@ -365,6 +365,14 @@ const WORK = {
   tessaya_job_lead: {
     line: "Noted: the lead stays, and it is not suggested again for this job.",
   },
+  // Her self-state, with what her last release let her do (TessayaSelf myState and whatsNewLine).
+  tessaya_my_state: {
+    line: [
+      "Your bodies: Tumble (online, Tessaya wears it) (from the Cast on her brain)",
+      "Your mood: neutral, 10% (from her one mood).",
+      "New in you lately (newest first; say the top few in plain words, and offer the 2 more): I can hear who is in the room from their voice, even when they don't say my name; my voice now carries how I feel; each device can have a room set; your desktop's questions reach me again; I know how long it has been since we last spoke. (from her releases, kept on her brain)",
+    ].join("\n"),
+  },
   // The Cast's own words (TessayaCast castLine) for a house with Tumble and the desktop.
   tessaya_cast: {
     line: "Tumble: Freya; Desk: Tessaya, Alfred",
