@@ -58,6 +58,9 @@ export const BrainOp = Schema.Literals([
   "deviceRevoke",
   // his reminders and her promises: kept on her brain, whose pulse alone raises them when due (M-103)
   "commitments",
+  // the household's settings (dictation cleanup and its key, model preferences, feedback, expression): kept on her
+  // brain, cached by workers; full access only, as the key travels with them, and never queued
+  "householdSettings",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 

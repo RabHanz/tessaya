@@ -33,6 +33,7 @@ import { TessayaScratchpadAct } from "@t3tools/tessaya-contracts";
 import { scratchpadHere } from "./TessayaScratchpad.ts";
 import { storeStylePairs } from "./stylePairsStore.ts";
 import { TessayaVocabulary, VocabularyAtBrain } from "./TessayaVocabulary.ts";
+import { HouseholdAct, householdAtBrain } from "./HouseholdSettings.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
@@ -205,6 +206,8 @@ const decodeVoiceIdGate = Schema.decodeUnknownOption(VoiceIdGateChange);
 const decodeScratchpad = Schema.decodeUnknownOption(TessayaScratchpadAct);
 const decodeVocabulary = Schema.decodeUnknownOption(VocabularyAtBrain);
 
+const decodeHousehold = Schema.decodeUnknownOption(HouseholdAct);
+
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
 
@@ -217,6 +220,11 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
   }
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
   switch (op) {
+    case "householdSettings": {
+      const act = decodeHousehold(payload);
+      if (Option.isNone(act)) return refused("Not a settings act.");
+      return done(yield* householdAtBrain(act.value));
+    }
     case "roomLoop": {
       const act = decodeRoomLoop(payload);
       if (Option.isNone(act)) return refused("Not a room-loop claim.");
@@ -488,7 +496,8 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
   )
     return refused("That link may not open his private store.");
   // pairing codes reach a shell on every machine: only a link that already has one may ask
-  if (op === "phoneCodes" && access !== "full-access")
+  // pairing codes reach a shell on every machine, and the household's settings carry an API key
+  if ((op === "phoneCodes" || op === "householdSettings") && access !== "full-access")
     return refused("Only another of his machines, linked with full access, may ask for this.");
   if (op !== "outbox") return yield* applyAtBrain(op, payload);
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
@@ -498,7 +507,8 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
     Option.isNone(box) ||
     box.value.op === "outbox" ||
     box.value.op === "privatePepper" ||
-    box.value.op === "phoneCodes"
+    box.value.op === "phoneCodes" ||
+    box.value.op === "householdSettings"
   )
     return refused("Not a queued change.");
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
