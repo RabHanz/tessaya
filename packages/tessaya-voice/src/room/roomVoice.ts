@@ -81,7 +81,11 @@ import {
   teaches,
   withName,
   UNVERIFIED,
+  CHANGED_VOICE,
+  cosine,
   likelyHis,
+  meanUnit,
+  SAME_VOICE,
   HOLD_MS,
   holdVoice,
   NO_HOLD,
@@ -121,6 +125,8 @@ const VERDICT_WAIT_MS = 1_200;
 /** Her downlink kept for open talk-over: 8 s, far more than the R1 ever holds unplayed. */
 const DOWN_RING = RATE * 8;
 /** firmware 0.3.92 `cmd/voice/upformat {"v":1}`: each uplink frame leads with seq, rx, q (u32) and flags (u16), 16 bytes. */
+/** A turn verified as his at this score anchors his session: continuity and the unsure-turn capture start only here. */
+const ANCHOR_BAR = 0.5;
 const UP_HEADER = 16;
 /** smp 0.3.151: the frame's flags (u16 at 12) carry this bit when it came from the headset's mic. */
 const UP_FLAG_HEADSET = 16;
@@ -1029,6 +1035,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let headsetDeadSince: number | null = null;
     let headsetPoorSaid = false;
     const hisSession = () => voiceHold.evidence.some((e) => deps.now() - e.at <= HOLD_MS);
+    /** A turn here verified him at the anchor bar: his next turns are his unless Voice ID is sure of another voice. */
+    let continuing = false;
+    const presumedHis = () => hisSession() || continuing;
+    /** For keeping unsure turns as data only: she was called by name, no other enrolled voice here, one voice throughout. */
+    let namedWake = false;
+    let otherHere = false;
+    const cluster: Array<Float32Array> = [];
+    let clusterSplit = false;
     const heldVoice = (heard: SpeakerIdentity) => {
       const out = holdVoice(voiceHold, heard, deps.now());
       voiceHold = out.hold;
@@ -2152,7 +2166,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       if (
         given === undefined &&
-        !hisSession() &&
+        !presumedHis() &&
         startedAt >= otherVoice.from &&
         startedAt <= otherVoice.until
       ) {
@@ -2181,11 +2195,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const best = await (
             deps.member?.(judged) ?? Promise.resolve(Number.NEGATIVE_INFINITY)
           ).catch(() => Number.NEGATIVE_INFINITY);
-          const verdict = memberByVoice(best, judged.length / RATE, hisSession() || asking);
+          const verdict = memberByVoice(best, judged.length / RATE, presumedHis() || asking);
           // In his session words over her that are not her own are his (his mixed scores -0.09 to 0.20), unless they move
           // like her playing reply: her misheard echo cut her off as his (20 Nov, 03:19 GMT+5, likeness 0.77).
           // shortcut: his own words over a loud echo can read as alike; they wait for AEC on the barge-in audio.
-          if (verdict !== "member" && hisSession() && echoLike >= ECHO_ALIKE) {
+          if (verdict !== "member" && presumedHis() && echoLike >= ECHO_ALIKE) {
             kept?.control.abort();
             dropped(
               turn,
@@ -2193,7 +2207,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
               raw,
             );
             return;
-          } else if (verdict !== "member" && hisSession())
+          } else if (verdict !== "member" && presumedHis())
             deps.log(
               `[${id}] turn ${turn}: over her voice, Voice ID ${best.toFixed(2)} in the mix; his session, so answered`,
             );
@@ -2411,7 +2425,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let listensAfter = false;
       // Her brain starts now with what the speaker reader already knows; in his own session it first waits a moment
       // for this turn's verdict (started without one, his pump asked for a yes: 20 Nov, 06:03 GMT+5).
-      const session = hisSession();
+      const session = presumedHis();
       await Promise.race([speakerP, deps.sleep(session ? VERDICT_WAIT_MS : 0)]);
       const known = speakerNow === null ? null : ([speakerNow.identity, affectNow] as const);
       const [speaker, affect] = known ?? [undefined, affectNow];
@@ -2427,7 +2441,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             }
           : null;
       // Ignoring him is the worst failure: a voice just under the bar in his own session is answered as likely him.
-      const identity = sessionVoice ?? likelyHis(speaker ?? UNVERIFIED(deps.now()), session);
+      const identity =
+        sessionVoice ?? likelyHis(speaker ?? UNVERIFIED(deps.now()), session, continuing);
       const voicesAt = deps.now();
       const voices = (await voicesP) ?? { kind: "one" };
       if (voices.kind === "one-at-a-time") {
@@ -2464,6 +2479,17 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             : unjudged
               ? judged
               : Promise.race([judged, deps.sleep(config.sideMs).then(() => !refused)]));
+      // Only his turn verified at the anchor bar starts it, and his soft voice carries it on; anyone else ends it.
+      // (21 Nov 06:04 GMT+5: a guest woke her and scored 0.32; an unverified opener never becomes him.)
+      const sureOther =
+        identity.kind === "saved" || (identity.same !== undefined && identity.same < CHANGED_VOICE);
+      continuing =
+        !sureOther &&
+        ((identity.kind === "owner" &&
+          identity.verified &&
+          identity.inherited !== true &&
+          (identity.confidence ?? 0) >= ANCHOR_BAR) ||
+          (continuing && (identity.kind === "owner" || identity.kind === "unverified")));
       if (!admits(identity, gateNow(), "turn") && !someoneAdmitted) {
         kept?.control.abort();
         dropped(turn, `a ${identity.kind} voice`, text);
@@ -2837,11 +2863,25 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const his = identity.kind === "owner" && identity.verified && identity.test !== true;
       const overHis =
         bargedIn && hisSession() && identity.kind !== "saved" && identity.kind !== "guest";
-      if (his && (score ?? 0) >= 0.5) verifiedHere = true;
+      if (his && (score ?? 0) >= ANCHOR_BAR) verifiedHere = true;
       // A turn Voice ID could not place, in a session where another turn verified him at 0.5 or more: his far and soft
       // turns are the ones it misses (20 Nov 13:26, 17:44). Kept apart, 14 days, never to shape his voice.
+      // Or, as data only, in a session she was called into by name where no other enrolled voice matched and every
+      // turn is one voice (his soft voice never verifies, so nothing else ever keeps it: 21 Nov, 06:03 GMT+5).
+      const vector = identity.replay === undefined ? identity.own?.vector : undefined;
+      if (identity.kind === "saved") otherHere = true;
+      if (vector !== undefined) {
+        if (cluster.length > 0 && cosine(vector, meanUnit(cluster)) < SAME_VOICE)
+          clusterSplit = true;
+        cluster.push(vector);
+      }
+      const oneVoice = namedWake && !otherHere && !clusterSplit && vector !== undefined;
       const doubtful =
-        !his && !overHis && verifiedHere && identity.kind === "unverified" && !bargedIn;
+        !his &&
+        !overHis &&
+        (verifiedHere || oneVoice) &&
+        identity.kind === "unverified" &&
+        !bargedIn;
       // Never a private moment's audio, whoever spoke (the condition he set).
       if (
         given === undefined &&
@@ -3090,7 +3130,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           const verdict = memberByVoice(
             best,
             quiet || seconds >= 2.5 ? Math.max(seconds, 2) : seconds,
-            hisSession(),
+            presumedHis(),
             opened,
           );
           deps.log(
@@ -3112,7 +3152,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         `[${id}] not a household voice; she goes on${long ? " from her sentence's start" : ""}`,
       );
       resumedAt = deps.now();
-      if (!hisSession()) otherVoice = { from: h.since - 1_000, until: deps.now() };
+      if (!presumedHis()) otherVoice = { from: h.since - 1_000, until: deps.now() };
       goOn(h, long, 0);
     };
 
@@ -3363,6 +3403,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (reply === null) wearCast();
       },
       call: (name: string, level = Number.NEGATIVE_INFINITY) => {
+        namedWake = true;
         if (Number.isFinite(level)) hisLevel = level;
         // Her name as heard, or the persona id a trained wake word belongs to.
         const named = personas.find((p) => p.name === name || p.id === name);

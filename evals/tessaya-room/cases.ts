@@ -1160,6 +1160,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsOneOf: ["tessaya_my_state", "tessaya_cast"],
   },
   {
+    // .210 gate body-what-doing (21 Nov): her own body's activity went to tessaya_my_state, not tessaya_body_state.
+    id: "body-doing-reads-pose",
+    source: "room gate body-what-doing, failed 3 of 3 on .210",
+    said: ["What is your body doing right now?"],
+    verified: true,
+    memory: `${HERE} Your other bodies right now, live: Tumble (offline). Answer about them from this, not from memory.`,
+    callsOneOf: ["tessaya_body_state"],
+  },
+  {
     id: "other-bodies-truthful",
     source: 'Director 20 Nov, Tumble: "What about your other bodies?" answered wrongly',
     said: ["What about your other bodies?"],

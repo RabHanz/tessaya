@@ -385,6 +385,118 @@ describe("the room voice loop", () => {
     expect(t.brainCalls).toHaveLength(1);
   });
 
+  it("keeps answering his soft voice after his turn verified at the anchor bar, and a saved person ends it", async () => {
+    const at = { ...UNVERIFIED(0), name: null, inherited: false, verified: false } as const;
+    const his: SpeakerIdentity = {
+      ...at,
+      kind: "owner",
+      personId: "owner",
+      confidence: 0.6,
+      verified: true,
+      own: { score: 0.6, ms: 1_500 },
+    };
+    const soft = (score: number): SpeakerIdentity => ({
+      ...at,
+      kind: "guest",
+      confidence: score,
+      own: { score, ms: 1_500 },
+    });
+    const sara: SpeakerIdentity = {
+      ...at,
+      kind: "saved",
+      personId: "sara",
+      name: "Sara",
+      confidence: 0.6,
+    };
+    // His verified opening turn, then soft follow-ups of his far under the bar; then Sara.
+    const said = [his, soft(0.32), soft(0.26), soft(0.06), sara, soft(0.2)];
+    let n = 0;
+    const logs: string[] = [];
+    const kept: Array<string> = [];
+    const t = setup({
+      log: (l) => logs.push(l),
+      speaker: async () => said[n++]!,
+      keepTurn: (_id, _pcm, meta) => kept.push(`${meta.speaker}:${String(meta.verified)}`),
+    });
+    t.s2();
+    for (let i = 0; i < said.length; i += 1) {
+      await t.feed(true, 20);
+      await t.feed(false, 30);
+    }
+    // Every turn of his is answered, never "a guest voice"; his soft turns stay unverified, so they grant nothing.
+    expect(t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual([
+      "owner",
+      "unverified",
+      "unverified",
+      "unverified",
+      "saved",
+    ]);
+    // Sara is answered as herself, and after her a low score is no longer presumed his.
+    expect(logs.filter((l) => l.includes("a guest voice; not answered"))).toHaveLength(1);
+    // His soft turns are kept apart as unverified (the far centroid's data); Sara's and the stranger's never are.
+    expect(kept).toEqual([
+      "owner:undefined",
+      "unverified:false",
+      "unverified:false",
+      "unverified:false",
+    ]);
+  });
+
+  it("never presumes him in a session someone unverified opened, and keeps none of their audio (21 Nov, 06:03 GMT+5)", async () => {
+    // The live sequence: someone else woke her (0.32), then "okay, fine", then an 11-word turn far under the bar.
+    const soft = (score: number): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      kind: "guest",
+      confidence: score,
+      own: { score, ms: 1_500 },
+    });
+    const said = [soft(0.32), soft(0.26), soft(0.06)];
+    let n = 0;
+    const kept: Array<string> = [];
+    const t = setup({
+      speaker: async () => said[n++]!,
+      keepTurn: (_id, _pcm, meta) => kept.push(meta.speaker),
+    });
+    t.s2();
+    for (let i = 0; i < said.length; i += 1) {
+      await t.feed(true, 20);
+      await t.feed(false, 30);
+    }
+    expect(t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual([]);
+    expect(kept).toEqual([]);
+  });
+
+  it("keeps unsure turns as data only after she is called by name with one voice throughout, never with a second voice", async () => {
+    const v = (x: number) => Float32Array.from({ length: 8 }, (_, i) => (i === 0 ? 1 : x));
+    const unsure = (vector: Float32Array): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      confidence: 0.32,
+      own: { score: 0.32, ms: 1_500, vector },
+    });
+    const run = async (vectors: ReadonlyArray<Float32Array>, named: boolean) => {
+      let n = 0;
+      const kept: Array<string> = [];
+      const t = setup({
+        speaker: async () => unsure(vectors[n++]!),
+        keepTurn: (_id, _pcm, meta) => kept.push(`${meta.speaker}:${String(meta.verified)}`),
+      });
+      if (named) t.room.woken(DEV, "Tessaya", -20, 1);
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      await t.feed(false, 60);
+      for (let i = 0; i < vectors.length; i += 1) {
+        await t.feed(true, 20);
+        await t.feed(false, 30);
+      }
+      return kept;
+    };
+    // 21 Nov 06:03 GMT+5: he called her and asked the time at 0.32; nothing kept it.
+    expect(await run([v(0.1), v(0.12)], true)).toEqual(["unverified:false", "unverified:false"]);
+    // A second voice in the session: from then on nothing is kept.
+    expect(await run([v(0.1), v(-3)], true)).toEqual(["unverified:false"]);
+    // Opened by S2, not by her name: nothing is kept.
+    expect(await run([v(0.1), v(0.12)], false)).toEqual([]);
+  });
+
   it("sends each person's words with their own voice when several spoke, heard if any one of them would be", async () => {
     const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.2 };
     const sara: SpeakerIdentity = { ...guest, kind: "saved", personId: "sara", name: "Sara" };
