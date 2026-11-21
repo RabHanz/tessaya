@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import { describe, expect, it } from "vite-plus/test";
 
 import { fromUpcoming, islandItems, systemIslandItems, type IslandFeed } from "./island.ts";

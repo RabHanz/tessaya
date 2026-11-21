@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 /**
  * The island (M-126): one status for every phone and the desk, the most urgent thing first. Her own state while she
  * listens, thinks or speaks; then a job that needs him; then a running timer; then the next thing coming up within
