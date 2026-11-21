@@ -130,56 +130,117 @@ index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 50ad81383addc75250b37025d1bfb43ce05a9da5..8d1fe48b839636ab9a5e41c5d3d251e140a14fa4 100644
+index 50ad81383addc75250b37025d1bfb43ce05a9da5..bd0b97ef28e90b8f9f21513dfe09f7a286c28233 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-@@ -266,8 +266,37 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -96,7 +96,7 @@ function TranslatedSettingsListScreen(props: {
+     <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
+       <View className="flex-1 bg-screen">
+         <SettingsScreen
+-          title={gt("Settings")}
++          title="More"
+           workspaceRoot={props.sidebar}
+           menus={[environmentMenu]}
+           search={
+@@ -191,13 +191,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
+   const bottomSafeArea = useNativeColumnLayoutMetrics()?.safeArea.bottom ?? insets.bottom;
+   const workspace = useWorkspaceTabs();
+   const query = workspace?.state.tabs.settings.query ?? "";
+-  const overflowRows = useOverflowRows();
+   const indexSections = useSettingsIndexSections();
+   const sections = filterSettingsSections(
+     [
+-      { rows: overflowRows },
++      // her, his work and this phone; then how the phone connects, and the rest
++      ...indexSections.slice(0, 3),
+       { title: gt("Connections"), rows: props.connections },
+-      ...indexSections,
++      ...indexSections.slice(3),
+     ],
+     query,
+   );
+@@ -258,6 +258,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
+           members: scopedProjectMembers,
+         })
+       : (selectedProject?.label ?? gt("Unavailable project"));
++  const overflowRows = useOverflowRows();
+   const page = (
+     target: SettingsPageTarget,
+     icon: SettingsListRow["icon"],
+@@ -266,36 +267,28 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
 -  // The same pages and groups as Settings on web, minus what mobile has no setting for.
-+  // Tessaya's own settings first, grouped as in her desktop window; then T3's, as on web.
++  // More, in three groups (phone redesign v2): her, his work, this phone. Personas and the house have their own tabs.
    return [
-+    {
-+      title: "Talking to Tessaya",
-+      rows: [
-+        page("SettingsVoice", "mic", "Voice and dictation"),
-+        serverPage("SettingsPersonas", "person.badge.plus", "Personas"),
-+        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
-+      ],
-+    },
-+    {
-+      title: "Working for you",
-+      rows: [
+     {
++      title: "Her",
+       rows: [
+-        page("SettingsOrganization", "gearshape", gt("General")),
+-        page("SettingsAppearance", "paintbrush", gt("Appearance")),
+-        page("SettingsLanguage", "globe", gt("Language"), {
+-          value: SUPPORTED_LOCALES.includes(language)
+-            ? nativeLanguageName(language)
+-            : gt("System default"),
+-        }),
+-        page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
+-        ...(navigationCustomizationAvailable()
+-          ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
+-          : []),
+-        page("SettingsKeyboard", "keyboard", gt("Keyboard")),
+-        page("SettingsVoice", "mic", gt("Voice")),
 +        serverPage("SettingsUpcoming", "timer", "Coming up"),
++        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
++        serverPage("SettingsMood", "face.smiling", "Her mood"),
++        serverPage("SettingsPulse", "bolt.circle", "Pulse"),
 +        serverPage("SettingsTeam", "person.2", "Team"),
 +        serverPage("SettingsCast", "person.crop.circle", "Cast"),
-+        serverPage("SettingsPulse", "bolt.circle", "Pulse"),
-+        serverPage("SettingsMood", "face.smiling", "Her mood"),
+       ],
+     },
+     {
+-      title: gt("Agents"),
++      title: "Your work",
+       rows: [
++        ...overflowRows,
 +        serverPage("SettingsActivity", "clock", "Activity"),
 +        serverPage("SettingsBrainUsage", "chart.bar.xaxis", "Brain usage"),
-+      ],
-+    },
+         serverPage("SettingsProviderAccounts", "person.crop.circle", gt("Providers")),
+         serverPage("SettingsThreads", "text.bubble", gt("Threads")),
+         page("SettingsScheduledTasks", "clock", gt("Scheduled tasks")),
+-      ],
+-    },
+-    {
+-      title: gt("Code"),
+-      rows: [
+         page(
+           "SettingsProjectOverview",
+           "folder",
+@@ -310,6 +303,24 @@ function useSettingsIndexSections(): SettingsListSection[] {
+         serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
+       ],
+     },
 +    {
-+      title: "Home and devices",
++      title: "This phone",
 +      rows: [
-+        serverPage("SettingsHome", "house", "Home Assistant"),
-+        serverPage("SettingsHardware", "face.smiling", "Tessels"),
-+        serverPage("SettingsPresence", "person.fill.checkmark", "Presence"),
-+        serverPage("SettingsHealth", "waveform.path.ecg", "Health"),
++        page("SettingsVoice", "mic", "Voice and microphone"),
++        page("SettingsAppearance", "paintbrush", gt("Appearance")),
++        page("SettingsLanguage", "globe", gt("Language"), {
++          value: SUPPORTED_LOCALES.includes(language)
++            ? nativeLanguageName(language)
++            : gt("System default"),
++        }),
++        page("SettingsOrganization", "gearshape", gt("General")),
++        page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
++        ...(navigationCustomizationAvailable()
++          ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
++          : []),
++        page("SettingsKeyboard", "keyboard", gt("Keyboard")),
 +      ],
 +    },
      {
        rows: [
-         page("SettingsOrganization", "gearshape", gt("General")),
-@@ -282,7 +311,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
-           ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
-           : []),
-         page("SettingsKeyboard", "keyboard", gt("Keyboard")),
--        page("SettingsVoice", "mic", gt("Voice")),
-       ],
-     },
-     {
+         serverPage("SettingsEnvironmentMaintenance", "arrow.clockwise", gt("Maintenance")),
 diff --git a/apps/mobile/src/features/settings/components/SettingsRow.tsx b/apps/mobile/src/features/settings/components/SettingsRow.tsx
 index ce61dec7cfe69d5100b15fb3ac4766fec44e2e82..b773f4084130aeb25860b70d5e1e9cbcbbc66709 100644
 --- a/apps/mobile/src/features/settings/components/SettingsRow.tsx
