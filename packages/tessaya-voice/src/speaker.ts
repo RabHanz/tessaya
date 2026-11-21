@@ -243,7 +243,7 @@ export interface SpeakerIdentity {
   };
   /** Its cosine to his own pieces earlier in this verified session (same room, same mic), whenever it has some. */
   readonly same?: number;
-  /** His by his session's evidence, not this turn's own score: his path, never an owner-only act (`verified` false). */
+  /** His by his session's evidence, not this turn's own score: verified only as his held session (`session`). */
   readonly lifted?: true;
   /** The replay check on the room mic: "heard" a loudspeaker (a guest), or "unchecked" (it could not run: never verified). */
   readonly replay?: "heard" | "unchecked";
@@ -308,7 +308,8 @@ export const identityOf = (
 /**
  * His voice across one session. Three owner turns averaging the "act" cut-off, or one verified, hold him for `HOLD_MS`.
  * A short or weak turn is lifted when its own score clears `SESSION_FLOOR`, sits near his last two pieces, and averaged
- * with them clears steer; under the floor is another voice and ends the session. A lifted turn is never `verified`.
+ * with them clears steer; under the floor is another voice and ends the session. A lifted turn is verified only by a
+ * held session (`session`).
  */
 export interface VoiceHold {
   readonly verifiedAt: number | null;
@@ -342,6 +343,13 @@ export const CHANGED_VOICE = 0.2;
 
 export const meanUnit = (vs: ReadonlyArray<Float32Array>): Float32Array =>
   unitOrNull(Float32Array.from(vs[0]!, (_, i) => vs.reduce((n, v) => n + v[i]!, 0))) ?? vs[0]!;
+
+/**
+ * A scored turn on his path while his verified session holds carries the session's verdict, as his own turns in it do:
+ * one verdict for the session, never this turn's own clips (`session`), so nothing private opens on it (21 Nov).
+ */
+const sessionVerdict = (held: boolean) =>
+  held ? { verified: true, session: true as const } : { verified: false };
 
 export const holdVoice = (
   hold: VoiceHold,
@@ -405,7 +413,7 @@ export const holdVoice = (
         personId: "owner",
         name: null,
         confidence: own,
-        verified: false,
+        ...sessionVerdict(held && identity.replay === undefined),
         lifted: true,
       },
     };
@@ -420,7 +428,7 @@ export const holdVoice = (
         personId: "owner",
         name: null,
         confidence: own,
-        verified: false,
+        ...sessionVerdict(true),
         lifted: true,
         same,
       },

@@ -3355,7 +3355,12 @@ describe("Voice ID never fails open to him (Director, 16 Nov)", () => {
     expect(t.brainCalls[1]!.tessaya.speaker).toMatchObject({ kind: "owner", verified: true });
     expect(m).toMatchObject({ voiceIdLate: true, reasked: true });
     // Voice ID's own figures come from its late verdict, not the closed start's.
-    expect(m).toMatchObject({ speaker: "unverified", verdict: "owner", speakerScore: 0.7 });
+    expect(m).toMatchObject({
+      speaker: "unverified",
+      verified: false,
+      verdict: "owner",
+      speakerScore: 0.7,
+    });
     expect(m.firstSoundMs).not.toBeNull();
   });
 

@@ -198,7 +198,11 @@ export interface ConversationTurn {
 
 /** His own voice on this very turn: the only voice whose words are kept as his, or that may forget for him. */
 const hisVoice = (speaker: SpeakerLike | null) =>
-  speaker !== null && speaker.kind === "owner" && speaker.verified && !speaker.inherited;
+  speaker !== null &&
+  speaker.kind === "owner" &&
+  speaker.verified &&
+  !speaker.inherited &&
+  speaker.lifted !== true;
 
 /**
  * Who a turn is from and how sure (ACCOUNTS-IDENTITY-DESIGN §2.4): a spoken turn is its voice's member at its voice's
@@ -229,6 +233,7 @@ export const turnIdentity = (
 export const moodMember = (turn: TurnEnvelope): string | null => {
   const { member, assurance } = turnIdentity(turn);
   return assurance >= 2 &&
+    turn.speaker?.lifted !== true &&
     turn.rehearsal !== true &&
     turn.addressed !== false &&
     turn.sharedRoom !== true
@@ -328,6 +333,21 @@ export interface Remembered {
  */
 export const UNSURE_LINE =
   'This voice sounds like him but was not verified. If he asks you to remember or note something, say "Got it" and that you\'ll check it was him; never say it is saved for him and never say you can\'t remember it. You may ask once, briefly, "Is that you?", but a yes out loud is not proof: it stays unconfirmed until his voice or his phone confirms it.';
+
+/** Voice ID judges every turn afresh: what she may say of it (G-29, 21 Nov: "now confirmed", then "I overstated"). */
+const VOICE_FRESH =
+  "Voice ID judges every turn afresh, so a turn it verifies and the next it does not are both right: if you speak of whether it is him, say only what this line says of this turn, never that an earlier turn was wrong, never that it is settled from now on, and never its score as a percentage or a chance.";
+
+/** What Voice ID says of this turn, in her words: the only ground she has for saying whether it is him. */
+export const voiceLine = (speaker: SpeakerLike | null | undefined): string => {
+  if (speaker?.kind !== "owner" || speaker.voiceIdOff === true) return "";
+  if (!speaker.verified) return `${UNSURE_LINE} ${VOICE_FRESH}`;
+  const how =
+    speaker.session === true
+      ? "Voice ID holds this voice verified as him on this turn, by his session's recent turns."
+      : "Voice ID verified this voice as him on this turn's own audio.";
+  return `${how} ${VOICE_FRESH}`;
+};
 
 /** The line the brain gets when a vessel first recognises who it is talking to this session. */
 export const nameOnceLine = (name: string | undefined): string =>
@@ -559,7 +579,11 @@ export const notLearnable = (turn: TurnEnvelope): string | null => {
     return "not the owner's voice";
   // Voice ID is the guard: only his voice verified (or a vessel with no Voice ID, typed or his own device) teaches
   // his memory; a voice only near his, carried over or lifted by his session goes to nobody's store.
-  if (turn.speaker != null && turn.speaker.voiceIdOff !== true && voiceAssurance(turn.speaker) < 2)
+  if (
+    turn.speaker != null &&
+    turn.speaker.voiceIdOff !== true &&
+    (voiceAssurance(turn.speaker) < 2 || turn.speaker.lifted === true)
+  )
     return "his voice not verified";
   // A member's own device typed it: their words never teach his store (HOUSEHOLD-DESIGN §6).
   if (turn.member !== undefined && turn.member !== OWNER_MEMBER_ID) return "not the owner's device";
@@ -1518,7 +1542,7 @@ export const make = Effect.gen(function* () {
         repair === null ? "" : repairLine(repair, turn.text),
         inputLine(turn.input),
         waiting,
-        unsureOf(turn) === null ? "" : UNSURE_LINE,
+        voiceLine(turn.speaker),
       ]
         .filter((l) => l !== "")
         .join(" "),

@@ -30,7 +30,7 @@ import {
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
 import type { ActOutcome } from "../../apps/server/src/tessaya/TessayaBrain.ts";
-import { hereLine } from "../../apps/server/src/tessaya/TessayaTurn.ts";
+import { hereLine, voiceLine } from "../../apps/server/src/tessaya/TessayaTurn.ts";
 import { TurnOrigin } from "../../apps/server/src/tessaya/TurnOrigin.ts";
 import { offlineWhy } from "../../apps/server/src/home/DeviceRegistry.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
@@ -668,6 +668,12 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
   }
 };
 
+/** The turn's notice as TessayaTurn.begin gives it: the case's own, then Voice ID's line for this sentence. */
+const noticeOf = (c: RoomCase, turn: number) => {
+  const notice = [c.notice ?? "", voiceLine(c.speakers?.[turn])].filter((l) => l !== "").join(" ");
+  return notice === "" ? {} : { notice };
+};
+
 const context = (
   c: RoomCase,
   house: House,
@@ -709,14 +715,16 @@ const context = (
       ? DEFAULT_OS_PACK.personas.find((p) => p.lead)
       : DEFAULT_OS_PACK.personas.find((p) => p.id === c.persona)
     )?.self ?? "",
-  ...(c.notice === undefined ? {} : { notice: c.notice }),
+  ...noticeOf(c, turn),
   preferences: {},
   voice:
-    c.verified === true
-      ? { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } }
-      : c.guest === true
-        ? { speaker: { kind: "guest", personId: null, verified: false, inherited: false } }
-        : undefined,
+    c.speakers?.[turn] !== undefined
+      ? { speaker: c.speakers[turn] }
+      : c.verified === true
+        ? { speaker: { kind: "owner", personId: "owner", verified: true, inherited: false } }
+        : c.guest === true
+          ? { speaker: { kind: "guest", personId: null, verified: false, inherited: false } }
+          : undefined,
   // His clock as the server gives it (clockLine), with the time as it is said; 10:15 on 12 Nov in Karachi.
   now: clockLine(c.at ?? ROOM_NOW, "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
