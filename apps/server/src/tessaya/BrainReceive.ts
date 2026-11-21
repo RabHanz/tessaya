@@ -34,6 +34,8 @@ import { scratchpadHere } from "./TessayaScratchpad.ts";
 import { storeStylePairs } from "./stylePairsStore.ts";
 import { TessayaVocabulary, VocabularyAtBrain } from "./TessayaVocabulary.ts";
 import { decodeFingerprint, FleetCoherence } from "./FleetCoherence.ts";
+import { ConsentAct, consentAtBrain } from "./consent.ts";
+import { MemberPreferences, PreferencesAct } from "./MemberPreferences.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
@@ -206,6 +208,9 @@ const decodeVoiceIdGate = Schema.decodeUnknownOption(VoiceIdGateChange);
 const decodeScratchpad = Schema.decodeUnknownOption(TessayaScratchpadAct);
 const decodeVocabulary = Schema.decodeUnknownOption(VocabularyAtBrain);
 
+const decodeConsent = Schema.decodeUnknownOption(ConsentAct);
+const decodePreferences = Schema.decodeUnknownOption(PreferencesAct);
+
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
 
@@ -224,6 +229,18 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       const fleet = yield* Effect.serviceOption(FleetCoherence);
       if (Option.isSome(fleet)) yield* fleet.value.record(fp.value);
       return done();
+    }
+    case "preferences": {
+      const act = decodePreferences(payload);
+      if (Option.isNone(act)) return refused("Not a preferences act.");
+      const prefs = yield* Effect.serviceOption(MemberPreferences);
+      if (Option.isNone(prefs)) return refused("Preferences are not kept here.");
+      return done(yield* prefs.value.atBrain(act.value));
+    }
+    case "consent": {
+      const act = decodeConsent(payload);
+      if (Option.isNone(act)) return refused("Not a standing-yes act.");
+      return done(yield* consentAtBrain(act.value));
     }
     case "roomLoop": {
       const act = decodeRoomLoop(payload);

@@ -15,6 +15,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import { makeBrainLink } from "./BrainHost.ts";
 import { TessayaDesktopSettings } from "./TessayaDesktopSettings.ts";
 
 /**
@@ -44,8 +45,8 @@ const decodeGrants = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Array(Schema.Union([Schema.String, GrantRecord]))),
 );
 
-/** Every standing yes with its scope, the one store every vessel reads; empty with no database. */
-export const readScoped = Effect.gen(function* () {
+/** The standing yeses kept on this server's own database; empty with no database. */
+const grantsHere = Effect.gen(function* () {
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
   if (Option.isNone(sql)) return [] as ReadonlyArray<Grant>;
   const rows = yield* sql.value<{
@@ -54,6 +55,69 @@ export const readScoped = Effect.gen(function* () {
   return rows[0] === undefined
     ? []
     : Option.getOrElse(decodeGrants(rows[0].value), () => []).map(grantOf);
+});
+
+const writeGrants = Effect.fn("Consent.write")(function* (grants: ReadonlyArray<Grant>) {
+  const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
+  if (Option.isSome(sql))
+    yield* sql.value`INSERT INTO fabric_settings (key, value) VALUES (${CONSENT_KEY}, ${JSON.stringify(grants)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
+      Effect.orDie,
+    );
+});
+
+/** A worker's act on the standing yeses, applied on her brain (BrainReceive "consent"). */
+export const ConsentAct = Schema.Union([
+  Schema.Struct({ a: Schema.Literal("read") }),
+  Schema.Struct({
+    a: Schema.Literal("set"),
+    key: Schema.String,
+    allow: Schema.Boolean,
+    scope: Schema.optionalKey(
+      Schema.Struct({
+        member: Schema.optionalKey(Schema.String),
+        device: Schema.optionalKey(Schema.String),
+        persona: Schema.optionalKey(Schema.String),
+        until: Schema.optionalKey(Schema.Number),
+      }),
+    ),
+  }),
+  // a worker's own copy from before the one home (21 Nov): joined to the brain's once, nothing dropped
+  Schema.Struct({ a: Schema.Literal("merge"), grants: Schema.Array(GrantRecord) }),
+]);
+export type ConsentAct = typeof ConsentAct.Type;
+const decodeAnswer = Schema.decodeUnknownOption(Schema.Array(GrantRecord));
+
+/** On the brain: one worker's act; the scoped grants after. */
+export const consentAtBrain = Effect.fn("Consent.atBrain")(function* (act: ConsentAct) {
+  if (act.a === "read") return yield* grantsHere;
+  const before = yield* grantsHere;
+  const after =
+    act.a === "merge"
+      ? act.grants.reduce((all, g) => withScopedGrant(all, grantOf(g), true), [...before])
+      : withScopedGrant(before, { member: OWNER_MEMBER_ID, ...act.scope, key: act.key }, act.allow);
+  yield* writeGrants(after);
+  return after;
+});
+
+/**
+ * Every standing yes with its scope: one store, on her brain, which every vessel reads (21 Nov: the laptop kept its
+ * own, so the desk acted on yeses the brain could not show or revoke). A worker that can't reach the brain holds none,
+ * so it asks again rather than act on an old copy.
+ */
+export const readScoped = Effect.gen(function* () {
+  const brain = yield* makeBrainLink;
+  if (yield* brain.isBrain) return yield* grantsHere;
+  const kept = yield* grantsHere;
+  if (kept.length > 0) {
+    yield* brain.sendOrQueue("consent", { a: "merge", grants: kept } satisfies ConsentAct);
+    // sent, or queued in order behind it: the brain's copy is the one now
+    yield* writeGrants([]);
+  }
+  const answer = yield* brain.send("consent", { a: "read" } satisfies ConsentAct);
+  return Option.match(Option.flatMap(answer, decodeAnswer), {
+    onNone: () => [] as ReadonlyArray<Grant>,
+    onSome: (gs) => gs.map(grantOf),
+  });
 });
 
 /** The keys that stand now (Settings, the desktop's copy, the room's checks). */
@@ -70,16 +134,17 @@ export const setGrant = Effect.fn("Consent.set")(function* (
   allow: boolean,
   scope: GrantScope = {},
 ) {
-  const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
-  const grants = withScopedGrant(
-    yield* readScoped,
-    { member: OWNER_MEMBER_ID, ...scope, key },
-    allow,
-  );
-  if (Option.isSome(sql))
-    yield* sql.value`INSERT INTO fabric_settings (key, value) VALUES (${CONSENT_KEY}, ${JSON.stringify(grants)}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
-      Effect.orDie,
-    );
+  const brain = yield* makeBrainLink;
+  const grants = (yield* brain.isBrain)
+    ? yield* consentAtBrain({ a: "set", key, allow, scope })
+    : yield* brain
+        .sendOrQueue("consent", { a: "set", key, allow, scope } satisfies ConsentAct)
+        .pipe(
+          // queued while the brain is away: a revoke lands when it is back, and nothing stands here meanwhile
+          Effect.map((answer) =>
+            Option.getOrElse(Option.flatMap(answer, decodeAnswer), () => []).map(grantOf),
+          ),
+        );
   // The desktop's held settings sync carries the list, so a revoke made elsewhere reaches its copy now.
   const desk = yield* Effect.serviceOption(TessayaDesktopSettings);
   if (Option.isSome(desk)) yield* desk.value.nudge;

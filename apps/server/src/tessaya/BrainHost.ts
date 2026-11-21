@@ -60,6 +60,10 @@ export const BrainOp = Schema.Literals([
   "commitments",
   // what a worker believes (build, brain, login, store digests), for the brain's fleet check (M-146)
   "fingerprint",
+  // his standing yeses: kept on her brain alone, so a yes given anywhere stands everywhere and is revoked once
+  "consent",
+  // the members' preferences (persona, voice, listen mode, and the rest): kept on her brain alone
+  "preferences",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
