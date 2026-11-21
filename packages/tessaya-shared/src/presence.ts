@@ -67,6 +67,8 @@ export const PRESENCE_SOURCES: Readonly<Record<string, PresenceSource>> = {
     cancels: ["typed"],
     says: "your desktop has been idle a while",
   },
+  // Their headset's button on the phone with no Tessel near: they are at the phone vessel, wherever it is.
+  phoneTalk: { weight: 0.9, halfLifeMinutes: 10, says: "you talked to her on your phone" },
   // The app in front of them on their phone; put away, they are no longer at it.
   phoneApp: { weight: 0.85, halfLifeMinutes: 10, says: "you were using the app on your phone" },
   phoneAppAway: {

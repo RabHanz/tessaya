@@ -145,6 +145,42 @@ it.effect("a voice tap takes her reply from the R1 alone and swaps its mic frame
   }),
 );
 
+it.effect(
+  "a socketless vessel is a device to the loop: it hears its own topics and its mic reaches the bus",
+  () =>
+    Effect.gen(function* () {
+      const hub = hubForTest();
+      const bus = socketOn(hub);
+      yield* bus.send(
+        connectPacket({ clientId: "loop", user: "tessaya-bus", pass: "bus", keepAliveS: 30 }),
+      );
+      yield* bus.send(subscribePacket(1, ["freya/r1/+/voice/#", "freya/r1/+/cmd/voice/start"]));
+      const heard: Array<string> = [];
+      const v = hub.vessel("phone-p1", (tail, p) => heard.push(`${tail}=${p.toString("utf8")}`));
+      expect(hub.vessels()).toEqual(["phone-p1"]);
+      v.publish("cmd/voice/start", "{}");
+      v.publish("voice/up", "mic");
+      yield* bus.send(publishPacket("freya/r1/phone-p1/voice/down", Buffer.from("hi")));
+      yield* bus.send(publishPacket("freya/r1/r1-a/voice/down", Buffer.from("not mine")));
+      // Its own publishes are not echoed back to it; the loop hears them as a Tessel's.
+      expect(heard).toEqual(["voice/down=hi"]);
+      expect(bus.publishes()).toEqual([
+        "freya/r1/phone-p1/cmd/voice/start={}",
+        "freya/r1/phone-p1/voice/up=mic",
+        "freya/r1/phone-p1/voice/down=hi",
+        "freya/r1/r1-a/voice/down=not mine",
+      ]);
+      // A rebind of the same phone replaces the first; closing the stale one leaves the new one bound.
+      const again = hub.vessel("phone-p1", (tail) => heard.push(`again:${tail}`));
+      v.close();
+      expect(hub.vessels()).toEqual(["phone-p1"]);
+      yield* bus.send(publishPacket("freya/r1/phone-p1/voice/down", Buffer.from("x")));
+      expect(heard.at(-1)).toBe("again:voice/down");
+      again.close();
+      expect(hub.vessels()).toEqual([]);
+    }),
+);
+
 it.effect("keeps a device to its own topics, and gives the bus and the server every R1's", () =>
   Effect.gen(function* () {
     const hub = hubForTest();
