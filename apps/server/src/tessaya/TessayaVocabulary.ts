@@ -196,7 +196,6 @@ export const make = Effect.gen(function* () {
     function* (change: VocabularyChange | null) {
       if (yield* brain.isBrain) return Option.none<ReadonlyArray<VocabularyEntry>>();
       // His words here go up before the brain's list may replace this file, so none is lost to the cache.
-      // shortcut: additive, so a word removed here while the brain was away stays there; a tombstone list would carry it.
       if (!uploaded) {
         const mine = readStored(file);
         if (mine === null) return Option.none<ReadonlyArray<VocabularyEntry>>();
@@ -296,8 +295,11 @@ export const make = Effect.gen(function* () {
         return withNames(next, yield* names);
       }),
     );
-    // Made here while her brain was away: it goes up with his other words at the next reach.
-    if (!(yield* brain.isBrain)) uploaded = false;
+    // Made here while her brain was away: queued in order for it, so a removal reaches it too and no word comes back.
+    if (!(yield* brain.isBrain)) {
+      uploaded = false;
+      yield* brain.sendOrQueue("vocabulary", { change: input });
+    }
     yield* deriveCustomWords(all).pipe(Effect.ignore);
     return all;
   });

@@ -22,7 +22,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { HOME_KEY } from "./BrainHost.ts";
+import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import * as Vocabulary from "./TessayaVocabulary.ts";
 import { serveVoiceCall, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
@@ -237,6 +237,7 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
             Layer.provide(ServerConfig.layerTest(process.cwd(), dirs.brain)),
           ),
         );
+        let reachable = true;
         const peers = Layer.mergeAll(
           Layer.succeed(PeerLinks.PeerLinks, {
             enabled: Effect.succeed(true),
@@ -248,9 +249,11 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
             PeerMcpClient.PeerMcpClient,
             PeerMcpClient.PeerMcpClient.of({
               call: (input) =>
-                receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
-                  Effect.provideContext(brain),
-                ) as never,
+                (reachable
+                  ? receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
+                      Effect.provideContext(brain),
+                    )
+                  : Effect.fail(new Error("her brain is away"))) as never,
             }),
           ),
         );
@@ -273,6 +276,17 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         expect(
           phrases(NodePath.join(NodePath.dirname(workerFile), "dictionary.before-brain.json")),
         ).toEqual(["btw", "deplok", "google"]);
+        // A word he removes on the worker while the brain is away reaches it once it is back, and does not return.
+        reachable = false;
+        yield* Context.get(worker, TessayaVocabulary).change({ verb: "remove", phrase: "google" });
+        expect(phrases(brainFile)).toContain("google");
+        reachable = true;
+        yield* Effect.flatMap(makeBrainLink, (link) => link.replay()).pipe(
+          Effect.provideContext(worker),
+        );
+        yield* Context.get(worker, TessayaVocabulary).read;
+        expect(phrases(brainFile).toSorted()).toEqual(["btw", "deplok", "kodi"]);
+        expect(phrases(workerFile).toSorted()).toEqual(["btw", "deplok", "kodi"]);
       }).pipe(Effect.scoped),
   );
 
