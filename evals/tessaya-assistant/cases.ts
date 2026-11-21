@@ -642,8 +642,8 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     source:
       "M-120: the Director's Sleeve mode is set per phone by voice, as his `sleeve` preference",
     said: "make my Xperia her sleeve",
-    first: ["preference_set"],
-    not: ["memory_remember"],
+    first: ["tessaya_preference_set"],
+    not: ["memory_remember", "settings_find"],
   },
   {
     id: "remember-work-preference",
