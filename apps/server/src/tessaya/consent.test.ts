@@ -19,6 +19,8 @@ import {
   readScoped,
   setGrant,
 } from "./consent.ts";
+import { HOME_KEY } from "./BrainHost.ts";
+import { receiveAtBrain } from "./BrainReceive.ts";
 import { layerMemory } from "./TessayaDatabase.ts";
 
 describe("one consent store", () => {
@@ -95,6 +97,38 @@ describe("one consent store", () => {
       expect(yield* readScoped).toEqual([{ key: LOOK_GRANT, member: OWNER_MEMBER_ID }]);
       expect(yield* holds(LOOK_GRANT, { ...desk, id: "r1-kitchen" })).toBe(true);
     }).pipe(Effect.provide(layerMemory)),
+  );
+
+  it.effect(
+    "a worker's own yeses move up to the brain once, nothing dropped, and none stand on a worker cut off from it",
+    () =>
+      Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const deskYes = standingKey("project_add", "It would add a project to this computer.");
+        const brainYes = standingKey("job_schedule", "It runs by itself later.");
+        // 21 Nov: the laptop's server kept a yes the brain never had
+        yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${CONSENT_KEY}, ${JSON.stringify([deskYes])})`;
+        yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'Tessaya')`;
+        expect(yield* readGrants).toEqual([]);
+        const queued = yield* sql<{ id: string; op: string; payload: string }>`
+          SELECT id, op, payload FROM tessaya_brain_outbox`;
+        expect(queued.map((q) => q.op)).toEqual(["consent"]);
+        expect(yield* sql`SELECT value FROM fabric_settings WHERE key = ${CONSENT_KEY}`).toEqual([
+          { value: "[]" },
+        ]);
+        // The same database as the brain now: it has a yes of its own, then the worker's queued copy lands, once.
+        yield* sql`DELETE FROM fabric_settings WHERE key = ${HOME_KEY}`;
+        yield* setGrant(brainYes, true);
+        const box = { id: queued[0]!.id, op: "consent", payload: JSON.parse(queued[0]!.payload) };
+        expect((yield* receiveAtBrain("outbox", box)).ok).toBe(true);
+        expect((yield* receiveAtBrain("outbox", box)).ok).toBe(true);
+        expect([...(yield* readGrants)].toSorted()).toEqual([brainYes, deskYes].toSorted());
+        // A worker's revoke reaches the brain's one copy.
+        expect(
+          (yield* receiveAtBrain("consent", { a: "set", key: deskYes, allow: false })).ok,
+        ).toBe(true);
+        expect(yield* readGrants).toEqual([brainYes]);
+      }).pipe(Effect.provide(layerMemory)),
   );
 
   it.effect(
