@@ -17,7 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
 import { useAuth, useUser } from "@clerk/expo";
 import { useNavigation, useNavigationState } from "@react-navigation/native";
 import { use, type ComponentProps } from "react";
-import { Platform, View } from "react-native";
+import { Alert, Platform, View } from "react-native";
 import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
 import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +27,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
+import { setSleeveUnlocked, useSleeve } from "../tessaya/sleeve/useSleeve";
 import { SettingsScreen } from "./components/SettingsScreen";
 import type { SettingsPageTarget } from "./components/settings-page-targets";
 import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
@@ -259,6 +260,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
         })
       : (selectedProject?.label ?? gt("Unavailable project"));
   const overflowRows = useOverflowRows();
+  const sleeve = useSleeve();
   const page = (
     target: SettingsPageTarget,
     icon: SettingsListRow["icon"],
@@ -306,6 +308,30 @@ function useSettingsIndexSections(): SettingsListSection[] {
     {
       title: "This phone",
       rows: [
+        {
+          id: "sleeve",
+          icon: "iphone",
+          label: "Mode",
+          value: sleeve.sleeve ? "Sleeve: only her" : "Full",
+          onPress: () =>
+            Alert.alert(
+              sleeve.sleeve ? "Give this phone back?" : "Make this phone her Sleeve?",
+              sleeve.sleeve
+                ? "It shows everything again: your work, her personas and every setting."
+                : "It shows only her, full screen. Hold the dot at the top, then Face ID or your PIN, to reach settings. You can also say “make this phone her sleeve” or “give me my phone back” on any device.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: sleeve.sleeve ? "Give it back" : "Make it her Sleeve",
+                  onPress: () => {
+                    // a new Sleeve covers the app at once, locked, as it will after every restart
+                    if (!sleeve.sleeve) setSleeveUnlocked(false);
+                    void sleeve.set(!sleeve.sleeve);
+                  },
+                },
+              ],
+            ),
+        },
         page("SettingsVoice", "mic", "Voice and microphone"),
         page("SettingsAppearance", "paintbrush", gt("Appearance")),
         page("SettingsLanguage", "globe", gt("Language"), {

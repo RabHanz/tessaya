@@ -309,6 +309,9 @@ const config: ExpoConfig = {
       NSLocalNetworkUsageDescription:
         "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
       NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
+      // Tessaya: Face ID stands in for his PIN for Sleeve's settings and the private layer (M-120, M-133).
+      NSFaceIDUsageDescription:
+        "Use Face ID instead of your PIN to unlock Tessaya's private layer and settings.",
       // System picture in picture needs background audio to start and survive outside the app.
       UIBackgroundModes: ["audio"],
       ITSAppUsesNonExemptEncryption: false,

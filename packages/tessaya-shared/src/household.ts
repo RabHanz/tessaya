@@ -184,6 +184,8 @@ export const PREFERENCE_KEYS: Readonly<Record<TessayaPreferenceKey, string>> = {
     'in listen mode ("just listen"), how long a silence ends the thought, in seconds (5 to 120; 20 when unset)',
   listenEnds:
     'their own words that end listen mode, comma-separated (beside "over to you", "that\'s it", "your turn")',
+  sleeve:
+    'which of their phones is her Sleeve, showing only her full screen with its settings locked ("make this phone her sleeve"): phone names, comma-separated; cleared ("give me my phone back"), every phone shows everything',
 };
 /** An opt-in (location, camera): off until they say yes. */
 export const optedIn = (value: string | undefined): boolean =>

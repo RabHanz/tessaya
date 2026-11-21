@@ -45,6 +45,7 @@ import { useVoiceInputController } from "../../voice-input/useVoiceInputControll
 import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
 import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
 import { setHerPhase } from "../island/herPhase";
+import { useSleeveCovering } from "../sleeve/useSleeve";
 import {
   addFrames,
   batteryDrain,
@@ -62,11 +63,21 @@ const POLL_MS = 1500;
 const POLLS = 60;
 
 export function TalkRouteScreen() {
+  // under a Sleeve the tab draws nothing: the Sleeve's own body is the one on screen
+  const covered = useSleeveCovering();
+  return <TalkView focused={useIsFocused() && !covered} sleeve={false} />;
+}
+
+/**
+ * Talk itself. In Sleeve (M-120) she fills the screen edge to edge, behind the camera hole too; only her last line
+ * and the place to hold stay, inside the safe area.
+ */
+export function TalkView(props: { readonly focused: boolean; readonly sleeve: boolean }) {
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
   const connection = useSavedRemoteConnection(environmentId);
   const insets = useSafeAreaInsets();
   const screenHeight = useWindowDimensions().height;
-  const focused = useIsFocused();
+  const { focused, sleeve } = props;
   const [active, setActive] = useState(AppState.currentState === "active");
   const [personas, setPersonas] = useState<ReadonlyArray<TessayaPersona>>([]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -426,7 +437,7 @@ export function TalkRouteScreen() {
   }, [listening, pending]);
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>
+    <View className="flex-1 bg-background" style={{ paddingTop: sleeve ? 0 : insets.top }}>
       {drawing ? (
         <WebView<object>
           ref={webView}
@@ -482,8 +493,8 @@ export function TalkRouteScreen() {
       )}
       <SafeAreaView
         // the native view reads its own safe area, which includes the floating iOS tab bar over this tab
-        edges={["bottom"]}
-        className="absolute inset-x-0 bottom-0 gap-3 rounded-t-3xl bg-background/85 px-4 pt-4"
+        edges={["bottom", "left", "right"]}
+        className={`absolute inset-x-0 bottom-0 gap-3 px-4 pt-4 ${sleeve ? "" : "rounded-t-3xl bg-background/85"}`}
         style={{ paddingBottom: 12 }}
         // the panel grows with her reply or the keyboard; her framing keeps her face above it
         onLayout={(e) => {
@@ -493,13 +504,14 @@ export function TalkRouteScreen() {
         }}
       >
         <TalkHistory
-          lines={lines}
+          lines={sleeve ? lines.filter((l) => l.role === "her").slice(-1) : lines}
           pending={pending}
           thisDevice={manifestNow().deviceId}
-          maxHeight={screenHeight * 0.38}
-          earlier={earliest === null ? null : () => void readHistory(earliest)}
+          maxHeight={sleeve ? screenHeight * 0.2 : screenHeight * 0.38}
+          earlier={sleeve || earliest === null ? null : () => void readHistory(earliest)}
         />
         <ScrollView
+          style={sleeve ? { display: "none" } : undefined}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerClassName="gap-2"

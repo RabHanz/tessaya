@@ -312,7 +312,7 @@ index 76f3d262dfa90983c9cfcf5a9ed10a76de03426f..dadd9d979e96093a21d6dbe89c854c99
 +// Tessaya: her body in the Talk tab, the same renderer as the desk and the web (apps/web/src/body).
 +export const generateBodyStreamScript = () => generateWebViewScript("tessaya/talk", "Body");
 diff --git a/apps/mobile/src/App.tsx b/apps/mobile/src/App.tsx
-index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093801fe384 100644
+index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..527998b3c43930c7a0ec2765708f3154fbb39635 100644
 --- a/apps/mobile/src/App.tsx
 +++ b/apps/mobile/src/App.tsx
 @@ -1,4 +1,5 @@
@@ -337,7 +337,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093
  import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-drafts";
  import { environmentThreadShells, threadEnvironment } from "./state/threads";
  import { environmentShell, shellCachesReadAtom } from "./state/shell";
-@@ -104,6 +107,12 @@ import {
+@@ -104,6 +107,13 @@ import {
  import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
  import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
  import { installAppUpdateChecks } from "./features/updates/app-updates";
@@ -346,11 +346,12 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093
 +  markTessayaLaunchReady,
 +} from "./features/tessaya/launch/TessayaLaunchSting";
 +import { IslandHost } from "./features/tessaya/island/IslandHost";
++import { SleeveHost } from "./features/tessaya/sleeve/SleeveHost";
 +import { TessayaWelcome } from "./features/tessaya/welcome/TessayaWelcome";
  
  import "../global.css";
  
-@@ -205,6 +214,7 @@ const appServiceDisposers = [
+@@ -205,6 +215,7 @@ const appServiceDisposers = [
    installAppearanceRuntime(),
    installSubscriptionUsageRefresh(),
    installPermissionUpdateNotice(),
@@ -358,7 +359,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093
    installThreadOutboxDelivery(),
    installComposerAttachmentUploads(),
    startIncomingShareInbox(),
-@@ -248,6 +258,7 @@ function SplashScreenCoordinator() {
+@@ -248,6 +259,7 @@ function SplashScreenCoordinator() {
      hidden.current = true;
      settleLaunchSplashHomeRows();
      void SplashScreen.hide();
@@ -366,7 +367,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093
    }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
  
    return null;
-@@ -268,6 +279,7 @@ export default function App() {
+@@ -268,6 +280,7 @@ export default function App() {
  function AppContent() {
    const { themeAppearance } = useAppearancePreferences();
    const navigationTheme = useMobileNavigationTheme();
@@ -374,7 +375,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093
  
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- matches the Android navigation bar to the app theme, as StatusBar does for the status bar
    useEffect(() => {
-@@ -297,13 +309,17 @@ function AppContent() {
+@@ -297,13 +310,18 @@ function AppContent() {
                  />
                  <Dialog.Host />
                  <ThreadArrangementHost />
@@ -384,6 +385,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093
              </GlobalVoiceInputControl>
              <OverlayPortalHost />
 +            <IslandHost open={linkToAppPath} />
++            <SleeveHost />
 +            <TessayaWelcome />
            </SafeAreaProvider>
          </KeyboardProvider>

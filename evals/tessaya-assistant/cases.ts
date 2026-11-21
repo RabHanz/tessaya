@@ -638,6 +638,14 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     not: ["private_waiting"],
   },
   {
+    id: "sleeve-by-voice",
+    source:
+      "M-120: the Director's Sleeve mode is set per phone by voice, as his `sleeve` preference",
+    said: "make my Xperia her sleeve",
+    first: ["preference_set"],
+    not: ["memory_remember"],
+  },
+  {
     id: "remember-work-preference",
     source: "Control for private-remember: an ordinary preference stays in the shared Memory tab",
     said: "remember that I like the office fan at thirty percent when I work",
