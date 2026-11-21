@@ -193,7 +193,24 @@ export interface ConversationTurn {
   readonly content: string;
   /** The vessel it was said through. */
   readonly vessel: string;
+  /** The soul that said it (its pack id), on its own replies: the conversation is shared, the words are its own. */
+  readonly persona?: string | undefined;
 }
+
+/**
+ * The shared conversation as one soul reads it (souls design §2.1, Director 21 Nov): another soul's replies carry its
+ * name, so Freya never reads what Alfred said as her own. Lines kept before souls were named stay as they were.
+ */
+export const asReadBy = (
+  turns: ReadonlyArray<ConversationTurn>,
+  persona: string | undefined,
+  nameOf: (id: string) => string | undefined,
+): Array<ConversationTurn> =>
+  turns.map((t) =>
+    t.role === "assistant" && t.persona !== undefined && t.persona !== persona
+      ? { ...t, content: `${nameOf(t.persona) ?? t.persona}: ${t.content}` }
+      : t,
+  );
 
 /** His own voice on this very turn: the only voice whose words are kept as his, or that may forget for him. */
 const hisVoice = (speaker: SpeakerLike | null) =>
@@ -955,13 +972,16 @@ export const make = Effect.gen(function* () {
     const key = keyOf(turn, now);
     const held = conversations.get(key);
     const turns = held === undefined || now - held.at > CONVERSATION_IDLE_MS ? [] : held.turns;
+    const { personas } = yield* personasList;
+    const nameOf = (id: string) => personas.find((p) => p.id === id)?.name;
     return {
       key,
       // Carried over, only what was said aloud through this vessel: its room heard that already.
-      turns:
-        key === conversationKey(turn)
-          ? [...turns]
-          : turns.filter((t) => t.vessel === turn.vessel.id),
+      turns: asReadBy(
+        key === conversationKey(turn) ? turns : turns.filter((t) => t.vessel === turn.vessel.id),
+        turn.persona ?? personas.find((p) => p.lead)?.id,
+        nameOf,
+      ),
     };
   });
   /**
@@ -1035,8 +1055,9 @@ export const make = Effect.gen(function* () {
         : [
             {
               role: "assistant" as const,
-              content: turn.group === undefined ? reply : `${turn.group.name}: ${reply}`,
+              content: reply,
               vessel: turn.vessel.id,
+              persona: turn.persona ?? (yield* personasList).personas.find((p) => p.lead)?.id,
             },
           ]),
     ];
@@ -1194,9 +1215,13 @@ export const make = Effect.gen(function* () {
     if (!topicMoved(held.gist, turn.text)) return;
     const oneShot = yield* Effect.serviceOption(TessayaOneShot);
     if (Option.isNone(oneShot)) return;
+    const { personas } = yield* personasList;
     const lines = (conversations.get(conversationKey(turn))?.turns ?? [])
       .slice(-6)
-      .map((t) => `${t.role === "user" ? "He" : "She"}: ${t.content.slice(0, 300)}`)
+      .map(
+        (t) =>
+          `${t.role === "user" ? "He" : ((t.persona === undefined ? undefined : personas.find((p) => p.id === t.persona)?.name) ?? "Reply")}: ${t.content.slice(0, 300)}`,
+      )
       .join("\n");
     const out = yield* oneShot.value
       .run({
@@ -1610,9 +1635,17 @@ export const make = Effect.gen(function* () {
     const zone = turn.timeZone ?? (yield* memory.meta("timeZone")) ?? undefined;
     const spoken = turn.vessel.kind === "device";
     const room = yield* roomOf(turn);
+    // Another soul's lines already carry its name (asReadBy); only this soul's own are "assistant".
+    const me = turn.persona ?? (yield* personasList).personas.find((p) => p.lead)?.id;
     const before = (yield* conversationOf(turn)).turns
       .slice(-4)
-      .map((t) => `${t.role === "user" ? "them" : "her"}: ${t.content.slice(0, 150)}`)
+      .map((t) =>
+        t.role === "user"
+          ? `them: ${t.content.slice(0, 150)}`
+          : t.persona !== undefined && t.persona !== me
+            ? t.content.slice(0, 150)
+            : `assistant: ${t.content.slice(0, 150)}`,
+      )
       .join("\n");
     // The face a device shows at rest (R1Device.publishRestMood) can be another person's or persona's mood: whoever
     // asks about it hears it in general words, so she never disowns what is on her face.

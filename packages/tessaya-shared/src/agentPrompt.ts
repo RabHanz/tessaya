@@ -21,6 +21,7 @@ import {
   WAKE_WORD,
 } from "./assistantPrompt.ts";
 import { conversationBlock, type ConversationTurn } from "./conversation.ts";
+import { rosterLine, type Persona } from "./osPack.ts";
 
 export const AGENT_PROMPT = `${SELF}. here you are on his own computer. ${FOR_THE_EAR} name a file the way a person would say it ("the security policy", "the web app manifest", "the voice settings file"), never by its path, folders or extension, unless he asks for the exact name. ${NAMES} you hold the whole conversation, your memory and every tool at once and you decide what to do, using several tools in one turn when that is what it takes.
 
@@ -152,6 +153,23 @@ const personaLine = (p: TurnPersona) =>
   ]
     .filter((part) => part !== "")
     .join(" ");
+
+/**
+ * A registry soul as a turn's speaker (souls design: one seam): name, pronouns, role, `self:`, who leads and the others.
+ * The private layer and every vessel build it here, so no surface keeps its own copy of who a soul is.
+ */
+export const turnPersonaOf = (p: Persona, personas: ReadonlyArray<Persona> = []): TurnPersona => {
+  const lead = personas.find((x) => x.lead);
+  return {
+    id: p.id,
+    name: p.name,
+    role: p.role,
+    ...(p.pronouns === undefined ? {} : { pronouns: p.pronouns }),
+    ...(p.self === undefined ? {} : { self: p.self }),
+    ...(p.lead || lead === undefined ? {} : { lead: lead.name }),
+    ...(personas.length === 0 ? {} : { roster: rosterLine(personas, p.id) }),
+  };
+};
 
 /** A greeting and nothing else ("hi Freya", "good morning!"); "hi Freya, is the deploy done?" is a request. */
 const GREETS =

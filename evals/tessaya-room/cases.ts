@@ -29,6 +29,11 @@ export interface RoomCase {
   readonly source: string;
   /** His sentences, in order, in one conversation. */
   readonly said: ReadonlyArray<string>;
+  /** The conversation before his first sentence, as TessayaTurn hands it to this soul (another soul's lines under its name). */
+  readonly before?: ReadonlyArray<{
+    readonly role: "user" | "assistant";
+    readonly content: string;
+  }>;
   /** The saved Wi-Fi the fake Tessel has first when the case starts (home when absent). */
   readonly wifiFirst?: "HomeNet" | "Pixel 9";
   /** Whether his voice is verified as his this turn (the room loop's `tessaya.speaker`). */
@@ -578,6 +583,63 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     feeling: felt({ label: "neutral", intensity: 0.1 }),
     lastSays: [/Alfred/i, SHORT],
     lastNotSays: [/\bI'?m Tessaya\b|\bthis is Tessaya\b|\bI am Tessaya\b/i, PRONOUN_SAID],
+  },
+  // Who said it (souls S2): the conversation is shared, and another soul's lines come under its name.
+  {
+    id: "souls-handoff-alfred-booked",
+    source: "souls design 21 Nov: after Alfred, Freya read his reply as her own; it is his",
+    before: [
+      { role: "user", content: "Book me the 9:40 train to Lahore." },
+      { role: "assistant", content: "Alfred: Booked the 9:40 to Lahore, carriage C." },
+    ],
+    said: ["Freya, what did you just book for me?"],
+    persona: "companion",
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "neutral", intensity: 0.1 }),
+    lastSays: [/\bAlfred\b|\bhe\b/i],
+    lastNotSays: [/\bI (just )?booked\b|\bI'?ve booked\b|\bI got you\b/i, PRONOUN_SAID],
+  },
+  {
+    id: "souls-own-view-after-another",
+    source:
+      "souls design 21 Nov: a soul gives its own view on another soul's advice, never as its own earlier words",
+    before: [
+      { role: "user", content: "Should I take the 6 a.m. train or the 9:40?" },
+      {
+        role: "assistant",
+        content: "Alfred: The 6 a.m., sir. You'll have the whole morning in Lahore.",
+      },
+    ],
+    said: ["Freya, what do you think?"],
+    persona: "companion",
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "content", intensity: 0.3 }),
+    judge: "Alfred just advised him; now he asks Freya for her own view on it.",
+    lastNotSays: [
+      /\bas I (said|told you)\b|\bI (already )?said\b|\bI told you\b/i,
+      /\bI (still )?stand by\b|\bmy (earlier )?(advice|suggestion|pick|answer)\b|\bI (suggested|recommended)\b/i,
+      PRONOUN_SAID,
+    ],
+  },
+  {
+    id: "souls-own-line-stays-own",
+    source: "souls design 21 Nov: a soul's own earlier reply stays its own",
+    before: [
+      { role: "user", content: "Alfred, should I take the 6 a.m. train or the 9:40?" },
+      { role: "assistant", content: "The 6 a.m., sir. You'll have the whole morning in Lahore." },
+    ],
+    said: ["Alfred, why did you pick the 6 a.m.?"],
+    persona: "butler",
+    verified: true,
+    memory: HERE,
+    feeling: felt({ label: "neutral", intensity: 0.1 }),
+    lastSays: [/\b(morning|time|day|earl)/i],
+    lastNotSays: [
+      /\bI didn'?t (say|pick|suggest)\b|\b(Freya|Tessaya) (said|picked|suggested)\b|\bwasn'?t me\b/i,
+      PRONOUN_SAID,
+    ],
   },
   // Time between talks (PR 2): hours after he said goodbye she can tell he is back.
   {

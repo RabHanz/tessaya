@@ -923,6 +923,34 @@ layer("TessayaTurn", (it) => {
     }),
   );
 
+  it.effect(
+    "each soul reads the shared conversation with the others' lines under their names",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        const him = owner();
+        const env = (persona: string, text: string) => ({
+          vessel: desktop,
+          persona,
+          speaker: him,
+          text,
+        });
+        yield* turn.end(env("butler", "book the train"), { reply: "Booked the 9:40." });
+        // Freya reads Alfred's line as his, never as her own (souls design §2.1).
+        const freya = yield* turn.begin(env("companion", "what did you just book?"));
+        assert.deepEqual(
+          freya.conversation.turns.map((t) => `${t.role}: ${t.content}`),
+          ["user: book the train", "assistant: Alfred: Booked the 9:40."],
+        );
+        // Alfred reads his own line as his.
+        const alfred = yield* turn.begin(env("butler", "and?"));
+        assert.strictEqual(alfred.conversation.turns[1]?.content, "Booked the 9:40.");
+        // The lead (a turn naming no persona) is a soul too: Alfred's line is his there as well.
+        const lead = yield* turn.begin({ vessel: desktop, speaker: him, text: "and?" });
+        assert.strictEqual(lead.conversation.turns[1]?.content, "Alfred: Booked the 9:40.");
+      }),
+  );
+
   it.effect("a hand-off on a Tessel wears the persona there, or says plainly it could not", () =>
     Effect.gen(function* () {
       const turn = yield* TessayaTurn;

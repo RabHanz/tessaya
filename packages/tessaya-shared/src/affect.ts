@@ -332,7 +332,7 @@ export const readPrompt = (
   context: {
     /** Her opinion so far (null: they are new to her); undefined: no opinion is asked for. */
     readonly opinion?: string | null;
-    /** What was said just before, hers and theirs, so the flow is read and not one line alone. */
+    /** What was said just before, the assistant's own lines, other souls' by name and theirs, so the flow is read. */
     readonly before?: string;
     /** They live in her household: fond to begin with, and their habits are habits (the Director's "dismissed"). */
     readonly household?: boolean;

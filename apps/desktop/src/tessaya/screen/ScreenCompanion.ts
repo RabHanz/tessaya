@@ -13,7 +13,7 @@ import {
   type SpeakerIdentity,
   type SpokenAnswer,
 } from "@t3tools/tessaya-voice";
-import { contextLine } from "@t3tools/tessaya-shared/agentPrompt";
+import { contextLine, turnPersonaOf } from "@t3tools/tessaya-shared/agentPrompt";
 import { createModelAsk } from "../writing/modelAsk.ts";
 import { appOf, tracedTurns } from "@t3tools/tessaya-shared/skillLearning";
 import { replayTurn } from "../agent/replay.ts";
@@ -3495,13 +3495,7 @@ export const startScreenCompanion = (input: {
           const reply = await once.say(standingTurnText(job), {
             window: null,
             session: null,
-            persona: {
-              id: job.persona.id,
-              name: job.persona.name,
-              role: job.persona.role,
-              ...(job.persona.self === undefined ? {} : { self: job.persona.self }),
-              ...(job.persona.pronouns === undefined ? {} : { pronouns: job.persona.pronouns }),
-            },
+            persona: turnPersonaOf(job.persona),
           });
           // One model turn, and one more for each tool call it made (the turn record counts them).
           return {
