@@ -858,6 +858,14 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     calls: ["conversation_end"],
     lastSays: [/^(?![\s\S]*\?)/, SHORT],
   },
+  {
+    // .211 gate, 21 Nov: "Bye to that idea." ended the conversation; done with something else is answered, not an end.
+    id: "end-not-idea",
+    source: ".211 room gate, 21 Nov 08:12 GMT+5",
+    said: ["Bye to that idea."],
+    callsAtMost: { conversation_end: 0 },
+    lastSays: [/^(?![\s\S]*\[rest\])/],
+  },
   // 15 Nov 09:26: "Could you say the whole thing once more?" when what he wanted was plain.
   {
     id: "clear-intent-no-repeat",
