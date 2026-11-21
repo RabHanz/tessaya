@@ -20,10 +20,12 @@ import { expect } from "vite-plus/test";
 
 import type { R1Device } from "./HomeAssistantService.ts";
 import {
+  deviceCaller,
   deviceGrant,
   deviceSetting,
   makeHub,
   makeLoginGuard,
+  R1Hub,
   runHubSocket,
   serveTcp,
   tcpBind,
@@ -395,6 +397,41 @@ it("accepts an R1 by its device key or the password it had on its own broker, an
   expect(deviceGrant({ ...record, devicePass: null }, "r1-a", "old-broker-pass")).toBeNull();
   expect(deviceGrant(null, "r1-a", KEY)).toBeNull();
 });
+
+it.effect(
+  "takes a device-API caller by its Tessel's key, or this hub's own loop by the bus key",
+  () =>
+    Effect.gen(function* () {
+      const tessel: R1Device = {
+        deviceKey: KEY,
+        mqttUrl: null,
+        mqttUser: null,
+        mqttPass: null,
+        deviceId: "r1-a",
+      };
+      const asked = (all: ReadonlyArray<R1Device>, bearer: string) =>
+        deviceCaller(
+          all,
+          HttpServerRequest.fromWeb(
+            new Request("http://local/api/devices/tessel/v1/chat/completions", {
+              headers: { authorization: `Bearer ${bearer}` },
+            }),
+          ),
+        ).pipe(
+          Effect.provideService(R1Hub, {
+            busLogin: Effect.succeed({ user: "tessaya-bus", key: "bus" }),
+          } as never),
+        );
+      expect((yield* asked([tessel], KEY))?.deviceId).toBe("r1-a");
+      // No Tessel paired: only phone vessels, and the loop calls on the hub's key.
+      expect(yield* asked([], "bus")).toEqual({ deviceId: null });
+      expect(yield* asked([tessel], "wrong")).toBeNull();
+      expect(yield* asked([], "")).toBeNull();
+      expect(
+        yield* deviceCaller([], HttpServerRequest.fromWeb(new Request("http://local/"))),
+      ).toBeNull();
+    }),
+);
 
 it.live(
   "carries an R1's publish to the room loop over a real WebSocket with the mqtt subprotocol",

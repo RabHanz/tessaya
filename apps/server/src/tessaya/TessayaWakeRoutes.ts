@@ -13,7 +13,8 @@ import * as Schema from "effect/Schema";
 import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-import { HomeAssistantService, r1ByKey } from "../home/HomeAssistantService.ts";
+import { HomeAssistantService } from "../home/HomeAssistantService.ts";
+import { deviceCaller } from "../home/R1Hub.ts";
 import { requestUrl } from "../requestUrl.ts";
 import { TessayaRuntime } from "./TessayaRpcHandlers.ts";
 import { TessayaWake } from "./TessayaWake.ts";
@@ -102,12 +103,9 @@ export const routes = HttpRouter.use((router) =>
       );
     const isR1 = (request: HttpServerRequest.HttpServerRequest) =>
       Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.flatMap((all) => deviceCaller(all, request)),
         Effect.provideContext(context),
-        Effect.map(
-          (all) =>
-            r1ByKey(all, (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "")) !==
-            null,
-        ),
+        Effect.map((caller) => caller !== null),
         Effect.orElseSucceed(() => false),
       );
 
