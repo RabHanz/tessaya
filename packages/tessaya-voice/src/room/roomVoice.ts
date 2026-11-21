@@ -21,9 +21,19 @@ import {
   type SentenceClock,
 } from "@t3tools/tessaya-shared/speechEffects";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
 import { pronounce, pronounceFrom } from "@t3tools/tessaya-shared/pronounce";
 import {
+  classifyListen,
+  listenPhrases,
+  listenStep,
+  listenWaitMs,
+  type ListenOutput,
+  type ListenState,
+} from "@t3tools/tessaya-shared/listenMode";
+import {
+  LISTEN_MARK,
   PRIVATE_MARK,
   REST_MARK,
   stopIntent,
@@ -971,6 +981,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         .then(() => deps.publish(topic(id, "cmd/voice/stop"), "{}"));
     /** Turns until then need no name: S2 or her name opens it, a reply to him reopens it; audio alone never does. */
     let openUntil = 0;
+    /** Listen mode (M-135): his thought so far while she only listens, and the last line's audio for his voice. */
+    let listen: ListenState | null = null;
+    let listenPcm: Int16Array = new Int16Array(0);
     /** Her last reply asked him something: a bare "yes" or "okay" is his answer, not the room's chatter. */
     let invited = false;
     /** S2, a wake or her name: his first turn after it is for her, however long he takes to start (00:20, 13 Nov). */
@@ -1220,6 +1233,9 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
     const beginEarly = (words: string, from: "partial" | "preview", seq = starts) => {
       if (early !== null || words === "" || !looksComplete(words)) return;
+      // Listening, or about to: nothing is thought out ahead.
+      if (listen !== null || classifyListen(words, { listening: false, names }).kind === "start")
+        return;
       if (stopIntent(words, config.stopPhrases) !== null) return;
       const called = calledName(words, names);
       if (!addressed(words, called, turnStartedAt)) return;
@@ -1279,6 +1295,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
     /** The session ends softly: sleepy eyes and her closing sound once her last words have played, then the mic closes. */
     const restGently = (at: number) => {
+      listen = null;
       openUntil = 0;
       firstUntil = 0;
       invited = false;
@@ -1311,6 +1328,34 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * Sent away by voice: a turn on its way is cancelled and she says a brief "okay" before the soft close, never an
      * instant sleep (15 Nov). Said over her, it stops her sentence first, as any barge-in does.
      */
+    /** His listen-mode settings (silence, own end words), by who is talking, else the owner's. */
+    const listenConfig = () => {
+      const prefs = prefsOf.get(recog?.member ?? OWNER_MEMBER_ID) ?? prefsOf.get(OWNER_MEMBER_ID);
+      return {
+        waitMs: listenWaitMs(prefs?.listenWait),
+        ends: listenPhrases(prefs?.listenEnds),
+        names,
+      };
+    };
+    const listenCue = (name: PillSound) =>
+      void send(cueSamples(name), new AbortController().signal, () => undefined).catch(
+        () => undefined,
+      );
+    /** Listen mode on the room: a soft cue and her eyes, never words, until the thought is whole. */
+    const onListen = (out: ListenOutput, turn: number) => {
+      if (out.kind === "started") {
+        openUntil = Number.POSITIVE_INFINITY;
+        face("attentive");
+        listenCue("start");
+      } else if (out.kind === "ack") openUntil = Number.POSITIVE_INFINITY;
+      else if (out.kind === "cancelled") {
+        openUntil = deps.now() + config.followMs;
+        listenCue("end");
+      }
+      deps.log(
+        `[${id}] turn ${turn}: listen mode ${out.kind}${out.kind === "cancelled" ? ` (${out.lines.length} lines dropped)` : ""}`,
+      );
+    };
     const dismissNow = (why: string, words = "") => {
       const at = deps.now();
       // The same dismissal heard again (early, then final): a second pass would flush her closing tone (14 Nov, 19:40).
@@ -2169,7 +2214,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       }
       // "Stop" (not her name): she stops and listens for what he says next; nothing to answer.
-      if (given === undefined && !echoed && intent === "stop" && rawCalled === null) {
+      if (
+        given === undefined &&
+        !echoed &&
+        intent === "stop" &&
+        rawCalled === null &&
+        listen === null
+      ) {
         kept?.control.abort();
         // Nothing of hers to stop: his "stop" sends her away like a dismissal.
         if (!tainted && !speaking() && reply === null && cutByVoiceAt < startedAt)
@@ -2339,7 +2390,25 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       asleep = false;
       sentAway = false;
       lastActivity = deps.now();
+      // Listen mode (M-135): his lines are kept, not answered, until the thought is whole; then it is one turn.
+      const heardListen = listenStep(
+        listen,
+        { type: "utterance", text, at: deps.now() },
+        listenConfig(),
+      );
+      if (heardListen.out.kind !== "pass") {
+        listen = heardListen.state;
+        kept?.control.abort();
+        if (heardListen.out.kind !== "done") {
+          listenPcm = pcm;
+          return onListen(heardListen.out, turn);
+        }
+        deps.log(`[${id}] turn ${turn}: listen mode done (${heardListen.out.why})`);
+        text = heardListen.out.text;
+        openUntil = deps.now() + config.followMs;
+      }
       let dismissed = isDismissal(text) || stopIntent(text, config.stopPhrases) === "dismiss";
+      let listensAfter = false;
       // Her brain starts now with what the speaker reader already knows; in his own session it first waits a moment
       // for this turn's verdict (started without one, his pump asked for a yes: 20 Nov, 06:03 GMT+5).
       const session = hisSession();
@@ -2632,6 +2701,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             buffer = buffer.replaceAll(REST_MARK, "");
             dismissed = true;
           }
+          if (buffer.includes(LISTEN_MARK)) {
+            buffer = buffer.replaceAll(LISTEN_MARK, "");
+            listensAfter = true;
+          }
           // A group turn (M-021): the last speaker's words go out whole in its voice; the next voice starts after them,
           // and its eyes show when its first words play.
           for (let m = atSpeakerMark(buffer); m !== null; m = atSpeakerMark(buffer)) {
@@ -2698,6 +2771,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             ? 0
             : Math.max(deps.now(), playUntil + config.downDelayMs) +
               (invited ? config.replyHoldMs : config.followMs);
+          // Her brain heard him ask her to only listen: listen mode starts as her line ends.
+          if (listensAfter && !dismissed) {
+            const begun = listenStep(null, { type: "start", at: deps.now() }, listenConfig());
+            listen = begun.state;
+            onListen(begun.out, turn);
+          }
         }
         if (reply === control) reply = null;
         if (reply === null && recastTo !== null) wearCast();
@@ -3317,6 +3396,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       /** Once a second: past the window she rests (sleepy eyes, name only); long quiet ends the session. */
       tick: (): "stop" | null => {
         if (heldAct !== null && deps.now() - heldAct.at > 60_000) settleStepUp(false, "no answer");
+        // His silence in listen mode ends the thought: the whole of it is one turn, heard as his last line's voice.
+        if (listen !== null && !turns.inTurn()) {
+          const ticked = listenStep(listen, { type: "tick", at: deps.now() }, listenConfig());
+          if (ticked.out.kind !== "pass") {
+            listen = ticked.state;
+            if (ticked.out.kind !== "done") onListen(ticked.out, turnNo);
+            else {
+              deps.log(`[${id}] listen mode done (${ticked.out.why})`);
+              openUntil = deps.now() + config.followMs;
+              void answer(listenPcm, "listen", deps.now(), deps.now(), undefined, ticked.out.text);
+            }
+          }
+        }
         // A quiet mic while she plays on Bluetooth is the radio A2DP shares, expected and never a dead output: the
         // firmware measures that itself (`event/bt/stall`). Moving her then split a reply across both (18 Nov).
         // Not while she plays: his headset's mic starved, or sending only silence, cannot hear him. Her own mic takes
@@ -3396,7 +3488,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return false;
       });
   /** Each member's own defaults from her server (`voice/prefs/<member>`, retained): persona and voice. */
-  const prefsOf = new Map<string, { readonly persona?: string; readonly voice?: string }>();
+  const prefsOf = new Map<
+    string,
+    {
+      readonly persona?: string;
+      readonly voice?: string;
+      readonly listenWait?: string;
+      readonly listenEnds?: string;
+    }
+  >();
   /** Who each member last talked to on any vessel, from her server (`voice/current/<member>`), and when it said so. */
   const currentOf = new Map<string, { readonly persona: string; readonly at: number }>();
   /**
@@ -3662,10 +3762,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (member === "" || member.includes("/")) return;
         if (body === "") prefsOf.delete(member);
         else {
-          const { persona: p, voice: v } = json();
+          const { persona: p, voice: v, listenWait: w, listenEnds: e } = json();
           prefsOf.set(member, {
             ...(typeof p === "string" && /^[\w-]{1,40}$/.test(p) ? { persona: p } : {}),
             ...(typeof v === "string" && /^[\w-]{1,40}$/.test(v) ? { voice: v } : {}),
+            ...(typeof w === "string" ? { listenWait: w.slice(0, 40) } : {}),
+            ...(typeof e === "string" ? { listenEnds: e.slice(0, 200) } : {}),
           });
         }
         return;

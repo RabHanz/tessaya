@@ -9,7 +9,7 @@ import * as NodeChildProcess from "node:child_process";
 
 import { brainRoute, credentialOf } from "@t3tools/tessaya-shared/brainRoutes";
 import { DEFAULT_ROUTING } from "@t3tools/tessaya-shared/costRouting";
-import { CONVERSATION_END } from "@t3tools/tessaya-shared/stopPhrases";
+import { CONVERSATION_END, LISTEN_START } from "@t3tools/tessaya-shared/stopPhrases";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Context from "effect/Context";
@@ -510,7 +510,8 @@ export const make = Effect.fn("R1Brain.make")(function* (system: string) {
                   if (
                     firstAt === null &&
                     used.length === 1 &&
-                    !event.name.endsWith(CONVERSATION_END.name)
+                    !event.name.endsWith(CONVERSATION_END.name) &&
+                    !event.name.endsWith(LISTEN_START.name)
                   )
                     turn.cue(event.web);
                 }
