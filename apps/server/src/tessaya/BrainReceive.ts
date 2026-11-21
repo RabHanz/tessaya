@@ -8,7 +8,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import { CommitmentAsk, TessayaCommitmentService } from "./TessayaCommitmentService.ts";
-import { emitAction } from "../provenance/ActionLog.ts";
+import { ActionLog, ActionRow, emitAction } from "../provenance/ActionLog.ts";
 import { BrainOp as BrainOpSchema, brainOn, type BrainOp } from "./BrainHost.ts";
 import * as SqlClient from "effect/sql/SqlClient";
 import { CurrentPersona, GroupValue } from "./CurrentPersona.ts";
@@ -215,6 +215,9 @@ const decodePreferences = Schema.decodeUnknownOption(PreferencesAct);
 const decodeVoiceMerge = Schema.decodeUnknownOption(
   Schema.Struct({ profile: TessayaVoiceProfile }),
 );
+const decodeActions = Schema.decodeUnknownOption(
+  Schema.Struct({ rows: Schema.Array(ActionRow).check(Schema.isMaxLength(500)) }),
+);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -261,6 +264,15 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       if (Option.isNone(hub)) return refused("There is no hub here.");
       const login = yield* hub.value.busLogin;
       return login.key === "" ? refused("This hub has no bus login yet.") : done(login);
+    }
+    case "actions": {
+      const batch = decodeActions(payload);
+      if (Option.isNone(batch)) return refused("Not a batch of events.");
+      const log = yield* Effect.serviceOption(ActionLog);
+      if (Option.isNone(log)) return refused("There is no Record here.");
+      const kept = yield* log.value.ingest(batch.value.rows);
+      // refused, so the worker keeps its place and sends them again
+      return kept === null ? refused("The Record could not keep them.") : done(kept);
     }
     case "roomLoop": {
       const act = decodeRoomLoop(payload);

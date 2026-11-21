@@ -69,6 +69,8 @@ export const BrainOp = Schema.Literals([
   // her hub's bus login, for a standby room loop on another of his servers to reach her hub (21 Nov): full access only,
   // never queued
   "hubLogin",
+  // a worker's own Record events, for her one Record (21 Nov): each kept once under its id and origin
+  "actions",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
