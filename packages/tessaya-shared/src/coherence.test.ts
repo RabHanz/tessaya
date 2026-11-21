@@ -14,8 +14,8 @@ const fp = (over: Partial<FleetFingerprint> = {}): FleetFingerprint => ({
   id: "brain-env",
   name: "my server",
   kind: "server",
-  host: "signzart-prod",
-  addresses: ["100.124.164.43"],
+  host: "studio",
+  addresses: ["10.0.0.5"],
   version: "0.1.5-tessaya.209",
   commit: "3a6475a56f",
   startedAt: NOW - 3_600_000,
@@ -33,26 +33,26 @@ const keys = (fleet: ReadonlyArray<FleetFingerprint>) =>
 describe("talksToHome", () => {
   it.each([
     ["a worker naming home's environment", { brain: "env:brain-env" }, true],
-    ["a worker naming another environment", { brain: "env:onnyx-env" }, false],
+    ["a worker naming another environment", { brain: "env:office-env" }, false],
     [
-      "a loop on onnyx sending to the brain's tailnet IP",
-      { host: "onnyx", brain: "url:100.124.164.43:3773" },
+      "a loop on the office box sending to the brain's tailnet IP",
+      { host: "office", brain: "url:10.0.0.5:3773" },
       true,
     ],
     [
       "a loop sending to the brain's MagicDNS name",
-      { host: "onnyx", brain: "url:signzart-prod.talpa-draco.ts.net" },
+      { host: "office", brain: "url:studio.tail.example" },
       true,
     ],
     // 21 Nov: the laptop's standby loop ran Tumble's turns on the laptop's own server
     [
       "a standby loop on the laptop sending to loopback",
-      { host: "XIAOMI-NOTEBOOK", brain: "url:127.0.0.1:3773" },
+      { host: "laptop", brain: "url:127.0.0.1:3773" },
       false,
     ],
     [
       "a loop on the brain's own host sending to loopback",
-      { host: "signzart-prod", brain: "url:127.0.0.1:3773" },
+      { host: "studio", brain: "url:127.0.0.1:3773" },
       true,
     ],
     ["a server that thinks it is the brain", { brain: null }, false],
@@ -67,7 +67,7 @@ describe("fleetFindings", () => {
     expect(
       keys([
         fp({ stores: same }),
-        fp({ id: "onnyx", name: "onnyx", host: "onnyx", brain: "env:brain-env", stores: same }),
+        fp({ id: "office", name: "office", host: "office", brain: "env:brain-env", stores: same }),
       ]),
     ).toEqual([]);
   });
@@ -78,7 +78,7 @@ describe("fleetFindings", () => {
       fp({
         id: "laptop",
         name: "the laptop's server",
-        host: "XIAOMI-NOTEBOOK",
+        host: "laptop",
         brain: "env:brain-env",
         stores: { voiceProfiles: storeOf(["owner|61|2cd5"]), wakeTrace: storeOf(["b"]) },
       }),
@@ -107,14 +107,14 @@ describe("fleetFindings", () => {
     expect(behind(NOW - DEPLOY_WINDOW_MS - 60_000)).toEqual(["fleet:version:laptop"]);
   });
 
-  it("names one credential under two labels (hetzner's stale oauthAccount, 21 Nov)", () => {
+  it("names one credential under two labels (a stale login label, 21 Nov)", () => {
     const fleet = [
-      fp({ account: { label: "setup-token-4", digest: "13ec60" } }),
+      fp({ account: { label: "alice-token", digest: "13ec60" } }),
       fp({
-        id: "onnyx",
-        name: "onnyx",
+        id: "office",
+        name: "office",
         brain: "env:brain-env",
-        account: { label: "signzartco", digest: "13ec60" },
+        account: { label: "alice", digest: "13ec60" },
       }),
     ];
     expect(keys(fleet)).toEqual(["fleet:account:13ec60"]);
@@ -141,7 +141,7 @@ describe("fleetFindings", () => {
       fp({
         id: "loop",
         name: "Tumble's room loop",
-        host: "XIAOMI-NOTEBOOK",
+        host: "laptop",
         brain: "url:127.0.0.1:3773",
         commit: null,
       }),

@@ -1,3 +1,4 @@
+// @effect-diagnostics globalDate:off
 import { assert, it } from "@effect/vitest";
 import type { FleetFingerprint, RegisteredDevice } from "@t3tools/tessaya-contracts";
 import * as Effect from "effect/Effect";
@@ -14,7 +15,7 @@ const fp = (sentAt: number): FleetFingerprint => ({
   id: "laptop-env",
   name: "the laptop's server",
   kind: "server",
-  host: "XIAOMI-NOTEBOOK",
+  host: "laptop",
   version: "0.1.186",
   commit: null,
   startedAt: 0,
