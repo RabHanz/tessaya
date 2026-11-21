@@ -466,6 +466,37 @@ describe("the room voice loop", () => {
     expect(kept).toEqual([]);
   });
 
+  it("keeps unsure turns as data only after she is called by name with one voice throughout, never with a second voice", async () => {
+    const v = (x: number) => Float32Array.from({ length: 8 }, (_, i) => (i === 0 ? 1 : x));
+    const unsure = (vector: Float32Array): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      confidence: 0.32,
+      own: { score: 0.32, ms: 1_500, vector },
+    });
+    const run = async (vectors: ReadonlyArray<Float32Array>, named: boolean) => {
+      let n = 0;
+      const kept: Array<string> = [];
+      const t = setup({
+        speaker: async () => unsure(vectors[n++]!),
+        keepTurn: (_id, _pcm, meta) => kept.push(`${meta.speaker}:${String(meta.verified)}`),
+      });
+      if (named) t.room.woken(DEV, "Tessaya", -20, 1);
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      await t.feed(false, 60);
+      for (let i = 0; i < vectors.length; i += 1) {
+        await t.feed(true, 20);
+        await t.feed(false, 30);
+      }
+      return kept;
+    };
+    // 21 Nov 06:03 GMT+5: he called her and asked the time at 0.32; nothing kept it.
+    expect(await run([v(0.1), v(0.12)], true)).toEqual(["unverified:false", "unverified:false"]);
+    // A second voice in the session: from then on nothing is kept.
+    expect(await run([v(0.1), v(-3)], true)).toEqual(["unverified:false"]);
+    // Opened by S2, not by her name: nothing is kept.
+    expect(await run([v(0.1), v(0.12)], false)).toEqual([]);
+  });
+
   it("sends each person's words with their own voice when several spoke, heard if any one of them would be", async () => {
     const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.2 };
     const sara: SpeakerIdentity = { ...guest, kind: "saved", personId: "sara", name: "Sara" };

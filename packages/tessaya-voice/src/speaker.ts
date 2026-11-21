@@ -340,7 +340,7 @@ export const SAME_VOICE = 0.45;
 /** Under this, with a second of speech, the voice clearly changed (his own next turn p1 0.22-0.29). */
 export const CHANGED_VOICE = 0.2;
 
-const meanUnit = (vs: ReadonlyArray<Float32Array>): Float32Array =>
+export const meanUnit = (vs: ReadonlyArray<Float32Array>): Float32Array =>
   unitOrNull(Float32Array.from(vs[0]!, (_, i) => vs.reduce((n, v) => n + v[i]!, 0))) ?? vs[0]!;
 
 export const holdVoice = (

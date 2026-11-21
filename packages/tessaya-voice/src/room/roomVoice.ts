@@ -82,7 +82,10 @@ import {
   withName,
   UNVERIFIED,
   CHANGED_VOICE,
+  cosine,
   likelyHis,
+  meanUnit,
+  SAME_VOICE,
   HOLD_MS,
   holdVoice,
   NO_HOLD,
@@ -1035,6 +1038,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     /** A turn here verified him at the anchor bar: his next turns are his unless Voice ID is sure of another voice. */
     let continuing = false;
     const presumedHis = () => hisSession() || continuing;
+    /** For keeping unsure turns as data only: she was called by name, no other enrolled voice here, one voice throughout. */
+    let namedWake = false;
+    let otherHere = false;
+    const cluster: Array<Float32Array> = [];
+    let clusterSplit = false;
     const heldVoice = (heard: SpeakerIdentity) => {
       const out = holdVoice(voiceHold, heard, deps.now());
       voiceHold = out.hold;
@@ -2858,8 +2866,22 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (his && (score ?? 0) >= ANCHOR_BAR) verifiedHere = true;
       // A turn Voice ID could not place, in a session where another turn verified him at 0.5 or more: his far and soft
       // turns are the ones it misses (20 Nov 13:26, 17:44). Kept apart, 14 days, never to shape his voice.
+      // Or, as data only, in a session she was called into by name where no other enrolled voice matched and every
+      // turn is one voice (his soft voice never verifies, so nothing else ever keeps it: 21 Nov, 06:03 GMT+5).
+      const vector = identity.replay === undefined ? identity.own?.vector : undefined;
+      if (identity.kind === "saved") otherHere = true;
+      if (vector !== undefined) {
+        if (cluster.length > 0 && cosine(vector, meanUnit(cluster)) < SAME_VOICE)
+          clusterSplit = true;
+        cluster.push(vector);
+      }
+      const oneVoice = namedWake && !otherHere && !clusterSplit && vector !== undefined;
       const doubtful =
-        !his && !overHis && verifiedHere && identity.kind === "unverified" && !bargedIn;
+        !his &&
+        !overHis &&
+        (verifiedHere || oneVoice) &&
+        identity.kind === "unverified" &&
+        !bargedIn;
       // Never a private moment's audio, whoever spoke (the condition he set).
       if (
         given === undefined &&
@@ -3381,6 +3403,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         if (reply === null) wearCast();
       },
       call: (name: string, level = Number.NEGATIVE_INFINITY) => {
+        namedWake = true;
         if (Number.isFinite(level)) hisLevel = level;
         // Her name as heard, or the persona id a trained wake word belongs to.
         const named = personas.find((p) => p.name === name || p.id === name);
