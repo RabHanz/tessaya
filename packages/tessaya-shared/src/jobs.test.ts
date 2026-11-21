@@ -209,7 +209,7 @@ describe("a job's changes for the Record", () => {
       group,
       limitReached: limit,
     }) as unknown as TessayaJob;
-  it("names each change once, and says nothing about a job it is seeing for the first time", () => {
+  it("names each change once, a job first seen included (the server seeds the jobs it starts with)", () => {
     const seen = new Map([
       ["a", "writing its plan"],
       ["b", "running"],
@@ -225,9 +225,17 @@ describe("a job's changes for the Record", () => {
     expect(changes.map((c) => `${c.job.workSessionId}:${c.outcome}`)).toEqual([
       "a:plan waits for his OK",
       "b:stopped at its turns limit",
+      "c:running",
     ]);
     expect(seen.get("c")).toBe("running");
     expect(jobChanges([job("a", "awaiting_agreement", "needs_you")], seen)).toEqual([]);
+  });
+
+  // A worker that stops for his permission while it plans (21 Nov) stood as "writing its plan" and was never said.
+  it("names a worker held up for him while it plans as needing him", () => {
+    const changes = jobChanges([job("d", "drafting_plan", "needs_you")], new Map());
+    expect(changes.map((c) => c.outcome)).toEqual(["needs him"]);
+    expect(jobNotice("Job d", changes[0]!.outcome)).toBe("Job d needs you.");
   });
 
   it("says aloud only a ready plan, an end, or a need for him", () => {
