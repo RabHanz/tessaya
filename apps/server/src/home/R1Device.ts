@@ -2295,7 +2295,8 @@ export const routes = HttpRouter.use((router) =>
       if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
       const { personas } = yield* personasList.pipe(Effect.provideContext(context));
-      // A persona's saved clone, for a room loop on this machine to speak it (its Pocket fetches it on loopback).
+      // A persona's saved clone: a loop on this machine fetches it on loopback, one on a full-access machine of his on
+      // the device route (HomeDeviceRoutes, voice/clone).
       const voices = Context.getOption(context, TessayaVoiceLibrary);
       const clones = Option.isNone(voices) ? [] : ((yield* voices.value.library).clones ?? []);
       return HttpServerResponse.jsonUnsafe({
