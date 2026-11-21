@@ -46,6 +46,22 @@ const parse = (payload: string): unknown => {
   }
 };
 
+/**
+ * A fault the Tessel already reported: firmware before 0.3.177 kept it retained, so every reconnect replayed it (21 Nov:
+ * one 18 Nov fault became 15 rows). The same payload again from the same device is not a new fault.
+ */
+export const repeatedFault = (
+  seen: Map<string, string>,
+  id: string,
+  tail: string,
+  payload: string,
+): boolean => {
+  if (tail !== "event/wake/fault") return false;
+  if (seen.get(id) === payload) return true;
+  seen.set(id, payload);
+  return false;
+};
+
 /** `tail` is the topic after `freya/r1/<id>/`. Null: not an action worth a row. */
 export const roomActionOf = (id: string, tail: string, payload: string): ActionInput | null => {
   if (tail === "state/online") {
