@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isAddressedFollowUp } from "./followUp.ts";
+import { isAddressedFollowUp, isFreshRequest } from "./followUp.ts";
 
 describe("a follow-up after an answer", () => {
   it.each([
@@ -35,4 +35,26 @@ describe("a follow-up after an answer", () => {
     "",
     "   ",
   ])("is let go in silence: %j", (said) => expect(isAddressedFollowUp(said)).toBe(false));
+});
+
+describe("the first turn of a wake on the name model alone (M-144)", () => {
+  it.each([
+    // 21 Nov 06:03 (GMT+5): he called her softly from a distance; it must stay answered.
+    "What time is it?",
+    "Tell me a fun fact about owls.",
+    "what's a good name for a cat?",
+    "turn off the study lamp",
+    "Tessaya, stop",
+    "I want the one from Tuesday",
+  ])("is taken: %j", (said) => expect(isFreshRequest(said)).toBe(true));
+
+  it.each([
+    // 16-20 Nov wake captures, re-recognised: not said to her.
+    "Yes, I am.",
+    "So my cycle is two same Samsung monitors and one Dell.",
+    "I'm also working on Tessaya as well as the shop site.",
+    "Okay, fine.",
+    "Yeah.",
+    "",
+  ])("is let go: %j", (said) => expect(isFreshRequest(said)).toBe(false));
 });

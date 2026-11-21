@@ -29,3 +29,18 @@ export const isAddressedFollowUp = (words: string): boolean => {
   const first = text.split(/[^a-z']+/).find((w) => w !== "") ?? "";
   return OPENERS.has(first);
 };
+
+/** Openers that carry on a talk already going: fine in a follow-up, never a fresh request on their own (M-144). */
+const CHATTER = new Set("yes no yeah yep sure continue more also and then but so".split(" "));
+
+/**
+ * A wake on the name model alone, no recogniser in time (M-144): its first turn is taken only as a fresh request to
+ * her (a question, a request, a command, or led by her name), never chatter or talk about her.
+ */
+export const isFreshRequest = (words: string): boolean => {
+  const text = words.trim().toLowerCase().replace(/[’]/g, "'");
+  if (text === "") return false;
+  if (text.endsWith("?") || REQUEST.test(text)) return true;
+  const first = text.split(/[^a-z']+/).find((w) => w !== "") ?? "";
+  return NAMED.test(first) || (OPENERS.has(first) && !CHATTER.has(first));
+};
