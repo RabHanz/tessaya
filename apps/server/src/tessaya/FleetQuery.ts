@@ -80,6 +80,11 @@ export const getFleet = Effect.fn("fabric.getFleet")(function* (input: {
       latestTurnState: state.latestTurnState,
       latestTurnCompletedAt: state.latestTurnCompletedAt,
       updatedAt: state.updatedAt,
+      projectId: thread.projectId,
+      hidden:
+        thread.archivedAt !== null ||
+        thread.deletedAt !== null ||
+        thread.lineage.parentThreadId !== null,
     });
   }
 

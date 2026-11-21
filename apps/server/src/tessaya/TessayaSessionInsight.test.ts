@@ -52,6 +52,7 @@ const setup = () => {
   const sent: Array<{ to: string; text: string }> = [];
   const threadSends: Array<{ readonly threadId: ThreadId; readonly text: string }> = [];
   const prompts: Array<string> = [];
+  const peerCalls: Array<[string, unknown]> = [];
   const services = Layer.mergeAll(
     Layer.succeed(TessayaSessionsAcross, {
       list: () =>
@@ -62,6 +63,12 @@ const setup = () => {
             row("work:env-here:j-diary", "Diary notes", "t-diary"),
             row("claude:c-parity", "Parity sync", null, "p-7"),
             row("work:env-here:j-shop", "Checkout fix", "t-shop"),
+            {
+              ...row("thread:env-laptop:t-print", "V-Minion printer", "t-print"),
+              box: "Laptop",
+              thread: { environmentId: "env-laptop", threadId: "t-print" },
+              access: "approval-required",
+            },
           ],
           unreachable: [],
         }),
@@ -76,8 +83,16 @@ const setup = () => {
         },
       ],
     }),
-    Layer.mock(PeerLinks.PeerLinks)({ list: Effect.succeed([]) }),
-    Layer.mock(PeerMcpClient.PeerMcpClient)({}),
+    Layer.mock(PeerLinks.PeerLinks)({
+      list: Effect.succeed([{ environmentId: "env-laptop", label: "Laptop" }] as never),
+    }),
+    Layer.mock(PeerMcpClient.PeerMcpClient)({
+      call: (input: { readonly tool: string; readonly arguments: unknown }) =>
+        Effect.sync(() => {
+          peerCalls.push([input.tool, input.arguments]);
+          return { status: "queued", text: "", session: "V-Minion printer", line: "" } as never;
+        }),
+    } as never),
     Layer.mock(TessayaWeaveService)({
       send: (input) =>
         Effect.sync(() => {
@@ -129,6 +144,7 @@ const setup = () => {
     sent,
     threadSends,
     prompts,
+    peerCalls,
     layer: layer.pipe(
       Layer.provideMerge(services),
       Layer.provideMerge(recordLayer),
@@ -201,3 +217,26 @@ it.effect("reads his words back first, then sends them marked as his, and record
     );
   }).pipe(Effect.provide(layer));
 });
+
+// A plain T3 thread on his laptop (21 Nov: the printer thread could not be reached): the laptop sends his words.
+it.effect(
+  "sends to a plain thread on a linked server through that server, his words read back here",
+  () => {
+    const { peerCalls, threadSends, layer } = setup();
+    return Effect.gen(function* () {
+      const insight = yield* TessayaSessionInsight;
+      const back = yield* insight.steer({ session: "printer", text: "camera URL?" });
+      assert.strictEqual(back.status, "read_back");
+      assert.lengthOf(peerCalls, 0);
+      const go = yield* insight.steer({ session: "printer", text: "camera URL?", confirmed: true });
+      assert.strictEqual(go.status, "queued");
+      assert.deepStrictEqual(peerCalls, [
+        [
+          "tessaya_session_steer",
+          { session: "thread:env-laptop:t-print", text: "camera URL?", confirmed: true },
+        ],
+      ]);
+      assert.lengthOf(threadSends, 0);
+    }).pipe(Effect.provide(layer));
+  },
+);
