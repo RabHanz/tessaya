@@ -79,7 +79,11 @@ import {
   resolveAppModelSelectionState,
 } from "../../modelSelection";
 import { useTextGenerationTargets } from "../../textGenerators";
-import { useEnvironmentProviders, useEnvironments } from "../../state/environments";
+import {
+  useEnvironmentProviders,
+  useEnvironments,
+  usePrimaryEnvironmentId,
+} from "../../state/environments";
 import { useEnvironmentScope } from "../../state/session";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
@@ -122,6 +126,7 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Switch } from "../ui/switch";
+import { VoiceIdSettings } from "./VoiceIdSettings";
 import { Textarea } from "../ui/textarea";
 import { toastManager } from "../ui/toast";
 import { MicrophoneOrderList } from "./MicrophoneOrderList";
@@ -1228,6 +1233,7 @@ export function VoiceSettingsPanel() {
     environmentId: EnvironmentId;
   } | null>(null);
   const { environments } = useEnvironments();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
   const [microphones, setMicrophones] = useState<BrowserMicrophone[]>([]);
   const prepared = destination.cloudProvider ? null : destination.prepared;
   const catalog = useVoiceModels(prepared);
@@ -1724,6 +1730,9 @@ export function VoiceSettingsPanel() {
           />
         ) : null}
       </SettingsSection>
+      {primaryEnvironmentId === null ? null : (
+        <VoiceIdSettings environmentId={primaryEnvironmentId} />
+      )}
       <TessayaMovedSection place="personas" />
     </SettingsPageContainer>
   );

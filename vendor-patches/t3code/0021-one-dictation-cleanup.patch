@@ -1,8 +1,8 @@
 diff --git a/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
-index 4b0ca00e88666b97f6aa61fa54d8fb837155a9b7..e8ecc102a50ad521da9fe583e0fa8dee45e832c1 100644
+index 4b0ca00e88666b97f6aa61fa54d8fb837155a9b7..5d5d8c3a6db85bda661ef979896b1783018b36cf 100644
 --- a/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
-@@ -32,6 +32,7 @@ import {
+@@ -32,10 +32,12 @@ import {
  import { LocalModelChoice } from "./VoiceModelSection";
  import { CloudVoiceChoice } from "./CloudVoiceSection";
  import type { VoiceGrant } from "../voice-input/voiceGrantStorage";
@@ -10,7 +10,12 @@ index 4b0ca00e88666b97f6aa61fa54d8fb837155a9b7..e8ecc102a50ad521da9fe583e0fa8dee
  import type { EnvironmentId } from "@t3tools/contracts";
  import { ThreadSwipeable } from "../home/thread-swipe-actions";
  import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
-@@ -320,6 +321,7 @@ export function SettingsVoiceRouteScreen() {
+ import { SettingsDragHandle } from "./components/SettingsDragHandle";
++import { VoiceIdSection } from "../tessaya/voice-id/VoiceIdSection";
+ import { SettingsScreen } from "./components/SettingsScreen";
+ import { SettingsSection } from "./components/SettingsSection";
+ import {
+@@ -320,6 +322,7 @@ export function SettingsVoiceRouteScreen() {
              }
            />
          ) : null}
@@ -18,6 +23,14 @@ index 4b0ca00e88666b97f6aa61fa54d8fb837155a9b7..e8ecc102a50ad521da9fe583e0fa8dee
          {!grant && transcriber === null ? (
            <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
          ) : null}
+@@ -383,6 +386,7 @@ export function SettingsVoiceRouteScreen() {
+             ? " Android may still use a different microphone if the preferred one can’t be routed."
+             : null}
+         </Text>
++        <VoiceIdSection />
+       </ScrollView>
+     </SettingsScreen>
+   );
 diff --git a/apps/server/src/serverSettings.ts b/apps/server/src/serverSettings.ts
 index 4dc30d29a6cffd394fd14d6ac4dde70e51ceb2e3..89defd31df0eb120285f6c62ff6e20e65871a508 100644
 --- a/apps/server/src/serverSettings.ts
@@ -84,7 +97,7 @@ index faa71137db0493e09fcf9d3f505dab27b360cda1..f37bff0e2e3ce4ef67f3d6d07ec16d3e
    if (isElectron) startElectronBrowserHost();
    startPreviewTitleRecording();
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e89c4fa2e 100644
+index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca75346085 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 @@ -51,6 +51,8 @@ import {
@@ -104,8 +117,16 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
  import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
  import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";
  import {
-@@ -79,6 +82,8 @@ import { useTextGenerationTargets } from "../../textGenerators";
- import { useEnvironmentProviders, useEnvironments } from "../../state/environments";
+@@ -76,9 +79,15 @@ import {
+   resolveAppModelSelectionState,
+ } from "../../modelSelection";
+ import { useTextGenerationTargets } from "../../textGenerators";
+-import { useEnvironmentProviders, useEnvironments } from "../../state/environments";
++import {
++  useEnvironmentProviders,
++  useEnvironments,
++  usePrimaryEnvironmentId,
++} from "../../state/environments";
  import { useEnvironmentScope } from "../../state/session";
  import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
 +import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
@@ -113,7 +134,15 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
  import {
    useEnvironmentSpeechInput,
    useVoiceTranscriptionDestination,
-@@ -126,6 +131,7 @@ import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
+@@ -117,6 +126,7 @@ import {
+   SelectValue,
+ } from "../ui/select";
+ import { Switch } from "../ui/switch";
++import { VoiceIdSettings } from "./VoiceIdSettings";
+ import { Textarea } from "../ui/textarea";
+ import { toastManager } from "../ui/toast";
+ import { MicrophoneOrderList } from "./MicrophoneOrderList";
+@@ -126,6 +136,7 @@ import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
  import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
  import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
  import { AdvancedSettings } from "./AdvancedSettings";
@@ -121,7 +150,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
  import {
    SETTINGS_PICKER_TRIGGER_CLASSNAME,
    SettingsPageContainer,
-@@ -471,8 +477,24 @@ function ProjectDictionaryRow() {
+@@ -471,8 +482,24 @@ function ProjectDictionaryRow() {
    const scope = useOptionalSettingsScope();
    const words = useScopedSettings((settings) => settings.speechProjectCustomWords);
    const updateScopedSettings = useUpdateScopedSettings();
@@ -146,7 +175,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
    return (
      <SettingsRow
        serverScoped
-@@ -482,26 +504,31 @@ function ProjectDictionaryRow() {
+@@ -482,26 +509,31 @@ function ProjectDictionaryRow() {
        description={
          isProjectScope
            ? `Used by everyone who dictates in ${scope.scope.label}.`
@@ -182,7 +211,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
    const providersByEnvironment = useEnvironmentProviders();
    const providers =
      (environment?.serverConfig
-@@ -512,15 +539,13 @@ function CleanupModelRow() {
+@@ -512,15 +544,13 @@ function CleanupModelRow() {
      settings,
      providers: providers.filter((provider) => provider.supportsTextGeneration !== false),
      projectId: null,
@@ -201,7 +230,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
    const selection = resolveAppModelSelectionState(
      {
        ...settings,
-@@ -545,15 +570,18 @@ function CleanupModelRow() {
+@@ -545,15 +575,18 @@ function CleanupModelRow() {
        toastManager.add({ type: "error", title: "Cleanup model not saved", description: reason });
        return;
      }
@@ -224,7 +253,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
        control={
          connectedEnvironments.length === 0 ? (
            <span className="text-sm text-muted-foreground">Connect an environment first.</span>
-@@ -596,8 +624,8 @@ function CleanupModelRow() {
+@@ -596,8 +629,8 @@ function CleanupModelRow() {
                checked={dedicated}
                disabled={!dedicated && !hasProvider}
                onCheckedChange={(checked) =>
@@ -235,7 +264,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
                      ? createModelSelection(
                          settings.textGenerationModelSelection.instanceId,
                          settings.textGenerationModelSelection.model,
-@@ -1190,6 +1218,7 @@ function TranscriptionTest(props: {
+@@ -1190,6 +1223,7 @@ function TranscriptionTest(props: {
  
  export function VoiceSettingsPanel() {
    const cleanupEnabled = useCleanupGrant() !== null;
@@ -243,7 +272,15 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
    const settings = useClientSettings();
    const settingsScope = useOptionalSettingsScope();
    const destination = useVoiceTranscriptionDestination();
-@@ -1603,12 +1632,15 @@ export function VoiceSettingsPanel() {
+@@ -1199,6 +1233,7 @@ export function VoiceSettingsPanel() {
+     environmentId: EnvironmentId;
+   } | null>(null);
+   const { environments } = useEnvironments();
++  const primaryEnvironmentId = usePrimaryEnvironmentId();
+   const [microphones, setMicrophones] = useState<BrowserMicrophone[]>([]);
+   const prepared = destination.cloudProvider ? null : destination.prepared;
+   const catalog = useVoiceModels(prepared);
+@@ -1603,12 +1638,15 @@ export function VoiceSettingsPanel() {
        <SettingsSection id={searchableSetting("speech-post-processing").id} title="Cleanup">
          <SettingsRow
            title="Clean up transcripts"
@@ -261,10 +298,13 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..1badc127875e2762f3f6859894e2816e
              />
            }
          />
-@@ -1692,6 +1724,7 @@ export function VoiceSettingsPanel() {
+@@ -1692,6 +1730,10 @@ export function VoiceSettingsPanel() {
            />
          ) : null}
        </SettingsSection>
++      {primaryEnvironmentId === null ? null : (
++        <VoiceIdSettings environmentId={primaryEnvironmentId} />
++      )}
 +      <TessayaMovedSection place="personas" />
      </SettingsPageContainer>
    );
