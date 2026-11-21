@@ -1270,8 +1270,10 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
       : null;
   const persona = calledPersona(pack, input.voice);
   // One pipeline for every vessel: this device is a thin adapter over TessayaTurn (MEMORY-V2-DESIGN.md §2.0).
-  const turn = r1Envelope(input, pack, timeZone);
   const pipeline = yield* Effect.serviceOption(TessayaTurn);
+  // A voice Voice ID could not tell is his when his own device places him just now (REQ-13-206).
+  const heard = r1Envelope(input, pack, timeZone);
+  const turn = Option.isNone(pipeline) ? heard : yield* pipeline.value.place(heard);
   const begun = Option.isNone(pipeline)
     ? {
         block: "",

@@ -143,6 +143,17 @@ const strengthOf = (s: PresenceSignal, now: number, sources: typeof PRESENCE_SOU
   return rule.weight * 0.5 ** (Math.max(0, now - s.at) / 60_000 / rule.halfLifeMinutes);
 };
 /** One piece of evidence in words, for Settings and her answer ("heard your voice on Tessel, 3 min ago"). */
+/** Signals that put him at a device of his own, not just at home: what may place a voice Voice ID could not tell. */
+const PLACES: ReadonlySet<string> = new Set(["typed", "phoneApp", "phoneTalk"]);
+/**
+ * The fresh signal, other than a voice, that places this member now (REQ-13-206), or null. shortcut: vessels have no
+ * room map yet, so "at his own device just now" stands for "here"; narrow it to the same room once bodies carry rooms.
+ */
+export const placedBy = (estimate: PresenceEstimate, member: string): PresenceEvidence | null =>
+  estimate.members
+    .find((m) => m.member === member && !m.guest)
+    ?.evidence.find((e) => PLACES.has(e.source) && e.strength >= PRESENCE_BARS.present) ?? null;
+
 export const presenceReason = (e: PresenceEvidence, vesselName: string | null): string =>
   `${PRESENCE_SOURCES[e.source]?.says ?? e.source}${vesselName === null ? "" : ` on ${vesselName}`}, ${e.minutesAgo} min ago`;
 

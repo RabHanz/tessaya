@@ -33,7 +33,7 @@ import {
   type PrivateTurn,
   type SpeakerLike,
 } from "@t3tools/tessaya-shared/privateMemory";
-import { PRESENCE_BARS, presenceReason } from "@t3tools/tessaya-shared/presence";
+import { PRESENCE_BARS, placedBy, presenceReason } from "@t3tools/tessaya-shared/presence";
 import { emitAction, type TurnAction } from "./turnActions.ts";
 import { make as makeLive, TurnLiveContext } from "./TurnLiveContext.ts";
 import { recordText } from "@t3tools/tessaya-shared/audit";
@@ -346,6 +346,8 @@ const VOICE_FRESH =
 /** What Voice ID says of this turn, in her words: the only ground she has for saying whether it is him. */
 export const voiceLine = (speaker: SpeakerLike | null | undefined): string => {
   if (speaker?.kind !== "owner" || speaker.voiceIdOff === true) return "";
+  if (!speaker.verified && speaker.placed !== undefined)
+    return `Voice ID could not tell this voice, but ${speaker.placed}: answer him as him, and never say you don't recognise him or ask him to say more. An owner-only act still waits for his quiet yes. ${VOICE_FRESH}`;
   if (!speaker.verified) return `${UNSURE_LINE} ${VOICE_FRESH}`;
   const how =
     speaker.session === true
@@ -682,6 +684,8 @@ export class TessayaTurn extends Context.Service<
   {
     /** The memory a turn is answered with, as the caller's viewer (set by its transport) may see it. */
     readonly begin: (turn: TurnEnvelope) => Effect.Effect<TurnContext>;
+    /** A voice Voice ID could not tell, placed as his by a fresh signal of his own device (REQ-13-206); else as given. */
+    readonly place: (turn: TurnEnvelope) => Effect.Effect<TurnEnvelope>;
     /**
      * Several people heard in one turn (HOUSEHOLD-DESIGN §9b): one context each, in speaking order, built only from
      * that person's own preferences and conversation, with nothing private read for anyone.
@@ -1905,6 +1909,20 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const place = Effect.fn("TessayaTurn.place")(function* (turn: TurnEnvelope) {
+    const s = turn.speaker;
+    if (s == null || s.voiceIdOff === true || s.test === true || turn.rehearsal === true)
+      return turn;
+    if (!(s.kind === "unverified" || (s.kind === "owner" && !s.verified))) return turn;
+    const evidence = placedBy(yield* presence.estimate(), OWNER_MEMBER_ID);
+    if (evidence === null) return turn;
+    const placed = presenceReason(evidence, null);
+    return {
+      ...turn,
+      speaker: { ...s, kind: "owner" as const, personId: OWNER_MEMBER_ID, placed },
+    };
+  });
+
   const whoIsHome = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const origin = yield* TurnOrigin;
@@ -2339,6 +2357,7 @@ export const make = Effect.gen(function* () {
 
   return TessayaTurn.of({
     begin,
+    place,
     beginMany,
     end,
     remember,
