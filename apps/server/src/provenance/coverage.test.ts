@@ -83,7 +83,7 @@ describe("every action reaches the log", () => {
       speaker: "owner",
       speakerScore: 0.93,
       verified: false,
-      host: "onnyx",
+      host: "tessel-host",
       voiceIdMs: 120,
     });
     const action = roomActionOf("t1", "event/voice/metrics", metrics);
@@ -92,7 +92,7 @@ describe("every action reaches the log", () => {
       kind: "room.voice_id",
       actor: { kind: "owner", certainty: 0.93 },
       outcome: "owner",
-      data: { verified: false, host: "onnyx" },
+      data: { verified: false, host: "tessel-host" },
     });
     expect(JSON.stringify(action)).not.toContain("bank");
     expect(roomActionOf("t1", "event/button", JSON.stringify({ b: 1, long: true }))?.kind).toBe(
