@@ -82,7 +82,7 @@ describe("the roster", () => {
   };
   it("tells each persona who the others are and what they do, in one line, leaving out a private one (PRESENCE)", () => {
     expect(rosterLine(DEFAULT_OS_PACK.personas, "companion")).toBe(
-      "Tessaya (she/her) leads and hands out the work; Alfred (he/him) handles life, home and admin: his calendar, errands, bookings, bills and paperwork; Onyx (he/him) handles sessions, builds, releases, deploys and servers; Sebastian (he/him) handles writing as him: his posts, replies and messages in his voice",
+      "Tessaya leads and hands out the work; Alfred handles life, home and admin: his calendar, errands, bookings, bills and paperwork; Onyx handles sessions, builds, releases, deploys and servers; Sebastian handles writing as him: his posts, replies and messages in his voice; said of them: she for Tessaya; he for Alfred, Onyx and Sebastian",
     );
     // Each soul's own pronouns (Director 21 Nov), from its file; a file without them says none.
     expect(DEFAULT_OS_PACK.personas.map((p) => `${p.name} ${p.pronouns}`)).toEqual(

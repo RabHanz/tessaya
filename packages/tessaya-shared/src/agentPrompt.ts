@@ -138,7 +138,7 @@ export const sinceLine = (
 
 const personaLine = (p: TurnPersona) =>
   [
-    `you answer this turn as ${p.name}${p.pronouns === undefined ? "" : ` (${p.pronouns})`}${p.role === "" ? "." : `: ${p.role}`}`,
+    `you answer this turn as ${p.name}${p.pronouns === undefined ? "" : ` (said of you: ${p.pronouns.split("/")[0]})`}${p.role === "" ? "." : `: ${p.role}`}`,
     p.self ?? "",
     p.roster === undefined || p.roster === ""
       ? ""

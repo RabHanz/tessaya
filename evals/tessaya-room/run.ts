@@ -713,12 +713,13 @@ const context = (
   now: clockLine(c.at ?? ROOM_NOW, "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
   persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
+  lead: DEFAULT_OS_PACK.personas.find((p) => p.lead),
   switched: c.persona !== undefined && turn === 0,
   // As r1Gather's hisNames: the personas, the body, then his dictionary's names.
   names: [...DEFAULT_OS_PACK.personas.map((p) => p.name), "Tumble", ...(c.names ?? [])],
   roster: rosterLine(
     [...DEFAULT_OS_PACK.personas, ...(c.team ?? []).map((p) => ({ ...p, lead: false }))],
-    c.persona ?? "",
+    c.persona ?? DEFAULT_OS_PACK.personas.find((p) => p.lead)?.id ?? "",
   ),
   // As OperatingSystemPack.ownerLineFor gives it: the called persona's, else the lead's.
   ...(c.owner === true

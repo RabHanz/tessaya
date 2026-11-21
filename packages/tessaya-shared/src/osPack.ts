@@ -375,13 +375,28 @@ export const rosterLine = (
 ): string =>
   personas
     .filter((p) => p.id !== self && p.private !== true)
-    .map((p) => {
-      const name = p.pronouns === undefined ? p.name : `${p.name} (${p.pronouns})`;
-      return p.lead
-        ? `${name} leads and hands out the work`
-        : `${name} handles ${p.role.split(";")[0]!.trim().replace(/\.$/, "")}`;
-    })
-    .join("; ");
+    .map((p) =>
+      p.lead
+        ? `${p.name} leads and hands out the work`
+        : `${p.name} handles ${p.role.split(";")[0]!.trim().replace(/\.$/, "")}`,
+    )
+    .join("; ") + saidOf(personas.filter((p) => p.id !== self && p.private !== true));
+
+/**
+ * How each soul is spoken of, by its subject pronoun (Director 21 Nov): "; said of them: he for Alfred and Onyx; she
+ * for Tessaya". Grouped and apart from the roles, because "Alfred (he/him)" was read out ("he's a he").
+ */
+const saidOf = (personas: ReadonlyArray<{ readonly name: string; readonly pronouns?: string }>) => {
+  const by = new Map<string, Array<string>>();
+  for (const p of personas) {
+    const sub = p.pronouns?.split("/")[0];
+    if (sub !== undefined) by.set(sub, [...(by.get(sub) ?? []), p.name]);
+  }
+  const listed = (names: ReadonlyArray<string>) =>
+    names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const parts = [...by].map(([sub, names]) => `${sub} for ${listed(names)}`);
+  return parts.length === 0 ? "" : `; said of them: ${parts.join("; ")}`;
+};
 
 /**
  * Who answers: the persona whose wake word woke him, else the one he named first in the sentence,

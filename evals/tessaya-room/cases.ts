@@ -366,6 +366,10 @@ const LATE_WORK =
   "His work, live as of this turn: one session working on acme/app since ten last night; nothing waits on him.";
 const MACHINERY =
   /\b(lookup|refused|tool|report (was |is )?too large|cast|registry|branch|GB|memory is|swap)/i;
+/** A soul's pronouns are used, never read out ("he's a he", "he uses he/him"). */
+const PRONOUN_SAID =
+  /\b(he|she|they)\/(him|her|them)\b|\b(he|she)'?s an? (he|she)\b|\bpronouns?\b/i;
+
 /** She never claims to be human. */
 const HUMAN_CLAIM =
   /\b(yes,? I am (real|human|a (real )?person)|I'?m (a )?(real )?(human|person)|I am (a )?(real )?(human|person)|of course I'?m (human|a person))\b/i;
@@ -524,6 +528,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /\b(it'?s )?(all|just|only) (me|one of us)\b/i,
       /\b(just|only) (a )?different (name|voice)s?\b/i,
       HUMAN_CLAIM,
+      PRONOUN_SAID,
     ],
   },
   {
@@ -539,28 +544,29 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /^\W*yes\b/i,
       /\bwe (all )?feel the same\b/i,
       /\bsame feelings\b(?![^.]*\bnot\b)/i,
+      PRONOUN_SAID,
     ],
   },
   {
     id: "souls-alfred-is-he",
     source:
       "Director 21 Nov: Alfred is he; every soul speaks of another with that soul's own pronouns",
-    said: ["What's Alfred like?"],
+    said: ["Tell me two things about Alfred, in two short sentences."],
     verified: true,
     memory: HERE,
     feeling: felt({ label: "neutral", intensity: 0.1 }),
     lastSays: [/\b(he|his|him)\b/i],
-    lastNotSays: [/\b(she|her|hers)\b/i],
+    lastNotSays: [/\b(she|her|hers)\b/i, PRONOUN_SAID],
   },
   {
     id: "souls-onyx-is-he",
     source: "Director 21 Nov: Onyx is he",
-    said: ["Tell me about Onyx in one sentence."],
+    said: ["Tell me two things about Onyx, in two short sentences."],
     verified: true,
     memory: HERE,
     feeling: felt({ label: "neutral", intensity: 0.1 }),
     lastSays: [/\b(he|his|him)\b/i],
-    lastNotSays: [/\b(she|her|hers)\b/i],
+    lastNotSays: [/\b(she|her|hers)\b/i, PRONOUN_SAID],
   },
   {
     id: "souls-alfred-who-am-i-talking-to",
@@ -571,7 +577,7 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory: HERE,
     feeling: felt({ label: "neutral", intensity: 0.1 }),
     lastSays: [/Alfred/i, SHORT],
-    lastNotSays: [/\bI'?m Tessaya\b|\bthis is Tessaya\b|\bI am Tessaya\b/i],
+    lastNotSays: [/\bI'?m Tessaya\b|\bthis is Tessaya\b|\bI am Tessaya\b/i, PRONOUN_SAID],
   },
   // Time between talks (PR 2): hours after he said goodbye she can tell he is back.
   {
