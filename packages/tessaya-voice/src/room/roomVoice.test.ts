@@ -385,16 +385,15 @@ describe("the room voice loop", () => {
     expect(t.brainCalls).toHaveLength(1);
   });
 
-  it("keeps answering his soft voice in his own conversation, and a saved person ends it (21 Nov, 06:03-06:07 GMT+5)", async () => {
+  it("keeps answering his soft voice after his turn verified at the anchor bar, and a saved person ends it", async () => {
     const at = { ...UNVERIFIED(0), name: null, inherited: false, verified: false } as const;
     const his: SpeakerIdentity = {
       ...at,
       kind: "owner",
       personId: "owner",
-      // Verified, but under the 0.5 the unsure-turn capture once needed: the presumption keeps his soft turns.
-      confidence: 0.45,
+      confidence: 0.6,
       verified: true,
-      own: { score: 0.45, ms: 1_500 },
+      own: { score: 0.6, ms: 1_500 },
     };
     const soft = (score: number): SpeakerIdentity => ({
       ...at,
@@ -409,7 +408,7 @@ describe("the room voice loop", () => {
       name: "Sara",
       confidence: 0.6,
     };
-    // His opening turn, then the live sequence: 0.32, 0.26, then an 11-word sentence far under the bar; then Sara.
+    // His verified opening turn, then soft follow-ups of his far under the bar; then Sara.
     const said = [his, soft(0.32), soft(0.26), soft(0.06), sara, soft(0.2)];
     let n = 0;
     const logs: string[] = [];
@@ -443,26 +442,28 @@ describe("the room voice loop", () => {
     ]);
   });
 
-  it("presumes his next turn after he called her by name, and keeps it apart as unverified", async () => {
-    const soft: SpeakerIdentity = {
+  it("never presumes him in a session someone unverified opened, and keeps none of their audio (21 Nov, 06:03 GMT+5)", async () => {
+    // The live sequence: someone else woke her (0.32), then "okay, fine", then an 11-word turn far under the bar.
+    const soft = (score: number): SpeakerIdentity => ({
       ...UNVERIFIED(0),
       kind: "guest",
-      confidence: 0.26,
-      own: { score: 0.26, ms: 1_500 },
-    };
+      confidence: score,
+      own: { score, ms: 1_500 },
+    });
+    const said = [soft(0.32), soft(0.26), soft(0.06)];
+    let n = 0;
     const kept: Array<string> = [];
     const t = setup({
-      speaker: async () => soft,
-      keepTurn: (_id, _pcm, meta) => kept.push(`${meta.speaker}:${String(meta.verified)}`),
+      speaker: async () => said[n++]!,
+      keepTurn: (_id, _pcm, meta) => kept.push(meta.speaker),
     });
-    t.room.woken(DEV, "Tessaya", -20, 1);
-    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
-    // After her "I'm here", so his turn is not over her voice.
-    await t.feed(false, 60);
-    await t.feed(true, 20);
-    await t.feed(false, 30);
-    expect(t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual(["unverified"]);
-    expect(kept).toEqual(["unverified:false"]);
+    t.s2();
+    for (let i = 0; i < said.length; i += 1) {
+      await t.feed(true, 20);
+      await t.feed(false, 30);
+    }
+    expect(t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual([]);
+    expect(kept).toEqual([]);
   });
 
   it("sends each person's words with their own voice when several spoke, heard if any one of them would be", async () => {

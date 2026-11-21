@@ -579,15 +579,22 @@ export const admits = (
 };
 
 /**
- * In his own session the next turn is the same speaker unless Voice ID is sure it is not: a saved person (never a
- * guest) or a clear change against his session's own turns (`same`). A low score alone is his soft voice (21 Nov, 06:07
- * GMT+5: 0.26, "a guest voice; not answered"): answered as unverified, so it grants and writes nothing. Never a replay.
+ * In his own session, a voice just under the listen bar is likely him (20 Nov: his words read low and were ignored):
+ * answered as unverified, so it grants and writes nothing. Never a replay. `anchored`: a turn here verified him at the
+ * anchor bar, so any low score is his soft voice unless Voice ID is sure it changed (`same` under CHANGED_VOICE).
+ * shortcut: interim until per-mic calibration and AEC on barge-in audio; 0.25 is a guess below 0.36, not measured.
  */
-export const likelyHis = (identity: SpeakerIdentity, hisSession: boolean): SpeakerIdentity =>
-  hisSession &&
+export const LIKELY_HIS_FLOOR = 0.25;
+export const likelyHis = (
+  identity: SpeakerIdentity,
+  hisSession: boolean,
+  anchored = false,
+): SpeakerIdentity =>
+  (hisSession || anchored) &&
   identity.kind === "guest" &&
   identity.replay !== "heard" &&
-  !(identity.same !== undefined && identity.same < CHANGED_VOICE)
+  !(identity.same !== undefined && identity.same < CHANGED_VOICE) &&
+  (anchored || (identity.confidence ?? Number.NEGATIVE_INFINITY) >= LIKELY_HIS_FLOOR)
     ? { ...UNVERIFIED(identity.at), confidence: identity.confidence }
     : identity;
 

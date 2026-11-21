@@ -555,7 +555,7 @@ describe("the speaker identity", () => {
     expect(admits(who(kind), { ...gate, ...change }, "barge")).toBe(barge);
   });
 
-  it("answers a low-scored voice in his own session as likely him unless sure it is another, never a replay, never outside it", () => {
+  it("answers a voice just under the bar in his own session as likely him, and any low one after his anchored turn, never a replay", () => {
     const low = (confidence: number, more: Partial<SpeakerIdentity> = {}) =>
       who("guest", { confidence, ...more });
     // 20 Nov, the new case: his words read under the listen bar and were ignored.
@@ -563,11 +563,11 @@ describe("the speaker identity", () => {
     expect(likelyHis(low(0.3), true).kind).toBe("unverified");
     expect(speakerPath(likelyHis(low(0.3), true))).toBe("outside");
     expect(likelyHis(low(0.3), false).kind).toBe("guest");
-    // 21 Nov 06:07 GMT+5: his soft turns at 0.26 and lower, in his own conversation, are still his.
-    expect(likelyHis(low(0.1), true).kind).toBe("unverified");
-    // Sure it is someone else: a clear change against his session's own turns, a saved person, or a replay.
-    expect(likelyHis(low(0.3, { same: 0.1 }), true).kind).toBe("guest");
-    expect(likelyHis(who("saved", { confidence: 0.6 }), true).kind).toBe("saved");
+    expect(likelyHis(low(0.1), true).kind).toBe("guest");
+    // After a turn verified him at the anchor bar, a lower score is still his soft voice, unless sure it is another.
+    expect(likelyHis(low(0.1), false, true).kind).toBe("unverified");
+    expect(likelyHis(low(0.3, { same: 0.1 }), true, true).kind).toBe("guest");
+    expect(likelyHis(who("saved", { confidence: 0.6 }), true, true).kind).toBe("saved");
     expect(likelyHis(low(0.3, { replay: "heard" }), true).kind).toBe("guest");
   });
 
