@@ -14,6 +14,8 @@ export const BATON_VOICE_READ_OPS = [
   "arbiter",
   "mood",
   "vocabulary",
+  // The caller's one conversation with her from the room transcript, a page at a time (M-124).
+  "conversation",
 ] as const;
 /** `claim`, `speaking` and `ended` are the voice arbiter's (one responder per utterance); `answerFrom` sets the primary. */
 /** `express` is a vessel's moment (her desktop body poked, thrown, moved) as the brain words it, in her persona. */

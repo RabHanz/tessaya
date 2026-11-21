@@ -1,4 +1,4 @@
-// Tessaya first (D-038): Talk, Chats, Personas, Devices; T3's PRs and Usage follow, under More once the bar is full.
+// Tessaya first (D-038): Talk, Work (T3 sessions are her agents' jobs, M-124), Personas, Devices; T3's PRs and Usage follow, under More once the bar is full.
 export const NAVIGATION_TAB_ORDER = [
   "talk",
   "threads",
@@ -19,7 +19,7 @@ export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
   talk: "Talk",
   personas: "Personas",
   devices: "Devices",
-  threads: "Chats",
+  threads: "Work",
   pullRequests: "Pulls",
   usage: "Usage",
 };

@@ -71,7 +71,9 @@ import { TessayaExpression } from "./TessayaExpression.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { feel, type Felt } from "./TessayaBody.ts";
 import { browsFor, propStateFor } from "./propState.ts";
-import { SessionMember } from "./TessayaTurn.ts";
+import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
+import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { conversationOf, HISTORY_PAGE_MS } from "./conversationHistory.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
   cloneClean,
@@ -1029,6 +1031,25 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
           Effect.succeed<TessayaVoiceCallResult>({ ok: false, error: e.why }),
       }),
     );
+  }
+  if (input.op === "conversation") {
+    const a = decode(Schema.Struct({ before: Schema.optionalKey(Schema.Finite) }));
+    if (Option.isNone(a)) return bad;
+    const turns = yield* Effect.serviceOption(TessayaTurn);
+    const to = a.value.before ?? (yield* Clock.currentTimeMillis) + 1;
+    const from = to - HISTORY_PAGE_MS;
+    if (Option.isNone(turns)) return { ok: true, value: { from, lines: [] } };
+    const rows = yield* turns.value.transcript(from, to);
+    const member = yield* SessionMember;
+    if (member === null) return { ok: true, value: { from, lines: [] } };
+    const lines = conversationOf(rows, member, member === OWNER_MEMBER_ID).map((r) => ({
+      at: r.at,
+      vessel: r.vessel,
+      role: r.role,
+      text: r.text,
+      private: r.private === 1,
+    }));
+    return { ok: true, value: { from, lines } };
   }
   const arbiter = yield* serveArbiter(input.op, args);
   if (arbiter !== null) return arbiter;

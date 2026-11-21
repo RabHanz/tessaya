@@ -896,12 +896,12 @@ index 71ea901ed3b7bd8544545a75caf4acd36f990456..44fb59b3150d7ec2506b54c2da2f63e5
      expect(
        resolveSelectedNavigationTab(undefined, NAVIGATION_TAB_ORDER, "threads"),
 diff --git a/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts b/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
-index 85e3e1c6f29fee0ddd07fa82da902bc033a91ea4..70b6d636a3f4bd44e4811590a1b0282067e4ee7d 100644
+index 85e3e1c6f29fee0ddd07fa82da902bc033a91ea4..0dc24278c9c2fc7d0e030854e2e531b0a6afd232 100644
 --- a/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
 +++ b/apps/mobile/src/features/layout/workspace/navigation-tab-order.ts
 @@ -1,4 +1,12 @@
 -export const NAVIGATION_TAB_ORDER = ["threads", "pullRequests", "usage"] as const;
-+// Tessaya first (D-038): Talk, Chats, Personas, Devices; T3's PRs and Usage follow, under More once the bar is full.
++// Tessaya first (D-038): Talk, Work (T3 sessions are her agents' jobs, M-124), Personas, Devices; T3's PRs and Usage follow, under More once the bar is full.
 +export const NAVIGATION_TAB_ORDER = [
 +  "talk",
 +  "threads",
@@ -921,24 +921,31 @@ index 85e3e1c6f29fee0ddd07fa82da902bc033a91ea4..70b6d636a3f4bd44e4811590a1b02820
 +  talk: "Talk",
 +  personas: "Personas",
 +  devices: "Devices",
-+  threads: "Chats",
++  threads: "Work",
    pullRequests: "Pulls",
    usage: "Usage",
  };
 diff --git a/apps/mobile/src/features/layout/workspace/navigation-tabs.ts b/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
-index 3472242dc4f565b83782fd0f9f602208d4d76eb0..bfb097d5950365aeb7abaaad86fcee52dd5d5345 100644
+index 3472242dc4f565b83782fd0f9f602208d4d76eb0..9c9106c16b6230e1c8036e2ccf718f1a57d22648 100644
 --- a/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
 +++ b/apps/mobile/src/features/layout/workspace/navigation-tabs.ts
-@@ -19,6 +19,9 @@ export const WORKSPACE_TAB_LABELS = {
+@@ -15,11 +15,14 @@ import { resolveWorkspaceTabOrder } from "./workspace-tabs-state";
+ 
+ export const WORKSPACE_TAB_LABELS = {
+   ...NAVIGATION_TAB_LABELS,
+-  ...(Platform.OS === "ios" ? { threads: "Chats", pullRequests: "PRs" } : {}),
++  ...(Platform.OS === "ios" ? { pullRequests: "PRs" } : {}),
  };
  
  export const NAVIGATION_TAB_ICONS = {
+-  threads: "text.bubble",
 +  talk: "mic",
 +  personas: "person.2",
 +  devices: "iphone",
-   threads: "text.bubble",
++  threads: "wrench.and.screwdriver",
    pullRequests: PullRequestGlyph.pullRequest,
    usage: "chart.bar.xaxis",
+ } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
 diff --git a/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts b/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
 index 6a44e617e53ede0535bd1555925be6adb3e242ca..14b7faa83492afddaca1dc133039f6ccf0947776 100644
 --- a/apps/mobile/src/features/layout/workspace/workspace-tab-navigation.ts
@@ -990,13 +997,15 @@ index 797da115a20ebc163730947bad56de775bb95c5e..301bf32ebf7be9ae0c74e31034b74714
  
    it("retains separate queries and positions across tabs, and cancels only the current search", () => {
 diff --git a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
-index 3f6754c679c5aa9e3c1626301e0fc16d4ca704a1..f273af319cdd50afc0dcff5ca8940c6324064a79 100644
+index 3f6754c679c5aa9e3c1626301e0fc16d4ca704a1..72deb88c18f16080f49ac9c8b02e83901cc86728 100644
 --- a/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
 +++ b/apps/mobile/src/features/layout/workspace/workspace-tabs-state.ts
-@@ -17,6 +17,12 @@ export type WorkspaceSearchTab = WorkspaceTab | "settings";
+@@ -16,7 +16,13 @@ export type WorkspaceTab = NavigationTab;
+ export type WorkspaceSearchTab = WorkspaceTab | "settings";
  export type WorkspaceSearchMode = "resting" | "active" | "expanded";
  
- /** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
+-/** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
++/** Settings, Work and pull requests pair a list with a detail column; Usage is one page. */
 +/** Tabs that are one page with no list or search: Usage, and Tessaya's Talk, Personas and Devices (D-038). */
 +export const isPageTab = (
 +  tab: WorkspaceTab | "settings" | undefined,

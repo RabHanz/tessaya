@@ -16,7 +16,7 @@ export type WorkspaceTab = NavigationTab;
 export type WorkspaceSearchTab = WorkspaceTab | "settings";
 export type WorkspaceSearchMode = "resting" | "active" | "expanded";
 
-/** Settings, Chats and pull requests pair a list with a detail column; Usage is one page. */
+/** Settings, Work and pull requests pair a list with a detail column; Usage is one page. */
 /** Tabs that are one page with no list or search: Usage, and Tessaya's Talk, Personas and Devices (D-038). */
 export const isPageTab = (
   tab: WorkspaceTab | "settings" | undefined,
