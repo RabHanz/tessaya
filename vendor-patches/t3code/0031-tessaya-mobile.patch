@@ -312,7 +312,7 @@ index 76f3d262dfa90983c9cfcf5a9ed10a76de03426f..dadd9d979e96093a21d6dbe89c854c99
 +// Tessaya: her body in the Talk tab, the same renderer as the desk and the web (apps/web/src/body).
 +export const generateBodyStreamScript = () => generateWebViewScript("tessaya/talk", "Body");
 diff --git a/apps/mobile/src/App.tsx b/apps/mobile/src/App.tsx
-index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18926b00f8 100644
+index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..a8f88e1efa5bb761bcf9fb590d8d9093801fe384 100644
 --- a/apps/mobile/src/App.tsx
 +++ b/apps/mobile/src/App.tsx
 @@ -1,4 +1,5 @@
@@ -337,7 +337,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
  import { subscribeComposerDraftModelReconciliation } from "./state/use-composer-drafts";
  import { environmentThreadShells, threadEnvironment } from "./state/threads";
  import { environmentShell, shellCachesReadAtom } from "./state/shell";
-@@ -104,6 +107,11 @@ import {
+@@ -104,6 +107,12 @@ import {
  import { pruneNewTaskFlowStates } from "./features/threads/new-task-flow-state";
  import { pruneNewTaskBranchCheckouts } from "./features/threads/NewTaskDraftRouteScreen";
  import { installAppUpdateChecks } from "./features/updates/app-updates";
@@ -345,11 +345,12 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
 +  TessayaLaunchSting,
 +  markTessayaLaunchReady,
 +} from "./features/tessaya/launch/TessayaLaunchSting";
++import { IslandHost } from "./features/tessaya/island/IslandHost";
 +import { TessayaWelcome } from "./features/tessaya/welcome/TessayaWelcome";
  
  import "../global.css";
  
-@@ -205,6 +213,7 @@ const appServiceDisposers = [
+@@ -205,6 +214,7 @@ const appServiceDisposers = [
    installAppearanceRuntime(),
    installSubscriptionUsageRefresh(),
    installPermissionUpdateNotice(),
@@ -357,7 +358,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
    installThreadOutboxDelivery(),
    installComposerAttachmentUploads(),
    startIncomingShareInbox(),
-@@ -248,6 +257,7 @@ function SplashScreenCoordinator() {
+@@ -248,6 +258,7 @@ function SplashScreenCoordinator() {
      hidden.current = true;
      settleLaunchSplashHomeRows();
      void SplashScreen.hide();
@@ -365,7 +366,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
    }, [isReady, shellCachesRead, homeRowsPending, waitEnded]);
  
    return null;
-@@ -268,6 +278,7 @@ export default function App() {
+@@ -268,6 +279,7 @@ export default function App() {
  function AppContent() {
    const { themeAppearance } = useAppearancePreferences();
    const navigationTheme = useMobileNavigationTheme();
@@ -373,7 +374,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
  
    // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- matches the Android navigation bar to the app theme, as StatusBar does for the status bar
    useEffect(() => {
-@@ -297,13 +308,16 @@ function AppContent() {
+@@ -297,13 +309,17 @@ function AppContent() {
                  />
                  <Dialog.Host />
                  <ThreadArrangementHost />
@@ -382,6 +383,7 @@ index b92c0ca9d42c559887ed8032b377027ac1e8f6e1..79f4b1d48ab585fc19d54260f2294b18
                </NativeLayoutMetricsProvider>
              </GlobalVoiceInputControl>
              <OverlayPortalHost />
++            <IslandHost open={linkToAppPath} />
 +            <TessayaWelcome />
            </SafeAreaProvider>
          </KeyboardProvider>
@@ -1169,3 +1171,114 @@ index a1488220d69528f47429f4f594e661c075e88521..575b1ef77b4859ff8adf40b3e2e5b1ae
      Dialog.alert(
        "Remove from this device?",
        `Forget ${environment.environmentLabel} and its cached threads on this device. Switch it off instead to keep it saved.`,
+diff --git a/apps/mobile/src/widgets/AgentActivity.tsx b/apps/mobile/src/widgets/AgentActivity.tsx
+index 609beceac0cdf37431f2e8acf46c7082741a6a54..054b22560198cb7f2f6eef302984478b1544d670 100644
+--- a/apps/mobile/src/widgets/AgentActivity.tsx
++++ b/apps/mobile/src/widgets/AgentActivity.tsx
+@@ -49,6 +49,13 @@ export interface AgentActivityProps {
+   readonly activeCount: number;
+   readonly updatedAt: string;
+   readonly activities: ReadonlyArray<AgentActivityRowProps>;
++  /** Tessaya's island (M-126) when no agent rows are on the card: her most urgent item, the rest, a chip and a path. */
++  readonly island?: {
++    readonly line: string;
++    readonly more: string;
++    readonly chip: string;
++    readonly href: string;
++  };
+ }
+ 
+ // Widget serialization excludes module helpers; use only imported view/modifier factories.
+@@ -150,9 +157,11 @@ function AgentActivity(
+ 
+   // Widget taps target the containing app, so its production scheme is safe in every build.
+   const deepLinkRow = attentionRow ?? row0;
++  const island = row0 === undefined ? props.island : undefined;
++  const linkPath = deepLinkRow?.deepLink ?? island?.href;
+   const deepLink =
+-    deepLinkRow && deepLinkRow.deepLink.startsWith("/") && !deepLinkRow.deepLink.startsWith("//")
+-      ? `t3code://${deepLinkRow.deepLink.slice(1)}`
++    linkPath !== undefined && linkPath.startsWith("/") && !linkPath.startsWith("//")
++      ? `t3code://${linkPath.slice(1)}`
+       : null;
+   const linkModifiers = deepLink ? [widgetURL(deepLink)] : [];
+ 
+@@ -233,6 +242,78 @@ function AgentActivity(
+     </HStack>
+   );
+ 
++  const renderIsland = (line: string, more: string) => (
++    <VStack alignment="leading" spacing={3}>
++      <Text
++        modifiers={[
++          font({ weight: "semibold", size: 14 }),
++          foregroundStyle(primaryForeground),
++          lineLimit(1),
++        ]}
++      >
++        {line}
++      </Text>
++      {more ? (
++        <Text modifiers={[font({ size: 12 }), foregroundStyle(secondaryForeground), lineLimit(2)]}>
++          {more}
++        </Text>
++      ) : null}
++    </VStack>
++  );
++
++  if (island)
++    return {
++      banner: (
++        <VStack
++          alignment="leading"
++          spacing={6}
++          modifiers={[
++            padding({ all: 14 }),
++            activityBackgroundTint(environment.isLiquidGlassAvailable ? "clear" : null),
++            ...linkModifiers,
++          ]}
++        >
++          <Text
++            modifiers={[
++              font({ weight: "semibold", size: 12 }),
++              foregroundStyle(secondaryForeground),
++            ]}
++          >
++            Tessaya
++          </Text>
++          {renderIsland(island.line, island.more)}
++        </VStack>
++      ),
++      bannerSmall: (
++        <VStack alignment="leading" spacing={4} modifiers={[padding({ all: 10 })]}>
++          {renderIsland(island.line, "")}
++        </VStack>
++      ),
++      compactLeading: renderLogo(14, primaryForeground, linkModifiers),
++      compactTrailing: (
++        <Text
++          modifiers={[
++            font({ weight: "semibold", size: 11 }),
++            foregroundStyle(primaryForeground),
++            lineLimit(1),
++            minimumScaleFactor(0.5),
++            ...linkModifiers,
++          ]}
++        >
++          {island.chip}
++        </Text>
++      ),
++      minimal: renderLogo(11, primaryForeground, linkModifiers),
++      expandedLeading: renderLogo(15, primaryForeground),
++      expandedCenter: null,
++      expandedTrailing: null,
++      expandedBottom: (
++        <VStack modifiers={[padding({ vertical: 2, horizontal: 8 }), ...linkModifiers]}>
++          {renderIsland(island.line, island.more)}
++        </VStack>
++      ),
++    };
++
+   return {
+     banner: (
+       <VStack
