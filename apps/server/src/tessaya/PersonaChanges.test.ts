@@ -10,6 +10,7 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 
 const hired = {
   name: "Morag",
+  pronouns: "She/Her",
   role: "A grumpy Scottish chef who rates his cooking.",
   about: "She is blunt and secretly proud of him.",
   traits: { energy: 0.6, warmth: 0.3, play: 0.4, expr: 0.7, formal: 0.3, sass: 0.9 },
@@ -85,10 +86,15 @@ it.layer(Layer.mergeAll(oneShot, config))("PersonaChanges cards", (it) => {
         { owner: true },
       );
       assert.strictEqual(reply.draft?.name, "Morag");
+      assert.strictEqual(reply.draft?.pronouns, "she/her");
       assert.deepEqual(reply.draft?.greetings, ["What have you burnt now?", "Right, apron on."]);
       assert.strictEqual(readPack(userdata).personas.length, before);
       const made = yield* changePersona({ op: "create", draft: reply.draft! }, { owner: true });
       assert.isTrue(made.ok);
+      assert.strictEqual(
+        readPack(userdata).personas.find((p) => p.name === "Morag")?.pronouns,
+        "she/her",
+      );
     }),
   );
 });

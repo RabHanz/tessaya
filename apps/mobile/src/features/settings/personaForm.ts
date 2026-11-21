@@ -19,6 +19,8 @@ export interface PersonaForm {
   readonly id: string | null;
   readonly name: string;
   readonly role: string;
+  /** "he/him", "she/her", "they/them". */
+  readonly pronouns: string;
   readonly about: string;
   readonly traits: Readonly<Partial<Record<Dial, number>>>;
   readonly model: string;
@@ -33,6 +35,7 @@ export const BLANK_PERSONA: PersonaForm = {
   id: null,
   name: "",
   role: "",
+  pronouns: "",
   about: "",
   traits: {},
   model: "",
@@ -46,6 +49,7 @@ export const personaFormFor = (p: TessayaPersona): PersonaForm => ({
   id: p.id,
   name: p.name,
   role: p.role,
+  pronouns: p.pronouns ?? "",
   about: "",
   traits: p.traits ?? {},
   model: p.brain?.model ?? "",
@@ -59,6 +63,7 @@ export const personaFormOfDraft = (d: TessayaPersonaDraft): PersonaForm => ({
   ...BLANK_PERSONA,
   name: d.name ?? "",
   role: d.role ?? "",
+  pronouns: d.pronouns ?? "",
   about: d.about ?? "",
   traits: d.traits ?? {},
   model: d.model ?? "",
@@ -74,6 +79,7 @@ export function personaSave(f: PersonaForm): TessayaPersonaChangeInput {
   const draft: TessayaPersonaDraft = {
     name: f.name.trim(),
     role: f.role,
+    ...(f.pronouns.trim() === "" ? {} : { pronouns: f.pronouns.trim() }),
     ...(f.about.trim() === "" ? {} : { about: f.about }),
     traits: f.traits,
     model: f.model.trim() === "" ? null : f.model.trim(),

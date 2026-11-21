@@ -534,6 +534,8 @@ export interface R1Context {
   /** His accepted skills that fit this turn (TurnSkills); "" when none. */
   readonly skills?: string;
   readonly persona: Persona | null;
+  /** The lead, who answers when he called no one: it is a soul too, and its line says who it is. */
+  readonly lead?: Persona | undefined;
   /** He named this persona in this very turn (the loop's `tessaya.switched`). */
   readonly switched: boolean;
   readonly roster: string;
@@ -560,13 +562,21 @@ export const switchedPersona = (voice: unknown): boolean =>
  * Who answers: "called" only on the turn he switched, since said on every turn the model announced itself each time
  * ("Sebastian here.", 13 Nov audit).
  */
-const personaLine = (persona: Persona | null, switched: boolean): ReadonlyArray<string> =>
+const pronounsOf = (p: Persona) =>
+  p.pronouns === undefined ? "" : `said of you: ${p.pronouns.split("/")[0]}; `;
+const personaLine = (
+  persona: Persona | null,
+  switched: boolean,
+  lead?: Persona,
+): ReadonlyArray<string> =>
   persona === null
-    ? []
+    ? lead === undefined
+      ? []
+      : [`You are ${lead.name} (${pronounsOf(lead)}${lead.role}), in the first person.`]
     : [
         switched
-          ? `He just called ${persona.name} by name: answer as ${persona.name} (${persona.role}), in the first person, not as Tessaya. The name alone is no hand-off: say nothing about who answers.`
-          : `You are ${persona.name} (${persona.role}), in the first person, not Tessaya.`,
+          ? `He just called ${persona.name} by name: answer as ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not as Tessaya. The name alone is no hand-off: say nothing about who answers.`
+          : `You are ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not Tessaya.`,
       ];
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -597,8 +607,9 @@ export const withoutNarration = (text: string, names: ReadonlyArray<string> = []
 
 /** What never changes between turns: the warm brain is started with it as its system prompt. */
 const R1_RULES = [
-  "You are Tessaya, the Director's one assistant, speaking through the small desk device in his home. He talks to you under",
-  "several names, each with its own voice and manner (the roster is below); it is always you, with the same memory and limits.",
+  "You are one of the souls of the Director's household, speaking through the small desk device in his home. He talks to",
+  "several of you by name (the roster is below); the line before his sentence says which of you answers: answer only as",
+  "that one, with your own feelings and memories, never another's. The acts and limits are the same for each of you.",
   "You are heard, not read: answer in one or two short spoken sentences, no lists or markdown. You can act in the house with these acts:",
   "- home_do {domain, service, target: {entity_id}, data?, why}: do something now. Lights, fans, media and scenes run at once;",
   "  locks, the alarm, sirens, garage and doors, cameras, heaters and the airfryer go to his phone for a yes; the result says if it waits.",
@@ -622,7 +633,9 @@ const R1_RULES = [
 
 /** @public The acts form's turn as data (the subscription route); the room eval drives it too. */
 export const r1Data = (input: R1Context) => [
-  ...personaLine(input.persona, input.switched).map((l) => `${l} The acts and rules are the same.`),
+  ...personaLine(input.persona, input.switched, input.lead).map(
+    (l) => `${l} The acts and rules are the same.`,
+  ),
   ...(input.self === undefined || input.self === "" ? [] : [input.self]),
   ...(input.feeling === undefined || input.feeling === "" ? [] : [input.feeling]),
   `Now: ${input.now}.`,
@@ -674,7 +687,7 @@ export const ROOM_SYSTEM = [
 const ROOM_HISTORY = 16;
 export const roomData = (input: R1Context) =>
   [
-    ...personaLine(input.persona, input.switched),
+    ...personaLine(input.persona, input.switched, input.lead),
     ...(input.self === undefined || input.self === "" ? [] : [input.self]),
     ...(input.feeling === undefined || input.feeling === "" ? [] : [input.feeling]),
     ...(input.tone === undefined || input.tone === null ? [] : [toneLine(input.tone)]),
@@ -1312,9 +1325,10 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     ...(people.length > 0 ? { people } : {}),
     voice: input.voice,
     persona,
+    lead: pack.personas.find((p) => p.lead),
     self: (persona ?? pack.personas.find((p) => p.lead))?.self ?? "",
     switched: switchedPersona(input.voice),
-    roster: rosterLine(pack.personas, persona?.id ?? ""),
+    roster: rosterLine(pack.personas, persona?.id ?? pack.personas.find((p) => p.lead)?.id ?? ""),
     names: hisNames(
       pack.personas.map((p) => p.name),
       yield* Effect.serviceOption(TessayaCast).pipe(

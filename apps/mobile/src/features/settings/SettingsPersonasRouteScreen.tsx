@@ -209,6 +209,7 @@ function PersonasSection(props: {
               <ListRowLayout
                 label={`${p.name}${p.lead ? " · lead" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`}
                 description={[
+                  p.pronouns ?? null,
                   p.role,
                   speaksAs(p.id) === undefined ? null : `voice ${speaksAs(p.id)}`,
                 ]
@@ -446,6 +447,15 @@ function PersonaFormSection(props: {
           maxLength={200}
           value={form.role}
           onChangeText={(role) => onChange({ ...form, role })}
+          className={INPUT}
+        />
+        <TextInput
+          accessibilityLabel="Pronouns"
+          placeholder="Pronouns, like he/him, she/her or they/them"
+          maxLength={26}
+          autoCapitalize="none"
+          value={form.pronouns}
+          onChangeText={(pronouns) => onChange({ ...form, pronouns })}
           className={INPUT}
         />
         <TextInput

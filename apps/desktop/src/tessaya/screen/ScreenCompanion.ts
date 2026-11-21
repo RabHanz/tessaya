@@ -3500,6 +3500,7 @@ export const startScreenCompanion = (input: {
               name: job.persona.name,
               role: job.persona.role,
               ...(job.persona.self === undefined ? {} : { self: job.persona.self }),
+              ...(job.persona.pronouns === undefined ? {} : { pronouns: job.persona.pronouns }),
             },
           });
           // One model turn, and one more for each tool call it made (the turn record counts them).
@@ -3720,6 +3721,7 @@ export const startScreenCompanion = (input: {
             name: face.name,
             role: face.role,
             ...(face.self === undefined ? {} : { self: face.self }),
+            ...(face.pronouns === undefined ? {} : { pronouns: face.pronouns }),
             ...(face.lead ||
             (turnProject !== null && leadsProject(face, turnProject, actions?.projects?.() ?? []))
               ? {}

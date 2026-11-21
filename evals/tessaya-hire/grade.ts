@@ -18,6 +18,8 @@ export const gradeHire = (c: HireCase, draft: PersonaDraft | null): ReadonlyArra
   for (const any of c.about ?? [])
     if (!any.some((w) => about.includes(w))) misses.push(`about lacks ${any.join("/")}`);
   for (const bad of c.notAbout ?? []) if (about.includes(bad)) misses.push(`about has "${bad}"`);
+  if (c.pronouns !== undefined && draft.pronouns !== c.pronouns)
+    misses.push(`pronouns ${draft.pronouns ?? "none"}, not ${c.pronouns}`);
   if ((draft.role ?? "").trim() === "") misses.push("no role");
   const greetings = draft.greetings ?? [];
   if (greetings.length === 0) misses.push("no greetings");

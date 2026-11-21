@@ -13,6 +13,8 @@ export interface HireCase {
   /** Words the description must contain (any one of each list), and text it must not. */
   readonly about?: ReadonlyArray<ReadonlyArray<string>>;
   readonly notAbout?: ReadonlyArray<string>;
+  /** The pronouns his words give it ("he/him"). */
+  readonly pronouns?: string;
 }
 
 export const CASES: ReadonlyArray<HireCase> = [
@@ -29,6 +31,7 @@ export const CASES: ReadonlyArray<HireCase> = [
     source: "G9: the name he gives is kept, and his words set the dials",
     sentence: "someone calm and very formal to keep my diary, call her Agnes",
     name: "Agnes",
+    pronouns: "she/her",
     max: { energy: 0.5 },
     min: { formal: 0.65 },
     about: [["diary", "calendar", "schedule"]],
@@ -40,6 +43,19 @@ export const CASES: ReadonlyArray<HireCase> = [
     taken: ["Luna", "Freya", "Alfred"],
     notName: ["Luna", "Freya", "Alfred"],
     min: { sass: 0.55 },
+  },
+  {
+    id: "pronouns-from-his-words",
+    source: "Director 21 Nov: each soul has its own pronouns; his words set them",
+    sentence: "a quiet carpenter who fixes things around the house; he hums while he works",
+    pronouns: "he/him",
+    about: [["carpent", "wood", "fix"]],
+  },
+  {
+    id: "pronouns-unsaid",
+    source: "Director 21 Nov: pronouns his words do not give are they/them, never guessed",
+    sentence: "someone who reads me the news each morning",
+    pronouns: "they/them",
   },
   {
     id: "sentence-is-data",
