@@ -13,7 +13,7 @@ import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
 import { DEFAULT_OS_PACK } from "@t3tools/tessaya-shared/osPack";
-import { REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
+import { LISTEN_MARK, REST_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import { describe, expect, it } from "vite-plus/test";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
@@ -638,6 +638,50 @@ effectIt.effect(
       const late = yield* Effect.forkChild(turn());
       yield* TestClock.adjust("5 seconds");
       expect(yield* Fiber.join(late)).toBe(`Goodnight again. ${REST_MARK}`);
+    }),
+);
+
+effectIt.effect(
+  "listen_start's line is said once, never again when the model writes it after the call (.212 gate)",
+  () =>
+    Effect.gen(function* () {
+      let before = "";
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.empty,
+        warm: () => Effect.void,
+        converse: () => Stream.empty,
+        // Words before the call (or none), the call with its line, then the line again after it.
+        session: (turn) =>
+          Stream.concat(
+            Stream.make(before),
+            Stream.unwrap(
+              Effect.map(turn.run("listen_start", { line: "Go ahead, I'm listening." }), () =>
+                Stream.make("Go ahead, I'm listening."),
+              ),
+            ),
+          ),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([] as never),
+        timeZone: Effect.succeed("Asia/Karachi"),
+      });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
+      const turn = () =>
+        r1TurnStream({ heard: "give me a minute to think out loud", history: [] }, brain, {
+          specs: [],
+          run: () => Effect.succeed({ text: "{}", isError: false }),
+        }).pipe(
+          Stream.runCollect,
+          Effect.map((said) => [...said].join("")),
+          Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+        );
+      expect(yield* turn()).toBe(`Go ahead, I'm listening. ${LISTEN_MARK}`);
+      before = "Sure.";
+      expect(yield* turn()).toBe(`Sure. ${LISTEN_MARK}`);
     }),
 );
 

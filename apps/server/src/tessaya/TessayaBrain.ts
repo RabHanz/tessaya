@@ -578,9 +578,14 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
   }
   const speak = (stream: typeof words) =>
     stream.pipe(
-      // After her goodbye, nothing more is said; a goodbye written only after the call still is.
+      // After her goodbye, nothing more is said; a goodbye written only after the call still is. Once she is
+      // listening, words she writes after its line are not said again (.212 gate: "Go ahead, I'm listening." twice).
       Stream.runForEach((words) =>
-        Effect.sync(() => (ended && goodbye.trim() !== "" ? undefined : sentences.push(words))),
+        Effect.sync(() =>
+          (ended && goodbye.trim() !== "") || (listening && said.trim() !== "")
+            ? undefined
+            : sentences.push(words),
+        ),
       ),
       inBrainSlot(turn),
       Effect.exit,
