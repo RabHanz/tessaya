@@ -45,6 +45,7 @@ import { useVoiceInputController } from "../../voice-input/useVoiceInputControll
 import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
 import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
 import { setHerPhase } from "../island/herPhase";
+import { phoneSoulIs } from "../private/privateLayer";
 import { useSleeveCovering } from "../sleeve/useSleeve";
 import {
   addFrames,
@@ -115,6 +116,8 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   const phoneCall = useAtomCommand(tessayaWorkSessions.phoneCall, { reportFailure: false });
   const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
   const persona = talkPersona(personas, picked);
+  // the private layer opens for the soul he is talking to here
+  phoneSoulIs(persona?.id ?? null);
   const drawing = focused && active;
   const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, { reportFailure: false });
   const cost = useRef<Stretch | null>(null);

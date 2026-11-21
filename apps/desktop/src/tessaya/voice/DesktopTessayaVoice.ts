@@ -1428,8 +1428,8 @@ export interface TrayExtras extends BrainVoiceHook {
 /** The mascot's speech, level and mood also go to the 3D body as cues: one source drives both bodies. */
 export interface DesktopTessayaVoiceInput {
   readonly stateDir: string;
-  /** Opens his private chat window; null while no owner-only layer runs on this machine's server. */
-  readonly privateChat?: () => (() => void) | null;
+  /** Opens his private chat window for that soul (a pack id); null while no owner-only layer runs on this machine's server. */
+  readonly privateChat?: (soul?: string) => (() => void) | null;
   /** Her speech and mood as 3D body cues (bodyCues.ts), for the private window's body while it is open (M-047). */
   readonly bodyCue?: (cue: BodyCue) => void;
   /** What her desk world is now (a full-screen app in front), for her own wishes to keep out of his way. */
@@ -5240,7 +5240,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       stateDir: input.stateDir,
       // the mascot's own settings (persona, size, where it sits) live in Appearance
       openSettings: () => home.open("appearance"),
-      ...(input.privateChat === undefined ? {} : { privateChat: input.privateChat }),
+      // the private window opens for the soul whose body he right-clicked
+      ...(input.privateChat === undefined
+        ? {}
+        : { privateChat: () => input.privateChat!(persona().persona) }),
       onNote: (kind, detail) => input.onNote?.(kind, detail),
       crowd,
       ...(slot === undefined ? {} : slot),

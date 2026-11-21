@@ -14,6 +14,7 @@ import { AppText as Text } from "../../../components/ui/AppText";
 import { UnlockSheet } from "../lock/UnlockSheet";
 import { privateSoundAllowed } from "./privateOutput.logic";
 import {
+  phoneSoul,
   setPrivateShown,
   usePrivateLayer,
   usePrivateShown,
@@ -121,7 +122,10 @@ function PrivateView(props: { readonly layer: ReturnType<typeof usePrivateLayer>
         <WebView<object>
           ref={view}
           source={{
-            uri: new URL(`${page}/chat?surface=phone`, layer.base).href,
+            uri: new URL(
+              `${page}/chat?surface=phone${phoneSoul() === null ? "" : `&soul=${encodeURIComponent(phoneSoul()!)}`}`,
+              layer.base,
+            ).href,
             headers: { authorization: `Bearer ${layer.token}` },
           }}
           incognito

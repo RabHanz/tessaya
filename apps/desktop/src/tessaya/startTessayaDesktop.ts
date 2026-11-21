@@ -697,7 +697,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
       if (at === null && open) who?.morph("in");
       if (at !== null && (layerLink.isOpen() || deskFullBody))
         who?.layerBody({
-          url: `${at.origin}${page}/mascot`,
+          // the moment's soul wears it; with none open, the layer shows whichever soul has an everyday look
+          url: `${at.origin}${page}/mascot${layerLink.persona() === null ? "" : `?soul=${encodeURIComponent(layerLink.persona()!)}`}`,
           session: at.session,
           waitShown: !layerLink.isOpen(),
         });
@@ -728,7 +729,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       // her private form leaves the desk on the close itself
       shown: (on) => void showLayerBody(on && layerLink.isOpen()),
     });
-    const openLayerPage = async (chat = false) => {
+    const openLayerPage = async (chat = false, soul?: string) => {
       const page = layerLink.page();
       if (page === null) return;
       const at = await layerSession();
@@ -760,7 +761,10 @@ export const startTessayaDesktop = Effect.gen(function* () {
         });
         return { action: "deny" };
       });
-      void win.loadURL(`${origin}${page}${chat ? "/chat" : ""}`);
+      // the window is that soul's moment (the layer reads ?soul=); without one, the layer's own soul
+      void win.loadURL(
+        `${origin}${page}${chat ? "/chat" : ""}${soul === undefined ? "" : `?soul=${encodeURIComponent(soul)}`}`,
+      );
       win.on("closed", coolHello);
       layerWindows.opened();
       // closed, or its page died: counted once either way
@@ -1146,7 +1150,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
     markPhase("voice-start:begin");
     voice = startDesktopTessayaVoice({
       loginEntry: environment.appUserModelId,
-      privateChat: () => (layerLink.page() === null ? null : () => void openLayerPage(true)),
+      privateChat: (soul) =>
+        layerLink.page() === null ? null : () => void openLayerPage(true, soul),
       bodyCue,
       onMascot: (m) => {
         deskMascot = m;
