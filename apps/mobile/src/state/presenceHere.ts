@@ -2,6 +2,8 @@
  * The phone telling each of his servers it is in his hand (B-043): the app coming to the front and going away, as a
  * `presence.here` value on this phone's vessel publish. The server notes it for the signed-in member; no location.
  */
+import * as Application from "expo-application";
+import * as Updates from "expo-updates";
 import { HERE_ITEM, phoneManifest, phoneValues } from "@t3tools/tessaya-shared/phoneDevice";
 import * as Device from "expo-device";
 import { useEffect, useRef } from "react";
@@ -33,6 +35,7 @@ export function usePresenceHere() {
       model: Device.modelName ?? null,
       os: Device.osName === null ? null : `${Device.osName} ${Device.osVersion ?? ""}`.trim(),
       motion: Device.isDevice,
+      app: { version: Application.nativeApplicationVersion, update: Updates.updateId },
     };
     const manifest = phoneManifest(facts);
     const say = (value: "foreground" | "background") => {

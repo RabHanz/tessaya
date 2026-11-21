@@ -497,6 +497,9 @@ const link = (url: string): NonNullable<RoomDeps["link"]> => {
   };
 };
 
+// Stamped by the bundle build (scripts/tessaya/build-r1-voice.sh); absent when run from source.
+declare const __TESSAYA_LOOP_VERSION__: string | undefined;
+declare const __TESSAYA_BUILD_COMMIT__: string | undefined;
 /** What this loop believes, for the brain's fleet check (M-146): its build, its brain and its copy of the voices. */
 const loopFingerprint = (
   host: string,
@@ -506,8 +509,8 @@ const loopFingerprint = (
   name: `the room loop on ${host}`,
   kind: "loop",
   host,
-  version: process.env["TESSAYA_LOOP_VERSION"] || "unknown",
-  commit: process.env["TESSAYA_BUILD_COMMIT"] || null,
+  version: typeof __TESSAYA_LOOP_VERSION__ === "undefined" ? "source" : __TESSAYA_LOOP_VERSION__,
+  commit: (typeof __TESSAYA_BUILD_COMMIT__ === "undefined" ? "" : __TESSAYA_BUILD_COMMIT__) || null,
   startedAt,
   brain: `url:${new URL(env("R1_BRAIN_URL")).host}`,
   account: null,
