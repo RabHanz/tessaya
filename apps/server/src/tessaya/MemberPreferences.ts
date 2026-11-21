@@ -179,10 +179,12 @@ const make = Effect.gen(function* () {
   // A worker's vessels hear a change made on the brain within a minute (the broker sends the room loops their voice);
   // while the brain is away nothing is told, so they keep what they have.
   let told: ReadonlyMap<string, VoiceDefaults> = new Map();
+  // Her brain holds the rows, so it polls nothing and the loop ends there; a clock jump in a test no longer replays it.
+  // shortcut: a server that becomes a worker later starts polling at its next start.
   yield* Effect.gen(function* () {
-    if (yield* brain.isBrain) return;
+    if (yield* brain.isBrain) return true;
     const fetched = yield* rowsNow(null);
-    if (Option.isNone(fetched)) return;
+    if (Option.isNone(fetched)) return false;
     const now = voiceDefaultsOf(fetched.value);
     const before = told;
     told = now;
@@ -191,9 +193,12 @@ const make = Effect.gen(function* () {
       if (JSON.stringify(v) === JSON.stringify(before.get(member) ?? null)) continue;
       for (const l of listeners) yield* l(member, v);
     }
+    return false;
   }).pipe(
-    Effect.ignoreCause({ log: true }),
-    Effect.repeat(Schedule.spaced("1 minute")),
+    Effect.catchCause((cause) =>
+      Effect.as(Effect.logWarning("preferences poll failed", cause), false),
+    ),
+    Effect.repeat({ schedule: Schedule.spaced("1 minute"), until: (onBrain) => onBrain }),
     Effect.forkScoped,
   );
 
