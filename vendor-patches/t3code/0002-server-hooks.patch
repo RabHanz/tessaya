@@ -367,18 +367,19 @@ index c2a99533fb14789f945575445da93c1411ecc453..25858bef93911138dfc5b85fd3acd253
            Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
              failEnvironmentInternal("pairing_credential_issuance_failed", error),
 diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
-index 995b207e7c78186c71a9abadda54756a0094a7d2..6052dd071051759310517d8ecf4db7823022be17 100644
+index 995b207e7c78186c71a9abadda54756a0094a7d2..fa54eccd5beb5a1f510a078f5bf8a0dc0c7a6044 100644
 --- a/apps/server/src/binCli.ts
 +++ b/apps/server/src/binCli.ts
-@@ -21,6 +21,7 @@ import { extendConnectionAttemptTimeout, keepOutboundFetchOnHttp1 } from "./outb
+@@ -21,6 +21,8 @@ import { extendConnectionAttemptTimeout, keepOutboundFetchOnHttp1 } from "./outb
  import { sharedServerCommandFlags } from "./cli/config.ts";
  import { projectCommand } from "./cli/project.ts";
  import { threadCommand } from "./cli/thread.ts";
 +import { memoryCommand } from "./cli/memory.ts";
++import { whatsNewCommand } from "./cli/whatsNew.ts";
  import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
  import { updateCommand } from "./cli/update.ts";
  import {
-@@ -33,6 +34,7 @@ import { uninstallCommand } from "./cli/uninstall.ts";
+@@ -33,6 +35,7 @@ import { uninstallCommand } from "./cli/uninstall.ts";
  import { runServiceLauncherCli } from "./cli/serviceLauncher.ts";
  import { speechWorkerCommand } from "./cli/speechWorker.ts";
  import { claudeHistoryCommand } from "./cli/claudeHistory.ts";
@@ -386,15 +387,16 @@ index 995b207e7c78186c71a9abadda54756a0094a7d2..6052dd071051759310517d8ecf4db782
  import { sshHelperCommand } from "./cli/sshHelper.ts";
  import { serviceCommand } from "./cli/service.ts";
  import { servicePreflightCommand } from "./cli/servicePreflight.ts";
-@@ -91,6 +93,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
+@@ -91,6 +94,8 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
        browserCommand,
        projectCommand,
        threadCommand,
 +      memoryCommand,
++      whatsNewCommand,
        upCommand,
        statusCommand,
        serviceCommand,
-@@ -104,6 +107,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
+@@ -104,6 +109,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
          Command.withHandler(() => Effect.sync(() => void runServiceLauncherCli())),
        ),
        claudeHistoryCommand,

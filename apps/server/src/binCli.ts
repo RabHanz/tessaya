@@ -22,6 +22,7 @@ import { sharedServerCommandFlags } from "./cli/config.ts";
 import { projectCommand } from "./cli/project.ts";
 import { threadCommand } from "./cli/thread.ts";
 import { memoryCommand } from "./cli/memory.ts";
+import { whatsNewCommand } from "./cli/whatsNew.ts";
 import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
 import { updateCommand } from "./cli/update.ts";
 import {
@@ -94,6 +95,7 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
       projectCommand,
       threadCommand,
       memoryCommand,
+      whatsNewCommand,
       upCommand,
       statusCommand,
       serviceCommand,
