@@ -1964,6 +1964,22 @@ const decodeEffect = Schema.decodeUnknownOption(
     }),
   ),
 );
+/** His turn now may be a whole thought out loud (listen mode, M-135); earlier lines are context and stay short. */
+const HEARD_MAX = 16_000;
+const EARLIER_MAX = 400;
+
+/** The conversation a loop sent: his turn now whole (it was cut at 400 characters, 21 Nov), each earlier line short. */
+export const chatTurns = (
+  messages: ReadonlyArray<{ readonly role: string; readonly content?: unknown }>,
+): ReadonlyArray<{ readonly role: string; readonly content: string }> => {
+  const kept = messages.filter((m) => m.role === "user" || m.role === "assistant");
+  const now = kept.findLastIndex((m) => m.role === "user");
+  return kept.map((m, i) => ({
+    role: m.role,
+    content: recordText(textOf(m.content), i === now ? HEARD_MAX : EARLIER_MAX),
+  }));
+};
+
 const textOf = (content: unknown): string =>
   typeof content === "string"
     ? content
@@ -2065,9 +2081,7 @@ export const routes = HttpRouter.use((router) =>
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodeChat(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a chat request.");
-      const turns = body.value.messages
-        .filter((m) => m.role === "user" || m.role === "assistant")
-        .map((m) => ({ role: m.role, content: recordText(textOf(m.content), 400) }));
+      const turns = chatTurns(body.value.messages);
       const heard = turns.findLast((m) => m.role === "user")?.content ?? "";
       if (heard.trim() === "") return error(400, "Nothing was heard.");
       // Noise, or words the recogniser never really heard (V-018): no turn at all, whatever a loop sent.
