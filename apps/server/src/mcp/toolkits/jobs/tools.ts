@@ -57,6 +57,8 @@ const StartTool = Tool.make("job_start", {
     ),
     persona: Schema.optionalKey(Text(60)),
     template: Schema.optionalKey(Text(60)),
+    new_project: Schema.optionalKey(Schema.Struct({ title: Text(120) })),
+    go: Schema.optionalKey(Schema.Boolean),
   }),
 })
   .annotate(McpSchema.EnabledWhen, roomOnly)

@@ -964,6 +964,30 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     callsAtMost: { job_start: 0, job_agree: 0, job_schedule: 0, job_stop: 0 },
   },
   {
+    id: "job-new-project",
+    source:
+      "M-135 §3.3, Director 21 Nov: she promised to start the job after his yes and didn't (project_add, then nothing)",
+    said: ["start a new project for a garden planner and have an agent build the first version"],
+    verified: true,
+    calls: ["job_start"],
+    callsAtMost: { project_add: 0, job_agree: 0 },
+  },
+  {
+    id: "job-in-named-project",
+    source: 'M-135 §3.3, Director 21 Nov: "in the margin project" failed unless the name was exact',
+    said: ["in the margin project have an agent fix the login bug"],
+    verified: true,
+    calls: ["job_start"],
+    callsAtMost: { project_add: 0 },
+  },
+  // Control: a project's name in an ordinary question starts nothing.
+  {
+    id: "margin-question-no-job",
+    source: "M-135 §3.5 control: a project name alone is not a job",
+    said: ["what's the weather like for the margin team today?"],
+    callsAtMost: { job_start: 0, project_add: 0, job_agree: 0 },
+  },
+  {
     id: "project-add-phone",
     source: "Director 13 Nov 19:05 GMT+5: start projects by voice, a new project from a repository",
     said: ["add the acme/app repository as a new project"],

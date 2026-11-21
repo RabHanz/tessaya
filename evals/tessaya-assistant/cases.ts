@@ -716,6 +716,49 @@ export const assistantCases: ReadonlyArray<AssistantCase> = [
     first: ["project_add"],
     not: ["job_start"],
   },
+  // M-135 §3.3 (Director 21 Nov): "she promised to start the job after his yes and didn't" (project_add, then nothing).
+  {
+    id: "job-new-project",
+    source:
+      "M-135 §3.3, Director 21 Nov: a new project and its job were two steps, and the job never started",
+    said: "start a new project for a garden planner and have an agent build the first version",
+    first: ["job_start"],
+    not: ["project_add"],
+    goal: "job_start",
+    maxCalls: 2,
+    goalArgs: ["new_project", "garden"],
+    answers: {
+      job_start:
+        "Added the project Garden Planner. Opened Build the first version in Garden Planner on sonnet, led by Onyx. It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.",
+    },
+  },
+  {
+    id: "job-just-do-it",
+    source: 'M-135 §3.3, Director 21 Nov: "just do it" still needed a second spoken yes',
+    said: "in the shop project have an agent fix the typo in the footer, just do it",
+    first: ["job_start"],
+    goal: "job_start",
+    maxCalls: 2,
+    goalArgs: ['"go":true'],
+    answers: {
+      job_start:
+        "Opened Fix the footer typo in shop on sonnet, led by Onyx. He said to go ahead, so it is working now with no plan pause; say you will tell him when it is done.",
+    },
+  },
+  // Control: a plain job keeps its plan pause.
+  {
+    id: "job-plans-first",
+    source: "control for job-just-do-it: no go unless he said so",
+    said: "take on a job in the shop project: tidy the README",
+    first: ["job_start"],
+    goal: "job_start",
+    maxCalls: 2,
+    notGoalArgs: ['"go":true', "new_project"],
+    answers: {
+      job_start:
+        "Opened Tidy the README in shop on sonnet, led by Onyx. It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.",
+    },
+  },
   {
     id: "intercom-on",
     source: "Director 16 Nov voice parity: the intercom switch was a window click only",

@@ -16,6 +16,7 @@ import {
   type TessayaJobRevision,
   type TessayaPlanLease,
   type TessayaSessionState,
+  type WorkSessionSynopsis,
 } from "@t3tools/tessaya-contracts";
 
 import type { LineEvent } from "./expression.ts";
@@ -261,14 +262,53 @@ const jobOutcome = (j: Pick<TessayaJob, "phase" | "group" | "limitReached">): st
         ? `stopped at its ${j.limitReached} limit`
         : GROUP_WORDS[j.group];
 
+/**
+ * What a finished job did, in one short line from what its worker reported (its synopsis): the last finding, then the
+ * files it changed and its checks. Null when it reported nothing. Pure.
+ */
+export const jobResult = (
+  synopsis: Pick<WorkSessionSynopsis, "recentFindings" | "changedFiles" | "validation"> | null,
+): string | null => {
+  if (synopsis === null) return null;
+  // The worker's own summary first; a recorded event when it wrote none.
+  const finding =
+    synopsis.recentFindings.findLast((f) => f.source === "model") ?? synopsis.recentFindings.at(-1);
+  const files = synopsis.changedFiles.length;
+  const passed = synopsis.validation.filter((v) => v.outcome === "passed").length;
+  const failed = synopsis.validation.filter((v) => v.outcome === "failed").length;
+  const parts = [
+    finding === undefined
+      ? null
+      : finding.text
+          .replace(/\s+/g, " ")
+          .replace(/[.!]+$/, "")
+          .slice(0, 160),
+    files === 0 ? null : `${files} file${files === 1 ? "" : "s"} changed`,
+    failed > 0
+      ? `${failed} check${failed === 1 ? "" : "s"} failed`
+      : passed > 0
+        ? "checks passed"
+        : null,
+  ].filter((p): p is string => p !== null);
+  return parts.length === 0 ? null : parts.join("; ");
+};
+
 /** What is said aloud where a job was asked when its standing changes to this, or null for a change not worth a word. */
-export const jobNotice = (title: string, outcome: string): string | null =>
+export const jobNotice = (
+  title: string,
+  outcome: string,
+  result: string | null = null,
+): string | null =>
   outcome === "plan waits for his OK"
     ? `The plan for ${title} is ready in its thread.`
     : outcome === GROUP_WORDS.done
-      ? `${title} is done.`
+      ? result === null
+        ? `${title} is done.`
+        : `${title} is done: ${result}.`
       : outcome === GROUP_WORDS.failed
-        ? `${title} failed.`
+        ? result === null
+          ? `${title} failed.`
+          : `${title} failed: ${result}.`
         : outcome === GROUP_WORDS.needs_you
           ? `${title} needs you.`
           : outcome.startsWith("stopped at its ")

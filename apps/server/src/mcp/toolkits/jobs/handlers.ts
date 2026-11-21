@@ -432,9 +432,20 @@ export const make = Effect.gen(function* () {
     job_start: act((input: JobInput<"job_start">) =>
       Effect.gen(function* () {
         const origin = yield* TurnOrigin;
+        // A new project and its job in one call, on his one yes: the job never waits on a second turn.
+        if (input.new_project !== undefined) {
+          const added = yield* run(
+            Effect.flatMap(TessayaEngine, (engine) =>
+              engine.addProject({ tag: "voice", title: input.new_project!.title }),
+            ),
+          );
+          if ("refused" in added)
+            return { id: null, line: `No project was added, so no job: ${added.refused}` };
+        }
+        const project = input.new_project?.title ?? input.project;
         const started = yield* run(
           JobFlow.placeJob({
-            project: input.project,
+            project,
             title: input.title,
             goal: input.goal,
             folders: input.folders ?? [],
@@ -442,6 +453,7 @@ export const make = Effect.gen(function* () {
             ...(input.worker === undefined ? {} : { worker: input.worker }),
             ...(input.persona === undefined ? {} : { persona: input.persona }),
             ...(input.template === undefined ? {} : { template: input.template }),
+            ...(input.go === true ? { go: true } : {}),
             ...(input.report_every_minutes === undefined
               ? {}
               : { reportEveryMinutes: input.report_every_minutes }),
@@ -460,7 +472,7 @@ export const make = Effect.gen(function* () {
               `${origin.persona ?? ""}|${conversationKey({ vessel: origin, text: "", speaker: origin.speaker, member: origin.member })}`,
             ),
           );
-        const opened = `Opened ${input.title} in ${input.project} on ${started.model}, led by ${started.lead}${started.template === null ? "" : ` (template ${started.template})`}.`;
+        const opened = `${input.new_project === undefined ? "" : `Added the project ${project}. `}Opened ${input.title} in ${project} on ${started.model}, led by ${started.lead}${started.template === null ? "" : ` (template ${started.template})`}.`;
         if (started.pausedUntil !== undefined) {
           const until = yield* houseTime(started.pausedUntil);
           return {
@@ -470,7 +482,10 @@ export const make = Effect.gen(function* () {
         }
         return {
           id: started.terms.workSessionId,
-          line: `${opened} It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`,
+          line:
+            input.go === true
+              ? `${opened} He said to go ahead, so it is working now with no plan pause; say you will tell him when it is done.`
+              : `${opened} It writes its plan first in its own thread and does nothing until he agrees; say you will tell him when the plan is ready.`,
         };
       }),
     ),

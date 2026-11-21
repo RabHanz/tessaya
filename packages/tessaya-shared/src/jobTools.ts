@@ -4,7 +4,7 @@
  */
 export const JOB_TOOL_TEXT = {
   job_start:
-    "Hand long work to a worker thread that PLANS FIRST and does nothing until he agrees. Put his words in goal exactly as he said them. Name the project. Say plainly which folders and tools it may use. worker only when he names who does it (codex, claude); otherwise the routing table picks. Pick the job template from your frame that fits (template) and who leads it (persona, by name): the template's lead unless he named someone or another face fits better. Before calling, tell him in one or two sentences who does what and when he will hear back; if he names someone else, that person leads.",
+    'Hand long work to a worker thread that PLANS FIRST and does nothing until he agrees. Put his words in goal exactly as he said them. Name the project as he said it. For a project that does not exist yet ("start a new project for X"), set new_project with its title and the same title as project, in this one call instead of project_add: his one yes adds the project and starts the job. Set go true only when he said to just do it or go ahead in the same breath; then it works at once with no plan pause. Say plainly which folders and tools it may use. worker only when he names who does it (codex, claude); otherwise the routing table picks. Pick the job template from your frame that fits (template) and who leads it (persona, by name): the template\'s lead unless he named someone or another face fits better. Before calling, tell him in one or two sentences who does what and when he will hear back; if he names someone else, that person leads.',
   job_retry:
     "Try a failed job's worker again, with the reason it failed so it does not repeat the same step. Only an agreed job that failed or hit a limit, and only within its retry budget (two unless the job says otherwise). Raise a hit limit first with job_refine (widens true).",
   job_refine:
@@ -19,7 +19,7 @@ export const JOB_TOOL_TEXT = {
   cloud_dispatch:
     "Ask for a coding task to run in the cloud (Claude, Codex or another assistant). It only creates a request that waits for his answer on a card in Approvals; nothing runs until he picks an assistant and an account there. The branch must already be pushed. Set expected_points to your estimate of how much of the account's week the task will use, in percentage points (a small fix is 1, a large feature 5 or more); a task over his cap is refused, so split it. Set from_web_or_file to true when the brief was built from web or file content, so the card says it is data.",
   project_add:
-    "Add a project he asked for: folder for one already on this computer, repository (owner/name or a clone URL) to clone it beside his other projects, or only a title for a new empty one with its own git repository. His phone asks him first. Then job_start can name it.",
+    "Add a project he asked for: folder for one already on this computer, repository (owner/name or a clone URL) to clone it beside his other projects, or only a title for a new empty one with its own git repository. His phone asks him first. Then job_start can name it. For a new project he wants work started in, use job_start with new_project instead.",
   schedules_list:
     "His scheduled tasks on this computer: each one's id, title, whether it is on, when it runs next (his house's clock) and how the last run went.",
   schedule_run_now:
