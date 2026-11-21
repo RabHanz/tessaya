@@ -25,13 +25,22 @@
 import { classifyDictation } from "@t3tools/tessaya-shared/dictation";
 import { wakeWordLead } from "@t3tools/tessaya-shared/wakeVerify";
 import { answerOf, isCancelPhrase, isStandingYes } from "@t3tools/tessaya-shared/voiceTurn";
+import {
+  LISTEN_WAIT_DEFAULT_S,
+  classifyListen,
+  listenStep,
+  type ListenEvent,
+  type ListenState,
+} from "@t3tools/tessaya-shared/listenMode";
 
 export type VoiceMode =
   | "sleeping"
   | "command_window"
   | "conversation"
   | "direct_session"
-  | "dictation";
+  | "dictation"
+  /** Listen mode (M-135): he thinks out loud; every line is kept and nothing is answered until the thought is whole. */
+  | "listen_mode";
 
 export interface PendingConfirmation {
   /** Opaque to the machine; the router knows what it means. */
@@ -49,6 +58,8 @@ export interface VoiceMachineState {
   /** When the command window / conversation closes. */
   readonly deadline: number | null;
   readonly pending: PendingConfirmation | null;
+  /** His thought so far in listen mode. */
+  readonly listen?: ListenState | null;
 }
 
 export interface VoiceTimings {
@@ -57,6 +68,8 @@ export interface VoiceTimings {
   readonly commandWindowMs: number;
   readonly conversationMs: number;
   readonly confirmationMs: number;
+  /** Listen mode's silence and his own end words (the shared defaults when absent). */
+  readonly listen?: { readonly waitMs: number; readonly ends?: ReadonlyArray<string> };
 }
 
 export const DEFAULT_TIMINGS: VoiceTimings = {
@@ -77,6 +90,8 @@ export type VoiceEvent =
   | { readonly type: "dismiss"; readonly at: number }
   | { readonly type: "set_direct_session"; readonly enabled: boolean; readonly at: number }
   | { readonly type: "set_target"; readonly workSessionId: string | null; readonly at: number }
+  /** Her brain's listen_start, or a button: listen mode without the words. */
+  | { readonly type: "set_listening"; readonly on: boolean; readonly at: number }
   /** The assistant's dictation_start/stop: the same mode as "Tessaya, dictate", without the words. */
   | { readonly type: "set_dictation"; readonly on: boolean; readonly at: number }
   | {
@@ -109,6 +124,8 @@ export type VoiceEffect =
       readonly reason: "declined" | "expired" | "superseded";
     }
   | { readonly kind: "speak"; readonly text: string }
+  /** Listen mode began, kept a line, or dropped the thought: a cue, never words. */
+  | { readonly kind: "listen"; readonly phase: "started" | "ack" | "cancelled" }
   /** Heard but deliberately not acted on — sleeping, or a bare wake word. */
   | { readonly kind: "ignored"; readonly text: string; readonly reason: string };
 
@@ -208,7 +225,45 @@ const base = (state: VoiceMachineState): VoiceMachineState => ({
   deadline: null,
   conversationTarget: null,
   pending: null,
+  listen: null,
 });
+
+/** One listen-mode step: its lines kept, or the whole thought as his command, back in the conversation. */
+const listened = (
+  s: VoiceMachineState,
+  event: ListenEvent,
+  timings: VoiceTimings,
+  carry: ReadonlyArray<VoiceEffect>,
+): VoiceStep | null => {
+  const config = {
+    waitMs: timings.listen?.waitMs ?? LISTEN_WAIT_DEFAULT_S * 1000,
+    ...(timings.listen?.ends === undefined ? {} : { ends: timings.listen.ends }),
+    ...(timings.wakeWords === undefined ? {} : { names: timings.wakeWords }),
+  };
+  const { state, out } = listenStep(s.listen ?? null, event, config);
+  if (out.kind === "pass") return null;
+  const at = "at" in event ? event.at : 0;
+  if (out.kind === "started" || out.kind === "ack")
+    return step({ ...s, mode: "listen_mode", deadline: null, pending: null, listen: state }, [
+      ...carry,
+      ...(s.pending === null
+        ? []
+        : [{ kind: "cancelled", token: s.pending.token, reason: "superseded" } as const]),
+      { kind: "listen", phase: out.kind },
+    ]);
+  const back = {
+    ...s,
+    mode: "conversation" as const,
+    deadline: at + timings.conversationMs,
+    listen: null,
+  };
+  return out.kind === "cancelled"
+    ? step(back, [...carry, { kind: "listen", phase: "cancelled" }])
+    : step(back, [
+        ...carry,
+        { kind: "command", text: out.text, inheritedTarget: s.conversationTarget },
+      ]);
+};
 
 const step = (state: VoiceMachineState, effects: ReadonlyArray<VoiceEffect> = []): VoiceStep => ({
   state,
@@ -269,7 +324,20 @@ export const reduceVoice = (
           : [{ kind: "cancelled", token: s.pending.token, reason: "declined" }],
       );
     case "tick":
-      return expired;
+      return s.mode === "listen_mode"
+        ? (listened(s, { type: "tick", at: event.at }, timings, carry) ?? expired)
+        : expired;
+
+    case "set_listening":
+      if (event.on === (s.mode === "listen_mode")) return step(s, carry);
+      return (
+        listened(
+          s,
+          event.on ? { type: "start", at: event.at } : { type: "cancel" },
+          timings,
+          carry,
+        ) ?? step(s, carry)
+      );
     case "clear_pending":
       return step(
         s.pending?.token === event.token
@@ -359,6 +427,10 @@ const utterance = (
   const raw = text.trim();
   const words = stripWake(raw, timings.wakeWords);
 
+  // Listen mode owns every word, her name included, until his end words, his silence or a cancel.
+  if (s.mode === "listen_mode")
+    return listened(s, { type: "utterance", text: raw, at }, timings, carry) ?? step(s, carry);
+
   if (s.mode === "dictation") {
     const d = classifyDictation(words, { dictating: true });
     // Only "stop dictation" ends it (and the pill's ✓ and ✕): "Tessaya, stop" is words he dictates.
@@ -389,6 +461,11 @@ const utterance = (
       { ...s, mode: awake ? s.mode : "command_window", deadline: at + timings.commandWindowMs },
       [...carry, { kind: "ignored", text: raw, reason: "wake word only" }],
     );
+  }
+
+  if (classifyListen(raw, { listening: false, names: timings.wakeWords ?? [] }).kind === "start") {
+    const begun = listened(s, { type: "utterance", text: raw, at }, timings, carry);
+    if (begun !== null) return begun;
   }
 
   const d = classifyDictation(words, { dictating: false });
