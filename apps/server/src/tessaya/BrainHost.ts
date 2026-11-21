@@ -58,6 +58,8 @@ export const BrainOp = Schema.Literals([
   "deviceRevoke",
   // his reminders and her promises: kept on her brain, whose pulse alone raises them when due (M-103)
   "commitments",
+  // a worker's own Record events, for her one Record (21 Nov): each kept once under its id and origin
+  "actions",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 

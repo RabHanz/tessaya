@@ -23,6 +23,7 @@ import type * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
+import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
@@ -148,21 +149,23 @@ export interface ActionQuery {
   readonly limit: number;
 }
 
-interface Row {
-  readonly id: string;
-  readonly at: number;
-  readonly kind: string;
-  readonly origin: string;
-  readonly actor_kind: string;
-  readonly actor_id: string | null;
-  readonly certainty: number;
-  readonly cause_json: string;
-  readonly evidence_json: string;
-  readonly persona: string | null;
-  readonly subject: string;
-  readonly outcome: string;
-  readonly data_json: string | null;
-}
+/** One stored event, as a worker sends its own to her brain (ActionShip). */
+export const ActionRow = Schema.Struct({
+  id: Schema.String,
+  at: Schema.Number,
+  kind: Schema.String,
+  origin: Schema.String,
+  actor_kind: Schema.String,
+  actor_id: Schema.NullOr(Schema.String),
+  certainty: Schema.Number,
+  cause_json: Schema.String,
+  evidence_json: Schema.String,
+  persona: Schema.NullOr(Schema.String),
+  subject: Schema.String,
+  outcome: Schema.String,
+  data_json: Schema.NullOr(Schema.String),
+});
+type Row = typeof ActionRow.Type;
 
 const fromRow = (r: Row): ActionEnvelope => ({
   id: r.id,
@@ -203,6 +206,10 @@ export class ActionLog extends Context.Service<
       limit: number,
     ) => Effect.Effect<ReadonlyArray<ActionEnvelope>>;
     readonly dropped: Effect.Effect<number>;
+    /** This server's stored events after `at` (by time, then id), oldest first: what a worker sends its brain. */
+    readonly rowsAfter: (at: number, id: string, limit: number) => Effect.Effect<ReadonlyArray<Row>>;
+    /** On her brain: another server's events, each kept once under its own id and origin. */
+    readonly ingest: (rows: ReadonlyArray<Row>) => Effect.Effect<number>;
   }
 >()("t3/provenance/ActionLog") {}
 
@@ -352,6 +359,23 @@ const make = Effect.gen(function* () {
       return opened as ReadonlyArray<ActionEnvelope>;
     }),
     dropped: Effect.sync(() => droppedCount),
+    rowsAfter: Effect.fn("ActionLog.rowsAfter")(function* (at: number, id: string, limit: number) {
+      yield* flush;
+      return yield* read(
+        sql<Row>`
+          SELECT * FROM tessaya_action_events WHERE at > ${at} OR (at = ${at} AND id > ${id})
+          ORDER BY at, id LIMIT ${limit}`,
+        [] as ReadonlyArray<Row>,
+      );
+    }),
+    ingest: Effect.fn("ActionLog.ingest")(function* (rows: ReadonlyArray<Row>) {
+      yield* sql.withTransaction(
+        Effect.forEach(rows, (r) => sql`INSERT OR IGNORE INTO tessaya_action_events ${sql.insert(r)}`, {
+          discard: true,
+        }),
+      );
+      return rows.length;
+    }),
   });
 });
 
