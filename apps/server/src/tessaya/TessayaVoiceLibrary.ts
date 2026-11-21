@@ -74,6 +74,9 @@ import { browsFor, propStateFor } from "./propState.ts";
 import { SessionMember, TessayaTurn } from "./TessayaTurn.ts";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { conversationOf, HISTORY_PAGE_MS } from "./conversationHistory.ts";
+import { VoiceIdGate } from "@t3tools/contracts";
+import { nextVoiceIdGate } from "@t3tools/tessaya-shared/voiceIdGate";
+import { voiceIdGate, voiceLearning } from "./VoiceIdGate.ts";
 import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import {
   cloneClean,
@@ -1031,6 +1034,36 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
           Effect.succeed<TessayaVoiceCallResult>({ ok: false, error: e.why }),
       }),
     );
+  }
+  if (input.op === "voiceId" || input.op === "setVoiceId") {
+    const set =
+      input.op === "voiceId"
+        ? Option.some(undefined)
+        : decode(
+            Schema.Struct({
+              gate: Schema.optionalKey(VoiceIdGate),
+              forgetLearning: Schema.optionalKey(Schema.Literal(true)),
+            }),
+          );
+    if (Option.isNone(set)) return bad;
+    const now = yield* Clock.currentTimeMillis;
+    const current = yield* voiceIdGate().pipe(Effect.orElseSucceed(Option.none));
+    if (Option.isNone(current)) return { ok: false, error: "Her brain can't be reached just now." };
+    const next =
+      set.value === undefined ? undefined : nextVoiceIdGate(current.value, set.value, now);
+    const gate =
+      next === undefined
+        ? current
+        : yield* voiceIdGate({ set: next }).pipe(Effect.orElseSucceed(Option.none));
+    if (Option.isNone(gate)) return { ok: false, error: "That was not saved." };
+    const learning = yield* voiceLearning().pipe(Effect.orElseSucceed(Option.none));
+    return {
+      ok: true,
+      value: {
+        gate: gate.value,
+        learning: Option.getOrElse(learning, () => []).slice(0, 20),
+      },
+    };
   }
   if (input.op === "conversation") {
     const a = decode(Schema.Struct({ before: Schema.optionalKey(Schema.Finite) }));

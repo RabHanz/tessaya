@@ -60,6 +60,7 @@ import {
   contextCleaned,
   tesselWishTick,
   chatTurns,
+  signedFrom,
 } from "./R1Device.ts";
 import { DeviceRegistry } from "./DeviceRegistry.ts";
 import { R1Hub } from "./R1Hub.ts";
@@ -86,6 +87,12 @@ describe("R1Device", () => {
     expect(
       r1Envelope({ ...heard, signed: true }, DEFAULT_OS_PACK, undefined).speaker,
     ).not.toHaveProperty("print");
+    // His phone vessel bound here now is signed like a Tessel; another device's id on that key is not.
+    expect(signedFrom("r1-a", "r1-a", [])).toBe(true);
+    expect(signedFrom("r1-a", "phone-p1", ["phone-p1"])).toBe(true);
+    expect(signedFrom("r1-a", "phone-p1", [])).toBe(false);
+    expect(signedFrom("r1-a", "r1-b", ["phone-p1"])).toBe(false);
+    expect(signedFrom("r1-a", undefined, ["phone-p1"])).toBe(false);
   });
 
   it("answers our test playback and the trusted test clone as a rehearsal, so nothing learns from them", () => {

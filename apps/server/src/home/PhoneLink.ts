@@ -1,8 +1,7 @@
 /**
- * The phone route (`/api/tessel/phone?device=&phone=&name=`): binary is her reply down and its mic up (PCM 16 kHz
- * mono s16le), the mic only after `{"t":"listen","on":true}`. Text up is `route` (kind, name, ip, haptic, gain) on
- * every change and `talk` for its headset's button; text down is `listen`, `flush` and `haptic` (a rendering for the
- * motor its route named). HomeDevices decides when the phone is used.
+ * The phone route (`/api/tessel/phone?device=&phone=&name=`): PCM 16 kHz mono s16le both ways, the mic only after
+ * `{"t":"listen","on":true}`; text up is `route` and `talk`, down `listen`, `flush`, `haptic`. Near its Tessel the
+ * phone lends it ears and voice; otherwise it is a vessel of its own on the hub (`phone-<phone>`), same room loop.
  */
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -11,7 +10,7 @@ import * as Socket from "effect/socket/Socket";
 
 import { BT_KINDS, type BtKind } from "@t3tools/tessaya-contracts";
 import { renderHaptic, type HapticHardware } from "@t3tools/tessaya-shared/haptics";
-import { PHONE, type PhoneLink } from "./HomeDevices.ts";
+import { isFlush, PHONE, PHONE_VESSEL, type PhoneLink } from "./HomeDevices.ts";
 
 export const PHONE_LINK_PATH = "/api/tessel/phone";
 
@@ -106,18 +105,100 @@ export const parsePhoneText = (text: string): PhoneRoute | "talk" | null => {
   }
 };
 
-/** One phone's socket for one R1: feeds HomeDevices.phoneLink on open, on every route change, and on close. */
+/** One mic frame up in the loop's raw form (60 ms): not the 16-byte upformat, so the loop reads it as plain PCM. */
+const VESSEL_FRAME_BYTES = 1920;
+
+/** The phone's hold on its own device id on the hub (R1Hub `vessel`). */
+export interface VesselBinding {
+  readonly publish: (tail: string, payload: string | Uint8Array) => void;
+  readonly close: () => void;
+}
+
+/**
+ * The phone as a vessel of its own, on the same contract as a Tessel: its mic goes up as `voice/up` while a session is
+ * open (`cmd/voice/start` to `cmd/voice/stop`), `voice/down` plays on it, a `voice/ctl` flush stops it, and its
+ * button publishes `cmd/voice/start`. Pure but for the hub binding and the phone it is given.
+ */
+export const makePhoneVessel = (io: {
+  readonly bind: (deliver: (tail: string, payload: Buffer) => void) => VesselBinding;
+  readonly play: (pcm: Uint8Array) => void;
+  readonly flush: () => void;
+  readonly listen: (on: boolean) => void;
+}) => {
+  let binding: VesselBinding | null = null;
+  let listening = false;
+  let held = Buffer.alloc(0);
+  const listen = (on: boolean) => {
+    if (on === listening) return;
+    listening = on;
+    held = Buffer.alloc(0);
+    io.listen(on);
+  };
+  const deliver = (tail: string, payload: Buffer) => {
+    if (tail === "voice/down") io.play(payload);
+    else if (tail === "voice/ctl" && isFlush(payload)) io.flush();
+    // The loop opens a session itself to say something (a job notice, an answer later): he may answer it.
+    else if (tail === "cmd/voice/start") listen(true);
+    else if (tail === "cmd/voice/stop") listen(false);
+  };
+  const set = (on: boolean) => {
+    if (on && binding === null) binding = io.bind(deliver);
+    else if (!on && binding !== null) {
+      binding.close();
+      binding = null;
+      listen(false);
+    }
+  };
+  return {
+    bound: () => binding !== null,
+    /** Bound while no Tessel is near; let go when one is, so the phone lends that Tessel its ears instead. */
+    set,
+    /** His button: a session on the phone itself. False when bound to no vessel (a Tessel near takes it). */
+    talk: () => {
+      if (binding === null) return false;
+      listen(true);
+      binding.publish("cmd/voice/start", "{}");
+      return true;
+    },
+    /** His mic while a session is open, in whole frames. */
+    mic: (pcm: Uint8Array) => {
+      if (binding === null || !listening) return;
+      held = Buffer.concat([held, pcm]);
+      // The same bound as the Tessel route's jitter buffer: a backlog is dropped, never heard late.
+      if (held.length > MIC_KEEP_MS * BYTES_PER_MS)
+        held = held.subarray(held.length - MIC_KEEP_MS * BYTES_PER_MS);
+      while (held.length >= VESSEL_FRAME_BYTES) {
+        binding.publish("voice/up", held.subarray(0, VESSEL_FRAME_BYTES));
+        held = held.subarray(VESSEL_FRAME_BYTES);
+      }
+    },
+    listening: () => listening,
+  };
+};
+
+/**
+ * One phone's socket: near its Tessel it feeds HomeDevices.phoneLink on open, on every route change, and on close;
+ * with no Tessel near (or none named) it is bound to the hub as its own vessel.
+ */
 export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
   socket: Socket.Socket,
   input: {
-    readonly r1: string;
+    /** The Tessel it lends its ears to when near; null: none, so it is always its own vessel. */
+    readonly r1: string | null;
     readonly phoneId: string;
     readonly name: string;
     readonly remote: string | null;
     readonly r1Remote: () => string | null;
     readonly changed: (link: PhoneLink, open: boolean) => Effect.Effect<void>;
-    /** Its headset's button was pressed. */
+    /** Its headset's button was pressed near its Tessel. */
     readonly talk: (link: PhoneLink) => Effect.Effect<void>;
+    /** Binds `phone-<phone>` on the hub (R1Hub `vessel`). */
+    readonly bindVessel: (
+      id: string,
+      deliver: (tail: string, payload: Buffer) => void,
+    ) => VesselBinding;
+    /** Its button pressed with no Tessel near: a session on the phone vessel (HomeDevices.vesselTalk). */
+    readonly vesselTalk: (vessel: string, link: PhoneLink) => Effect.Effect<void>;
   },
 ) {
   const writer = yield* socket.writer;
@@ -129,11 +210,18 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
   /** Half-second ticks since the R1's last mic frame asked for the phone's. */
   let idleTicks = 0;
   const say = (msg: object) => void Queue.offerUnsafe(out, JSON.stringify(msg));
+  const vesselId = `${PHONE_VESSEL}${input.phoneId}`;
+  const vessel = makePhoneVessel({
+    bind: (deliver) => input.bindVessel(vesselId, deliver),
+    play: (pcm) => void Queue.offerUnsafe(out, new Uint8Array(pcm)),
+    flush: () => say({ t: "flush" }),
+    listen: (on) => say({ t: "listen", on }),
+  });
   const linkOf = (route: PhoneRoute): PhoneLink => ({
     id: `${PHONE}${input.phoneId}`,
     name: route.name === null ? input.name : `${input.name} (${route.name})`,
     kind: route.kind,
-    near: nearBy(input.r1Remote(), { ip: route.ip, remote: input.remote }),
+    near: input.r1 !== null && nearBy(input.r1Remote(), { ip: route.ip, remote: input.remote }),
     play: (pcm) => void Queue.offerUnsafe(out, new Uint8Array(pcm)),
     flush: () => say({ t: "flush" }),
     buzz: (pattern, level) => {
@@ -151,23 +239,32 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
   });
   let route: PhoneRoute = { kind: "speaker", name: null, ip: null, haptic: null, gain: 1 };
   let link = linkOf(route);
-  yield* input.changed(link, true);
+  /** Near its Tessel it lends that Tessel its ears; anywhere else it is a vessel of its own. */
+  const relink = Effect.gen(function* () {
+    if (input.r1 !== null) yield* input.changed(link, true);
+    vessel.set(!link.near);
+  });
+  yield* relink;
   const read = Effect.forever(
     Effect.gen(function* () {
       for (const frame of yield* reader.pull) {
         if (typeof frame !== "string") {
-          if (listening) mic.push(frame);
+          if (vessel.bound()) vessel.mic(frame);
+          else if (listening) mic.push(frame);
           continue;
         }
         const next = parsePhoneText(frame);
         if (next === null) continue;
         if (next === "talk") {
-          yield* input.talk(link);
+          if (vessel.bound()) {
+            yield* input.vesselTalk(vesselId, link);
+            vessel.talk();
+          } else yield* input.talk(link);
           continue;
         }
         route = next;
         link = linkOf(route);
-        yield* input.changed(link, true);
+        yield* relink;
       }
     }),
   );
@@ -178,18 +275,23 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
       // The R1 may reconnect from elsewhere; every 10 s whether the phone is still on its network.
       if (++checks % 20 === 0 && linkOf(route).near !== link.near) {
         link = linkOf(route);
-        yield* input.changed(link, true);
+        yield* relink;
       }
       if (listening && ++idleTicks * 500 > LISTEN_IDLE_MS) {
         listening = false;
-        say({ t: "listen", on: false });
+        if (!vessel.listening()) say({ t: "listen", on: false });
       }
     }),
   );
   const write = Effect.forever(Effect.flatMap(Queue.take(out), (m) => writer.write(m)));
   yield* Effect.raceFirst(read, Effect.raceFirst(write, quiet)).pipe(
     Effect.ignore,
-    Effect.ensuring(input.changed(link, false)),
+    Effect.ensuring(
+      Effect.suspend(() => {
+        vessel.set(false);
+        return input.r1 === null ? Effect.void : input.changed(link, false);
+      }),
+    ),
   );
   yield* writer.write(new Socket.CloseEvent(1000)).pipe(Effect.ignore);
 });

@@ -1,8 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalJsonInEffect:off globalDate:off
 /**
  * The R1's room voice loop as this server's child process, run against its own hub and brain from `<T3 home>/r1-voice`
- * once an R1 is paired to the hub; a release build installs it there itself. It runs only while an R1 is on this hub
- * and no other loop is heard here, so a standby costs nothing until she falls over to it and hands back when the
+ * once an R1 is paired to the hub; a release build installs it there itself. It runs only while an R1 or a phone vessel is
+ * on this hub and no other loop is heard here, so a standby costs nothing until she falls over to it and hands back when the
  * other loop returns (A9). `TESSAYA_TESSEL_LOOP=off` (or the old `TESSAYA_R1_LOOP`) keeps this server out of it.
  */
 import * as NodeChildProcess from "node:child_process";
@@ -87,6 +87,18 @@ export const elect = (input: {
     claims: answers && input.ready && input.here > 0,
   };
 };
+
+/** The devices this hub's loop would hear now: Tessels on this hub, and phone vessels exactly like them. Pure. */
+export const devicesHere = (
+  devices: ReadonlyArray<R1Device>,
+  connected: (id: string) => boolean,
+  vessels: ReadonlyArray<string>,
+): ReadonlyArray<string> => [
+  ...devices
+    .filter((d) => d.deviceId !== null && d.mqttUrl === null && connected(d.deviceId))
+    .map((d) => d.deviceId!),
+  ...vessels,
+];
 
 /**
  * The loops serving the Tessels on this hub: ours while it claims, else any other loop heard here while a Tessel is
@@ -445,9 +457,7 @@ export const layer = Layer.effect(
       const hearing = hub.busHears(VOICE_TOPIC);
       const others = hearing.filter((id) => id !== ours);
       if (others.length > 0) heardLoop = true;
-      const here = devices
-        .filter((d) => d.deviceId !== null && d.mqttUrl === null && hub.connected(d.deviceId))
-        .map((d) => d.deviceId!);
+      const here = devicesHere(devices, hub.connected, hub.vessels());
       const quietMs = now - lastOtherAt;
       const vote = elect({
         others: others.length,

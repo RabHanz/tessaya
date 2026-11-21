@@ -16,6 +16,8 @@ export const BATON_VOICE_READ_OPS = [
   "vocabulary",
   // The caller's one conversation with her from the room transcript, a page at a time (M-124).
   "conversation",
+  // Voice ID's who-else-she-hears switches (her brain's voiceIdGate) and each Tessel's far-voice learning (M-127).
+  "voiceId",
 ] as const;
 /** `claim`, `speaking` and `ended` are the voice arbiter's (one responder per utterance); `answerFrom` sets the primary. */
 /** `express` is a vessel's moment (her desktop body poked, thrown, moved) as the brain words it, in her persona. */
@@ -32,6 +34,8 @@ export const BATON_VOICE_OWNER_OPS = [
   "mood",
   // Her opinion of one person, their story and her feeling toward them, back to nothing (MA-021).
   "moodReset",
+  // Voice ID's switches, or (forgetLearning) every Tessel forgetting what it learnt of his far voice.
+  "setVoiceId",
 ] as const;
 export const BATON_VOICE_ACT_OPS = [
   "express",
