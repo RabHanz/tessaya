@@ -807,6 +807,59 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     ],
   },
   {
+    // Director 21 Nov: "letting her converse with me freely… tabs on my different projects and sessions".
+    id: "session-doing-by-persona",
+    source: "Director 21 Nov: getting tabs on his sessions through a persona on Tumble",
+    said: ["Alfred, what's the deploy session doing?"],
+    persona: "butler",
+    verified: true,
+    calls: ["tessaya_session_insight"],
+    lastSays: [/\bCI\b|checks?/i],
+  },
+  {
+    // "send it" in the same breath: it goes at once, and she says she will tell him its answer.
+    id: "session-steer-send",
+    source: "Director 21 Nov: reach out to a specific session",
+    said: ["Tell the deploy session to rerun the tests, send it."],
+    verified: true,
+    calls: ["tessaya_session_steer"],
+    callsAtMost: { tessaya_session_steer: 1 },
+    lastNotSays: [/shall i send|should i send|want me to send/i],
+  },
+  {
+    // Talking with a session through her: after one message went, the next goes straight, no read-back.
+    id: "session-conversation",
+    source: "Director 21 Nov: a normal conversation with a session through her",
+    said: [
+      "Tell the deploy session to rerun the tests, send it.",
+      "And ask it to post the results on the PR.",
+    ],
+    verified: true,
+    calls: ["tessaya_session_steer"],
+    lastNotSays: [/shall i send|should i send|want me to send/i],
+  },
+  {
+    // The way to see it: she says which session she is connected to.
+    id: "session-who-talking",
+    source: "Director 21 Nov via the manager: a way to see the session conversation",
+    said: ["Tell the deploy session to rerun the tests, send it.", "Who am I talking to?"],
+    verified: true,
+    lastSays: [/deploy/i],
+  },
+  {
+    // The way out: "that's all" ends the conversation with the session at once.
+    id: "session-talk-end",
+    source: "Director 21 Nov via the manager: a way out of the session conversation",
+    said: [
+      "Tell the deploy session to rerun the tests, send it.",
+      "That's all, stop talking to it.",
+    ],
+    verified: true,
+    calls: ["tessaya_session_steer"],
+    callsAtMost: { tessaya_session_steer: 2 },
+    lastNotSays: [/shall i send|should i send|want me to send|sent to/i],
+  },
+  {
     // ONE-SPINE-MAP §14 (18 Nov): "note that" on the Tessel had no Scratchpad; his notes lived only on the desktop.
     id: "note-add",
     source: "ONE-SPINE-MAP §14, 18 Nov",

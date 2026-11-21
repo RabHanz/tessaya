@@ -335,6 +335,8 @@ export const TessayaSessionInsightInput = Schema.Struct({
   session: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   /** Only this server's sessions: how a linked server is asked about its own. */
   here: Schema.optionalKey(Schema.Boolean),
+  /** What was just sent to it for him, so `answer` says what it answered (her relay of its reply). */
+  told: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2000))),
 });
 export const TessayaSessionPr = Schema.Struct({
   url: Schema.String,
@@ -360,6 +362,8 @@ export const TessayaSessionInsightResult = Schema.Struct({
   prs: Schema.Array(TessayaSessionPr),
   /** The answer in one sentence when the fields say little, or why there is none. */
   line: Schema.String,
+  /** With `told`: what it answered or did about it, in a sentence or two he'd want to hear; null until it has. */
+  answer: Schema.optionalKey(Schema.NullOr(Schema.String)),
 });
 export type TessayaSessionInsightResult = typeof TessayaSessionInsightResult.Type;
 
@@ -369,10 +373,20 @@ export const TessayaSessionSteerInput = Schema.Struct({
   text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
   /** True only when he said "send" with it, or said yes to the read-back of this exact text. */
   confirmed: Schema.optionalKey(Schema.Boolean),
+  /** He said "that's all" or "stop talking to it": his conversation with the session ends; `text` is not sent. */
+  end: Schema.optionalKey(Schema.Boolean),
 });
 export const TessayaSessionSteerResult = Schema.Struct({
   /** `is_job`: a job takes his words through job_refine, so its agreed plan stays the one it works to. */
-  status: Schema.Literals(["read_back", "sent", "queued", "not_found", "failed", "is_job"]),
+  status: Schema.Literals([
+    "read_back",
+    "sent",
+    "queued",
+    "not_found",
+    "failed",
+    "is_job",
+    "ended",
+  ]),
   /** The exact text that goes, attribution included. */
   text: Schema.String,
   session: Schema.String,

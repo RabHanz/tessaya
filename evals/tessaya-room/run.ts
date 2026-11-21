@@ -37,6 +37,7 @@ import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speak
 import { CONVERSATION_END } from "../../packages/tessaya-shared/src/stopPhrases.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
+import { talkingLine } from "../../packages/tessaya-shared/src/sessionInsight.ts";
 import { toneOf } from "../../packages/tessaya-shared/src/expressionMap.ts";
 import { DEFAULT_OS_PACK, rosterLine } from "../../packages/tessaya-shared/src/osPack.ts";
 import { ownerDoc, ownerLine } from "../../packages/tessaya-shared/src/ownerProfile.ts";
@@ -420,6 +421,8 @@ const healthOf = new WeakMap<House, NonNullable<RoomCase["health"]>>();
 
 /** The problem reports she sent in each case, their arguments as JSON. */
 const reportedOf = new WeakMap<House, Array<string>>();
+/** The session he is talking with through her once one message went, as TessayaSessionInsight keeps it. */
+const talkingOf = new WeakMap<House, string>();
 /** The Tessel each case's turn came through, when it says. */
 const hereOf = new WeakMap<House, NonNullable<RoomCase["here"]>>();
 
@@ -444,6 +447,15 @@ const wifiOf = (house: House) => {
 
 const runTool = (house: House, name: string, args: Record<string, unknown>) => {
   switch (name) {
+    // As TessayaSelf.myState: the session he is talking with through her, when there is one.
+    case "tessaya_my_state": {
+      const talking = talkingOf.get(house);
+      return talking === undefined
+        ? WORK.tessaya_my_state
+        : {
+            line: `${WORK.tessaya_my_state.line}\nYou are talking with ${talking} for him: what he tells it goes straight to it (from his session conversation).`,
+          };
+    }
     case "home_find":
       return { ok: true, value: house.find(String(args["text"] ?? args["area"] ?? "")) };
     case "home_state": {
@@ -639,10 +651,28 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       };
     }
     // As TessayaSessionInsight.steer answers: read back first, sent only on a confirmed second call.
+    // While he talks with a session through her, what he says to it goes straight.
     case "tessaya_session_steer": {
       const said = `From the owner, via Tessaya: ${String(args["text"] ?? "")}`;
-      return args["confirmed"] === true
-        ? { status: "sent", text: said, session: "deploy check", line: "Sent to deploy check." }
+      if (args["end"] === true) {
+        const was = talkingOf.get(house);
+        talkingOf.delete(house);
+        return {
+          status: "ended",
+          text: "",
+          session: was ?? "deploy check",
+          line: was === undefined ? "You weren't talking with a session." : `Done with ${was}.`,
+        };
+      }
+      const sent = args["confirmed"] === true || talkingOf.get(house) === "deploy check";
+      if (sent) talkingOf.set(house, "deploy check");
+      return sent
+        ? {
+            status: "sent",
+            text: said,
+            session: "deploy check",
+            line: "Sent to deploy check. I'll tell you its answer; while you talk with it, what you tell it goes straight to it.",
+          }
         : {
             status: "read_back",
             text: said,
@@ -724,6 +754,8 @@ const context = (
   automations: null,
   memory: [
     c.here === undefined ? "" : hereLine(c.here, null, ROOM_NOW),
+    // As TessayaTurn.begin's block: the session he talks with through her, when there is one.
+    talkingOf.has(house) ? talkingLine(talkingOf.get(house)!) : "",
     c.memoryByTurn?.[turn] ?? c.memory ?? "",
   ]
     .filter((l) => l !== "")
