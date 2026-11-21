@@ -1,11 +1,10 @@
 name: tessel-flash
 
+# Releases are built and published by tessel-flash.yml in RabHanz/tessaya-releases.
+
 on:
   pull_request:
     paths: ["tools/tessel-flash/**", ".github/workflows/tessel-flash.yml"]
-  push:
-    # New releases are tessel-flash-v*; r1flash-v* stays so an old tag can be rebuilt.
-    tags: ["tessel-flash-v*", "r1flash-v*"]
 
 permissions:
   contents: read
@@ -31,73 +30,3 @@ jobs:
       # The protocol core stays usable from a browser (Web Serial) later.
       - name: Core builds for WebAssembly
         run: GOOS=js GOARCH=wasm go build ./core/...
-
-  build:
-    if: startsWith(github.ref, 'refs/tags/tessel-flash-v') || startsWith(github.ref, 'refs/tags/r1flash-v')
-    needs: test
-    strategy:
-      matrix:
-        include:
-          - { os: ubuntu-latest, goos: linux, goarch: amd64, cgo: "0" }
-          - { os: ubuntu-latest, goos: linux, goarch: arm64, cgo: "0" }
-          - { os: ubuntu-latest, goos: windows, goarch: amd64, cgo: "0", ext: .exe }
-          # cgo on macOS reads USB IDs through IOKit, so the R1 is recognised by its bridge.
-          - { os: macos-latest, goos: darwin, goarch: arm64, cgo: "1" }
-          - { os: macos-latest, goos: darwin, goarch: amd64, cgo: "1", cflags: "-arch x86_64" }
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: tools/tessel-flash/go.mod
-          cache-dependency-path: tools/tessel-flash/go.sum
-      - name: Build
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: ${{ matrix.cgo }}
-          CGO_CFLAGS: ${{ matrix.cflags }}
-          CGO_LDFLAGS: ${{ matrix.cflags }}
-        run: |
-          tool="${GITHUB_REF_NAME%-v*}"
-          version="${GITHUB_REF_NAME#"$tool"-v}"
-          go build -trimpath -ldflags "-s -w -X github.com/RabHanz/tessaya/tools/tessel-flash/cli.Version=${version}" \
-            -o "dist/${tool}-${GOOS}-${GOARCH}${{ matrix.ext }}" .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: flash-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: tools/tessel-flash/dist/*
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: tools/tessel-flash/dist
-          merge-multiple: true
-      - name: Checksums
-        run: cd dist && sha256sum *-linux-* *-windows-* *-darwin-* > SHA256SUMS
-      # The desktop downloads tessel-flash on first use and checks SHA256SUMS against the R1 release key.
-      - name: Sign the checksums
-        working-directory: .
-        env:
-          R1_OTA_SIGNING_KEY: ${{ secrets.R1_OTA_SIGNING_KEY }}
-        # Without the key the release goes out without SHA256SUMS.sig; the desktop refuses unsigned sums, so add the
-        # secret and re-run this job to sign it.
-        run: |
-          if [ -z "$R1_OTA_SIGNING_KEY" ]; then
-            echo "::warning::R1_OTA_SIGNING_KEY is not set: publishing without SHA256SUMS.sig"
-          else
-            node tools/tessel-flash/sign.mjs tools/tessel-flash/dist/SHA256SUMS
-          fi
-      - name: Publish
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" dist/* --title "${GITHUB_REF_NAME%-v*} ${GITHUB_REF_NAME##*-v}" \
-            --notes-file README.md

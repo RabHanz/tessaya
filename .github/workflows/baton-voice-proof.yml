@@ -95,7 +95,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir installer
-          gh release download "${{ inputs.tag }}" -R "$GITHUB_REPOSITORY" --dir installer --pattern '*-x64.exe'
+          gh release download "${{ inputs.tag }}" -R RabHanz/tessaya-releases --dir installer --pattern '*-x64.exe'
           ls installer
 
       - name: Apply Tessaya branding (build only, not committed)
@@ -210,8 +210,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir from to
-          gh release download "${{ inputs.upgrade_from }}" -R "$GITHUB_REPOSITORY" --dir from --pattern '*-x64.exe'
-          gh release download "${{ inputs.upgrade_to != '' && inputs.upgrade_to || 'baton-v0.1.44' }}" -R "$GITHUB_REPOSITORY" --dir to --pattern '*-x64.exe'
+          gh release download "${{ inputs.upgrade_from }}" -R RabHanz/tessaya-releases --dir from --pattern '*-x64.exe'
+          gh release download "${{ inputs.upgrade_to != '' && inputs.upgrade_to || 'baton-v0.1.44' }}" -R RabHanz/tessaya-releases --dir to --pattern '*-x64.exe'
           ls from to
       - name: Upgrade in place and compare
         shell: pwsh
@@ -256,7 +256,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir release
-          gh release download "${{ inputs.tag }}" -R "$GITHUB_REPOSITORY" --dir release --pattern '${{ matrix.pattern }}'
+          gh release download "${{ inputs.tag }}" -R RabHanz/tessaya-releases --dir release --pattern '${{ matrix.pattern }}'
           ls release
       - name: Apply Tessaya branding (build only, not committed)
         if: inputs.tag == ''

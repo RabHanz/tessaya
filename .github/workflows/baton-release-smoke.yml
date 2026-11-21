@@ -33,7 +33,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "baton-v$env:VERSION" -R $env:GITHUB_REPOSITORY -p "Tessaya-$env:VERSION-x64.exe" -D installer
+          gh release download "baton-v$env:VERSION" -R RabHanz/tessaya-releases -p "Tessaya-$env:VERSION-x64.exe" -D installer
           $installer = (Get-Item "installer/Tessaya-$env:VERSION-x64.exe").FullName
           Start-Process -FilePath $installer -ArgumentList '/S' -Wait
           $exe = Get-ChildItem -Path $env:LOCALAPPDATA, $env:ProgramFiles -Recurse -Filter 'Tessaya.exe' -ErrorAction SilentlyContinue |

@@ -29,7 +29,7 @@ const LEVELS = [
 type Level = (typeof LEVELS)[number][0];
 const LevelSchema = Schema.Literals(["easy", "normal", "developer"]);
 // "flash" finds both the r1flash releases and tessel-flash ones.
-const R1FLASH_URL = "https://github.com/RabHanz/tessaya/releases?q=flash";
+const R1FLASH_URL = "https://github.com/RabHanz/tessaya-releases/releases?q=flash";
 const TAIL_MS = 1000;
 
 type Run = (

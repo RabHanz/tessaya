@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build-time-only branding override for the Baton desktop release pipeline
-# (.github/workflows/baton-desktop-release.yml). Run ONLY inside that
+# (desktop.yml in RabHanz/tessaya-releases). Run ONLY inside that
 # workflow's ephemeral checkout, right before the build. It is never run
 # against, and never commits to, the working tree that gets pushed anywhere.
 #
@@ -49,7 +49,7 @@ sedi 's/^const APP_BASE_NAME = "T3 Code";$/const APP_BASE_NAME = "Tessaya";/' \
   apps/desktop/src/app/DesktopEnvironment.ts
 
 # The startup-recovery message sends him to a releases page: this repository's, not upstream's (D137).
-sedi 's#^const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";$#const RELEASES_URL = "https://github.com/RabHanz/tessaya/releases";#' \
+sedi 's#^const RELEASES_URL = "https://github.com/pingdotgg/t3code/releases";$#const RELEASES_URL = "https://github.com/RabHanz/tessaya-releases/releases";#' \
   apps/desktop/src/app/DesktopStartupRecovery.ts
 
 # The product is named Tessaya (renamed from Baton). Everything that identifies an existing
@@ -68,7 +68,7 @@ must() { grep -q -- "$1" "$2" || { echo "branding check failed: $1 not in $2" >&
 must 'DESKTOP_APP_ID = "dev.rabee.baton"' scripts/build-desktop-artifact.ts
 must 'artifactName: "Tessaya-${version}-${arch}.${ext}"' scripts/build-desktop-artifact.ts
 must '"productName": "Tessaya"' apps/desktop/package.json
-must 'RELEASES_URL = "https://github.com/RabHanz/tessaya/releases"' apps/desktop/src/app/DesktopStartupRecovery.ts
+must 'RELEASES_URL = "https://github.com/RabHanz/tessaya-releases/releases"' apps/desktop/src/app/DesktopStartupRecovery.ts
 must 'APP_BASE_NAME = "Tessaya"' apps/desktop/src/app/DesktopEnvironment.ts
 must 'installerIcon: "icon.ico"' scripts/build-desktop-artifact.ts
 must '^    name: "baton",$' scripts/build-desktop-artifact.ts

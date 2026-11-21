@@ -39,7 +39,7 @@ vp run dev          # server and web, with a seeded copy of your data
 vp run check:changed
 ```
 
-Desktop packaging: `scripts/tessaya/release-build.sh` and `.github/workflows/baton-desktop-release.yml`. The dictation sidecar is in `native/baton-dictation` (Rust). Details: `docs/operations/development.md`.
+Desktop packaging: `scripts/tessaya/release-build.sh` and `desktop.yml` in RabHanz/tessaya-releases. The dictation sidecar is in `native/baton-dictation` (Rust). Details: `docs/operations/development.md`.
 
 ## Where things are
 

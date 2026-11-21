@@ -21,7 +21,7 @@ import {
 } from "../channels.ts";
 
 export const R1FLASH_VERSION = "0.1.2";
-const RELEASES = "https://github.com/RabHanz/tessaya/releases/download";
+const RELEASES = "https://github.com/RabHanz/tessaya-releases/releases/download";
 /** The tool's names, newest first: releases up to 0.1.1 are r1flash, kept for a pin moved back; drop it at the next pin. */
 export const FLASH_TOOLS = ["tessel-flash", "r1flash"] as const;
 
