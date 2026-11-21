@@ -25,9 +25,9 @@ import { TessayaRecordService } from "../tessaya/TessayaRecordService.ts";
 import { DeviceRegistry } from "./DeviceRegistry.ts";
 import { isTestVessel } from "@t3tools/tessaya-shared/deviceItems";
 import { onPeer } from "../peer/PeerVessels.ts";
+import { brainOn } from "../tessaya/BrainHost.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { conversationKey } from "../tessaya/TessayaTurn.ts";
 import { TessayaMemoryEmbedder } from "../tessaya/TessayaMemoryEmbedder.ts";
 
@@ -119,8 +119,6 @@ const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const record = yield* Effect.serviceOption(TessayaRecordService);
   const scope = yield* Effect.scope;
-  // Found here, where the server's layers are: a device's voice door runs with Baton's services only.
-  const home = yield* Effect.serviceOption(HomeAssistantService);
   const links = yield* Effect.serviceOption(PeerLinks.PeerLinks);
   const peerMcp = yield* Effect.serviceOption(PeerMcpClient.PeerMcpClient);
   const registry = yield* Effect.serviceOption(DeviceRegistry);
@@ -257,14 +255,18 @@ const make = Effect.gen(function* () {
     }),
     state: Effect.sync(() => ({ primary, quiet, recent: [...recent] })),
     elsewhere: Effect.fn("VoiceArbiter.elsewhere")(function* (op: string, args: unknown) {
-      // Only a server that knows it has no desk device forwards (13 Nov: the arbiter's layer lacked the house, so the
-      // home server itself forwarded every claim to its peers first, about 0.7 s each).
-      if (links._tag === "None" || peerMcp._tag === "None" || home._tag === "None") return null;
-      if ((yield* home.value.device) !== null) return null;
+      // Her brain holds the one arbiter; every other server of his claims there, a desk device or not (22 Nov 00:08:
+      // his laptop's server decided alone, so Tumble and the desktop both answered). Brain away: this one decides.
+      const brain = yield* brainOn.pipe(Effect.provideService(SqlClient.SqlClient, sql));
+      if (brain === null || links._tag === "None" || peerMcp._tag === "None") return null;
       const there = yield* onPeer(
         "tessaya_voice_arbiter",
         { op, args: typeof args === "object" && args !== null ? args : {} },
-        { takes: (v) => (v as { ok?: unknown } | null)?.ok === true, wait: "2 seconds" },
+        {
+          on: brain,
+          takes: (v) => (v as { ok?: unknown } | null)?.ok === true,
+          wait: "1200 millis",
+        },
       ).pipe(
         Effect.provideService(PeerLinks.PeerLinks, links.value),
         Effect.provideService(PeerMcpClient.PeerMcpClient, peerMcp.value),

@@ -7,11 +7,13 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import { layerMemory as TessayaDatabaseMemory } from "../tessaya/TessayaDatabase.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaMemoryEmbedder } from "../tessaya/TessayaMemoryEmbedder.ts";
+import { HOME_KEY } from "../tessaya/BrainHost.ts";
 import { HomeAssistantService } from "./HomeAssistantService.ts";
 import { VoiceArbiter, layer as arbiterLayer, serveArbiter } from "./VoiceArbiter.ts";
 
@@ -99,22 +101,32 @@ it.effect("his primary wins over loudness, and 'answer here' overrides once", ()
 );
 
 it.effect(
-  "his desktop's server claims on the arbiter of the server with the desk device, and decides itself when none answers",
+  "every server of his claims on her brain's one arbiter, a desk device or not, and decides itself only when the brain is away",
   () =>
     Effect.gen(function* () {
-      const sent: Array<[string, unknown]> = [];
+      // 22 Nov 00:08 GMT+5: his laptop's server held the desk device too and decided alone, so Tumble and the desktop both answered.
+      const sent: Array<[string, string, unknown]> = [];
       const links = (answers: boolean) =>
         Layer.mergeAll(
           Layer.mock(PeerLinks.PeerLinks)({
             enabled: Effect.succeed(true),
             list: Effect.succeed([
-              { environmentId: EnvironmentId.make("env-home"), label: "home", status: "reachable" },
+              {
+                environmentId: EnvironmentId.make("env-worker"),
+                label: "worker",
+                status: "reachable",
+              },
+              {
+                environmentId: EnvironmentId.make("env-brain"),
+                label: "brain",
+                status: "reachable",
+              },
             ] as never),
           }),
           Layer.mock(PeerMcpClient.PeerMcpClient)({
             call: (input) =>
               Effect.sync(() => {
-                sent.push([input.tool, input.arguments]);
+                sent.push([String(input.environmentId), input.tool, input.arguments]);
                 return answers
                   ? {
                       ok: true,
@@ -123,58 +135,44 @@ it.effect(
                   : { ok: false, error: "This server has no voice arbiter." };
               }) as never,
           }),
-        );
-      const peers = (answers: boolean, hasDesk = false) =>
-        Layer.mergeAll(
-          links(answers),
           Layer.mock(HomeAssistantService)({
-            device: Effect.succeed(hasDesk ? ({ deviceId: "r1-office" } as never) : null),
+            device: Effect.succeed({ deviceId: "r1-office" } as never),
           }),
         );
-      const desk = claim("desktop-laptop", -31);
-      const forwarded = yield* serveArbiter("claim", desk).pipe(
-        Effect.provide(
-          arbiterLayer.pipe(
-            Layer.provideMerge(peers(true)),
-            Layer.provideMerge(TessayaDatabaseMemory),
+      const worker = (answers: boolean) =>
+        arbiterLayer.pipe(
+          Layer.provideMerge(links(answers)),
+          Layer.provideMerge(
+            Layer.effectDiscard(
+              Effect.flatMap(SqlClient.SqlClient, (sql) =>
+                sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`.pipe(
+                  Effect.orDie,
+                ),
+              ),
+            ).pipe(Layer.provideMerge(TessayaDatabaseMemory)),
           ),
-        ),
-      );
+        );
+      const desk = claim("desktop-laptop", -31);
+      const forwarded = yield* serveArbiter("claim", desk).pipe(Effect.provide(worker(true)));
       assert.deepStrictEqual(forwarded, {
         ok: true,
         value: { answer: false, round: "r1", winner: "r1-office", until: 9 },
       });
-      assert.deepStrictEqual(sent, [
-        ["tessaya_voice_arbiter", { op: "claim", args: desk, origin: "another of his servers" }],
-      ]);
-      // No other server took it: this server's own arbiter answers, as before.
-      // The layer is built before the fork, so the round's window is open when the clock moves.
+      // Only her brain is asked, though this worker has the desk device and another server is linked too.
+      assert.deepStrictEqual(
+        sent.map(([env, tool]) => [env, tool]),
+        [["env-brain", "tessaya_voice_arbiter"]],
+      );
+      // Her brain away: this server's own arbiter answers, as before.
       yield* Effect.gen(function* () {
         const fiber = yield* serveArbiter("claim", desk).pipe(
           Effect.forkChild({ startImmediately: true }),
         );
         yield* TestClock.adjust("250 millis");
         assert.deepInclude((yield* Fiber.join(fiber))?.value as object, { answer: true });
-      }).pipe(
-        Effect.provide(
-          arbiterLayer.pipe(
-            Layer.provideMerge(peers(false)),
-            Layer.provideMerge(TessayaDatabaseMemory),
-          ),
-        ),
-      );
-      // The server with the desk device decides itself and never asks its peers first (13 Nov: it did, ~0.7 s a claim).
+      }).pipe(Effect.provide(worker(false)));
+      // Her brain decides itself and never asks its peers.
       sent.length = 0;
-      yield* serveArbiter("arbiter", {}).pipe(
-        Effect.provide(
-          arbiterLayer.pipe(
-            Layer.provideMerge(peers(true, true)),
-            Layer.provideMerge(TessayaDatabaseMemory),
-          ),
-        ),
-      );
-      assert.deepStrictEqual(sent, []);
-      // Nor does one that cannot tell (no house service where its arbiter is built: the live bug).
       yield* serveArbiter("arbiter", {}).pipe(
         Effect.provide(
           arbiterLayer.pipe(
