@@ -28,6 +28,7 @@ import {
 import { comingUp, whenSaid, zoneMidnight } from "@t3tools/tessaya-shared/memoryDates";
 import { foldSpelling, spellBack } from "@t3tools/tessaya-shared/spelling";
 import {
+  ownVoiceVerified,
   privatePersonOf,
   type PrivateTurn,
   type SpeakerLike,
@@ -196,13 +197,9 @@ export interface ConversationTurn {
   readonly vessel: string;
 }
 
-/** His own voice on this very turn: the only voice whose words are kept as his, or that may forget for him. */
+/** His own voice on this very turn's audio: kept as his, forgets for him, gives a standing yes or a signed approval. */
 const hisVoice = (speaker: SpeakerLike | null) =>
-  speaker !== null &&
-  speaker.kind === "owner" &&
-  speaker.verified &&
-  !speaker.inherited &&
-  speaker.lifted !== true;
+  speaker?.kind === "owner" && ownVoiceVerified(speaker);
 
 /**
  * Who a turn is from and how sure (ACCOUNTS-IDENTITY-DESIGN §2.4): a spoken turn is its voice's member at its voice's
@@ -241,17 +238,25 @@ export const moodMember = (turn: TurnEnvelope): string | null => {
     : null;
 };
 
-/** The origin a turn's tool calls run under. */
-export const originOf = (turn: TurnEnvelope) => ({
-  ...turn.vessel,
-  label: turn.origin ?? turn.vessel.kind,
-  hisVoice: hisVoice(turn.speaker ?? null),
-  speaker: turn.speaker ?? null,
-  ...turnIdentity(turn),
-  tainted: turn.tainted === true,
-  persona: turn.persona ?? null,
-  rehearsal: turn.rehearsal === true,
-});
+/**
+ * The origin a turn's tool calls run under. A verdict his session carries (`session`, lifted) reads and talks as him but
+ * acts at A1: owner acts, accounts, consent and signed approvals need this turn's own score or a step-up (REQ-13-089).
+ */
+export const originOf = (turn: TurnEnvelope) => {
+  const identity = turnIdentity(turn);
+  const carried = turn.speaker?.session === true || turn.speaker?.lifted === true;
+  return {
+    ...turn.vessel,
+    label: turn.origin ?? turn.vessel.kind,
+    hisVoice: hisVoice(turn.speaker ?? null),
+    speaker: turn.speaker ?? null,
+    ...identity,
+    assurance: carried ? (Math.min(identity.assurance, 1) as Assurance) : identity.assurance,
+    tainted: turn.tainted === true,
+    persona: turn.persona ?? null,
+    rehearsal: turn.rehearsal === true,
+  };
+};
 
 /** Forget's answer to any voice but his verified one, also what a replay hears (it is never verified). */
 export const NOT_HIS_VOICE_TO_FORGET =

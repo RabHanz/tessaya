@@ -3,6 +3,14 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { TessayaToolkit } from "../mcp/toolkits/tessaya/tools.ts";
+import { originOf } from "../tessaya/TessayaTurn.ts";
+import {
+  forWire,
+  holdVoice,
+  NO_HOLD,
+  UNVERIFIED,
+  type SpeakerIdentity,
+} from "@t3tools/tessaya-voice/speaker";
 import {
   asAdvertised,
   CORE_TOOLS,
@@ -178,6 +186,49 @@ describe("the room's tools for a replay", () => {
     expect(stepUpNeeds("tessaya_cast", 1, { action: "who" })).toBeNull();
     expect(stepUpNeeds("tessaya_cast", 1, { action: "call", persona: "alfred" })).toBe(2);
     expect(stepUpNeeds("access_manage", 1, { op: "links" })).toBeNull();
+  });
+  it("lets his session's verdict read and talk, never act for him (REQ-13-089, 21 Nov 21:24 GMT+5)", () => {
+    // Tonight's turns: verified by three turns at turn 5, then turn 8, under 2 s at 0.553, carried by the session.
+    const turn = (kind: SpeakerIdentity["kind"], score: number, ms: number): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      kind,
+      personId: kind === "owner" ? "owner" : null,
+      confidence: kind === "unverified" ? null : score,
+      own: { score, ms },
+    });
+    let hold = NO_HOLD;
+    const heard = [
+      turn("owner", 0.464, 2_400),
+      turn("owner", 0.63, 3_000),
+      turn("unverified", 0.476, 1_600),
+      turn("owner", 0.579, 2_880),
+      turn("owner", 0.62, 2_208),
+      turn("unverified", 0.553, 1_800),
+    ].map((identity, i) => {
+      const out = holdVoice(hold, identity, i * 15_000);
+      hold = out.hold;
+      return out.identity;
+    });
+    const origin = (speaker: SpeakerIdentity) =>
+      originOf({
+        vessel: { kind: "device", id: "r1-a" },
+        origin: "R1",
+        text: "x",
+        speaker: forWire(speaker),
+      });
+    const eighth = origin(heard[5]!);
+    expect(heard[5]).toMatchObject({ verified: true, session: true });
+    // It reads his work and talks as him...
+    expect(roomRefusal(eighth, null, "tessaya_work_now")).toBeNull();
+    expect(stepUpNeeds("tessaya_work_now", eighth.assurance)).toBeNull();
+    // ...but an owner act, a standing yes or a signed approval waits for its own score or a step-up.
+    expect(stepUpNeeds("settings_set", eighth.assurance)).toBe(2);
+    expect(eighth.hisVoice).toBe(false);
+    // Verified on a clip of its own, it acts.
+    const { session: _session, ...fifth } = heard[3]!;
+    const own = origin({ ...fifth, verified: true });
+    expect(stepUpNeeds("settings_set", own.assurance)).toBeNull();
+    expect(own.hisVoice).toBe(true);
   });
   it("judges a job act by the desktop's own table: a schedule waits for his phone, a stop needs only his voice", () => {
     expect(jobVerdict("job_start", { project: "acme", goal: "fix it" }, false)).toBe("allow");
