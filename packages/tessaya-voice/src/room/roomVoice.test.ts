@@ -2011,7 +2011,7 @@ describe("what Tessaya's Devices page can ask of the room", () => {
       ["What's next?", "butler"],
     ]);
     t.room.message(`freya/r1/${DEV}/voice/persona`, Buffer.from('{"name":"freya"}'));
-    expect(spoken.at(-1)).toEqual(["Fray-uh here.", "azelma"]);
+    expect(spoken.at(-1)).toEqual(["Freya here.", "azelma"]);
   });
 
   it("takes her server's roster for the next session: his custom persona answers in its voice, with the generic eyes", async () => {

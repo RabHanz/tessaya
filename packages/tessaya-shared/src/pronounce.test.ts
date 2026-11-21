@@ -7,7 +7,7 @@ describe("what the voice is given to say", () => {
     // [what she wrote, what the voice is given]
     // His pick by ear (pronounce-4, #4): "Tess-ay-uh" was heard as "Tessa are".
     ["Tessaya will check it.", "Tessayya will check it."],
-    ["Ask Freya's window.", "Ask Fray-uh's window."],
+    ["Ask Freya's window.", "Ask Freya's window."],
     ["Baton is up, and T3 too.", "Batton is up, and T three too."],
     // The product only: "a baton" is the word.
     ["She passed the baton.", "She passed the baton."],
