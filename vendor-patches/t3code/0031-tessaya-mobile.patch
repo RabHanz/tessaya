@@ -693,14 +693,14 @@ index 5d784359d4f42b60d3c7db45f54b988b422ef305..1b7f7a9b186f5f16a023acc6df64c412
      ? insets.bottom + FLOATING_TABS.bottom + FLOATING_TABS.edge + fabSize
      : 16;
 diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
-index 17fc0069eb8e678617f1951410f306bdf6732bce..c37b846f1d7f4664819f64992bec184295cb7bc5 100644
+index 17fc0069eb8e678617f1951410f306bdf6732bce..22dd78fa97c7611205eb59dc345f3b910bdde70c 100644
 --- a/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
 +++ b/apps/mobile/src/features/layout/workspace/WorkspaceExtraTab.tsx
 @@ -1,14 +1,25 @@
  import { type NavigationTab } from "./navigation-tab-order";
  import { NativeStackScreenOptions } from "../../../native/StackHeader";
-+import { SettingsHardwareRouteScreen } from "../../settings/SettingsHardwareRouteScreen";
 +import { SettingsPersonasRouteScreen } from "../../settings/SettingsPersonasRouteScreen";
++import { DevicesRouteScreen } from "../../tessaya/devices/DevicesRouteScreen";
 +import { TalkRouteScreen } from "../../tessaya/talk/TalkRouteScreen";
  import { UsageRouteScreen } from "../../usage/UsageRouteScreen";
  
@@ -717,7 +717,7 @@ index 17fc0069eb8e678617f1951410f306bdf6732bce..c37b846f1d7f4664819f64992bec1842
 +      ) : props.tab === "personas" ? (
 +        <SettingsPersonasRouteScreen />
 +      ) : props.tab === "devices" ? (
-+        <SettingsHardwareRouteScreen />
++        <DevicesRouteScreen />
 +      ) : (
 +        <UsageRouteScreen workspace />
 +      )}
@@ -763,7 +763,7 @@ index 75d139621562a891cea2235871bf83de049a2666..b3e8d79299de7a094a48e895021abd7e
                    : insets
                  : { ...insets, bottom: 0 }
 diff --git a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx
-index e8e7c0d325983ea038baaaa98f39d2231d90fb09..eb38dfcae3ac46717e7cef2d8021f08a9999a946 100644
+index e8e7c0d325983ea038baaaa98f39d2231d90fb09..b22d0d32f7ad2c08555eddd4456c7f49de39bfd8 100644
 --- a/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx
 +++ b/apps/mobile/src/features/layout/workspace/WorkspaceRootScreen.tsx
 @@ -30,7 +30,7 @@ import {
@@ -775,6 +775,15 @@ index e8e7c0d325983ea038baaaa98f39d2231d90fb09..eb38dfcae3ac46717e7cef2d8021f08a
  import { WorkspaceSidebarTabs } from "./WorkspaceSidebarTabs";
  import {
    useCompactWorkspaceTabs,
+@@ -49,7 +49,7 @@ function WorkspaceRootTitle(props: {
+   const maxWidth = Math.max(0, props.columnWidth - (use(HeaderItemsWidthContext) ?? 160));
+   const enabled = useEnabledNavigationTabs();
+   const tabTitle = settingsOpen
+-    ? "Settings"
++    ? "More"
+     : enabled.length
+       ? TAB_TITLES[state.selectedTab]
+       : "Navigation";
 @@ -97,7 +97,7 @@ function WorkspaceRootContent() {
    );
    const tab = state.tabs[settingsOpen ? "settings" : state.selectedTab];
