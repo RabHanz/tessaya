@@ -17,6 +17,9 @@ corepack enable
 pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
 git fetch -q --no-tags --filter=blob:none https://github.com/pingdotgg/t3code.git "$pin"
 git checkout -q "$pin" -- $(sed -n 's/^PACK_EXCLUDE=//p' ci/kaggle.conf)
+# The pack (git archive) has no gitlinks either; ours are the pin's, which patches.sh verify checks.
+git ls-tree -r "$pin" | awk '$2 == "commit" { print $3, $4 }' | while read -r sha path; do git update-index --add --cacheinfo "160000,$sha,$path"; done
+git -c user.name=kaggle-ci -c user.email=kaggle-ci@localhost commit -qm "pin paths the pack leaves out"
 pnpm install --frozen-lockfile > /tmp/install.log 2>&1 || { tail -40 /tmp/install.log; exit 1; }
 
 case "$G" in
@@ -39,6 +42,7 @@ case "$G" in
       (cd "$ws" && vp test run $files)
     done ;;
   server)
+    command -v patchelf > /dev/null || { apt-get update -q > /dev/null && apt-get install -y -q patchelf > /dev/null; }
     command -v cargo > /dev/null || { curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal > /dev/null; . "$HOME/.cargo/env"; }
     cargo build --release --manifest-path native/resource-monitor/Cargo.toml
     mkdir -p /tmp/resource-monitor/linux-x64 && cp native/resource-monitor/target/release/t3-resource-monitor /tmp/resource-monitor/linux-x64/
