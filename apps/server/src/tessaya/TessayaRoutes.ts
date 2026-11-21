@@ -1118,8 +1118,8 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
               ? null
               : `/tessaya/layer/${registry.value.all[0].id}`,
           // who else is home, so the phone keeps her private voice off its loudspeaker unless he is alone
-          presence: yield* PersonaLayers.layerPresence(report.vessel).pipe(
-            Effect.orElseSucceed(() => "unknown" as const),
+          presence: yield* Effect.promise(() =>
+            run(PersonaLayers.layerPresence(report.vessel)).catch(() => "unknown" as const),
           ),
         },
         { headers: PAGE_HEADERS },
