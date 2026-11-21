@@ -1,5 +1,5 @@
 diff --git a/apps/mobile/app.config.ts b/apps/mobile/app.config.ts
-index 97fe5cf977accddf63c60eca5f4dd4165d744f57..a3495c070678ad0876d0b430760d14d896edd238 100644
+index 97fe5cf977accddf63c60eca5f4dd4165d744f57..2656e64614c65826ea795c4520bb1f1b0c2cdee7 100644
 --- a/apps/mobile/app.config.ts
 +++ b/apps/mobile/app.config.ts
 @@ -2,8 +2,9 @@ import type { ExpoConfig } from "expo/config";
@@ -104,16 +104,17 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..a3495c070678ad0876d0b430760d14d8
      ],
      entitlements: {
        "keychain-access-groups": [`$(AppIdentifierPrefix)${variant.iosBundleIdentifier}`],
-@@ -278,6 +309,8 @@ const config: ExpoConfig = {
+@@ -278,6 +309,9 @@ const config: ExpoConfig = {
        NSLocalNetworkUsageDescription:
          "Allow T3 Code to connect to T3 Code servers on your local network or tailnet.",
        NSPhotoLibraryAddUsageDescription: "Allow T3 Code to save images to your photo library.",
 +      // Tessaya: Face ID stands in for his PIN for Sleeve's settings and the private layer (M-120, M-133).
-+      NSFaceIDUsageDescription: "Use Face ID instead of your PIN to unlock Tessaya's private layer and settings.",
++      NSFaceIDUsageDescription:
++        "Use Face ID instead of your PIN to unlock Tessaya's private layer and settings.",
        // System picture in picture needs background audio to start and survive outside the app.
        UIBackgroundModes: ["audio"],
        ITSAppUsesNonExemptEncryption: false,
-@@ -352,6 +385,17 @@ const config: ExpoConfig = {
+@@ -352,6 +386,17 @@ const config: ExpoConfig = {
      ],
      "expo-secure-store",
      "expo-sqlite",
@@ -131,7 +132,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..a3495c070678ad0876d0b430760d14d8
      ...(isIosPersonalTeamBuild
        ? [sharingPlugin]
        : ["./plugins/withShareExtensionDisplayName.cjs", sharingPlugin]),
-@@ -411,11 +455,11 @@ const config: ExpoConfig = {
+@@ -411,11 +456,11 @@ const config: ExpoConfig = {
        {
          image: variant.assets.splashIcon,
          resizeMode: "contain",
@@ -145,7 +146,7 @@ index 97fe5cf977accddf63c60eca5f4dd4165d744f57..a3495c070678ad0876d0b430760d14d8
          },
          android: {
            // Android 12+ masks the central two thirds of the 288dp canvas; adaptive layers avoid clipped corners.
-@@ -486,15 +530,15 @@ const config: ExpoConfig = {
+@@ -486,15 +531,15 @@ const config: ExpoConfig = {
        tracesToken: repoEnv.EXPO_PUBLIC_OTLP_TRACES_TOKEN ?? null,
      },
      eas: {

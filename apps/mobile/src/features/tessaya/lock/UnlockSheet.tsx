@@ -4,16 +4,25 @@ import { Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../../components/ui/AppText";
-import { biometricOffered, biometricSaved, stepUpWithBiometric, stepUpWithPin } from "./stepUp";
+import {
+  biometricOffered,
+  biometricSaved,
+  stepUpWithBiometric,
+  stepUpWithPin,
+  type StepUpCall,
+} from "./stepUp";
 import { useStepUpCall } from "./useStepUp";
 
 export function UnlockSheet(props: {
   readonly title: string;
   readonly detail: string;
+  /** What checks his PIN; her brain's household step-up unless the caller has its own (the private layer's). */
+  readonly check?: StepUpCall;
   readonly onUnlocked: () => void;
   readonly onCancel: () => void;
 }) {
-  const call = useStepUpCall();
+  const household = useStepUpCall();
+  const call = props.check ?? household;
   const insets = useSafeAreaInsets();
   const [saved, setSaved] = useState(false);
   const [pin, setPin] = useState("");

@@ -113,6 +113,7 @@ import {
 } from "./features/tessaya/launch/TessayaLaunchSting";
 import { IslandHost } from "./features/tessaya/island/IslandHost";
 import { SleeveHost } from "./features/tessaya/sleeve/SleeveHost";
+import { PrivateHost } from "./features/tessaya/private/PrivateHost";
 import { TessayaWelcome } from "./features/tessaya/welcome/TessayaWelcome";
 
 import "../global.css";
@@ -317,6 +318,7 @@ function AppContent() {
             <OverlayPortalHost />
             <IslandHost open={linkToAppPath} />
             <SleeveHost />
+            <PrivateHost />
             <TessayaWelcome />
           </SafeAreaProvider>
         </KeyboardProvider>

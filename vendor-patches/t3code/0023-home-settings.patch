@@ -130,7 +130,7 @@ index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 50ad81383addc75250b37025d1bfb43ce05a9da5..14cbe0e91aa934f89989bd0d7369c63986579cf7 100644
+index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c267884336 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 @@ -17,7 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
@@ -142,15 +142,16 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..14cbe0e91aa934f89989bd0d7369c639
  import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
  import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
  import { useSafeAreaInsets } from "react-native-safe-area-context";
-@@ -27,6 +27,7 @@ import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context
+@@ -27,6 +27,8 @@ import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context
  import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
  import { SettingsRow } from "./components/SettingsRow";
  import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
 +import { setSleeveUnlocked, useSleeve } from "../tessaya/sleeve/useSleeve";
++import { setPrivateShown, useLayerKnown } from "../tessaya/private/privateLayer";
  import { SettingsScreen } from "./components/SettingsScreen";
  import type { SettingsPageTarget } from "./components/settings-page-targets";
  import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
-@@ -96,7 +97,7 @@ function TranslatedSettingsListScreen(props: {
+@@ -96,7 +98,7 @@ function TranslatedSettingsListScreen(props: {
      <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
        <View className="flex-1 bg-screen">
          <SettingsScreen
@@ -159,7 +160,7 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..14cbe0e91aa934f89989bd0d7369c639
            workspaceRoot={props.sidebar}
            menus={[environmentMenu]}
            search={
-@@ -191,13 +192,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
+@@ -191,13 +193,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
    const bottomSafeArea = useNativeColumnLayoutMetrics()?.safeArea.bottom ?? insets.bottom;
    const workspace = useWorkspaceTabs();
    const query = workspace?.state.tabs.settings.query ?? "";
@@ -176,16 +177,17 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..14cbe0e91aa934f89989bd0d7369c639
      ],
      query,
    );
-@@ -258,6 +259,8 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -258,6 +260,9 @@ function useSettingsIndexSections(): SettingsListSection[] {
            members: scopedProjectMembers,
          })
        : (selectedProject?.label ?? gt("Unavailable project"));
 +  const overflowRows = useOverflowRows();
 +  const sleeve = useSleeve();
++  const layerKnown = useLayerKnown();
    const page = (
      target: SettingsPageTarget,
      icon: SettingsListRow["icon"],
-@@ -266,36 +269,28 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -266,36 +271,40 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
@@ -211,6 +213,18 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..14cbe0e91aa934f89989bd0d7369c639
 +        serverPage("SettingsUpcoming", "timer", "Coming up"),
 +        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
 +        serverPage("SettingsMood", "face.smiling", "Her mood"),
++        // only where his server has a private layer; it opens over everything, after Face ID or his PIN
++        ...(layerKnown === false || layerKnown === null
++          ? []
++          : [
++              {
++                id: "private",
++                icon: "eye.slash" as const,
++                label: "Private",
++                value: "Locked",
++                onPress: () => setPrivateShown(true),
++              },
++            ]),
 +        serverPage("SettingsPulse", "bolt.circle", "Pulse"),
 +        serverPage("SettingsTeam", "person.2", "Team"),
 +        serverPage("SettingsCast", "person.crop.circle", "Cast"),
@@ -234,7 +248,7 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..14cbe0e91aa934f89989bd0d7369c639
          page(
            "SettingsProjectOverview",
            "folder",
-@@ -310,6 +305,48 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -310,6 +319,48 @@ function useSettingsIndexSections(): SettingsListSection[] {
          serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
        ],
      },

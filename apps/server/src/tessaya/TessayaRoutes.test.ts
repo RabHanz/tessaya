@@ -15,7 +15,7 @@ import type { RoomToolSet } from "../home/R1Brain.ts";
 import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { DeskTools } from "../home/R1Tools.ts";
 import { TessayaRuntime } from "./TessayaRpcHandlers.ts";
-import { routes } from "./TessayaRoutes.ts";
+import { routes, vesselReport } from "./TessayaRoutes.ts";
 
 const platformLayer = NodeHttpPlatform.layer.pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -214,3 +214,16 @@ it.effect("serves private memory only to his own sessions, as that session, with
     expect((yield* post(phone, { op: "backup" })).status).toBe(403);
   }),
 );
+
+it("takes from the phone's layer report only its own id and the signals that end a private moment", () => {
+  expect(
+    vesselReport({
+      vessel: "phone-xperia5iv",
+      signals: ["windowClosed", "sleep", 3, "screenLocked"],
+    }),
+  ).toEqual({ vessel: "phone-xperia5iv", signals: ["windowClosed", "screenLocked"] });
+  expect(vesselReport({ vessel: "desktop", signals: "windowClosed" })).toEqual({
+    vessel: "phone",
+    signals: [],
+  });
+});
