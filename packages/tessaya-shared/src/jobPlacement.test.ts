@@ -33,7 +33,7 @@ describe("placing a job from his words", () => {
     const mine = [
       ...projects,
       { id: "p3", title: "The Margin", workspaceRoot: "/w/the-margin", repositoryIdentity: null },
-      { id: "p4", title: "Ventureos", workspaceRoot: "/w/VentureOS", repositoryIdentity: null },
+      { id: "p4", title: "Lakehouse", workspaceRoot: "/w/LakeHouse", repositoryIdentity: null },
       { id: "p5", title: "Cart", workspaceRoot: "/w/cart", repositoryIdentity: null },
       { id: "p6", title: "Card", workspaceRoot: "/w/card", repositoryIdentity: null },
     ];
@@ -42,8 +42,8 @@ describe("placing a job from his words", () => {
       ["margin", ["p3"]],
       ["the margin project", ["p3"]],
       ["The-Margin.", ["p3"]],
-      ["venture os", ["p4"]],
-      ["venturos", ["p4"]],
+      ["lake house", ["p4"]],
+      ["lakhouse", ["p4"]],
       ["shop site", ["p1"]],
       ["shopsite", ["p1"]],
       ["api server", ["p2"]],
