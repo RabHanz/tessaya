@@ -29,8 +29,10 @@ import { accountOfConfigDir } from "./ClaudeLiveSessions.ts";
 import { CONSENT_KEY } from "./consent.ts";
 
 const startedAt = Date.now() - process.uptime() * 1000;
-/** The commit this build was cut from, stamped by the release build; null for a dev run. */
-const buildCommit = process.env["TESSAYA_BUILD_COMMIT"] || null;
+declare const __TESSAYA_BUILD_COMMIT__: string | undefined;
+/** The commit this build was cut from, stamped by the build (vite.config.ts); null for a run from source. */
+const buildCommit =
+  (typeof __TESSAYA_BUILD_COMMIT__ === "undefined" ? "" : __TESSAYA_BUILD_COMMIT__) || null;
 
 const readJson = (path: string): unknown => {
   try {

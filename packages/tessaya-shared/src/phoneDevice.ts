@@ -10,6 +10,8 @@ export interface PhoneFacts {
   readonly model: string | null;
   readonly os: string | null;
   readonly motion: boolean;
+  /** The app's version and the over-the-air update it runs, for the brain's fleet check (M-146). */
+  readonly app?: { readonly version: string | null; readonly update: string | null };
 }
 
 /** A value in a vessel publish that says where its member is (B-043), noted as presence and never kept as an item. */
@@ -29,6 +31,8 @@ export const phoneManifest = (facts: PhoneFacts): DeviceManifest => ({
   kind: "phone",
   name: facts.model ?? "Phone",
   schema: 1,
+  ...(facts.app?.version == null ? {} : { version: facts.app.version.slice(0, 60) }),
+  ...(facts.app?.update == null ? {} : { firmware: `update ${facts.app.update.slice(0, 8)}` }),
   items: [
     {
       id: "system.model",

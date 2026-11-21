@@ -1,5 +1,6 @@
 import "vite-plus/test/config";
 // @effect-diagnostics-next-line nodeBuiltinImport:off -- tsdown needs the asset path when it reads this config.
+import * as NodeChildProcess from "node:child_process";
 import * as NodePath from "node:path";
 import { defineConfig, mergeConfig } from "vite-plus";
 
@@ -18,6 +19,14 @@ import {
 export { shouldBundleCliDependency };
 
 const repoEnv = loadRepoEnv();
+const buildCommit = (() => {
+  if (process.env["GITHUB_SHA"]) return process.env["GITHUB_SHA"];
+  try {
+    return NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+  } catch {
+    return "";
+  }
+})();
 const cliBuildChannel = /^[^-+]+-(?:nightly|preview)\./.test(packageJson.version)
   ? "nightly"
   : "latest";
@@ -130,6 +139,8 @@ export default mergeConfig(
       define: {
         // Internal builds only (TESSAYA_INTERNAL=1): loads owner-only persona layers (src/tessaya/PersonaLayers.ts).
         __TESSAYA_INTERNAL__: JSON.stringify(repoEnv.TESSAYA_INTERNAL?.trim() === "1"),
+        // The commit this build is cut from, for the fleet check (M-146): CI's, else the checkout's; empty in dev.
+        __TESSAYA_BUILD_COMMIT__: JSON.stringify(buildCommit),
         __T3CODE_BUILD_CHANNEL__: JSON.stringify(cliBuildChannel),
         __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
         __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),
