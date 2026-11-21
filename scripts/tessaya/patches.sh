@@ -51,6 +51,14 @@ fetch_blobs() {
 # have the pin. Fetch it blobless from upstream through a remote that exists only for this run and,
 # being a promisor, also serves any pin blob a later step reads.
 upstream_url="${TESSAYA_UPSTREAM_URL:-https://github.com/pingdotgg/t3code.git}"
+# The fork keeps the pin under refs/tags/upstream-pin-<pin> (21 Nov: a blobless CI checkout's lazy fetch asked the fork
+# for a pin blob no fork ref reached, "not our ref"). Fetching by that tag from the fork needs no upstream reachability.
+pin_ref="$pin"
+mirror_url="${TESSAYA_PIN_MIRROR_URL:-$(git remote get-url origin 2> /dev/null || true)}"
+if [ -z "${TESSAYA_UPSTREAM_URL:-}" ] && [ -n "$mirror_url" ] &&
+  git ls-remote --exit-code "$mirror_url" "refs/tags/upstream-pin-$pin" > /dev/null 2>&1; then
+  upstream_url="$mirror_url" pin_ref="refs/tags/upstream-pin-$pin"
+fi
 have_pin=1
 git cat-file -e "$pin^{commit}" 2> /dev/null || have_pin=0
 n="${GIT_CONFIG_COUNT:-0}"
@@ -60,7 +68,7 @@ export "GIT_CONFIG_KEY_$n=remote.t3code-pin.url" "GIT_CONFIG_VALUE_$n=$upstream_
   GIT_CONFIG_COUNT=$((n + 3))
 if [ "$have_pin" -eq 0 ]; then
   echo "patches: fetching PIN $pin from $upstream_url" >&2
-  git fetch --quiet --no-tags --filter=blob:none t3code-pin "$pin" ||
+  git fetch --quiet --no-tags --filter=blob:none t3code-pin "$pin_ref" ||
     die "PIN $pin is not a commit here and could not be fetched from $upstream_url"
   # The blobs the series patches.
   git ls-tree -r "$pin" -- $(while read -r p; do patch_paths "$dir/$p"; done < <(series)) |
@@ -205,6 +213,7 @@ cmd_rebase() {
   failed=(${still[@]+"${still[@]}"})
 
   printf '%s\n' "$new" > "$dir/PIN"
+  echo "patches: also mirror the new pin into the fork: git push origin $new:refs/tags/upstream-pin-$new" >&2
   git add "$dir/PIN"
   pin="$new"
   if [ "${#failed[@]}" -gt 0 ]; then
