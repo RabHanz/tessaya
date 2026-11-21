@@ -170,6 +170,8 @@ export interface WakeStreamDeps {
     clip: Int16Array,
     request?: Promise<WakeRequest | null>,
     voice?: Promise<SpeakerIdentity | undefined>,
+    /** Woken on the score alone, no recogniser within CONFIRM_BUDGET_MS: the session is tentative (M-144). */
+    late?: boolean,
   ) => void;
   /**
    * Voice ID on a kws-passed segment, begun the moment it ends, beside the confirm and the request's recognition: the
@@ -360,7 +362,16 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
       d.outcome = `woken by ${word} (${how})`;
       d.woke = true;
       deps.log(`[${id}] woken by ${word} (${how})`);
-      deps.onWake(id, word, speechLevel(clip), Math.min(1, output), clip);
+      deps.onWake(
+        id,
+        word,
+        speechLevel(clip),
+        Math.min(1, output),
+        clip,
+        undefined,
+        undefined,
+        late,
+      );
     } else {
       d.outcome = `${word} fired (${at}), not confirmed`;
       deps.log(
@@ -461,7 +472,7 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
               endedAt: endedAt - END_SILENCE_MS,
             };
       });
-      deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm, request, voice);
+      deps.onWake(id, w.word, speechLevel(pcm), Math.min(1, best), pcm, request, voice, late);
     } else if (near)
       deps.log(
         `[${id}] seg ${event.seg} kws ${best.toFixed(3)} under the loop's ${w.threshold}; not a wake (her name does not lead: ${(await whole).map(heldBack).join("; ") || heldBack("")})`,
