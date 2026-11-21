@@ -43,6 +43,8 @@ import {
   readBinDays,
   TessayaMemoryService,
 } from "./TessayaMemoryService.ts";
+import { isBrain } from "./BrainHost.ts";
+import { VoiceForgets } from "./VoiceForgets.ts";
 import { peopleHere, TessayaPresence } from "./TessayaPresence.ts";
 import { emitAction, type TurnAction } from "./turnActions.ts";
 
@@ -480,10 +482,17 @@ export const make = Effect.gen(function* () {
     return (yield* row(id)) ?? (yield* byName(id));
   });
 
+  // On a worker, the household's shared profiles (VoiceForgets) from the home: its own table is empty there.
   const memberPrints = (model: string) =>
-    sql<{
-      centroid: string;
-    }>`SELECT centroid FROM tessaya_voice_profiles WHERE model = ${model}`.pipe(
+    Effect.flatMap(Effect.all([Effect.serviceOption(VoiceForgets), isBrain]), ([voices, brain]) =>
+      Option.isSome(voices) && !brain
+        ? Effect.map(voices.value.current, (all) => all.filter((p) => p.model === model))
+        : sql<{
+            centroid: string;
+          }>`SELECT centroid FROM tessaya_voice_profiles WHERE model = ${model}`.pipe(
+            Effect.orElseSucceed(() => []),
+          ),
+    ).pipe(
       Effect.map((rows) =>
         rows.flatMap((r) => {
           const v = vectorFromBase64(r.centroid);

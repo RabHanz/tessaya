@@ -37,7 +37,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
-import { HOME_KEY } from "./BrainHost.ts";
+import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
+import { mergeVoiceProfiles } from "./voiceMerge.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
@@ -186,6 +187,8 @@ export class TessayaHousehold extends Context.Service<
     readonly purgeDue: Effect.Effect<number>;
     /** Another of this home's servers destroyed this member's data: this server's vessels forget their voice too. */
     readonly forgetVoiceHere: (member: string) => Effect.Effect<void>;
+    /** On the home: another server's copy of a member's voice, joined to this one; false when it can't be joined. */
+    readonly mergeVoice: (profile: TessayaVoiceProfile) => Effect.Effect<boolean>;
   }
 >()("t3/tessaya/TessayaHousehold") {}
 
@@ -372,6 +375,58 @@ export const make = Effect.gen(function* () {
     ),
     (rows) => rows.map(voiceOf),
   );
+  const writeVoice = (p: Omit<TessayaVoiceProfile, "updatedAt">, name: string, now: string) =>
+    sql`INSERT INTO tessaya_voice_profiles ${sql.insert({
+      member_id: p.id,
+      model: p.model,
+      // His member name: a vessel sends a placeholder ("Owner" from the room, "You" from the desktop).
+      name,
+      kind: p.kind,
+      centroid: p.centroid,
+      samples: p.samples,
+      sources_json: guardiansJson(p.sources),
+      enrolled_at: p.enrolledAt,
+      consent_note: p.consentNote ?? null,
+      version: p.version,
+      updated_at: now,
+    })} ON CONFLICT (member_id, model) DO UPDATE SET name = excluded.name, kind = excluded.kind, centroid = excluded.centroid, samples = excluded.samples, sources_json = excluded.sources_json, enrolled_at = excluded.enrolled_at, consent_note = excluded.consent_note, version = excluded.version, updated_at = excluded.updated_at`.pipe(
+      Effect.orDie,
+    );
+  /** On the home: another server's copy of a member's voice, joined to the one here with nothing dropped. */
+  const mergeVoice = Effect.fn("TessayaHousehold.mergeVoice")(function* (p: TessayaVoiceProfile) {
+    const target = yield* rowOf(p.id);
+    if (Option.isNone(target) || target.value.removed_at !== null) return false;
+    const existing =
+      (yield* sql<VoiceRow>`SELECT * FROM tessaya_voice_profiles WHERE member_id = ${p.id} AND model = ${p.model}`.pipe(
+        Effect.orDie,
+      ))[0];
+    const joined =
+      existing === undefined ? { ...p, version: 1 } : mergeVoiceProfiles(voiceOf(existing), p);
+    if (joined === null) return false;
+    if (existing === undefined || joined.version !== existing.version) {
+      yield* writeVoice(joined, target.value.name, iso(yield* Clock.currentTimeMillis));
+      yield* shareVoices;
+    }
+    return true;
+  });
+  /**
+   * A worker's own voice rows, from before one home (21 Nov: the laptop's 61 samples): each goes to the home once,
+   * queued in order while it is away, then leaves this server, which reads the home's from then on.
+   */
+  const moveVoicesUp = Effect.gen(function* () {
+    if ((yield* homeOn) === null) return;
+    const kept = yield* sql<VoiceRow>`SELECT * FROM tessaya_voice_profiles`.pipe(
+      Effect.orElseSucceed((): ReadonlyArray<VoiceRow> => []),
+    );
+    if (kept.length === 0) return;
+    const brain = yield* makeBrainLink;
+    for (const r of kept) {
+      yield* brain.sendOrQueue("voiceMerge", { profile: voiceOf(r) });
+      yield* sql`DELETE FROM tessaya_voice_profiles WHERE member_id = ${r.member_id} AND model = ${r.model}`.pipe(
+        Effect.ignore,
+      );
+    }
+  }).pipe(Effect.withSpan("TessayaHousehold.moveVoicesUp"));
   /** Every vessel here gets the profiles: from this server's table, or from the home where the members live elsewhere. */
   const shareVoices = Effect.gen(function* () {
     if (Option.isNone(voices)) return;
@@ -1122,23 +1177,7 @@ export const make = Effect.gen(function* () {
         // A copy found on a device stands only when it has more samples; a new enrolment always does.
         if (existing !== undefined && !input.fresh && existing.samples >= p.samples)
           return done(`${target.value.name}'s voice here already has as many samples; kept.`);
-        const version = (existing?.version ?? 0) + 1;
-        yield* sql`INSERT INTO tessaya_voice_profiles ${sql.insert({
-          member_id: p.id,
-          model: p.model,
-          // His member name: a vessel sends a placeholder ("Owner" from the room, "You" from the desktop).
-          name: target.value.name,
-          kind: p.kind,
-          centroid: p.centroid,
-          samples: p.samples,
-          sources_json: guardiansJson(p.sources),
-          enrolled_at: p.enrolledAt,
-          consent_note: p.consentNote ?? null,
-          version,
-          updated_at: now,
-        })} ON CONFLICT (member_id, model) DO UPDATE SET name = excluded.name, kind = excluded.kind, centroid = excluded.centroid, samples = excluded.samples, sources_json = excluded.sources_json, enrolled_at = excluded.enrolled_at, consent_note = excluded.consent_note, version = excluded.version, updated_at = excluded.updated_at`.pipe(
-          Effect.orDie,
-        );
+        yield* writeVoice({ ...p, version: (existing?.version ?? 0) + 1 }, target.value.name, now);
         yield* shareVoices;
         return done(`Saved ${target.value.name}'s voice for every device in this home.`);
       }
@@ -1200,7 +1239,7 @@ export const make = Effect.gen(function* () {
     }
   });
 
-  yield* Effect.andThen(purgeDue, shareVoices).pipe(
+  yield* Effect.andThen(purgeDue, Effect.andThen(moveVoicesUp, shareVoices)).pipe(
     Effect.repeat(Schedule.spaced("1 hour")),
     Effect.catchCause(() => Effect.void),
     Effect.forkScoped,
@@ -1214,6 +1253,7 @@ export const make = Effect.gen(function* () {
     grantsOf,
     purgeDue,
     forgetVoiceHere,
+    mergeVoice,
   });
 });
 

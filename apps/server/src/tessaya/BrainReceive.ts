@@ -17,7 +17,8 @@ import * as HouseholdDevices from "./HouseholdDevices.ts";
 import * as PhonePairing from "./PhonePairing.ts";
 import { TessayaMood } from "./TessayaMood.ts";
 import { TessayaCast } from "./TessayaCast.ts";
-import { CastBody, CastCallInput } from "@t3tools/tessaya-contracts";
+import { CastBody, CastCallInput, TessayaVoiceProfile } from "@t3tools/tessaya-contracts";
+import { TessayaHousehold } from "./TessayaHousehold.ts";
 import { TessayaCast as TessayaCastRules } from "@t3tools/contracts/settings";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { privateRowsAtBrain } from "./PrivateRows.ts";
@@ -210,6 +211,9 @@ const decodeVocabulary = Schema.decodeUnknownOption(VocabularyAtBrain);
 
 const decodeConsent = Schema.decodeUnknownOption(ConsentAct);
 const decodePreferences = Schema.decodeUnknownOption(PreferencesAct);
+const decodeVoiceMerge = Schema.decodeUnknownOption(
+  Schema.Struct({ profile: TessayaVoiceProfile }),
+);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -241,6 +245,15 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       const act = decodeConsent(payload);
       if (Option.isNone(act)) return refused("Not a standing-yes act.");
       return done(yield* consentAtBrain(act.value));
+    }
+    case "voiceMerge": {
+      const merge = decodeVoiceMerge(payload);
+      if (Option.isNone(merge)) return refused("Not a voice profile.");
+      const household = yield* Effect.serviceOption(TessayaHousehold);
+      if (Option.isNone(household)) return refused("The household is not kept here.");
+      return (yield* household.value.mergeVoice(merge.value.profile))
+        ? done()
+        : refused("That voice can't be joined to the one here.");
     }
     case "roomLoop": {
       const act = decodeRoomLoop(payload);
