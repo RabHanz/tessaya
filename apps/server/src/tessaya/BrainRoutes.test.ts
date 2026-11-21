@@ -62,6 +62,9 @@ const SITES: Readonly<Record<string, Site>> = {
   "apps/server/src/tessaya/TessayaBody.ts": {
     routed: "her rare wish of her own, the intent row",
   },
+  "apps/server/src/tessaya/TessayaWhatsNew.ts": {
+    routed: "rewriting a release's titles as what she can now do: the intent row",
+  },
   "apps/server/src/tessaya/TessayaMood.ts": {
     routed: "reading the tone of what he said to her: the intent row",
   },
