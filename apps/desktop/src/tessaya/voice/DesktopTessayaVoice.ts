@@ -6,6 +6,7 @@
  * Windows first (D97, D106): capture, speech and paste are `tessaya-voice`, which is packaged
  * for Windows only so far, so elsewhere the tray says so and no microphone opens.
  */
+import { STEER_REPLIED_AT_DESK } from "@t3tools/tessaya-shared/sessionInsight";
 import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { shoulderSurf } from "@t3tools/tessaya-shared/biometrics";
 import { screenOfBox } from "@t3tools/tessaya-shared/screenCompanion";
@@ -6522,6 +6523,20 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     save({ snoozeUntil: Date.now() < settings.snoozeUntil ? 0 : Date.now() + HIDE_FOR_MS });
   const silenced = (at: Date) =>
     isSilenced({ ...settings, doNotDisturb: at.getTime() < settings.dndUntil }, at);
+  /** A session he talks with from the desk answered: the desk's own voice says it (the room and phone say theirs). */
+  let steerRowsSince = new Date().toISOString();
+  const sayDeskReplies = async () => {
+    if (input.direct === undefined) return;
+    const value = (await input.direct("baton.record.list", {
+      kind: "steer",
+      since: steerRowsSince,
+      limit: 20,
+    })) as { entries?: ReadonlyArray<TessayaRecordEntry> } | null;
+    for (const row of value?.entries ?? []) {
+      if (row.at > steerRowsSince) steerRowsSince = row.at;
+      if (row.outcome === STEER_REPLIED_AT_DESK) input.extras?.announce(row.detail, true);
+    }
+  };
   const checkAttention = async () => {
     // With the direct door the watch is read from this machine's server, so T3's window need not be up.
     if (!serverReachable()) return;
@@ -6542,6 +6557,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     }
   };
   setInterval(() => void checkAttention().catch(() => undefined), ATTENTION_MS).unref();
+  // Often enough for a conversation with a session through her; one small Record read.
+  setInterval(() => {
+    if (serverReachable()) void sayDeskReplies().catch(() => undefined);
+  }, 15_000).unref();
 
   // Initiative (D149): offers as cards. A Yes starts a read-only plan-first job or notes a commitment.
   let ciCache: { at: number; runs: ReadonlyArray<CiRun> } = { at: 0, runs: [] };
