@@ -852,6 +852,12 @@ export const vesselReport = (body: unknown) => {
   };
 };
 const VESSEL_SIGNALS = new Set(["windowClosed", "screenLocked", "bargeIn"]);
+/** The phone's private screen is the layer's window on its signed-in session, not the phone's registry id. */
+export const layerVessel = (
+  layer: Pick<PersonaLayers.PersonaLayer, "windowOf">,
+  session: string | null,
+  reported: string,
+): string => (session === null ? reported : (layer.windowOf?.(session) ?? reported));
 
 const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
   router: HttpRouter.HttpRouter,
@@ -1099,19 +1105,21 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
     if (id === "_vessel") {
       if (caller.desktop || caller.service || caller.member === null) return notHere;
       const report = vesselReport(body);
+      const vesselIn = (l: PersonaLayers.PersonaLayer) =>
+        layerVessel(l, caller.session, report.vessel);
       for (const kind of report.signals)
         for (const l of registry.value.all)
           l.signal(
             kind === "windowClosed"
               ? { kind, session: caller.session }
-              : { kind, vessel: report.vessel },
+              : { kind, vessel: vesselIn(l) },
           );
       return HttpServerResponse.jsonUnsafe(
         {
-          open: registry.value.all.some((l) => l.active?.(report.vessel) === true),
+          open: registry.value.all.some((l) => l.active?.(vesselIn(l)) === true),
           persona:
             registry.value.all
-              .map((l) => l.opened?.(report.vessel) ?? null)
+              .map((l) => l.opened?.(vesselIn(l)) ?? null)
               .find((p) => p !== null) ?? null,
           page:
             registry.value.all[0] === undefined

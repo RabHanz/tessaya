@@ -238,6 +238,8 @@ export interface PersonaLayer {
   readonly active?: (vessel: string) => boolean;
   /** The persona the open session on this vessel was opened with, so only that companion takes its form; null for none. */
   readonly opened?: (vessel: string) => string | null;
+  /** The vessel its private window on this signed-in session holds (the phone's screen), for that client's reports. */
+  readonly windowOf?: (session: string) => string;
   /**
    * Her body asked to move (TessayaBody): bounded cues, whether they need the private gate, and owner-extension acts
    * for the layer to resolve at its level. Taken by her full body wherever the layer shows one, in public too (a

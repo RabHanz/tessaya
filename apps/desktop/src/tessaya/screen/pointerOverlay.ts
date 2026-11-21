@@ -12,6 +12,7 @@ import { hiddenForCapture, protectFromCapture } from "../captureProtection.ts";
 import * as Electron from "electron";
 
 import { markCompanionWindow } from "../lastAppWindow.ts";
+import { onEveryDesktop } from "../companion/everyDesktop.ts";
 
 import { loadDocument } from "../voice/loadDocument.ts";
 import { CARD_ABOVE_WORK_AREA, COMPANION_CSS } from "./companionStyle.ts";
@@ -219,7 +220,7 @@ export const createPointerOverlay = (
       if (cardHover) win.setIgnoreMouseEvents(false);
       else win.setIgnoreMouseEvents(true, { forward: true });
     });
-    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    void onEveryDesktop(win);
     const bottom = display.bounds.y + display.bounds.height;
     const inset = bottom - (display.workArea.y + display.workArea.height) + CARD_ABOVE_WORK_AREA;
     const ready = loadDocument(win, OVERLAY_DOCUMENT)

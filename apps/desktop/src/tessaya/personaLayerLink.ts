@@ -84,46 +84,27 @@ export const startPersonaLayerLink = (deps: LayerLinkDeps) => {
   };
 };
 
-/** How long after his last private window closes its moment ends: a Hello reload or a reopen in that time keeps it. */
-export const WINDOW_CLOSE_GRACE_MS = 3_000;
-
 /**
- * Closing his private window ends the private moment there (Director's call, 19 Nov): once the last one is closed and
- * stays closed for the grace, `end` runs once; one opening again in time cancels it.
+ * Closing his private window ends the private moment there (Director's call, 19 Nov; at once, 21 Nov): when the last
+ * one closes, her private form leaves the desk and `end` runs, on that call.
  */
 export const createWindowCloseEnd = (deps: {
   readonly end: () => void;
-  /**
-   * His last private window closed (or crashed), or one came back: her private form on the desk goes, or returns, on
-   * this very call, never after the grace or a server answer (M-122).
-   */
+  /** His last private window closed (or crashed), or one came back: her private form on the desk goes, or returns (M-122). */
   readonly shown?: (on: boolean) => void;
-  readonly schedule?: (fn: () => void, ms: number) => () => void;
 }) => {
-  const schedule =
-    deps.schedule ??
-    ((fn: () => void, ms: number) => {
-      const t = setTimeout(fn, ms);
-      return () => clearTimeout(t);
-    });
   let open = 0;
-  let pending: (() => void) | null = null;
   return {
     opened: () => {
       open += 1;
       if (open === 1) deps.shown?.(true);
-      pending?.();
-      pending = null;
     },
     closed: () => {
-      open = Math.max(0, open - 1);
+      if (open === 0) return;
+      open -= 1;
       if (open > 0) return;
       deps.shown?.(false);
-      pending?.();
-      pending = schedule(() => {
-        pending = null;
-        if (open === 0) deps.end();
-      }, WINDOW_CLOSE_GRACE_MS);
+      deps.end();
     },
   };
 };

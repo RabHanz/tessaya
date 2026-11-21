@@ -15,7 +15,7 @@ import type { RoomToolSet } from "../home/R1Brain.ts";
 import { HomeAssistantService } from "../home/HomeAssistantService.ts";
 import { DeskTools } from "../home/R1Tools.ts";
 import { TessayaRuntime } from "./TessayaRpcHandlers.ts";
-import { routes, vesselReport } from "./TessayaRoutes.ts";
+import { layerVessel, routes, vesselReport } from "./TessayaRoutes.ts";
 
 const platformLayer = NodeHttpPlatform.layer.pipe(Layer.provideMerge(NodeServices.layer));
 
@@ -226,4 +226,9 @@ it("takes from the phone's layer report only its own id and the signals that end
     vessel: "phone",
     signals: [],
   });
+  // its screen's lock and barge-in reach the layer's window on its session, which holds the moment (21 Nov)
+  const layer = { windowOf: (session: string) => `private-${session}` };
+  expect(layerVessel(layer, "s1", "phone-xperia5iv")).toBe("private-s1");
+  expect(layerVessel({}, "s1", "phone-xperia5iv")).toBe("phone-xperia5iv");
+  expect(layerVessel(layer, null, "phone-xperia5iv")).toBe("phone-xperia5iv");
 });
