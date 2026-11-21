@@ -39,7 +39,9 @@ import {
   type VoiceInput,
 } from "../speaker.ts";
 import { decodeWav } from "../providers/speech.ts";
-import { createSpeakerStore, vectorToBase64 } from "../speakerStore.ts";
+import { createSpeakerStore, profileToWire, vectorToBase64 } from "../speakerStore.ts";
+import type { FleetFingerprint } from "@t3tools/tessaya-contracts";
+import { storeOf } from "@t3tools/tessaya-shared/coherence";
 import { createLines, type LinesGot } from "./lines.ts";
 import { servedVocabulary, VOCABULARY_EVERY_MS } from "./vocabulary.ts";
 import { voicesOf } from "./segments.ts";
@@ -494,6 +496,31 @@ const link = (url: string): NonNullable<RoomDeps["link"]> => {
         .catch(() => undefined);
   };
 };
+
+/** What this loop believes, for the brain's fleet check (M-146): its build, its brain and its copy of the voices. */
+const loopFingerprint = (
+  host: string,
+  profiles: ReadonlyArray<SpeakerProfile>,
+): FleetFingerprint => ({
+  id: `loop:${host}`,
+  name: `the room loop on ${host}`,
+  kind: "loop",
+  host,
+  version: process.env["TESSAYA_LOOP_VERSION"] || "unknown",
+  commit: process.env["TESSAYA_BUILD_COMMIT"] || null,
+  startedAt,
+  brain: `url:${new URL(env("R1_BRAIN_URL")).host}`,
+  account: null,
+  stores: {
+    voiceProfiles: storeOf(
+      profiles.map(profileToWire).map((p) => `${p.id}|${p.samples}|${p.centroid}`),
+      profiles.length === 0
+        ? "none"
+        : profiles.map((p) => `${p.id}: ${p.samples} samples`).join(", "),
+    ),
+  },
+  sentAt: Date.now(),
+});
 
 /** Her hub's own server's turn route, from the hub's bus URL. */
 const localBrainOf = (hub: string) =>
@@ -1467,6 +1494,7 @@ const main = async () => {
                 host,
                 services,
                 replay: { line: replayStatusLine(replay.status), degraded },
+                fingerprint: loopFingerprint(host.host, store.list()),
               }),
             ),
             true,

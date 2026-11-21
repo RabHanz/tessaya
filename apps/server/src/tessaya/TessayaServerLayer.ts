@@ -28,6 +28,7 @@ import * as AccountPoolService from "./AccountPoolService.ts";
 import * as TessayaAccounts from "./TessayaAccounts.ts";
 import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
 import * as TessayaMemorySync from "./TessayaMemorySync.ts";
+import * as FleetCoherence from "./FleetCoherence.ts";
 import * as BrainHost from "./BrainHost.ts";
 import * as HouseholdDevices from "./HouseholdDevices.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
@@ -318,6 +319,8 @@ const servicesInner = Layer.mergeAll(
       TessayaMemorySync.layer.pipe(Layer.provide(localMemoryLayer)),
       // a worker's changes that waited for the brain land once it is back (one truth, nothing lost)
       BrainHost.outboxLayer,
+      // a worker tells the brain its build, brain, login and store digests each minute (M-146)
+      FleetCoherence.reportLayer,
       // one phone, every machine: a sign-out of a household device here is a sign-out everywhere (M-097)
       HouseholdDevices.layer,
       // a desk body reaches her brain the moment it shows, hides or moves, so every vessel knows it (20 Nov)
@@ -371,7 +374,8 @@ const servicesInner = Layer.mergeAll(
   // The voices, and his one dictionary, which the voice door, the device route and every vessel's turn read.
   Layer.provideMerge(Layer.mergeAll(TessayaVoiceLibrary.layer, TessayaVocabulary.layer)),
   // Voices to forget, between the household and every vessel's owner: under both, so each sees it.
-  Layer.provideMerge(VoiceForgets.layer),
+  // With them, what every machine believes, for the brain's fleet check (M-146): under health and the brain door.
+  Layer.provideMerge(Layer.mergeAll(VoiceForgets.layer, FleetCoherence.layer)),
   // Members' voice defaults and acts held for a step-up, between the turn and runner and every vessel's owner.
   // Her lines for every vessel, beside the members' preferences.
   // Who each person is talking to (P5), written by the turn and told to the room loops by the broker.

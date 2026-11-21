@@ -26,11 +26,13 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import { DeviceRegistry } from "../home/DeviceRegistry.ts";
 import { HomeDevices } from "../home/HomeDevices.ts";
 import { R1Loop } from "../home/R1Loop.ts";
 import { ActionLog, emitAction } from "../provenance/ActionLog.ts";
 import { SpeechService } from "../speech/SpeechService.ts";
 import { TurnOrigin } from "./TurnOrigin.ts";
+import { deviceFingerprint, FleetCoherence, selfFingerprint } from "./FleetCoherence.ts";
 import { AccountPoolService } from "./AccountPoolService.ts";
 import { ProviderDriverKind, type TessayaAccountPool } from "@t3tools/tessaya-contracts";
 
@@ -164,6 +166,25 @@ export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
         ...(yield* log.value.list({ since: now - NOTES_MS, kindPrefix: "host.health", limit: 5 })),
       ]
     : [];
+  // The fleet check (M-146): this server first, then each worker, room loop and registered device as it last said.
+  const me = yield* selfFingerprint();
+  const coherence = yield* Effect.serviceOption(FleetCoherence);
+  const registry = yield* Effect.serviceOption(DeviceRegistry);
+  const loops = new Map(
+    vessels.flatMap((v) => {
+      const fp = v.voiceHost?.fingerprint;
+      return fp === undefined ? [] : [[fp.id, fp] as const];
+    }),
+  );
+  const fleet = [
+    me,
+    ...(Option.isSome(coherence) ? yield* coherence.value.received : []),
+    ...loops.values(),
+    ...(Option.isSome(registry) ? yield* registry.value.list : [])
+      // an offline device is the vessel check's to say (M-132); here only what an online one believes
+      .filter((d) => d.online && d.stale !== true)
+      .map((d) => deviceFingerprint(d, me.id)),
+  ];
   const speech = yield* Effect.serviceOption(SpeechService);
   const dictation = Option.isSome(speech) ? yield* speech.value.heard : null;
   return {
@@ -184,6 +205,7 @@ export const snapshot = Effect.fn("TessayaHealth.snapshot")(function* () {
       )),
     ],
     roomLoop,
+    fleet,
     notes: actions.toSorted((a, b) => b.at - a.at).map((a) => ({ at: a.at, says: noteOf(a) })),
   } satisfies HealthSnapshot;
 });
