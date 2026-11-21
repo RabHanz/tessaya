@@ -338,7 +338,7 @@ const CHANGE_MIN_MS = 1_000;
  */
 export const SAME_VOICE = 0.45;
 /** Under this, with a second of speech, the voice clearly changed (his own next turn p1 0.22-0.29). */
-const CHANGED_VOICE = 0.2;
+export const CHANGED_VOICE = 0.2;
 
 const meanUnit = (vs: ReadonlyArray<Float32Array>): Float32Array =>
   unitOrNull(Float32Array.from(vs[0]!, (_, i) => vs.reduce((n, v) => n + v[i]!, 0))) ?? vs[0]!;
@@ -579,16 +579,15 @@ export const admits = (
 };
 
 /**
- * In his own session, a voice just under the listen bar is likely him (20 Nov, the new case: his words read low and
- * were ignored): answered, as unverified, so nothing of his is written from it. Never a replayed voice.
- * shortcut: interim until per-mic calibration and AEC on barge-in audio; 0.25 is a guess below 0.36, not measured.
+ * In his own session the next turn is the same speaker unless Voice ID is sure it is not: a saved person (never a
+ * guest) or a clear change against his session's own turns (`same`). A low score alone is his soft voice (21 Nov, 06:07
+ * GMT+5: 0.26, "a guest voice; not answered"): answered as unverified, so it grants and writes nothing. Never a replay.
  */
-export const LIKELY_HIS_FLOOR = 0.25;
 export const likelyHis = (identity: SpeakerIdentity, hisSession: boolean): SpeakerIdentity =>
   hisSession &&
   identity.kind === "guest" &&
   identity.replay !== "heard" &&
-  (identity.confidence ?? Number.NEGATIVE_INFINITY) >= LIKELY_HIS_FLOOR
+  !(identity.same !== undefined && identity.same < CHANGED_VOICE)
     ? { ...UNVERIFIED(identity.at), confidence: identity.confidence }
     : identity;
 

@@ -385,6 +385,86 @@ describe("the room voice loop", () => {
     expect(t.brainCalls).toHaveLength(1);
   });
 
+  it("keeps answering his soft voice in his own conversation, and a saved person ends it (21 Nov, 06:03-06:07 GMT+5)", async () => {
+    const at = { ...UNVERIFIED(0), name: null, inherited: false, verified: false } as const;
+    const his: SpeakerIdentity = {
+      ...at,
+      kind: "owner",
+      personId: "owner",
+      // Verified, but under the 0.5 the unsure-turn capture once needed: the presumption keeps his soft turns.
+      confidence: 0.45,
+      verified: true,
+      own: { score: 0.45, ms: 1_500 },
+    };
+    const soft = (score: number): SpeakerIdentity => ({
+      ...at,
+      kind: "guest",
+      confidence: score,
+      own: { score, ms: 1_500 },
+    });
+    const sara: SpeakerIdentity = {
+      ...at,
+      kind: "saved",
+      personId: "sara",
+      name: "Sara",
+      confidence: 0.6,
+    };
+    // His opening turn, then the live sequence: 0.32, 0.26, then an 11-word sentence far under the bar; then Sara.
+    const said = [his, soft(0.32), soft(0.26), soft(0.06), sara, soft(0.2)];
+    let n = 0;
+    const logs: string[] = [];
+    const kept: Array<string> = [];
+    const t = setup({
+      log: (l) => logs.push(l),
+      speaker: async () => said[n++]!,
+      keepTurn: (_id, _pcm, meta) => kept.push(`${meta.speaker}:${String(meta.verified)}`),
+    });
+    t.s2();
+    for (let i = 0; i < said.length; i += 1) {
+      await t.feed(true, 20);
+      await t.feed(false, 30);
+    }
+    // Every turn of his is answered, never "a guest voice"; his soft turns stay unverified, so they grant nothing.
+    expect(t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual([
+      "owner",
+      "unverified",
+      "unverified",
+      "unverified",
+      "saved",
+    ]);
+    // Sara is answered as herself, and after her a low score is no longer presumed his.
+    expect(logs.filter((l) => l.includes("a guest voice; not answered"))).toHaveLength(1);
+    // His soft turns are kept apart as unverified (the far centroid's data); Sara's and the stranger's never are.
+    expect(kept).toEqual([
+      "owner:undefined",
+      "unverified:false",
+      "unverified:false",
+      "unverified:false",
+    ]);
+  });
+
+  it("presumes his next turn after he called her by name, and keeps it apart as unverified", async () => {
+    const soft: SpeakerIdentity = {
+      ...UNVERIFIED(0),
+      kind: "guest",
+      confidence: 0.26,
+      own: { score: 0.26, ms: 1_500 },
+    };
+    const kept: Array<string> = [];
+    const t = setup({
+      speaker: async () => soft,
+      keepTurn: (_id, _pcm, meta) => kept.push(`${meta.speaker}:${String(meta.verified)}`),
+    });
+    t.room.woken(DEV, "Tessaya", -20, 1);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    // After her "I'm here", so his turn is not over her voice.
+    await t.feed(false, 60);
+    await t.feed(true, 20);
+    await t.feed(false, 30);
+    expect(t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual(["unverified"]);
+    expect(kept).toEqual(["unverified:false"]);
+  });
+
   it("sends each person's words with their own voice when several spoke, heard if any one of them would be", async () => {
     const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.2 };
     const sara: SpeakerIdentity = { ...guest, kind: "saved", personId: "sara", name: "Sara" };
