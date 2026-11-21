@@ -64,11 +64,15 @@ export function usePrivateLayer() {
     tell();
     return known === null ? null : known;
   };
-  /** His step-up, checked by the layer through her brain's household PIN store, opens a private moment here. */
+  /** His step-up, checked by the layer through her brain's household PIN store, opens a private moment here, for the soul he is with. */
   const activate: StepUpCall = async (pin) => {
     const page = known === false ? null : known?.page;
     if (page == null) return { ok: false, refused: false, line: "Your private layer isn't here." };
-    const w = await send(`${page}/window`, { surface: "phone" });
+    const soul = phoneSoul();
+    const w = await send(`${page}/window`, {
+      surface: "phone",
+      ...(soul === null ? {} : { soul }),
+    });
     const vessel =
       w?.ok === true ? ((await w.json().catch(() => ({}))) as { vessel?: unknown }).vessel : null;
     if (typeof vessel !== "string")
@@ -84,3 +88,8 @@ export function usePrivateLayer() {
   };
   return { base, token, report, activate };
 }
+
+let current: string | null = null;
+/** The soul this phone is with now (Talk's persona, a pack id): its private moment is that soul's, as on the desk. */
+export const phoneSoulIs = (id: string | null) => void (current = id);
+export const phoneSoul = () => current;
