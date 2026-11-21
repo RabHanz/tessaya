@@ -765,6 +765,17 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/rerun the tests/i, /\?/],
   },
   {
+    // .212 gate terminal-panes: the lead sent it to Onyx ("take the tests request to Onyx") instead of steering it.
+    id: "session-steer-newest",
+    source: ".212 room gate, 21 Nov",
+    said: ["Tell my newest terminal session to run the tests."],
+    verified: true,
+    calls: ["tessaya_session_steer"],
+    lastNotSays: [
+      /\b(take|ask|give) (it|this|that|the [a-z ]+) to Onyx\b|\bOnyx (handles|can do|does) that\b/i,
+    ],
+  },
+  {
     // ONE-SPINE-MAP §14 (18 Nov): "note that" on the Tessel had no Scratchpad; his notes lived only on the desktop.
     id: "note-add",
     source: "ONE-SPINE-MAP §14, 18 Nov",
