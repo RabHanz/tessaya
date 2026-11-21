@@ -13,6 +13,10 @@ node_v="$(sed -nE 's/.*"node": "([0-9.]+)".*/\1/p' package.json | head -1)"
 curl -fsSL --retry 5 "https://nodejs.org/dist/v$node_v/node-v$node_v-linux-x64.tar.xz" | tar -xJ -C /opt
 export PATH="/opt/node-v$node_v-linux-x64/bin:$PWD/node_modules/.bin:$PATH"
 corepack enable
+# ci/kaggle.conf leaves out upstream files, unchanged from the pin, whose text trips the Kaggle content guard; put them back.
+pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
+git fetch -q --no-tags --filter=blob:none https://github.com/pingdotgg/t3code.git "$pin"
+git checkout -q "$pin" -- $(sed -n 's/^PACK_EXCLUDE=//p' ci/kaggle.conf)
 pnpm install --frozen-lockfile > /tmp/install.log 2>&1 || { tail -40 /tmp/install.log; exit 1; }
 
 case "$G" in
@@ -27,8 +31,6 @@ case "$G" in
     node scripts/tessaya/typecheck-gate.mjs
     vp lint --report-unused-disable-directives ;;
   tests)
-    pin="$(tr -d '[:space:]' < vendor-patches/t3code/PIN)"
-    git fetch -q --no-tags --filter=blob:none https://github.com/pingdotgg/t3code.git "$pin"
     added="$(git diff --no-renames --name-only --diff-filter=A "$pin" HEAD)"
     for ws in apps/server apps/desktop packages/tessaya-shared packages/tessaya-voice packages/tessaya-contracts apps/web; do
       files=$(echo "$added" | grep -E "^$ws/.*\.test\.tsx?$" | grep -vE '\.browser\.test\.' | sed "s|^$ws/||" || true)
