@@ -141,6 +141,10 @@ const ours = (file, text) =>
         .join("\n")
     : text;
 
+/** What `PRIVATE` finds in text that is about to be published (release notes, update feeds, lists). */
+export const privateHits = (text) =>
+  PRIVATE.filter(([, pattern]) => pattern.test(text)).map(([what]) => what);
+
 export const run = () => {
   const problems = [];
   const files = tracked();
@@ -201,7 +205,12 @@ export const run = () => {
 };
 
 if (process.argv[1] === import.meta.filename) {
-  const problems = run();
+  // --files: the release home publishes only binaries; its text files are checked before upload.
+  const files = process.argv[2] === "--files" ? process.argv.slice(3) : null;
+  const problems =
+    files === null
+      ? run()
+      : files.flatMap((f) => privateHits(NodeFS.readFileSync(f, "utf8")).map((w) => `${f}: ${w}`));
   if (problems.length > 0) {
     console.error(
       `guard-private: ${problems.length} problem(s)\n${problems.map((p) => `  ${p}`).join("\n")}`,

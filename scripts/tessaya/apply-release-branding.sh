@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build-time-only branding override for the Baton desktop release pipeline
-# (.github/workflows/baton-desktop-release.yml). Run ONLY inside that
+# (desktop.yml in RabHanz/tessaya-releases). Run ONLY inside that
 # workflow's ephemeral checkout, right before the build. It is never run
 # against, and never commits to, the working tree that gets pushed anywhere.
 #
