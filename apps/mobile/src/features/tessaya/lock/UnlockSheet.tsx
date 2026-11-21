@@ -1,6 +1,7 @@
 /** "Is it you?": Face ID or a fingerprint when he kept his PIN for it, else his PIN, both checked by her brain. */
 import { useEffect, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
+import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../../components/ui/AppText";
@@ -42,7 +43,7 @@ export function UnlockSheet(props: {
     });
   };
   return (
-    <View className="absolute inset-0 justify-end bg-black/40">
+    <KeyboardAvoidingView behavior="padding" className="absolute inset-0 justify-end bg-black/40">
       <Pressable accessibilityLabel="Cancel" className="flex-1" onPress={props.onCancel} />
       <View
         className="gap-3 rounded-t-3xl bg-background px-5 pt-5"
@@ -87,6 +88,6 @@ export function UnlockSheet(props: {
           </>
         )}
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
