@@ -375,7 +375,7 @@ export const make = Effect.gen(function* () {
     ),
     (rows) => rows.map(voiceOf),
   );
-  const writeVoice = (p: TessayaVoiceProfile, name: string, now: string) =>
+  const writeVoice = (p: Omit<TessayaVoiceProfile, "updatedAt">, name: string, now: string) =>
     sql`INSERT INTO tessaya_voice_profiles ${sql.insert({
       member_id: p.id,
       model: p.model,
