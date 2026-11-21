@@ -68,6 +68,7 @@ import { TessayaOneShot } from "./TessayaOneShot.ts";
 import { CurrentPersona } from "./CurrentPersona.ts";
 import { TessayaCast } from "./TessayaCast.ts";
 import { TessayaMood } from "./TessayaMood.ts";
+import { newsOnce } from "./TessayaWhatsNew.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { AffectCause } from "./AffectCause.ts";
 import { TessayaUnderstanding, type UnderstandingSubject } from "./TessayaUnderstanding.ts";
@@ -1494,6 +1495,11 @@ export const make = Effect.gen(function* () {
     const board = [yield* boardFor(turn, member), yield* leadFor(turn, member)]
       .filter((l) => l !== "")
       .join(" ");
+    // Once after a release, on his own turn: one new thing in her she may mention (TessayaSelf).
+    const news =
+      member === OWNER_MEMBER_ID && turn.sharedRoom !== true && turn.rehearsal !== true
+        ? yield* newsOnce()
+        : "";
     const since = sinceFor(
       turn,
       yield* Clock.currentTimeMillis,
@@ -1516,7 +1522,7 @@ export const make = Effect.gen(function* () {
       ]
         .filter((l) => l !== "")
         .join(" "),
-      feeling: [felt.line, since].filter((l) => l !== "").join(" "),
+      feeling: [felt.line, since, news].filter((l) => l !== "").join(" "),
       tone: felt.tone,
       block: [
         here,

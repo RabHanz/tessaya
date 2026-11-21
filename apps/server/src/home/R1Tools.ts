@@ -220,6 +220,8 @@ type ToolName = keyof typeof TessayaToolkit.tools;
 export const NOT_IN_ROOM: {
   readonly [K in Exclude<ToolName, (typeof ROOM_TOOLS)[number]>]: string;
 } = {
+  tessaya_whats_new_record:
+    "the release lane records what shipped; she reads it in tessaya_my_state",
   tessaya_desktop_settings:
     "settings_find, settings_get and settings_set reach the same desktop fields",
   tessaya_coming_up_change:

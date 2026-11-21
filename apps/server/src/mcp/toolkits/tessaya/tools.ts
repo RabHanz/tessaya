@@ -441,7 +441,7 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
 const MyStateTool = Tool.make("tessaya_my_state", {
   ...shared,
   description:
-    "Your own state now, live: every body you are in (the desk body on his screen or hidden, Tumble, the phone) and who wears each, your mood, what each body's face shows, what your desk body is doing, who is around and your devices. Call it when asked about yourself or your other bodies and the lines you were given do not cover it; never answer that from memory. What one body is doing or how it is posed right now is tessaya_body_state.",
+    "Your own state now, live: every body you are in (the desk body on his screen or hidden, Tumble, the phone) and who wears each, your mood, what each body's face shows, what your desk body is doing, who is around, your devices, and what is new in you lately (what your releases let you do now). Call it when asked about yourself, your other bodies or what is new in you ('any new capabilities?', 'what is new?') and the lines you were given do not cover it; never answer that from memory. What one body is doing or how it is posed right now is tessaya_body_state.",
   success: Schema.Struct({ line: Schema.String }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
@@ -891,6 +891,28 @@ const PronounceTool = Tool.make("tessaya_pronounce", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const WhatsNewRecordTool = Tool.make("tessaya_whats_new_record", {
+  ...shared,
+  description:
+    'For the release that just shipped a part of Tessaya (`surface`: server, loop, desktop, firmware or phone, and its `version`): give the merged PR titles as `titles` and she keeps a few plain-words lines of what she can now do (rewritten for him, no jargon), or give those lines yourself as `items`. Kept two weeks in her self-state, so "what\'s new?" gets a real answer and she may mention the biggest once. Returns the lines kept.',
+  parameters: Schema.Struct({
+    surface: Schema.Literals(["server", "loop", "desktop", "firmware", "phone"]),
+    version: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
+    titles: Schema.optional(
+      Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(40)),
+    ),
+    items: Schema.optional(
+      Schema.Array(Schema.String.check(Schema.isMaxLength(200))).check(Schema.isMaxLength(6)),
+    ),
+  }),
+  success: Schema.Struct({ items: Schema.Array(Schema.String), line: Schema.String }),
+})
+  .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 const NoteFound = Schema.Struct({
   notes: Schema.Array(Schema.Struct({ id: Schema.String, at: Schema.String, text: Schema.String })),
   line: Schema.String,
@@ -1307,6 +1329,7 @@ export const TessayaToolkit = Toolkit.make(
   StateTool,
   DesktopSettingsTool,
   PronounceTool,
+  WhatsNewRecordTool,
   NoteAddTool,
   NoteSearchTool,
   AlwaysAllowedTool,
