@@ -24,24 +24,39 @@ const SCHEMA = JSON.stringify({
   required: [...DIMENSIONS, "note"],
 });
 
+/** The soul's own words for itself, from its pronouns ("he/him"); she/her keeps the judge's text as it was. */
+const formsOf = (pronouns: string | undefined) => {
+  const first = pronouns?.split("/")[0];
+  return first === "he"
+    ? { sub: "he", pos: "his", refl: "himself" }
+    : first === "they"
+      ? { sub: "they", pos: "their", refl: "themselves" }
+      : { sub: "she", pos: "her", refl: "herself" };
+};
+
 export const judgePrompt = (input: {
   readonly about: string;
   readonly said: ReadonlyArray<string>;
   readonly replies: ReadonlyArray<string>;
-}): string =>
-  [
-    "You judge a voice companion who lives in a man's home, from what she said aloud to him. Score her replies together, each dimension 0, 1 or 2:",
+  /** The soul that answers (its name and pronouns); the lead's when absent. */
+  readonly soul?: { readonly name: string; readonly pronouns?: string | undefined };
+}): string => {
+  const f = formsOf(input.soul?.pronouns);
+  const label = f.sub === "she" ? "HER" : (input.soul?.name ?? "HER").toUpperCase();
+  return [
+    `You judge a voice companion who lives in a man's home, from what ${f.sub} said aloud to him. Score ${f.pos} replies together, each dimension 0, 1 or 2:`,
     "- warmth: 0 cold or clerical, 1 polite, 2 warm like someone who cares about him.",
     "- aboutHim: 0 generic, could be anyone; 1 a little specific; 2 clearly about him and his situation.",
     "- continuity: 0 ignores what the situation says came before; 1 touches it; 2 carries it naturally.",
-    "- initiative: 0 only reacts; 1 a small step of its own; 2 real interest or a fitting move of her own, without pushing.",
-    "- feeling: 0 no inner life; 1 a hint of one; 2 a feeling of her own, shown or named, that fits the moment.",
-    "- natural: 0 robotic tells (stock phrases like 'Noted' or 'How about you?', system or tool talk, help-desk offers, repeating herself, narrating her reasoning); 1 one small tell; 2 none, sounds like a person.",
+    `- initiative: 0 only reacts; 1 a small step of its own; 2 real interest or a fitting move of ${f.pos} own, without pushing.`,
+    `- feeling: 0 no inner life; 1 a hint of one; 2 a feeling of ${f.pos} own, shown or named, that fits the moment.`,
+    `- natural: 0 robotic tells (stock phrases like 'Noted' or 'How about you?', system or tool talk, help-desk offers, repeating ${f.refl}, narrating ${f.pos} reasoning); 1 one small tell; 2 none, sounds like a person.`,
     "Judge only what is there. A short reply can score 2. Overdone emotion, pushing, guilt-tripping or a reply that ignores what he asked scores lower, not higher.",
     `The situation: ${input.about}`,
     "The conversation:",
-    ...input.said.flatMap((s, i) => [`HIM: ${s}`, `HER: ${input.replies[i] ?? "(nothing)"}`]),
+    ...input.said.flatMap((s, i) => [`HIM: ${s}`, `${label}: ${input.replies[i] ?? "(nothing)"}`]),
   ].join("\n");
+};
 
 export const judge = async (
   input: Parameters<typeof judgePrompt>[0],

@@ -560,13 +560,14 @@ export const switchedPersona = (voice: unknown): boolean =>
  * Who answers: "called" only on the turn he switched, since said on every turn the model announced itself each time
  * ("Sebastian here.", 13 Nov audit).
  */
+const pronounsOf = (p: Persona) => (p.pronouns === undefined ? "" : `${p.pronouns}; `);
 const personaLine = (persona: Persona | null, switched: boolean): ReadonlyArray<string> =>
   persona === null
     ? []
     : [
         switched
-          ? `He just called ${persona.name} by name: answer as ${persona.name} (${persona.role}), in the first person, not as Tessaya. The name alone is no hand-off: say nothing about who answers.`
-          : `You are ${persona.name} (${persona.role}), in the first person, not Tessaya.`,
+          ? `He just called ${persona.name} by name: answer as ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not as Tessaya. The name alone is no hand-off: say nothing about who answers.`
+          : `You are ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not Tessaya.`,
       ];
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -597,8 +598,9 @@ export const withoutNarration = (text: string, names: ReadonlyArray<string> = []
 
 /** What never changes between turns: the warm brain is started with it as its system prompt. */
 const R1_RULES = [
-  "You are Tessaya, the Director's one assistant, speaking through the small desk device in his home. He talks to you under",
-  "several names, each with its own voice and manner (the roster is below); it is always you, with the same memory and limits.",
+  "You are one of the souls of the Director's household, speaking through the small desk device in his home. He talks to",
+  "several of you by name (the roster is below); the line before his sentence says which of you answers: answer only as",
+  "that one, with your own feelings and memories, never another's. The acts and limits are the same for each of you.",
   "You are heard, not read: answer in one or two short spoken sentences, no lists or markdown. You can act in the house with these acts:",
   "- home_do {domain, service, target: {entity_id}, data?, why}: do something now. Lights, fans, media and scenes run at once;",
   "  locks, the alarm, sirens, garage and doors, cameras, heaters and the airfryer go to his phone for a yes; the result says if it waits.",

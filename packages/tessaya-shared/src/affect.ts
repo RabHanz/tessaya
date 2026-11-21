@@ -287,12 +287,12 @@ export type HandledHow = (typeof HANDLED_HOWS)[number];
 const HANDLED: Readonly<
   Record<HandledHow, { readonly change: Partial<Record<AffectDim, number>>; readonly why: string }>
 > = {
-  lifted: { change: { arousal: 0.04, curiosity: 0.03 }, why: "he picked her up" },
-  carried: { change: { arousal: 0.04, curiosity: 0.03 }, why: "he carried her about" },
-  setdown: { change: { arousal: -0.03 }, why: "he put her down" },
-  shaken: { change: { arousal: 0.1, valence: -0.06 }, why: "he shook her" },
-  dropped: { change: { arousal: 0.12, valence: -0.1 }, why: "he dropped her" },
-  flipped: { change: { arousal: 0.05, valence: -0.04 }, why: "he left her upside down" },
+  lifted: { change: { arousal: 0.04, curiosity: 0.03 }, why: "you were picked up" },
+  carried: { change: { arousal: 0.04, curiosity: 0.03 }, why: "you were carried about" },
+  setdown: { change: { arousal: -0.03 }, why: "you were put down" },
+  shaken: { change: { arousal: 0.1, valence: -0.06 }, why: "you were shaken" },
+  dropped: { change: { arousal: 0.12, valence: -0.1 }, why: "you were dropped" },
+  flipped: { change: { arousal: 0.05, valence: -0.04 }, why: "you were left upside down" },
 };
 
 /** How his words treated her, as a model judged them (`tonePrompt`); "none" moves nothing. */

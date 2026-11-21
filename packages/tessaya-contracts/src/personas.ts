@@ -22,6 +22,8 @@ export const TessayaPersona = Schema.Struct({
   /** One of his saved clones (`clone voice:`), spoken where clones can be; `voice` stays its fallback. */
   cloneVoice: Schema.optionalKey(Schema.String),
   role: Schema.String,
+  /** Its own pronouns ("he/him"), as its file says. */
+  pronouns: Schema.optionalKey(Schema.String),
   lead: Schema.Boolean,
   private: Schema.optionalKey(Schema.Boolean),
   /** How far a private persona comes into his private rooms (M-080). */
@@ -53,6 +55,8 @@ export const TessayaPersonaDraft = Schema.Struct({
   cloudVoice: Schema.optionalKey(Schema.NullOr(Line(80))),
   cloneVoice: Schema.optionalKey(Schema.NullOr(Line(80))),
   role: Schema.optionalKey(Line(200)),
+  /** Its own pronouns ("he/him", "she/her", "they/them"); null takes them out. */
+  pronouns: Schema.optionalKey(Schema.NullOr(Line(26))),
   /** Personality, backstory and relationship to him: the brief its turns read. */
   about: Schema.optionalKey(Line(4_000)),
   character: Schema.optionalKey(Schema.NullOr(Line(40))),

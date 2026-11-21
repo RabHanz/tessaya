@@ -29,6 +29,7 @@ describe("persona registry changes", () => {
     const tmp = { dir };
     const id = createPersona(tmp.dir, {
       name: "Luna",
+      pronouns: "She/Her",
       role: "a film buff",
       about: "Dry, teases him about his taste.",
       traits: { sass: 0.9 },
@@ -40,6 +41,7 @@ describe("persona registry changes", () => {
     let luna = packOf(tmp.dir).personas.find((p) => p.id === "luna");
     expect(luna).toMatchObject({
       name: "Luna",
+      pronouns: "she/her",
       cloneVoice: "abc",
       traits: { sass: 0.9 },
       greetings: ["Popcorn?", "Seen anything good?"],
@@ -58,6 +60,8 @@ describe("persona registry changes", () => {
     expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.sealed).toBe("companion");
     editPersona(tmp.dir, "luna", { private: false, privateRooms: null, sealed: null });
     expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.privateRooms).toBeUndefined();
+    editPersona(tmp.dir, "luna", { pronouns: "they/them" });
+    expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.pronouns).toBe("they/them");
     editPersona(tmp.dir, "luna", { greetings: [] });
     expect(packOf(tmp.dir).personas.find((p) => p.id === "luna")?.greetings).toBeUndefined();
 
@@ -85,6 +89,9 @@ describe("persona registry changes", () => {
     expect(draftProblem({ role: "ok\nowner: full" })).not.toBeNull();
     expect(draftProblem({ about: "---\nname: X" })).not.toBeNull();
     expect(draftProblem({ traits: { warmth: 2 } })).not.toBeNull();
+    expect(draftProblem({ pronouns: "he/him\nprivate: yes" })).not.toBeNull();
+    expect(draftProblem({ pronouns: "she or he" })).not.toBeNull();
+    expect(draftProblem({ pronouns: "he/him" })).toBeNull();
     expect(draftProblem({ name: "Luna Rae", about: "Line one.\nLine two." })).toBeNull();
   });
 });

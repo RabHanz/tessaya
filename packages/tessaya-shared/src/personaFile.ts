@@ -69,6 +69,8 @@ export interface PersonaDraft {
   readonly cloneVoice?: string | null;
   /** One line of who it is and how it sounds. */
   readonly role?: string;
+  /** Its own pronouns ("he/him"); null takes them out. */
+  readonly pronouns?: string | null;
   /** Its personality, backstory and relationship to him: the brief its turns read. */
   readonly about?: string;
   readonly character?: string | null;
@@ -90,6 +92,7 @@ export interface PersonaDraft {
 
 export const ABOUT_MAX = 4_000;
 const LINE = /^[^\r\n]{0,200}$/;
+const PRONOUNS = /^[a-z]{1,8}(?:\/[a-z]{1,8}){0,2}$/i;
 const PERSONA_NAME = /^[\p{L}][\p{L}\p{N} '.-]{0,39}$/u;
 
 /** Why the draft cannot be written, or null: one line per field keeps the file's front-matter intact. */
@@ -103,6 +106,8 @@ export const draftProblem = (draft: PersonaDraft): string | null => {
     return "The description is too long.";
   if (draft.about !== undefined && /^\s*---/.test(draft.about))
     return "The description cannot start with ---.";
+  if (draft.pronouns != null && !PRONOUNS.test(draft.pronouns.trim()))
+    return 'Pronouns are written like "he/him", "she/her" or "they/them".';
   if ((draft.greetings?.length ?? 0) > 8) return "At most eight greetings.";
   for (const g of draft.greetings ?? [])
     if (!/^[^\r\n]{1,400}$/.test(g.trim()))
@@ -139,6 +144,10 @@ export const withDraft = (text: string, draft: PersonaDraft): string => {
       draft.cloneVoice === undefined ? undefined : draft.cloneVoice?.trim().toLowerCase() || null,
     ],
     ["role", draft.role?.trim()],
+    [
+      "pronouns",
+      draft.pronouns === undefined ? undefined : draft.pronouns?.trim().toLowerCase() || null,
+    ],
     ["character", draft.character === undefined ? undefined : draft.character?.trim() || null],
     ["eyes", draft.eyes === undefined ? undefined : draft.eyes?.trim() || null],
     [

@@ -47,6 +47,10 @@ import { casePasses, failureOf, type RoomSample } from "./grade.ts";
 import { answerOf, retried } from "../shared/retry.ts";
 import { judge, meanScores } from "./judge.ts";
 
+/** The soul that answers the case (the persona he calls, else none: the lead), for the judge's words. */
+const soulOf = (c: RoomCase) =>
+  c.persona === undefined ? undefined : DEFAULT_OS_PACK.personas.find((p) => p.id === c.persona);
+
 const { values } = NodeUtil.parseArgs({
   options: {
     out: { type: "string" },
@@ -912,7 +916,12 @@ for (const c of cases) {
             s.replies.length === 0
               ? null
               : judge(
-                  { about: c.judge!, said: c.said, replies: s.replies },
+                  {
+                    about: c.judge!,
+                    said: c.said,
+                    replies: s.replies,
+                    ...(soulOf(c) === undefined ? {} : { soul: soulOf(c)! }),
+                  },
                   { model: values["judge-model"]!, claude: values.claude! },
                 ),
           ),
