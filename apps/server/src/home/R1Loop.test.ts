@@ -11,6 +11,8 @@ import type { R1Device } from "./HomeAssistantService.ts";
 import {
   clearStalePorts,
   claimChange,
+  HANDBACK_HOLD_MS,
+  heldServing,
   elect,
   listenInodes,
   loopPlan,
@@ -330,4 +332,22 @@ it("records whichever loop serves the Tessel on this hub, its own or another (a 
   // The service restarted under a new id: the new one takes the room.
   expect(claimChange(["tessaya-room-9"], ["tessaya-room-12"])).toBe("room.loop.takeover");
   expect(claimChange(["tessaya-room-9"], [])).toBe("room.loop.handback");
+});
+
+it("a loop that reconnects within the hold is still serving, so the record tells no handback and takeover", () => {
+  const loop = ["tessaya-room-1636370"];
+  // 21 Nov 06:48:11: its hub stalled, it reconnected four seconds later
+  const gone = heldServing({ claimed: loop, serving: [], goneSince: null, now: 1_000 });
+  expect(gone).toEqual({ serving: loop, goneSince: 1_000 });
+  const back = heldServing({ claimed: loop, serving: loop, goneSince: gone.goneSince, now: 5_000 });
+  expect(back).toEqual({ serving: loop, goneSince: null });
+  expect(claimChange(loop, back.serving)).toBeNull();
+  // Gone past the hold: that is a real handback.
+  const still = heldServing({
+    claimed: loop,
+    serving: [],
+    goneSince: 1_000,
+    now: 1_000 + HANDBACK_HOLD_MS,
+  });
+  expect(claimChange(loop, still.serving)).toBe("room.loop.handback");
 });

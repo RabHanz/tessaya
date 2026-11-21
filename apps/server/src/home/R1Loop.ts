@@ -117,6 +117,25 @@ export const servingLoops = (input: {
       : [];
 
 /** The room.loop record a change of serving loops makes: a new loop takes the room, none hands it back. Pure. */
+/** A serving loop gone from the hub this briefly (a reconnect after its hub stalled) still serves: no handback is told. */
+export const HANDBACK_HOLD_MS = 60_000;
+
+/**
+ * The loops serving now, as the record should see them: a loop that dropped off the hub keeps serving for
+ * HANDBACK_HOLD_MS, so a reconnect is not a handback and a takeover (21 Nov: 48 pairs in a day from hub stalls). Pure.
+ */
+export const heldServing = (input: {
+  readonly claimed: ReadonlyArray<string>;
+  readonly serving: ReadonlyArray<string>;
+  readonly goneSince: number | null;
+  readonly now: number;
+}): { readonly serving: ReadonlyArray<string>; readonly goneSince: number | null } => {
+  if (input.serving.length > 0 || input.claimed.length === 0)
+    return { serving: input.serving, goneSince: null };
+  const goneSince = input.goneSince ?? input.now;
+  return { serving: input.now - goneSince < HANDBACK_HOLD_MS ? input.claimed : [], goneSince };
+};
+
 export const claimChange = (
   before: ReadonlyArray<string>,
   after: ReadonlyArray<string>,
@@ -390,6 +409,8 @@ export const layer = Layer.effect(
     let lastHereAt = 0;
     let answering = false;
     let claimed: ReadonlyArray<string> = [];
+    /** When the loop that serves the room was last heard gone, while that may still be a reconnect. */
+    let servingGoneSince: number | null = null;
     let standby = false;
     let onHub = false;
     let heardLoop = false;
@@ -474,7 +495,14 @@ export const layer = Layer.effect(
       // Another loop on this hub, or the Tessels on another server's hub: either way her voice runs elsewhere.
       elsewhere = others.length > 0 || (!answering && here.length === 0);
       // The room is claimed only by a loop that is up and hearing a Tessel here, ours or another; the record says which.
-      const serving = servingLoops({ claims: vote.claims, ours, others, here: here.length });
+      const held = heldServing({
+        claimed,
+        serving: servingLoops({ claims: vote.claims, ours, others, here: here.length }),
+        goneSince: servingGoneSince,
+        now,
+      });
+      servingGoneSince = held.goneSince;
+      const serving = held.serving;
       const change = claimChange(claimed, serving);
       if (change !== null) {
         claimed = serving;
