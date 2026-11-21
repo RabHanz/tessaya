@@ -60,6 +60,7 @@ import {
   type RecognitionSession,
   type StepUp,
 } from "../recognition.ts";
+import { isFreshRequest } from "@t3tools/tessaya-shared/followUp";
 import { addressedInRoom, beganOverHer, echoVerdict, type Playback } from "../turnRules.ts";
 import {
   askedFor,
@@ -1007,6 +1008,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let invited = false;
     /** S2, a wake or her name: his first turn after it is for her, however long he takes to start (00:20, 13 Nov). */
     let firstUntil = 0;
+    /** Woken on the name model alone (M-144): until a turn reads as a fresh request to her, or is his, none is hers. */
+    let tentative = false;
     /** When its mic last sent anything (or it opened): a session with nothing for a while is one the R1 has left. */
     let lastUpAt = deps.now();
     /** Mic samples the uplink never delivered (gaps in its frame numbers), and the count when this turn began. */
@@ -1843,13 +1846,21 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     };
 
     /** Said to her: she was named, or it began inside the window and is more than a stray "yeah" she did not ask for. */
-    const addressed = (words: string, called: string | null, startedAt: number) =>
-      addressedInRoom(words, called !== null, startedAt, {
+    const addressed = (words: string, called: string | null, startedAt: number) => {
+      if (tentative && called === null && !hisSession() && !isFreshRequest(words)) {
+        deps.log(
+          `[${id}] woken on her name's score alone, and this was not a request to her; not answered (${heldBack(words)})`,
+        );
+        return false;
+      }
+      tentative = false;
+      return addressedInRoom(words, called !== null, startedAt, {
         firstUntil,
         openUntil,
         invited,
         hisAlone: hisSession() && otherVoice.until < startedAt - config.followMs,
       });
+    };
 
     /** When the turn being heard began: the window is about when he started, not when recognition finished. */
     let turnStartedAt = 0;
@@ -3449,6 +3460,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         recastTo = personaId;
         if (reply === null) wearCast();
       },
+      tentative: () => void (tentative = true),
       call: (name: string, level = Number.NEGATIVE_INFINITY) => {
         namedWake = true;
         if (Number.isFinite(level)) hisLevel = level;
@@ -3677,6 +3689,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       readonly clip?: Int16Array;
       /** What he said after her name in the same breath, still being recognised, with the segment it is in. */
       readonly request?: { readonly pcm: Int16Array; readonly words: Promise<WakeRequest | null> };
+      readonly tentative?: boolean;
     }
   >();
   /** `wear` false: the caller names the persona first, then wears it, so the lead's eyes never flash between. */
@@ -3996,6 +4009,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             .catch(() => null);
         }
         if (called !== undefined) {
+          if (called.tentative === true) s.tentative();
           s.call(called.word, called.level);
           if (called.clip !== undefined && request === undefined) s.named(called.clip);
           void called.heard?.then(
@@ -4132,6 +4146,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       request?: Promise<WakeRequest | null>,
       /** Voice ID on `clip`, begun when the segment ended (the wake stream's); else begun here. */
       voice?: Promise<SpeakerIdentity | undefined>,
+      /** Woken on the name model's score alone: the first turn must be a fresh request to her (M-144). */
+      tentative = false,
     ) => {
       if (sessions.has(id)) return;
       if (deps.now() < (quietUntil.get(id) ?? 0)) {
@@ -4153,6 +4169,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
             ? {}
             : { request: { pcm: clip, words: request } }),
           ...(heard === undefined ? {} : { heard }),
+          tentative,
         });
         deps.publish(topic(id, "cmd/voice/start"), "{}");
       };

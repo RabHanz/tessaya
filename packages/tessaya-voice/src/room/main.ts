@@ -1256,7 +1256,7 @@ const main = async () => {
                 return turn.finish().then((text) => (each?.(text), text));
               }),
             ),
-          onWake: (id, word, level, score, clip, request, voice) => {
+          onWake: (id, word, level, score, clip, request, voice, late) => {
             healthReport.accept(id);
             room?.woken(
               id,
@@ -1266,6 +1266,7 @@ const main = async () => {
               clip,
               request,
               voice,
+              late,
             );
           },
           voice: (pcm) => speakerOf(pcm),
