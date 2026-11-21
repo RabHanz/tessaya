@@ -509,6 +509,40 @@ it.effect("asks past the old cap of twenty wait in the queue instead of being re
   }).pipe(Effect.provide(inboxLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))),
 );
 
+/** A desktop's account of itself, as small as decodes. */
+const DESK_STATE = {
+  settings: {
+    output: "spoken",
+    captureApproval: "ask",
+    actWithoutAsking: false,
+    socialOn: true,
+    browserChrome: false,
+    remoteHands: false,
+    assistantModel: "auto",
+    assistantEffort: "auto",
+  },
+  voice: {
+    enabled: true,
+    voice: "anna",
+    recognition: "local",
+    cloudProvider: "none",
+    cloudModel: null,
+    languages: ["en"],
+    wakeWords: ["tessaya"],
+    dictationCleanup: "off",
+  },
+  personas: [],
+  skills: [],
+  diagnostics: {
+    appVersion: "0.1.188",
+    brain: "sonnet",
+    voiceEngine: "pocket",
+    recognition: "local",
+    environments: [],
+    errors: [],
+  },
+};
+
 it.effect(
   "one brain: a worker's cards and presence go to her brain, and a card waits on the worker only while the brain is away",
   () =>
@@ -590,7 +624,32 @@ it.effect(
         group,
       );
 
+      // The desktop calls its own machine's server (18 Nov): its take and its state reach her brain, where the room's
+      // laptop asks wait and "is the desktop connected?" is read.
+      const onWorker = (op: string, args: Record<string, unknown> = {}) =>
+        phoneCall({ op, args } as never).pipe(Effect.provideContext(workerContext));
+      assert.isTrue((yield* atBrain.post({ id: "laptop-ask", text: "what's on my screen?" })).ok);
+      const taken = (yield* onWorker("take", { waitMs: 30_000 })).value as { id?: string } | null;
+      assert.strictEqual(taken?.id, "laptop-ask");
+      yield* onWorker("answer", {
+        id: "laptop-ask",
+        spoken: "A spreadsheet.",
+        card: "A spreadsheet.",
+      });
+      assert.strictEqual((yield* atBrain.get("laptop-ask"))?.status, "answered");
+      yield* onWorker("state", { state: DESK_STATE });
+      const seen = (yield* phoneCall({ op: "stateGet", args: {} } as never).pipe(
+        Effect.provideContext(brain),
+      )).value as { connected: boolean };
+      assert.isTrue(seen.connected);
+
       brainUp = false;
+      // Her brain away (B-044): the desktop is answered here, so it still takes what waits on this server.
+      assert.isTrue((yield* worker.post({ id: "kept-here", text: "hello" })).ok);
+      assert.strictEqual(
+        ((yield* onWorker("take")).value as { id?: string } | null)?.id,
+        "kept-here",
+      );
       yield* worker.mirror(card("asked-while-away"));
       assert.deepStrictEqual(
         (yield* worker.pending).map((c) => c.id),
