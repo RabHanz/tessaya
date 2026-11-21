@@ -47,6 +47,10 @@ import { casePasses, failureOf, type RoomSample } from "./grade.ts";
 import { answerOf, retried } from "../shared/retry.ts";
 import { judge, meanScores } from "./judge.ts";
 
+/** The soul that answers the case (the persona he calls, else none: the lead), for the judge's words. */
+const soulOf = (c: RoomCase) =>
+  c.persona === undefined ? undefined : DEFAULT_OS_PACK.personas.find((p) => p.id === c.persona);
+
 const { values } = NodeUtil.parseArgs({
   options: {
     out: { type: "string" },
@@ -717,12 +721,13 @@ const context = (
   now: clockLine(c.at ?? ROOM_NOW, "Asia/Karachi", c.clock ?? "12h"),
   // He names the persona on the first sentence; the loop keeps it and says `switched` on that turn only.
   persona: c.persona === undefined ? null : calledPersona(DEFAULT_OS_PACK, { persona: c.persona }),
+  lead: DEFAULT_OS_PACK.personas.find((p) => p.lead),
   switched: c.persona !== undefined && turn === 0,
   // As r1Gather's hisNames: the personas, the body, then his dictionary's names.
   names: [...DEFAULT_OS_PACK.personas.map((p) => p.name), "Tumble", ...(c.names ?? [])],
   roster: rosterLine(
     [...DEFAULT_OS_PACK.personas, ...(c.team ?? []).map((p) => ({ ...p, lead: false }))],
-    c.persona ?? "",
+    c.persona ?? DEFAULT_OS_PACK.personas.find((p) => p.lead)?.id ?? "",
   ),
   // As OperatingSystemPack.ownerLineFor gives it: the called persona's, else the lead's.
   ...(c.owner === true
@@ -920,7 +925,12 @@ for (const c of cases) {
             s.replies.length === 0
               ? null
               : judge(
-                  { about: c.judge!, said: c.said, replies: s.replies },
+                  {
+                    about: c.judge!,
+                    said: c.said,
+                    replies: s.replies,
+                    ...(soulOf(c) === undefined ? {} : { soul: soulOf(c)! }),
+                  },
                   { model: values["judge-model"]!, claude: values.claude! },
                 ),
           ),

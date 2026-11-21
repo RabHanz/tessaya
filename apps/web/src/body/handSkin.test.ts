@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vite-plus/test";
 
-import { handSkinsOf, skinBetween } from "./handSkin.ts";
+import { bodySkinOf, deepestIn, handSkinsOf, skinBetween } from "./handSkin.ts";
 
 /**
  * Two "hands" facing each other across x: each a 2 cm thick box (palm part) with a finger box beyond it, skinned to
@@ -76,4 +76,58 @@ describe("hand skin", () => {
     const h = hands(0.0002);
     expect(skinBetween(h.left, h.right).area).toBeGreaterThan(0);
   });
+});
+
+describe("a hand against the rest of her", () => {
+  /** A 10 cm "head" box at the origin and a 2 cm "hand" box whose near face is `gap` from the head's right side. */
+  const scene = (gap: number) => {
+    const root = new THREE.Group();
+    const head = new THREE.Bone();
+    head.name = "head";
+    const hand = new THREE.Bone();
+    hand.name = "rightHand";
+    root.add(head, hand);
+    const box = (size: number, x: number, bone: number) => {
+      const g = new THREE.BoxGeometry(size, size, size, 3, 3, 3).toNonIndexed();
+      g.translate(x, 0, 0);
+      const n = g.getAttribute("position").count;
+      g.setAttribute(
+        "skinIndex",
+        new THREE.Uint16BufferAttribute(
+          new Array(n * 4).fill(0).map((_, i) => (i % 4 === 0 ? bone : 0)),
+          4,
+        ),
+      );
+      g.setAttribute(
+        "skinWeight",
+        new THREE.Float32BufferAttribute(
+          new Array(n * 4).fill(0).map((_, i) => (i % 4 === 0 ? 1 : 0)),
+          4,
+        ),
+      );
+      g.setIndex(Array.from({ length: n }, (_, i) => i));
+      const m = new THREE.SkinnedMesh(g, new THREE.MeshBasicMaterial());
+      m.bind(new THREE.Skeleton([head, hand]));
+      root.add(m);
+    };
+    box(0.1, 0, 0);
+    box(0.02, 0.05 + gap + 0.01, 1);
+    root.updateMatrixWorld(true);
+    const parts = bodySkinOf(root, (b) =>
+      b.name === "head" ? "head" : b.name === "rightHand" ? "hand" : null,
+    );
+    return { head: parts.get("head")!, hand: parts.get("hand")! };
+  };
+
+  it.each([0.01, -0.005, -0.015])(
+    "reads how deep a hand is in her (%s m from her surface)",
+    (gap) => {
+      const { head, hand } = scene(gap);
+      const out = new THREE.Vector3();
+      const depth = deepestIn(hand, head, out);
+      expect(depth).toBeCloseTo(Math.max(0, -gap), 3);
+      // and the way out is out of her, toward the hand
+      if (depth > 0) expect(out.x).toBeGreaterThan(0.9);
+    },
+  );
 });

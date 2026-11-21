@@ -33,6 +33,7 @@ import {
   type Spot,
 } from "./pillPlacement.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
+import { onEveryDesktop } from "../companion/everyDesktop.ts";
 import { loadDocument } from "./loadDocument.ts";
 import { onAudioServiceGone } from "./voicePlayer.ts";
 import { applyLookScript, lookClasses, type Glass, type Motion } from "../home/look.ts";
@@ -881,7 +882,7 @@ export const createVoicePill = (input: {
     // Out of screenshots and recordings by design, which also hides it from OS-level capture tools; a test
     // run (BATON_TEST_DIR) lets them see it.
     protectFromCapture(created);
-    created.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    void onEveryDesktop(created);
     window = created;
     // Dragged, placed again or moved to another screen: the frost follows once the window stops.
     created.on("move", settleFrost);

@@ -87,6 +87,8 @@ export interface TurnPersona {
   readonly id: string;
   readonly name: string;
   readonly role: string;
+  /** Its own pronouns (`Persona.pronouns`), "he/him". */
+  readonly pronouns?: string;
   /** Who it is as a person (`Persona.self`). */
   readonly self?: string;
   /** The lead's name when this persona is a specialist: only the lead hands out work. */
@@ -136,7 +138,7 @@ export const sinceLine = (
 
 const personaLine = (p: TurnPersona) =>
   [
-    `you answer this turn as ${p.name}${p.role === "" ? "." : `: ${p.role}`}`,
+    `you answer this turn as ${p.name}${p.pronouns === undefined ? "" : ` (said of you: ${p.pronouns.split("/")[0]})`}${p.role === "" ? "." : `: ${p.role}`}`,
     p.self ?? "",
     p.roster === undefined || p.roster === ""
       ? ""

@@ -28,6 +28,7 @@ import type { Persona } from "@t3tools/tessaya-shared/osPack";
 
 import { protectFromCapture } from "../captureProtection.ts";
 import { markCompanionWindow } from "../lastAppWindow.ts";
+import { onEveryDesktop } from "./everyDesktop.ts";
 import {
   FOOT_SHARE,
   bodyRect,
@@ -623,10 +624,14 @@ export const createDesktopMascot = (input: {
   const bodyBox = (target: Electron.BrowserWindow) => bodyWithin(target.getBounds(), size());
   const snoozed = () => (saved.snoozeUntil ?? 0) > Date.now();
   const hidden = () => (saved.hiddenUntil ?? 0) > Date.now();
-  /** While his private layer shows its own form of her, the others on the desk step away, and come back after. */
+  /**
+   * Morphed out (M-122): another form stands for her (her private or full body), or the others step away from one. Her
+   * window goes once the morph has played, so nothing invisible is left taking his clicks, wandering or sounding.
+   */
+  let worn = false;
   let aside = false;
-  let asideTimer: ReturnType<typeof setTimeout> | undefined;
-  const wanted = () => options.on && !hidden() && !fullscreen && !aside;
+  let morphTimer: ReturnType<typeof setTimeout> | undefined;
+  const wanted = () => options.on && !hidden() && !fullscreen && !worn && !aside;
   const others = () => [...(input.crowd ?? [])].filter((m) => m !== self);
   /** The heads of the others at rest: edges she can land and stand on. */
   const heads = () => others().flatMap((m) => m.head() ?? []);
@@ -770,7 +775,17 @@ export const createDesktopMascot = (input: {
     morph("in");
   };
   /** Her shapeshift on the desk (M-122): sent at once, so it starts on the frame it is asked for. */
-  const morph = (dir: "out" | "in") => call(`window.mascot.morph(${JSON.stringify(dir)})`);
+  const morph = (dir: "out" | "in", why: "worn" | "aside" = "worn") => {
+    const out = dir === "out";
+    const was = wanted();
+    if (why === "worn") worn = out;
+    else aside = out;
+    // back, her window shows first and she springs in on it
+    if (was !== wanted()) clearTimeout(morphTimer);
+    if (was && !wanted()) morphTimer = setTimeout(apply, MORPH_MS);
+    else if (!was && wanted()) apply();
+    call(`window.mascot.morph(${JSON.stringify(worn || aside ? "out" : "in")})`);
+  };
 
   const call = (code: string) => {
     const target = win;
@@ -963,6 +978,7 @@ export const createDesktopMascot = (input: {
     created.setIgnoreMouseEvents(true, { forward: true });
     takingMouse = false;
     markCompanionWindow(created);
+    void onEveryDesktop(created);
     protectFromCapture(created, () => {
       takingMouse = false;
       created.setIgnoreMouseEvents(true, { forward: true });
@@ -1132,7 +1148,9 @@ export const createDesktopMascot = (input: {
       { type: "separator" },
       { label: "Desktop companion settings…", click: () => input.openSettings() },
     ];
-    Electron.Menu.buildFromTemplate(items).popup(win === null ? {} : { window: win });
+    // on her full body's window when it stands: her cartoon's is hidden then
+    const at = body ?? win;
+    Electron.Menu.buildFromTemplate(items).popup(at === null ? {} : { window: at });
   };
 
   /** The screen she was on when he picked her up, so a carry to another one is a moment. */
@@ -1683,19 +1701,7 @@ export const createDesktopMascot = (input: {
       return true;
     },
     morph: (dir) => morph(dir),
-    aside: (on) => {
-      if (on === aside) return;
-      aside = on;
-      clearTimeout(asideTimer);
-      // she fades away where she stands, then her window goes; back, it shows and she springs in
-      if (on) {
-        morph("out");
-        asideTimer = setTimeout(apply, MORPH_MS);
-      } else {
-        apply();
-        morph("in");
-      }
-    },
+    aside: (on) => morph(on ? "out" : "in", "aside"),
     layerBody: (page) => {
       if (page === null) return dropVeil();
       if (veil !== null && !veil.isDestroyed()) return;
@@ -1718,6 +1724,7 @@ export const createDesktopMascot = (input: {
       shown.setContentProtection(true);
       shown.setAlwaysOnTop(true, "floating");
       markCompanionWindow(shown);
+      void onEveryDesktop(shown);
       shown.on("closed", () => {
         if (veil === shown) dropVeil();
       });
@@ -1763,7 +1770,7 @@ export const createDesktopMascot = (input: {
       clearInterval(wander);
       clearInterval(awayCheck);
       if (wakeTimer !== null) clearTimeout(wakeTimer);
-      clearTimeout(asideTimer);
+      clearTimeout(morphTimer);
       Electron.ipcMain.removeListener("baton-mascot:press", onPress);
       Electron.ipcMain.removeListener("baton-mascot:release", onRelease);
       Electron.ipcMain.removeListener("baton-mascot:menu", onMenu);

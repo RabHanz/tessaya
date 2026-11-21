@@ -38,6 +38,8 @@ interface Form {
   readonly id: string | null;
   readonly name: string;
   readonly role: string;
+  /** "he/him", "she/her", "they/them". */
+  readonly pronouns: string;
   readonly about: string;
   readonly traits: Readonly<Partial<Record<Dial, number>>>;
   readonly model: string;
@@ -52,6 +54,7 @@ const blank: Form = {
   id: null,
   name: "",
   role: "",
+  pronouns: "",
   about: "",
   traits: {},
   model: "",
@@ -71,6 +74,7 @@ const formOfDraft = (d: TessayaPersonaDraft): Form => ({
   ...blank,
   name: d.name ?? "",
   role: d.role ?? "",
+  pronouns: d.pronouns ?? "",
   about: d.about ?? "",
   traits: d.traits ?? {},
   greetings: (d.greetings ?? []).join("\n"),
@@ -156,6 +160,7 @@ export function PersonaRoster(props: {
     const draft: TessayaPersonaDraft = {
       name: f.name,
       role: f.role,
+      ...(f.pronouns.trim() === "" ? {} : { pronouns: f.pronouns.trim() }),
       ...(f.about.trim() === "" ? {} : { about: f.about }),
       traits: f.traits,
       model: f.model.trim() === "" ? null : f.model.trim(),
@@ -204,6 +209,7 @@ export function PersonaRoster(props: {
       key={p.id}
       title={inCard ? "Role and brain" : nameLine(p)}
       description={[
+        p.pronouns === undefined ? null : `${p.pronouns}.`,
         p.role,
         p.brain === undefined ? null : `Thinks on ${p.brain.model}, ${p.brain.effort} effort.`,
         p.cloneVoice === undefined
@@ -222,6 +228,7 @@ export function PersonaRoster(props: {
                 id: p.id,
                 name: p.name,
                 role: p.role,
+                pronouns: p.pronouns ?? "",
                 about: "",
                 traits: p.traits ?? {},
                 model: p.brain?.model ?? "",
@@ -512,6 +519,13 @@ function PersonaForm(props: {
         maxLength={200}
         value={form.role}
         onChange={(e) => onChange({ ...form, role: e.target.value })}
+      />
+      <Input
+        aria-label="Pronouns"
+        placeholder="Pronouns, like he/him, she/her or they/them"
+        maxLength={26}
+        value={form.pronouns}
+        onChange={(e) => onChange({ ...form, pronouns: e.target.value })}
       />
       <Textarea
         aria-label="Personality, backstory and how they relate to you"
