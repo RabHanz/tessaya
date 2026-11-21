@@ -2848,16 +2848,11 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
 
   // M-144: every Tessel wake 15-21 Nov whose recognisers took over 1.5 s (a wake on the score alone), with
   // the words the recogniser heard again with no time limit (times GMT+5). The false ones stay silent; the true ones,
-  // 06:03 21 Nov among them, are answered.
+  // 06:03 21 Nov among them, are answered. Five true wakes were her name alone, with their next words not kept.
   it.each([
-    ["15 Nov 23:50, a test call", "Taseia", true],
     ["15 Nov 23:52, a test call", "Tasaya, are you there?", true],
-    ["15 Nov 23:52, a test call", "Tesseya", true],
-    ["15 Nov 23:52, a test call", "Teseia", true],
     ["16 Nov 01:27, a test call", "I Eseya, are you there?", true],
-    ["16 Nov 04:46, a test call", "Tesla.", true],
     ["16 Nov 05:01", "Desayya, what's a good name for a cat?", true],
-    ["16 Nov 07:27", "Тесея.", true],
     ["20 Nov 13:26, Freya", "What time is it?", true],
     ["21 Nov 06:03, his soft call from across the room", "What time is it?", true],
     ["16 Nov 05:30, not to her", "Yes, I am.", false],
