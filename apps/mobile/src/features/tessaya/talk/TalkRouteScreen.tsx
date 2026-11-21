@@ -44,6 +44,7 @@ import { useAtomCommand } from "../../../state/use-atom-command";
 import { useVoiceInputController } from "../../voice-input/useVoiceInputController";
 import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
 import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
+import { setHerPhase } from "../island/herPhase";
 import {
   addFrames,
   batteryDrain,
@@ -366,19 +367,31 @@ export function TalkRouteScreen() {
     if (clip === null || clip === undefined) return;
     const file = new File(Paths.cache, "tessaya-talk.wav");
     file.write((clip as { base64: string }).base64, { encoding: "base64" });
-    createAudioPlayer(file.uri).play();
+    const player = createAudioPlayer(file.uri);
+    setHerPhase("speaking");
+    const done = player.addListener("playbackStatusUpdate", (status) => {
+      if (!status.didJustFinish) return;
+      done.remove();
+      player.release();
+      setHerPhase("idle");
+    });
+    player.play();
   };
 
   const ask = async (text: string) => {
     if (environmentId === null || text.trim() === "") return;
     said("them", text);
     setPending("…");
+    setHerPhase("thinking");
     const id = `phone-${Date.now().toString(36)}`;
     const opened = await phoneCall({
       environmentId,
       input: { op: "ask", args: { id, text, origin: "phone talk" } },
     });
-    if (opened._tag !== "Success") return setPending("She couldn't be reached. Try again.");
+    if (opened._tag !== "Success") {
+      setHerPhase("idle");
+      return setPending("She couldn't be reached. Try again.");
+    }
     for (let i = 0; i < POLLS; i++) {
       await new Promise((r) => setTimeout(r, POLL_MS));
       const got = await phoneCall({ environmentId, input: { op: "askGet", args: { id } } });
@@ -394,6 +407,7 @@ export function TalkRouteScreen() {
         return void speak(outcome.line);
       }
     }
+    setHerPhase("idle");
   };
 
   const voice = useVoiceInputController({
@@ -405,6 +419,11 @@ export function TalkRouteScreen() {
     onChangeSelection: () => undefined,
   });
   const listening = voice.state.phase === "recording";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the island (outside this screen) that she is listening
+  useEffect(() => {
+    if (listening) setHerPhase("listening");
+    else setHerPhase(pending === null ? "idle" : "thinking");
+  }, [listening, pending]);
 
   return (
     <View className="flex-1 bg-background" style={{ paddingTop: insets.top }}>

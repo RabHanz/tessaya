@@ -49,6 +49,13 @@ export interface AgentActivityProps {
   readonly activeCount: number;
   readonly updatedAt: string;
   readonly activities: ReadonlyArray<AgentActivityRowProps>;
+  /** Tessaya's island (M-126) when no agent rows are on the card: her most urgent item, the rest, a chip and a path. */
+  readonly island?: {
+    readonly line: string;
+    readonly more: string;
+    readonly chip: string;
+    readonly href: string;
+  };
 }
 
 // Widget serialization excludes module helpers; use only imported view/modifier factories.
@@ -150,9 +157,11 @@ function AgentActivity(
 
   // Widget taps target the containing app, so its production scheme is safe in every build.
   const deepLinkRow = attentionRow ?? row0;
+  const island = row0 === undefined ? props.island : undefined;
+  const linkPath = deepLinkRow?.deepLink ?? island?.href;
   const deepLink =
-    deepLinkRow && deepLinkRow.deepLink.startsWith("/") && !deepLinkRow.deepLink.startsWith("//")
-      ? `t3code://${deepLinkRow.deepLink.slice(1)}`
+    linkPath !== undefined && linkPath.startsWith("/") && !linkPath.startsWith("//")
+      ? `t3code://${linkPath.slice(1)}`
       : null;
   const linkModifiers = deepLink ? [widgetURL(deepLink)] : [];
 
@@ -232,6 +241,78 @@ function AgentActivity(
       <Image assetName="T3Mark" modifiers={[resizable()]} />
     </HStack>
   );
+
+  const renderIsland = (line: string, more: string) => (
+    <VStack alignment="leading" spacing={3}>
+      <Text
+        modifiers={[
+          font({ weight: "semibold", size: 14 }),
+          foregroundStyle(primaryForeground),
+          lineLimit(1),
+        ]}
+      >
+        {line}
+      </Text>
+      {more ? (
+        <Text modifiers={[font({ size: 12 }), foregroundStyle(secondaryForeground), lineLimit(2)]}>
+          {more}
+        </Text>
+      ) : null}
+    </VStack>
+  );
+
+  if (island)
+    return {
+      banner: (
+        <VStack
+          alignment="leading"
+          spacing={6}
+          modifiers={[
+            padding({ all: 14 }),
+            activityBackgroundTint(environment.isLiquidGlassAvailable ? "clear" : null),
+            ...linkModifiers,
+          ]}
+        >
+          <Text
+            modifiers={[
+              font({ weight: "semibold", size: 12 }),
+              foregroundStyle(secondaryForeground),
+            ]}
+          >
+            Tessaya
+          </Text>
+          {renderIsland(island.line, island.more)}
+        </VStack>
+      ),
+      bannerSmall: (
+        <VStack alignment="leading" spacing={4} modifiers={[padding({ all: 10 })]}>
+          {renderIsland(island.line, "")}
+        </VStack>
+      ),
+      compactLeading: renderLogo(14, primaryForeground, linkModifiers),
+      compactTrailing: (
+        <Text
+          modifiers={[
+            font({ weight: "semibold", size: 11 }),
+            foregroundStyle(primaryForeground),
+            lineLimit(1),
+            minimumScaleFactor(0.5),
+            ...linkModifiers,
+          ]}
+        >
+          {island.chip}
+        </Text>
+      ),
+      minimal: renderLogo(11, primaryForeground, linkModifiers),
+      expandedLeading: renderLogo(15, primaryForeground),
+      expandedCenter: null,
+      expandedTrailing: null,
+      expandedBottom: (
+        <VStack modifiers={[padding({ vertical: 2, horizontal: 8 }), ...linkModifiers]}>
+          {renderIsland(island.line, island.more)}
+        </VStack>
+      ),
+    };
 
   return {
     banner: (

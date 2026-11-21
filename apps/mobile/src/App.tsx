@@ -111,6 +111,7 @@ import {
   TessayaLaunchSting,
   markTessayaLaunchReady,
 } from "./features/tessaya/launch/TessayaLaunchSting";
+import { IslandHost } from "./features/tessaya/island/IslandHost";
 import { TessayaWelcome } from "./features/tessaya/welcome/TessayaWelcome";
 
 import "../global.css";
@@ -313,6 +314,7 @@ function AppContent() {
               </NativeLayoutMetricsProvider>
             </GlobalVoiceInputControl>
             <OverlayPortalHost />
+            <IslandHost open={linkToAppPath} />
             <TessayaWelcome />
           </SafeAreaProvider>
         </KeyboardProvider>
