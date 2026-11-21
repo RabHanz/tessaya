@@ -17,6 +17,8 @@ export interface LayerAnswer {
   readonly persona: string | null;
   readonly page: string | null;
   readonly presence: "alone" | "others" | "unknown";
+  /** The soul this phone's body wears (Settings → Cast), by pack id: its private moment is that soul's. */
+  readonly soul?: string | null;
 }
 
 // shared by More's row and the private screen: null until asked, false on a server with no layer
@@ -68,7 +70,7 @@ export function usePrivateLayer() {
   const activate: StepUpCall = async (pin) => {
     const page = known === false ? null : known?.page;
     if (page == null) return { ok: false, refused: false, line: "Your private layer isn't here." };
-    const soul = phoneSoul();
+    const soul = known === false ? null : (known?.soul ?? null);
     const w = await send(`${page}/window`, {
       surface: "phone",
       ...(soul === null ? {} : { soul }),
@@ -88,8 +90,3 @@ export function usePrivateLayer() {
   };
   return { base, token, report, activate };
 }
-
-let current: string | null = null;
-/** The soul this phone is with now (Talk's persona, a pack id): its private moment is that soul's, as on the desk. */
-export const phoneSoulIs = (id: string | null) => void (current = id);
-export const phoneSoul = () => current;

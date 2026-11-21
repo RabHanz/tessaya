@@ -14,7 +14,6 @@ import { AppText as Text } from "../../../components/ui/AppText";
 import { UnlockSheet } from "../lock/UnlockSheet";
 import { privateSoundAllowed } from "./privateOutput.logic";
 import {
-  phoneSoul,
   setPrivateShown,
   usePrivateLayer,
   usePrivateShown,
@@ -123,7 +122,7 @@ function PrivateView(props: { readonly layer: ReturnType<typeof usePrivateLayer>
           ref={view}
           source={{
             uri: new URL(
-              `${page}/chat?surface=phone${phoneSoul() === null ? "" : `&soul=${encodeURIComponent(phoneSoul()!)}`}`,
+              `${page}/chat?surface=phone${answer?.soul == null ? "" : `&soul=${encodeURIComponent(answer.soul)}`}`,
               layer.base,
             ).href,
             headers: { authorization: `Bearer ${layer.token}` },

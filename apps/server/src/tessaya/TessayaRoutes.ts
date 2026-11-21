@@ -65,6 +65,7 @@ import * as BrainHost from "./BrainHost.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
 import { type PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import * as PersonaLayers from "./PersonaLayers.ts";
+import { TessayaCast } from "./TessayaCast.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import * as FleetQuery from "./FleetQuery.ts";
 import { AskSource, TessayaPhoneInbox, answerCard } from "./TessayaPhoneInbox.ts";
@@ -1125,6 +1126,16 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
             registry.value.all[0] === undefined
               ? null
               : `/tessaya/layer/${registry.value.all[0].id}`,
+          // the soul this phone's body wears (Settings → Cast): its private moment is that soul's, as on the desk
+          soul: yield* Effect.promise(() =>
+            run(
+              Effect.serviceOption(TessayaCast).pipe(
+                Effect.flatMap((cast) =>
+                  Option.isNone(cast) ? Effect.succeed(null) : cast.value.wearing(report.vessel),
+                ),
+              ),
+            ).catch(() => null),
+          ),
           // who else is home, so the phone keeps her private voice off its loudspeaker unless he is alone
           presence: yield* Effect.promise(() =>
             run(PersonaLayers.layerPresence(report.vessel)).catch(() => "unknown" as const),
