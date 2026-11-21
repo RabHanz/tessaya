@@ -155,15 +155,39 @@ index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..d9c787d7b0667261d55c189a35b6c05a
      "proper-lockfile": "4.1.2",
      "saxes": "6.0.0",
 diff --git a/apps/server/vite.config.ts b/apps/server/vite.config.ts
-index 3291aa304d39553ab8991a9fa8956eda13b17c73..54668b3634756051f4178dddd315326ceac685c5 100644
+index 3291aa304d39553ab8991a9fa8956eda13b17c73..236cfa62162ea817bb67e7ad937963f68e204980 100644
 --- a/apps/server/vite.config.ts
 +++ b/apps/server/vite.config.ts
-@@ -128,6 +128,8 @@ export default mergeConfig(
+@@ -1,4 +1,6 @@
+ import "vite-plus/test/config";
++// @effect-diagnostics-next-line nodeBuiltinImport:off -- the build reads the commit it is cut from (git) once, at config time.
++import * as NodeChildProcess from "node:child_process";
+ // @effect-diagnostics-next-line nodeBuiltinImport:off -- tsdown needs the asset path when it reads this config.
+ import * as NodePath from "node:path";
+ import { defineConfig, mergeConfig } from "vite-plus";
+@@ -18,6 +20,14 @@ import {
+ export { shouldBundleCliDependency };
+ 
+ const repoEnv = loadRepoEnv();
++const buildCommit = (() => {
++  if (process.env["GITHUB_SHA"]) return process.env["GITHUB_SHA"];
++  try {
++    return NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
++  } catch {
++    return "";
++  }
++})();
+ const cliBuildChannel = /^[^-+]+-(?:nightly|preview)\./.test(packageJson.version)
+   ? "nightly"
+   : "latest";
+@@ -128,6 +138,10 @@ export default mergeConfig(
          js: "#!/usr/bin/env node\n",
        },
        define: {
 +        // Internal builds only (TESSAYA_INTERNAL=1): loads owner-only persona layers (src/tessaya/PersonaLayers.ts).
 +        __TESSAYA_INTERNAL__: JSON.stringify(repoEnv.TESSAYA_INTERNAL?.trim() === "1"),
++        // The commit this build is cut from, for the fleet check (M-146): CI's, else the checkout's; empty in dev.
++        __TESSAYA_BUILD_COMMIT__: JSON.stringify(buildCommit),
          __T3CODE_BUILD_CHANNEL__: JSON.stringify(cliBuildChannel),
          __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
          __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),
