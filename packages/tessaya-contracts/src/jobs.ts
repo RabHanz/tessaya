@@ -308,6 +308,8 @@ export const TessayaJobPlaceInput = Schema.Struct({
   persona: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
   /** The pack template it follows (`plan-a-trip`); its brief joins the worker's frame. */
   template: Schema.optionalKey(TrimmedNonEmptyString.check(Schema.isMaxLength(60))),
+  /** He said to go ahead in the same breath: no planning pause, it works at once. */
+  go: Schema.optionalKey(Schema.Boolean),
 });
 export type TessayaJobPlaceInput = typeof TessayaJobPlaceInput.Type;
 

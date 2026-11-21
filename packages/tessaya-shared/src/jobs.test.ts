@@ -13,6 +13,7 @@ import {
   jobLimits,
   jobMoment,
   jobNotice,
+  jobResult,
   limitReached,
   outboundDecision,
   permissionsSummary,
@@ -256,6 +257,40 @@ describe("a job's changes for the Record", () => {
       null,
       null,
     ]);
+  });
+  it("says what a finished job did, from its worker's own report, files and checks", () => {
+    const at = "2026-11-21T00:00:00.000Z";
+    const finding = (text: string, source: "events" | "model") => ({
+      text,
+      observedAt: at,
+      source,
+    });
+    const synopsis = {
+      recentFindings: [
+        finding("Ran the tests", "events"),
+        finding("Fixed the expiry check so sessions last a day.", "model"),
+        finding("Pushed the branch", "events"),
+      ],
+      changedFiles: ["src/a.ts", "src/b.ts"],
+      validation: [{ label: "tests", outcome: "passed" as const, observedAt: at }],
+    };
+    expect(jobResult(synopsis)).toBe(
+      "Fixed the expiry check so sessions last a day; 2 files changed; checks passed",
+    );
+    expect(jobNotice("Fix login", "done", jobResult(synopsis))).toBe(
+      "Fix login is done: Fixed the expiry check so sessions last a day; 2 files changed; checks passed.",
+    );
+    expect(
+      jobResult({
+        recentFindings: [finding("Ran the tests", "events")],
+        changedFiles: [],
+        validation: [{ label: "tests", outcome: "failed", observedAt: at }],
+      }),
+    ).toBe("Ran the tests; 1 check failed");
+    // Nothing reported: the plain line, never an empty colon.
+    expect(jobResult(null)).toBeNull();
+    expect(jobResult({ recentFindings: [], changedFiles: [], validation: [] })).toBeNull();
+    expect(jobNotice("Fix login", "done", null)).toBe("Fix login is done.");
   });
   it("names the same moments for her own words, with the limit as an exact fact", () => {
     expect(

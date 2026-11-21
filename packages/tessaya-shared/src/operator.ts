@@ -417,12 +417,24 @@ const judgeTessayaTool = (name: string, call: ToolCall, context: JudgeContext): 
     case "job_refine":
     case "job_retry":
     case "job_agree":
-    case "rule_create":
+    case "rule_create": {
+      // A new project with the job is a new folder on this computer: one yes that names both, as project_add asks.
+      const made = name === "job_start" ? call.input["new_project"] : undefined;
+      if (typeof made === "object" && made !== null) {
+        const title = String((made as Record<string, unknown>)["title"] ?? "a new project");
+        return {
+          verdict: "ask",
+          why: `It would add the project ${title} to this computer and start the job ${String(call.input["title"] ?? "")} in it.`,
+        };
+      }
+      // Starting at once (go) is his agreement too, so after a read it asks as job_agree does.
+      const agrees = name === "job_agree" || name === "rule_create" || call.input["go"] === true;
       // A job's words are his own or they came from something it read; only the second asks.
       // Starting work is his agreement, not the model's: after a read it always asks.
-      return outgoing || ((name === "job_agree" || name === "rule_create") && context.tainted)
+      return outgoing || (agrees && context.tainted)
         ? { verdict: "ask", why: "It follows something it read." }
         : { verdict: "allow" };
+    }
     case "text_transform":
     case "text_command":
     case "text_undo":

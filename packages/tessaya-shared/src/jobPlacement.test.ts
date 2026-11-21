@@ -1,7 +1,7 @@
 import type { ServerProvider } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { tessayaProjectKey, handoffTarget, placeJob } from "./jobPlacement.ts";
+import { tessayaProjectKey, handoffTarget, placeJob, projectsNamed } from "./jobPlacement.ts";
 
 const provider = (instanceId: string, driver: string, extra: Record<string, unknown> = {}) =>
   ({
@@ -29,6 +29,38 @@ const projects = [
 ];
 
 describe("placing a job from his words", () => {
+  it("finds the project he means by a spoken name: words, run-together letters, one slip; two fits ask", () => {
+    const mine = [
+      ...projects,
+      { id: "p3", title: "The Margin", workspaceRoot: "/w/the-margin", repositoryIdentity: null },
+      { id: "p4", title: "Ventureos", workspaceRoot: "/w/VentureOS", repositoryIdentity: null },
+      { id: "p5", title: "Cart", workspaceRoot: "/w/cart", repositoryIdentity: null },
+      { id: "p6", title: "Card", workspaceRoot: "/w/card", repositoryIdentity: null },
+    ];
+    const ids = (said: string) => projectsNamed(said, mine).map((p) => p.id);
+    const rows: Array<[string, Array<string>]> = [
+      ["margin", ["p3"]],
+      ["the margin project", ["p3"]],
+      ["The-Margin.", ["p3"]],
+      ["venture os", ["p4"]],
+      ["venturos", ["p4"]],
+      ["shop site", ["p1"]],
+      ["shopsite", ["p1"]],
+      ["api server", ["p2"]],
+      // Too short for a slip, and an exact name beats a near one.
+      ["cart", ["p5"]],
+      ["car", []],
+      ["carts", ["p5"]],
+      ["carx", ["p5", "p6"]],
+      ["weather", []],
+    ];
+    for (const [said, want] of rows) expect(ids(said), said).toEqual(want);
+    expect(placeJob("carx", mine, [provider("claudeAgent", "claudeAgent")])).toEqual({
+      ok: false,
+      why: '"carx" could be cart or card. Ask him which.',
+    });
+  });
+
   it("finds the project by its name or title, and the first ready Claude on its default model", () => {
     const providers = [
       provider("claudeAgent_off", "claudeAgent", { status: "error" }),

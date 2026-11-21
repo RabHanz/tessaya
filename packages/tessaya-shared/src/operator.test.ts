@@ -158,6 +158,17 @@ describe("Baton's own tools (D143)", () => {
     expect(judgeToolCall(start, read).verdict).toBe("ask");
     expect(judgeToolCall(start, { ...read, textIsHis: true }).verdict).toBe("allow");
     expect(judgeToolCall(agree, { ...read, textIsHis: true }).verdict).toBe("ask");
+    // "and just do it" starts at once, which is his agreement: after a read it asks like job_agree.
+    const go = { ...start, input: { ...start.input, go: true } };
+    expect(judgeToolCall(go, off).verdict).toBe("allow");
+    expect(judgeToolCall(go, { ...read, textIsHis: true }).verdict).toBe("ask");
+    // A new project with it is one yes naming both.
+    expect(
+      judgeToolCall({ ...start, input: { ...start.input, new_project: { title: "Garden" } } }, off),
+    ).toEqual({
+      verdict: "ask",
+      why: "It would add the project Garden to this computer and start the job Site in it.",
+    });
     expect(judgeToolCall({ tool: "mcp__baton__job_stop", input: { id: "j1" } }, off).verdict).toBe(
       "allow",
     );

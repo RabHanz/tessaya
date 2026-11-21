@@ -43,6 +43,7 @@ import {
   jobChanges,
   jobMoment,
   jobNotice,
+  jobResult,
   leadHandoffNote,
   leadTarget,
   outboundDecision,
@@ -394,6 +395,7 @@ export const placeJob = Effect.fn("BatonJobFlow.place")(function* (input: Tessay
     },
     {
       ...(input.origin === undefined ? {} : { origin: input.origin }),
+      ...(input.go === true ? { agreed: true } : {}),
       ...(persona === undefined ? {} : { role: persona.id }),
       ...(template === undefined ? {} : { template }),
     },
@@ -1288,7 +1290,12 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
     if ((ended === "job.done" || ended === "job.failed") && Option.isSome(mood))
       yield* mood.value.note(persona, { kind: "job", ok: ended === "job.done" });
     const origin = origins.get(job.workSessionId);
-    const line = jobNotice(job.title, outcome);
+    // A finished job says what it did, from what its worker reported, not only that it ended.
+    const result =
+      ended === "job.done" || ended === "job.failed"
+        ? jobResult(entries.find((e) => e.workSessionId === job.workSessionId)?.synopsis ?? null)
+        : null;
+    const line = jobNotice(job.title, outcome, result);
     if (origin !== undefined && line !== null) {
       // In the voice of the persona the job is for; sayOnOrigin keeps the quiet hours and the hourly budget.
       const moment = jobMoment(outcome);
@@ -1298,7 +1305,11 @@ export const recordJobChanges = Effect.fn("BatonJobFlow.recordJobChanges")(funct
           : yield* expressOr(moment.event, {
               persona,
               plain: line,
-              facts: { title: job.title, ...moment.facts },
+              facts: {
+                title: job.title,
+                ...moment.facts,
+                ...(result === null ? {} : { result }),
+              },
             });
       yield* sayOnOrigin(origin, own?.text ?? line, said);
     }
