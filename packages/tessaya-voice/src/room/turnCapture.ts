@@ -17,8 +17,8 @@ export interface TurnCaptureMeta {
   /** Said over her playback: her voice is in it too (for Voice ID's mixed-audio training). */
   readonly overHer: boolean;
   /**
-   * False: a turn Voice ID could not verify, in a session where another turn verified him (20 Nov: his far and soft
-   * turns were the ones missing). A guest may be in his session, so these never shape his voice; kept 14 days.
+   * False: a turn Voice ID could not verify, in a session another turn verified as his or one called by name with one
+   * voice throughout (his far and soft turns). Someone else may be in it, so these never shape his voice; 14 days.
    */
   readonly verified?: boolean;
 }
