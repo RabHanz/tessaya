@@ -510,4 +510,24 @@ describe("listen mode on the desktop", () => {
     expect(dropped.effects.some((e) => e.kind === "command")).toBe(false);
     expect(dropped.state.mode).toBe("conversation");
   });
+
+  it("takes his own silence and end words, the preferences every vessel reads", () => {
+    const timings = { ...DEFAULT_TIMINGS, listen: { waitMs: 90_000, ends: ["done thinking"] } };
+    let state = initialVoiceState();
+    const effects = [];
+    for (const event of [
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "Just listen.", at: 100 },
+      { type: "utterance", text: "A pond.", at: 1_000 },
+      { type: "tick", at: 60_000 },
+      { type: "utterance", text: "Done thinking.", at: 70_000 },
+    ] as const) {
+      const step = reduceVoice(state, event, timings);
+      state = step.state;
+      effects.push(...step.effects);
+    }
+    expect(effects.filter((e) => e.kind === "command")).toEqual([
+      expect.objectContaining({ text: expect.stringMatching(/A pond\.$/) }),
+    ]);
+  });
 });

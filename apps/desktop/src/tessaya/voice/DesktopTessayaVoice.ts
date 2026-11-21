@@ -12,6 +12,7 @@ import { screenOfBox } from "@t3tools/tessaya-shared/screenCompanion";
 import { effectFor, VESSELS, type PropState } from "@t3tools/tessaya-shared/expressionMap";
 import type { Nonverbal } from "@t3tools/tessaya-shared/interjections";
 import { OWNER_MEMBER_ID, wakeTrainingOn } from "@t3tools/tessaya-shared/household";
+import { listenPhrases, listenWaitMs } from "@t3tools/tessaya-shared/listenMode";
 import { createFaceCheck, faceEnginePath } from "../face/faceCheck.ts";
 import {
   FACE_MEMBER,
@@ -1838,6 +1839,17 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       wakeTraining = wakeTrainingOn(OWNER_MEMBER_ID, r.preferences?.["wakeTraining"]);
     })
     .catch(() => undefined);
+  /** His listen-mode silence and end words: the member preferences every vessel reads, fresh as listening starts. */
+  const refreshListen = () =>
+    void input
+      .household?.("preferences", { id: OWNER_MEMBER_ID })
+      .then((r) =>
+        core?.setListenSettings({
+          waitMs: listenWaitMs(r.preferences?.["listenWait"]),
+          ends: listenPhrases(r.preferences?.["listenEnds"]),
+        }),
+      )
+      .catch(() => undefined);
   speakerIdentity.onTurn(() => {
     const member = speakerIdentity.session()?.member;
     if (member == null || memberNames.has(member) || input.household === undefined) return;
@@ -5620,6 +5632,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       return { type: "window_closed" };
     }
     if (next === "listen_mode") {
+      refreshListen();
       pill.on({ type: "window_open" });
       return { type: "target", name: "listening: say over to you" };
     }

@@ -174,6 +174,8 @@ export interface TessayaVoiceCore extends VoiceCore {
   readonly setDirectSession: (enabled: boolean) => void;
   /** Start or stop dictation as "Tessaya, dictate" does; resolves with whether it is now dictating. */
   readonly setDictation: (on: boolean) => Promise<boolean>;
+  /** His listen-mode silence and end words, from his preferences. */
+  readonly setListenSettings: (listen: NonNullable<VoiceTimings["listen"]>) => void;
   /** Listen mode on or off (her brain's listen_start, a button): true while it is on. */
   readonly setListening: (on: boolean) => Promise<boolean>;
   /**
@@ -335,6 +337,10 @@ export const createVoiceCore = (input: {
   };
 }): TessayaVoiceCore => {
   const timings = input.timings ?? DEFAULT_TIMINGS;
+  /** His listen-mode settings (silence, own end words), from his preferences as they change. */
+  let listenNow = timings.listen;
+  const liveTimings = (): VoiceTimings =>
+    listenNow === undefined ? timings : { ...timings, listen: listenNow };
   const seg = input.segmenter ?? DEFAULT_SEGMENTER;
   const origin = input.origin ?? Date.now();
   const wallNow = input.clock ?? Date.now;
@@ -474,7 +480,7 @@ export const createVoiceCore = (input: {
     ahead = null;
     const prepare = input.router?.prepare;
     if (prepare === undefined) return;
-    const { effects } = reduceVoice(machine, { type: "utterance", text, at: now() }, timings);
+    const { effects } = reduceVoice(machine, { type: "utterance", text, at: now() }, liveTimings());
     const [effect] = effects;
     if (effects.length !== 1 || effect?.kind !== "command") return;
     const wake = wakeOf(text);
@@ -500,7 +506,7 @@ export const createVoiceCore = (input: {
     held?.settle(false);
     flight?.abort();
     flight = null;
-    const result = reduceVoice(machine, { type: "dismiss", at: now() }, timings);
+    const result = reduceVoice(machine, { type: "dismiss", at: now() }, liveTimings());
     machine = result.state;
     for (const effect of result.effects) {
       if (effect.kind !== "cancelled") continue;
@@ -618,7 +624,7 @@ export const createVoiceCore = (input: {
 
   const dispatch = async (event: VoiceEvent) => {
     const before = machine;
-    const result = reduceVoice(machine, event, timings);
+    const result = reduceVoice(machine, event, liveTimings());
     machine = result.state;
     if (before.mode !== "dictation" && machine.mode === "dictation") dictationFrom = samples;
     show();
@@ -1678,6 +1684,9 @@ export const createVoiceCore = (input: {
     },
     setDirectSession: (enabled) =>
       enqueue(() => dispatch({ type: "set_direct_session", enabled, at: now() })),
+    setListenSettings: (listen) => {
+      listenNow = listen;
+    },
     setListening: async (on) => {
       enqueue(() => dispatch({ type: "set_listening", on, at: now() }));
       await work;
