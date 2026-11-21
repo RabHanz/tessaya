@@ -64,6 +64,8 @@ export const BrainOp = Schema.Literals([
   "consent",
   // the members' preferences (persona, voice, listen mode, and the rest): kept on her brain alone
   "preferences",
+  // a worker's own copy of a member's voice profile, joined once to the one on her brain (21 Nov)
+  "voiceMerge",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
