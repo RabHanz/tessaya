@@ -1564,6 +1564,8 @@ export interface DesktopTessayaVoice {
   readonly onDismissed: () => void;
   /** Her brain heard him close the conversation: the open window ends, and she waits for her name again. */
   readonly rest: () => void;
+  /** Listen mode, from her brain's listen_start. */
+  readonly listen: () => void;
   /** A line for the tray: a voice downloading, or why it could not. */
   readonly onNote: (message: string | null) => void;
   /** The companion on the desk wearing this persona (the lead's when none is, or none is named). */
@@ -5616,6 +5618,10 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     if (next === "sleeping" || next === "direct_session") {
       if (!collecting) dictationHold.setTarget(null);
       return { type: "window_closed" };
+    }
+    if (next === "listen_mode") {
+      pill.on({ type: "window_open" });
+      return { type: "target", name: "listening: say over to you" };
     }
     if (next !== "command_window" && next !== "conversation") return null;
     pill.on({ type: "window_open" });
@@ -10245,6 +10251,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     onReference: (pcm, rate, soundsAtMs) => core?.reference(resampleTo16k(pcm, rate), soundsAtMs),
     onDismissed: () => pill.on({ type: "dismissed" }),
     rest: () => loop?.activate("dismiss"),
+    listen: () => void core?.setListening(true),
     onNote: (message) => {
       note = message;
       render();

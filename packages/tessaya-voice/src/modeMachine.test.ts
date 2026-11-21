@@ -468,3 +468,46 @@ describe("isLoneBreath", () => {
       expect(isLoneBreath(text), text).toBe(false);
   });
 });
+
+// M-135: the desktop's listen mode runs on the same shared rules as the room's.
+describe("listen mode on the desktop", () => {
+  it("keeps every line past the conversation window and sends the whole thought once, on his end words", () => {
+    const { state, effects } = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "Just listen.", at: 100 },
+      { type: "utterance", text: "A planner for the garden.", at: 5_000 },
+      // Past any conversation window: nothing closes and nothing answers.
+      { type: "tick", at: 15_000 },
+      { type: "utterance", text: "Freya should water it. Over to you.", at: 20_000 },
+    ]);
+    expect(effects.filter((e) => e.kind === "command")).toEqual([
+      expect.objectContaining({
+        text: expect.stringMatching(
+          /only listen[\s\S]*A planner for the garden\. Freya should water it\.$/,
+        ),
+      }),
+    ]);
+    expect(
+      effects.filter((e) => e.kind === "listen").map((e) => e.kind === "listen" && e.phase),
+    ).toEqual(["started", "ack"]);
+    expect(state.mode).toBe("conversation");
+  });
+
+  it("ends on his silence, starts from her brain's listen_start, and a cancel sends nothing", () => {
+    const quiet = play([
+      { type: "wake", at: 0 },
+      { type: "set_listening", on: true, at: 10 },
+      { type: "utterance", text: "A shed by the fence.", at: 1_000 },
+      { type: "tick", at: 22_000 },
+    ]);
+    expect(quiet.effects.filter((e) => e.kind === "command")).toHaveLength(1);
+    const dropped = play([
+      { type: "wake", at: 0 },
+      { type: "utterance", text: "Let me think out loud.", at: 100 },
+      { type: "utterance", text: "An idea.", at: 1_000 },
+      { type: "utterance", text: "Never mind.", at: 2_000 },
+    ]);
+    expect(dropped.effects.some((e) => e.kind === "command")).toBe(false);
+    expect(dropped.state.mode).toBe("conversation");
+  });
+});

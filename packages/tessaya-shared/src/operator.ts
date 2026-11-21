@@ -136,6 +136,8 @@ const BATON_QUIET = new Set([
   "dictation_stop",
   // Ends only the talk: he wakes her again with her name.
   "conversation_end",
+  // Only listens while he thinks out loud: nothing is done until he says "over to you" or goes quiet.
+  "listen_start",
   // His own standing job (KIRO-1): job_create saves only on its own card's yes; a device's call only proposes one.
   "job_create",
   // His own choice of model for chat turns: local, and "back to normal" undoes it.

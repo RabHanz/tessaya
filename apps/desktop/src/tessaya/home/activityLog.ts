@@ -51,6 +51,7 @@ const OWN: Readonly<Record<string, { readonly kind: LogKind; readonly say: Say |
   dictation_start: cmd("Started dictation"),
   dictation_stop: cmd("Stopped dictation"),
   conversation_end: cmd("Ended the conversation"),
+  listen_start: cmd("Listened while you thought out loud"),
   notices_stop: cmd("Paused notices"),
   notices_resume: cmd("Turned notices back on"),
   permission_off: cmd("Turned a permission off"),

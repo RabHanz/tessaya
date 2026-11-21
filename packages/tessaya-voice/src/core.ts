@@ -174,6 +174,8 @@ export interface TessayaVoiceCore extends VoiceCore {
   readonly setDirectSession: (enabled: boolean) => void;
   /** Start or stop dictation as "Tessaya, dictate" does; resolves with whether it is now dictating. */
   readonly setDictation: (on: boolean) => Promise<boolean>;
+  /** Listen mode on or off (her brain's listen_start, a button): true while it is on. */
+  readonly setListening: (on: boolean) => Promise<boolean>;
   /**
    * Baton's voice started or stopped, wherever it came from. While it plays, and for a moment
    * after, the mic hears Baton: only a wake word gets through.
@@ -901,7 +903,11 @@ export const createVoiceCore = (input: {
         cutIn,
         // commitMs is silence after his last word, and the segmenter has already waited out part of it.
         releaseAt: lastWordAt + commitMs(waitMs(), words),
-        thinkAt: lastWordAt + thinkAheadMs(waitMs(), words),
+        // Listening, nothing is thought out ahead (M-135).
+        thinkAt:
+          machine.mode === "listen_mode"
+            ? Number.POSITIVE_INFINITY
+            : lastWordAt + thinkAheadMs(waitMs(), words),
         thought: false,
         settle: (kept) => {
           if (held === mine) held = null;
@@ -1672,6 +1678,11 @@ export const createVoiceCore = (input: {
     },
     setDirectSession: (enabled) =>
       enqueue(() => dispatch({ type: "set_direct_session", enabled, at: now() })),
+    setListening: async (on) => {
+      enqueue(() => dispatch({ type: "set_listening", on, at: now() }));
+      await work;
+      return machine.mode === "listen_mode";
+    },
     setDictation: async (on) => {
       // A dictation started over a lone wake is his: the wake must not end it.
       lone = null;

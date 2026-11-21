@@ -1065,6 +1065,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
         onFace: (name) => voice?.face(name),
         onDismissed: () => voice?.onDismissed(),
         onRest: () => voice?.rest(),
+        onListen: () => voice?.listen(),
         onOpenTab: () => voice?.openHome(),
       });
     } catch (cause) {

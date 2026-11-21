@@ -42,6 +42,10 @@ export const SAY: Readonly<Record<string, readonly [string, string]>> = {
     "We're done for now",
     "She says goodbye and stops listening until you wake her.",
   ],
+  listen_start: [
+    "Just listen, let me think out loud",
+    'She only listens until you say "over to you" or go quiet, then answers the whole thought.',
+  ],
   dictation_start: ["Start dictating", "Your words are typed into the app you are in."],
   job_create: [
     "Every morning at 8, check CI and tell me what broke",
