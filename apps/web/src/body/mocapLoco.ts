@@ -59,6 +59,9 @@ export const bakeLoco = (
   const across = local(legs[0], new THREE.Vector3()).sub(local(legs[1], new THREE.Vector3()));
   const restYaw = yawOf(across.clone().cross(new THREE.Vector3(0, 1, 0)));
   hips.position.copy(restHips);
+  // where her feet stand at rest: a capture is grounded to it (another actor's legs reach the floor differently)
+  scene.updateMatrixWorld(true);
+  const restSole = Math.min(...feet.map((x) => local(x!, new THREE.Vector3()).y));
   const mixer = new THREE.AnimationMixer(scene);
   const clip = createVRMAnimationClip(anim, target);
   mixer.clipAction(clip).play();
@@ -129,6 +132,7 @@ export const bakeLoco = (
       bones[b as PoseBone] = [flip ? -e.x : e.x, e.y, flip ? -e.z : e.z] as unknown as Euler;
     }
     const h = r.hips.clone().sub(root.p).applyQuaternion(undo);
+    h.y += restSole - floor;
     // the root's move in her frame at the clip's start
     const d = root.p
       .clone()

@@ -768,7 +768,14 @@ export function mountBody(
     /** Her standing idle (VRMA), where the bundled one is not served (a harness). */
     readonly idleUrl?: string;
     /** Her walk and turns (VRMA), where the bundled ones are not served (a harness). */
-    readonly gaitUrls?: { readonly walk: string; readonly left: string; readonly right: string };
+    readonly gaitUrls?: {
+      readonly walk: string;
+      readonly left: string;
+      readonly right: string;
+      /** A captured first step from standing and a last one back to standing, where a host has them. */
+      readonly start?: string;
+      readonly stop?: string;
+    };
     /** Each frame of a walk, how far she went and which way, so the host carries her (the desk moves her window). */
     readonly onWalk?: (step: {
       readonly metres: number;
@@ -843,8 +850,13 @@ export function mountBody(
     }
   };
   // her walk and turns: motion capture too (assets/CREDITS.md), baked after the idle so loading stays one bake at a time
-  let gaits: { readonly walk: LocoClip; readonly left: LocoClip; readonly right: LocoClip } | null =
-    null;
+  let gaits: {
+    readonly walk: LocoClip;
+    readonly left: LocoClip;
+    readonly right: LocoClip;
+    readonly start: LocoClip | null;
+    readonly stop: LocoClip | null;
+  } | null = null;
   const bakeGaits = async (target: VRM, flip: boolean) => {
     const one = async (url: string, loop: boolean) => {
       const got = await loader.loadAsync(url).catch(() => null);
@@ -857,7 +869,9 @@ export function mountBody(
     const walk = await one(options.gaitUrls?.walk ?? WALK_URL, true);
     const left = await one(options.gaitUrls?.left ?? TURN_LEFT_URL, false);
     const right = await one(options.gaitUrls?.right ?? TURN_RIGHT_URL, false);
-    if (vrm === target && walk && left && right) gaits = { walk, left, right };
+    const start = options.gaitUrls?.start ? await one(options.gaitUrls.start, true) : null;
+    const stop = options.gaitUrls?.stop ? await one(options.gaitUrls.stop, true) : null;
+    if (vrm === target && walk && left && right) gaits = { walk, left, right, start, stop };
   };
 
   let vrm: VRM | null = null;
@@ -1613,6 +1627,16 @@ export function mountBody(
       last: number;
       /** The captured walk's place in its loop (frames). */
       phase: number;
+      /** A captured first or last step playing instead of the loop (its frame), with the loop's frame it left. */
+      edge: {
+        readonly c: LocoClip;
+        f: number;
+        readonly stop: boolean;
+        readonly at: number;
+        readonly scale: number;
+      } | null;
+      /** The first step's last pose, while the stride fades in over it. */
+      joined: { readonly at: ReturnType<typeof locoFrame>; readonly start: number } | null;
     } | null;
     /** A captured turn: which, how much of its heading is used, and where she stood and faced as it began. */
     clip: {
@@ -1832,6 +1856,24 @@ export function mountBody(
     return [a[0] + (b[0] - a[0]) * t + laps * end[0], a[1] + (b[1] - a[1]) * t + laps * end[1]];
   };
   /** A captured clip's frame `f` (fractional), each bone between its two nearest frames. */
+  /** A captured step's root at frame `f` (no wrap): where it has carried her, x and z. */
+  const edgeRoot = (c: LocoClip, f: number): readonly [number, number] => {
+    const { a, b, t } = locoFrame(c, f, false);
+    return [a.root[0] + (b.root[0] - a.root[0]) * t, a.root[1] + (b.root[1] - a.root[1]) * t];
+  };
+  /** How far a captured step still carries her from frame `i` to its end, along its path. */
+  const edgeTravel = (c: LocoClip, i: number) => {
+    let d = 0;
+    for (let j = i; j + 1 < c.frames.length; j++) {
+      const a = c.frames[j]!.root;
+      const b = c.frames[j + 1]!.root;
+      d += Math.hypot(b[0] - a[0], b[1] - a[1]);
+    }
+    return d;
+  };
+  /** The first frame of a captured first step where she has begun to move (a capture starts with her standing). */
+  const firstMove = (c: LocoClip) =>
+    Math.max(0, c.frames.findIndex((f) => Math.hypot(f.root[0], f.root[1]) > 0.01) - 1);
   const locoFrame = (c: LocoClip, f: number, wrapAround: boolean) => {
     // a loop's last frame is its first again
     const n = wrapAround ? c.frames.length - 1 : c.frames.length;
@@ -1950,7 +1992,38 @@ export function mountBody(
       const ramp = Math.max(0.05, Math.min(1, t / 0.6, Math.max(over ? 0.5 : 0.25, left / 0.6)));
       slowStep = ramp < 0.99;
       let step: number;
-      if (gaits !== null) {
+      if (gaits !== null && w.edge !== null) {
+        // a captured first or last step plays as it was performed, carrying her as its own root went
+        const e = w.edge;
+        const last = e.c.frames.length - 1;
+        const [x0, z0] = edgeRoot(e.c, e.f);
+        e.f = Math.min(last, e.f + dt * e.c.fps);
+        const [x1, z1] = edgeRoot(e.c, e.f);
+        // straight on the way she faces, and a last step stretched or shortened to end where she means to stop
+        // (distance matching: the actor's path curved a little and was not her distance)
+        step = Math.hypot(x1 - x0, z1 - z0) * e.scale;
+        walkDX = 0;
+        walkDZ = step;
+        const at = locoFrame(e.c, e.f, false);
+        // a last step takes over from the stride she is in; a first one from her standing
+        if (e.stop) showLoco(out, { ...base, ...out }, locoFrame(gaits.walk, w.phase, true), 1);
+        showLoco(out, { ...base, ...out }, at, Math.min(1, (now - e.at) / LOCO_BLEND_MS));
+        lastStride = at;
+        if (e.f >= last) {
+          if (e.stop) w.travelled = w.metres;
+          else {
+            // the stride takes over at a frame with the same feet down as where the first step ended
+            w.phase = Math.max(
+              0,
+              gaits.walk.frames.findIndex(
+                (f) => f.plant[0] === at.a.plant[0] && f.plant[1] === at.a.plant[1],
+              ),
+            );
+            w.edge = null;
+            w.joined = { at, start: now };
+          }
+        }
+      } else if (gaits !== null) {
         // the captured walk, played as fast as she is asked to go: her feet stay where they land
         const c = gaits.walk;
         const clipSpeed = c.ahead / ((c.frames.length - 1) / c.fps);
@@ -1966,10 +2039,32 @@ export function mountBody(
         step = Math.hypot(dx, dz);
         walkDX = dx;
         walkDZ = dz;
-        const blend = Math.min(1, (t * 1000) / LOCO_BLEND_MS);
         const at = locoFrame(c, w.phase, true);
-        showLoco(out, { ...base, ...out }, at, blend);
+        if (w.joined !== null) {
+          // the stride fades in over the first step's last pose
+          showLoco(out, { ...base, ...out }, w.joined.at, 1);
+          const k = (now - w.joined.start) / LOCO_BLEND_MS;
+          if (k >= 1) w.joined = null;
+          showLoco(out, { ...base, ...out }, at, Math.min(1, k));
+        } else showLoco(out, { ...base, ...out }, at, Math.min(1, (t * 1000) / LOCO_BLEND_MS));
         lastStride = at;
+        // a captured last step, where there is one, starts when what is left is as far as it goes, on matching feet
+        // a captured last step, where there is one, joins at its frame with the same feet down and as far left to go
+        const stop = gaits.stop;
+        const left = w.metres - w.travelled;
+        if (stop !== null && left <= edgeTravel(stop, 0)) {
+          let k = 0;
+          let miss = Infinity;
+          for (let i = 0; i < stop.frames.length; i++) {
+            const f = stop.frames[i]!;
+            if (f.plant[0] !== at.a.plant[0] || f.plant[1] !== at.a.plant[1]) continue;
+            const d = Math.abs(edgeTravel(stop, i) - left);
+            if (d < miss) [miss, k] = [d, i];
+          }
+          // shortcut: stretched by at most a quarter either way; a longer or shorter stop needs another capture
+          const scale = Math.max(0.75, Math.min(1.25, left / Math.max(0.05, edgeTravel(stop, k))));
+          w.edge = { c: stop, f: k, stop: true, at: now, scale };
+        }
       } else {
         const frame = gaitAt(stepRig(), w.gait, t, base, ramp);
         Object.assign(out, frame.bones);
@@ -2004,7 +2099,11 @@ export function mountBody(
       if (feetDown !== undefined) stridePlant = feetDown;
       // the step that lands nearest the goal ends it: within half a step short of it, or the first one past it
       const near = gaits !== null && w.metres - w.travelled < gaits.walk.ahead / 4;
-      if ((over || near) && down) {
+      const captured = gaits?.stop != null;
+      const done = captured
+        ? w.edge?.stop === true && w.travelled >= w.metres
+        : (over || near) && down;
+      if (done || (captured && w.edge === null && over && down)) {
         loco.walk = null;
         if (lastStride !== null) walkOut = { at: lastStride, start: now };
         options.onWalk?.({
@@ -3708,6 +3807,12 @@ export function mountBody(
             travelled: 0,
             last: now + (loco.clip !== null ? loco.ms - LOCO_BLEND_MS : loco.ms * 0.6),
             phase: gaits?.walk.start ?? 0,
+            // a captured first step from standing, where there is one, from the frame she starts to move
+            edge:
+              gaits?.start != null
+                ? { c: gaits.start, f: firstMove(gaits.start), stop: false, at: now, scale: 1 }
+                : null,
+            joined: null,
           };
         return invalidate();
       }
