@@ -37,6 +37,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
+import { VoiceIdSection } from "../tessaya/voice-id/VoiceIdSection";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import {
@@ -385,6 +386,7 @@ export function SettingsVoiceRouteScreen() {
             ? " Android may still use a different microphone if the preferred one can’t be routed."
             : null}
         </Text>
+        <VoiceIdSection />
       </ScrollView>
     </SettingsScreen>
   );

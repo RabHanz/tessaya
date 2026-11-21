@@ -135,7 +135,7 @@ import {
   type ToolOutcome,
 } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
-import { DEVICE_API_ROOTS, noteDeviceKeyUse, publishToDevice } from "./R1Hub.ts";
+import { DEVICE_API_ROOTS, noteDeviceKeyUse, publishToDevice, R1Hub } from "./R1Hub.ts";
 import {
   HomeAssistantService,
   r1ById,
@@ -2012,6 +2012,16 @@ export const sseReply = (id: string, model: string, text: string, created: numbe
 /** How long the acts path waits for her answer before it opens the stream (silent until the words come). */
 const HOLD_AFTER = "5 seconds";
 
+/**
+ * Whether a turn's voice print is the device's own: it came on that device's key, or from a phone vessel bound to this
+ * hub now (his signed-in phone, so it counts as a Tessel's does). Pure.
+ */
+export const signedFrom = (
+  key: string | null,
+  device: string | undefined,
+  vessels: ReadonlyArray<string>,
+): boolean => device !== undefined && (key === device || vessels.includes(device));
+
 const error = (status: number, message: string) =>
   HttpServerResponse.jsonUnsafe({ error: { message, type: "invalid_request_error" } }, { status });
 
@@ -2077,6 +2087,12 @@ export const routes = HttpRouter.use((router) =>
       if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       // Each R1's room loop calls with that R1's key.
       const keyOf = r1ByKey(all, bearer);
+      const vessels = Option.match(Context.getOption(context, R1Hub), {
+        onNone: () => [],
+        onSome: (h) => h.vessels(),
+      });
+      const signedBy = (key: string | null, device: string | undefined) =>
+        signedFrom(key, device, vessels);
       if (keyOf === null) return error(401, "Wrong device key.");
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodeChat(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
@@ -2114,7 +2130,7 @@ export const routes = HttpRouter.use((router) =>
               history: turns.slice(0, -1),
               voice: body.value.tessaya,
               ...(body.value.device === undefined ? {} : { device: body.value.device }),
-              signed: keyOf.deviceId === body.value.device,
+              signed: signedBy(keyOf.deviceId, body.value.device),
             },
             brain.value,
             tools,
@@ -2140,7 +2156,7 @@ export const routes = HttpRouter.use((router) =>
         history: turns.slice(0, -1),
         voice: body.value.tessaya,
         ...(body.value.device === undefined ? {} : { device: body.value.device }),
-        signed: keyOf.deviceId === body.value.device,
+        signed: signedBy(keyOf.deviceId, body.value.device),
       };
       const turn = yield* r1Turn(heardBy).pipe(
         Effect.catchCause(() => sorry(heardBy, "Sorry, something went wrong on my side.")),

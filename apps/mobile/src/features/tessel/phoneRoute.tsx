@@ -1,8 +1,7 @@
 /**
- * The phone route: this phone plays her replies on whatever it is playing through (AirPods, headphones) and lends its
- * mic, so a Tessel's own radio stays on Wi-Fi. One Tessel at a time, chosen in Tessels; the server's output
- * and input orders decide when the phone is used (apps/server/src/home/PhoneLink.ts). Its headset's button starts a
- * talk on that Tessel, and her buzz on the word plays on this phone's own motor.
+ * The phone route: this phone plays her replies on its headphones (AirPods too) and lends its mic, near a Tessel chosen
+ * in Tessels (apps/server/src/home/PhoneLink.ts); its headset's button starts a talk, her buzz plays on its motor.
+ * Away from that Tessel, or with "Reach her on this phone", it is a vessel of its own on her environment's hub.
  */
 import { resolveDeviceHubAccess } from "@t3tools/client-runtime/state/deviceHubAccess";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -13,13 +12,15 @@ import { Atom } from "effect/reactivity";
 import * as Device from "expo-device";
 import { File, Paths } from "expo-file-system";
 import * as Network from "expo-network";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useAtomValue } from "@effect/atom-react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { Haptics } from "../../../modules/t3-haptics";
 import { PhoneAudio, type PhoneAudioRoute } from "../../../modules/t3-phone-audio";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { useEnvironmentQuery } from "../../state/query";
 import { environmentSession } from "../../state/session";
+import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
 
 export interface PhoneRouteChoice {
   readonly environmentId: EnvironmentId;
@@ -94,14 +95,50 @@ const parse = (text: string): { t?: string; on?: boolean; r?: HapticRendering } 
 
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
-/** Holds the link while a Tessel is chosen; mounted once at the app root. */
+/** Whether the phone's link to her is open now, for Talk to show; false on builds without the native module. */
+let linked = false;
+const linkListeners = new Set<() => void>();
+const setLinked = (next: boolean) => {
+  if (next === linked) return;
+  linked = next;
+  for (const l of linkListeners) l();
+};
+export const usePhoneVesselReady = () =>
+  useSyncExternalStore(
+    (l) => (linkListeners.add(l), () => void linkListeners.delete(l)),
+    () => linked,
+  );
+
+/** The choice's `device` for no Tessel: the server makes the phone a vessel of its own. */
+export const PHONE_VESSEL_DEVICE = "phone";
+
+/**
+ * "Reach her on this phone": the phone holds her route as its own vessel, with no Tessel chosen. It follows her one
+ * environment (failing over with it), so the saved environment is only where it was turned on.
+ */
+export const setPhoneVessel = (environmentId: EnvironmentId | null) =>
+  setPhoneRoute(environmentId === null ? null : { environmentId, deviceId: PHONE_VESSEL_DEVICE });
+
+/** Holds the link while a Tessel or this phone itself is chosen; mounted once at the app root. */
 export function PhoneRouteHost() {
   const chosen = usePhoneRoute();
-  return chosen === null || PhoneAudio === null ? null : <PhoneRouteLink choice={chosen} />;
+  const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
+  if (PhoneAudio === null || chosen === null) return null;
+  // Opt-in: an audio session takes the headset's button from his music, so it is held only when he asked.
+  const c =
+    chosen.deviceId !== PHONE_VESSEL_DEVICE
+      ? chosen
+      : environmentId === null
+        ? null
+        : { environmentId, deviceId: PHONE_VESSEL_DEVICE };
+  // Keyed: another environment or Tessel is a fresh link with fresh tickets.
+  return c === null ? null : <PhoneRouteLink key={`${c.environmentId}/${c.deviceId}`} choice={c} />;
 }
 
 function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
   const [attempt, setAttempt] = useState(0);
+  /** Tries refused in a row since the link last opened. */
+  const refused = useRef(0);
   const access = useEnvironmentQuery(accessAtom(c.environmentId)(attempt)).data;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- holds a WebSocket and the phone's audio session
   useEffect(() => {
@@ -140,11 +177,14 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "talk" }));
       }),
     ];
-    ws.onopen = () =>
+    ws.onopen = () => {
+      setLinked(true);
+      refused.current = 0;
       void audio
         .start()
         .then(sendRoute)
         .catch(() => ws.close());
+    };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string") return audio.play(new Uint8Array(e.data as ArrayBuffer));
       const m = parse(e.data);
@@ -154,11 +194,15 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
       else if (m.t === "haptic" && m.r !== undefined) Haptics?.play(m.r);
     };
     // A dropped link comes back with a fresh ticket; the server routes to her speaker meanwhile.
+    // A server that cannot serve it (no room loop yet) refuses each try: waits grow to a minute.
     ws.onclose = () => {
-      retry = setTimeout(() => setAttempt((n) => n + 1), 3_000);
+      setLinked(false);
+      const wait = Math.min(60_000, 3_000 * 2 ** refused.current++);
+      retry = setTimeout(() => setAttempt((n) => n + 1), wait);
     };
     return () => {
       ws.onclose = null;
+      setLinked(false);
       if (retry !== null) clearTimeout(retry);
       for (const s of subs) s.remove();
       ws.close();

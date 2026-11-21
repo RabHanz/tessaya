@@ -484,7 +484,51 @@ export const makeHub = (
   const tapVoice = (id: string, tap: HubTap | null) =>
     void (tap === null ? taps.delete(id) : taps.set(id, tap));
 
-  return { attach, open, publish, dropDevice, connected, busHears, tapVoice, remoteOf };
+  /**
+   * A vessel with no socket of its own (the phone with no Tessel near): a device on this hub, so the room loop serves
+   * it exactly as it serves a Tessel. `deliver` gets its topics' tails; a newer bind of the same id replaces it.
+   */
+  const vessels = new Map<string, Subscriber>();
+  const vessel = (
+    id: string,
+    deliver: (tail: string, payload: Buffer) => void,
+  ): {
+    readonly publish: (tail: string, payload: string | Uint8Array) => void;
+    readonly close: () => void;
+  } => {
+    const prefix = `${ROOT}${id}/`;
+    const sub: Subscriber = {
+      filters: [`${prefix}#`],
+      deliver: (t, p) => deliver(t.slice(prefix.length), p),
+      device: id,
+    };
+    const before = vessels.get(id);
+    if (before !== undefined) subscribers.delete(before);
+    vessels.set(id, sub);
+    subscribers.add(sub);
+    return {
+      publish: (tail, payload) => route(`${prefix}${tail}`, toBuffer(payload), false, sub),
+      close: () => {
+        subscribers.delete(sub);
+        if (vessels.get(id) === sub) vessels.delete(id);
+      },
+    };
+  };
+  /** The socketless vessels bound to this hub now. */
+  const vesselIds = (): ReadonlyArray<string> => [...vessels.keys()];
+
+  return {
+    attach,
+    open,
+    publish,
+    dropDevice,
+    connected,
+    busHears,
+    tapVoice,
+    remoteOf,
+    vessel,
+    vessels: vesselIds,
+  };
 };
 
 export type Hub = ReturnType<typeof makeHub>;

@@ -7,7 +7,16 @@
 import type { EnrolCard, VoiceLearning } from "@t3tools/tessaya-contracts";
 import type { SpeakerProfile } from "@t3tools/tessaya-voice";
 
+import {
+  FORGET_LEARNING,
+  VOICE_ID_GATE_ROWS,
+  voiceLearningLines,
+  type VoiceIdGateSwitch,
+} from "@t3tools/tessaya-shared/voiceIdGate";
+
 import type { HomeControl } from "../home/tessayaHome.ts";
+
+const gateRow = (key: VoiceIdGateSwitch) => VOICE_ID_GATE_ROWS.find((r) => r.key === key)!;
 
 export interface VoiceIdSettings {
   /** Voice ID itself. Off: everyone who says the wake word is heard, as before. */
@@ -163,7 +172,7 @@ const statusOf = (
   };
 };
 
-/** One line per Tessel; learning from before his last Forget reads as none until it learns again. */
+/** One line per Tessel, worded as on the web and the phone (tessaya-shared voiceIdGate). */
 const learningRows = (
   learning: ReadonlyArray<VoiceLearning>,
   forgotAt: number | undefined,
@@ -171,27 +180,23 @@ const learningRows = (
   learning.length === 0
     ? []
     : [
-        ...learning.map((l): HomeControl => {
-          const kept = l.farAt !== null && (forgotAt === undefined || l.farAt > forgotAt);
-          return {
-            id: `vid.learning.${l.device}`,
-            section: SECTION,
-            kind: "check",
-            status: "ok",
-            label: `Voice learning on Tumble${learning.length > 1 ? ` (${l.device})` : ""}`,
-            detail:
-              kept && l.farClips > 0
-                ? `${l.farClips} far ${l.farClips === 1 ? "sample" : "samples"}, last added ${new Date(l.farAt!).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`
-                : "None yet",
-          };
-        }),
+        ...voiceLearningLines(learning, forgotAt, (at) =>
+          new Date(at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }),
+        ).map((l): HomeControl => ({
+          id: `vid.learning.${l.device}`,
+          section: SECTION,
+          kind: "check",
+          status: "ok",
+          label: l.label,
+          detail: l.detail,
+        })),
         {
           id: "vid.forgetLearning",
           section: SECTION,
-          label: "Forget recent voice learning",
-          hint: "Tumble drops what it learnt of how you sound across the room and learns again from your next turns. Your voice profile stays.",
+          label: FORGET_LEARNING.label,
+          hint: FORGET_LEARNING.hint,
           kind: "action",
-          button: "Forget",
+          button: FORGET_LEARNING.button,
         },
       ];
 
@@ -275,20 +280,20 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
   rows.push(
     toggle(
       "vid.others",
-      "Respond to other people",
-      "On: voices Tessaya does not know get read-only answers. Off: they are ignored.",
+      gateRow("respondToOthers").label,
+      gateRow("respondToOthers").hint,
       settings.respondToOthers,
     ),
     toggle(
       "vid.savedBarge",
-      "Saved people can talk over her",
-      "You can always cut in by talking. On: the people you saved can too.",
+      gateRow("savedBarge").label,
+      gateRow("savedBarge").hint,
       settings.savedBarge,
     ),
     toggle(
       "vid.savedOff",
-      "Off also silences saved people",
-      "With Respond to other people off, the people you saved are ignored too, and only you can wake her.",
+      gateRow("offSilencesSaved").label,
+      gateRow("offSilencesSaved").hint,
       settings.offSilencesSaved,
       true,
     ),
@@ -322,8 +327,8 @@ export const voiceIdControls = (view: VoiceIdView): ReadonlyArray<HomeControl> =
     ),
     toggle(
       "vid.strict",
-      "Ignore everyone if Voice ID cannot run",
-      "Off: without the model or your profile, Tessaya hears everyone as before and logs it as unverified. On: nobody is heard until it works.",
+      gateRow("strictWhenUnavailable").label,
+      gateRow("strictWhenUnavailable").hint,
       settings.strictWhenUnavailable,
       true,
     ),

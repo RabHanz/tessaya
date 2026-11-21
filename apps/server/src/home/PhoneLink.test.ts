@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 
-import { makeMicBuffer, nearBy, parsePhoneText } from "./PhoneLink.ts";
+import { makeMicBuffer, makePhoneVessel, nearBy, parsePhoneText } from "./PhoneLink.ts";
 
 it("is near only on the R1's own network", () => {
   const cases: Array<[string | null, string | null, string | null, boolean]> = [
@@ -61,4 +61,51 @@ it("reads the phone's route, its motor and its button, as data", () => {
   });
   assert.strictEqual(parsePhoneText('{"t":"talk"}'), "talk");
   assert.isNull(parsePhoneText("nope"));
+});
+
+it("is a vessel of its own with no Tessel near: a talk opens a session, its mic goes up in frames, her voice plays", () => {
+  const up: Array<string> = [];
+  const phone: Array<string> = [];
+  let deliver: (tail: string, payload: Buffer) => void = () => undefined;
+  let binds = 0;
+  const v = makePhoneVessel({
+    bind: (d) => {
+      binds += 1;
+      deliver = d;
+      return {
+        publish: (tail, p) => up.push(`${tail}:${p.length}`),
+        close: () => up.push("closed"),
+      };
+    },
+    play: (pcm) => phone.push(`play:${pcm.length}`),
+    flush: () => phone.push("flush"),
+    listen: (on) => phone.push(`listen:${on}`),
+  });
+  // Not bound (a Tessel near): its button is the Tessel's, and its mic goes nowhere.
+  assert.isFalse(v.talk());
+  v.mic(new Uint8Array(4000));
+  v.set(true);
+  v.set(true);
+  assert.strictEqual(binds, 1);
+  // No session open: nothing of his goes up.
+  v.mic(new Uint8Array(4000));
+  assert.isTrue(v.talk());
+  v.mic(new Uint8Array(1000));
+  v.mic(new Uint8Array(3000));
+  deliver("voice/down", Buffer.alloc(640));
+  deliver("voice/ctl", Buffer.from('{"ev":"flush"}'));
+  deliver("cmd/voice/stop", Buffer.from("{}"));
+  v.mic(new Uint8Array(4000));
+  // The loop opens a session itself (a notice): he may answer it.
+  deliver("cmd/voice/start", Buffer.from("{}"));
+  v.set(false);
+  assert.deepStrictEqual(up, ["cmd/voice/start:2", "voice/up:1920", "voice/up:1920", "closed"]);
+  assert.deepStrictEqual(phone, [
+    "listen:true",
+    "play:640",
+    "flush",
+    "listen:false",
+    "listen:true",
+    "listen:false",
+  ]);
 });

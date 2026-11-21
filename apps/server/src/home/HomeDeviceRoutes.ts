@@ -146,15 +146,20 @@ export const routes = HttpRouter.use((router) =>
         yield* authenticateMediaRequest(AuthOrchestrationOperateScope);
         const request = yield* HttpServerRequest.HttpServerRequest;
         const url = Option.getOrNull(requestUrl(request));
-        const r1 = url?.searchParams.get("device") ?? "";
+        const asked = url?.searchParams.get("device") ?? "";
         const phoneId = phoneIdOf(url?.searchParams.get("phone") ?? null);
-        const known = r1ById(
-          yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
-            Effect.provideContext(context),
-          ),
-          r1,
+        const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+          Effect.provideContext(context),
         );
-        if (known === null || Option.isNone(phoneId))
+        // No Tessel named (or `phone`): the phone is a vessel of its own, served by this hub's room loop.
+        const r1 = asked === "" || asked === "phone" ? null : asked;
+        // shortcut: the loop calls the brain on a Tessel's key, so a server with none paired to its hub cannot serve a phone yet.
+        const served = all.some((d) => d.deviceId !== null && d.mqttUrl === null);
+        if (
+          (r1 !== null && r1ById(all, r1) === null) ||
+          (r1 === null && !served) ||
+          Option.isNone(phoneId)
+        )
           return HttpServerResponse.text("No such Tessel.", { status: 404 });
         const devices = Context.get(context, HomeDevices);
         const socket = yield* request.upgrade;
@@ -163,9 +168,11 @@ export const routes = HttpRouter.use((router) =>
           phoneId: phoneId.value,
           name: (url?.searchParams.get("name") ?? "").slice(0, 60) || "Phone",
           remote: request.headers["cf-connecting-ip"] ?? Option.getOrNull(request.remoteAddress),
-          r1Remote: () => hub.remoteOf(r1),
-          changed: (link, open) => devices.phoneLink(r1, link, open),
-          talk: (link) => devices.phoneTalk(r1, link),
+          r1Remote: () => (r1 === null ? null : hub.remoteOf(r1)),
+          changed: (link, open) => (r1 === null ? Effect.void : devices.phoneLink(r1, link, open)),
+          talk: (link) => (r1 === null ? Effect.void : devices.phoneTalk(r1, link)),
+          bindVessel: hub.vessel,
+          vesselTalk: devices.vesselTalk,
         }).pipe(Effect.scoped);
         return HttpServerResponse.empty();
       }),

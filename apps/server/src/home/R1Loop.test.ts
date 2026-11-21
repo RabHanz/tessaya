@@ -14,6 +14,7 @@ import {
   elect,
   listenInodes,
   loopPlan,
+  devicesHere,
   loopPorts,
   parseEnvFile,
   servingLoops,
@@ -144,6 +145,25 @@ it("runs the loop against this server's own hub and brain, for every R1 on the h
     R1_INHOUSE: "r1-a,r1-b",
   });
   expect(plan.secrets.map((s) => s.value)).toEqual(["bus", "r1-a-key-0123456789abcdef"]);
+});
+
+it("hears a phone vessel like a Tessel, so the loop runs for it with no Tessel connected", () => {
+  const devices = [r1("r1-a"), r1("r1-b", "mqtt://broker.local:1883")];
+  expect(devicesHere(devices, (id) => id === "r1-a", [])).toEqual(["r1-a"]);
+  // Tumble away and his phone on its own: the phone keeps the loop up.
+  expect(devicesHere(devices, () => false, ["phone-p1"])).toEqual(["phone-p1"]);
+  expect(devicesHere(devices, () => true, ["phone-p1"])).toEqual(["r1-a", "phone-p1"]);
+  expect(
+    elect({
+      others: 0,
+      here: 1,
+      ready: true,
+      lastOtherAt: 0,
+      lastHereAt: 0,
+      bornAt: 0,
+      now: 60_000,
+    }),
+  ).toMatchObject({ answers: true, claims: true });
 });
 
 it("runs no loop when it is not installed, turned off, or no R1 is on this hub", () => {

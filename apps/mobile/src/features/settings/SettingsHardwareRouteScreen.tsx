@@ -77,7 +77,15 @@ import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
 import { WifiSection } from "./WifiSection";
-import { phoneRouteAvailable, setPhoneRoute, usePhoneRoute } from "../tessel/phoneRoute";
+import {
+  PHONE_VESSEL_DEVICE,
+  phoneRouteAvailable,
+  setPhoneRoute,
+  setPhoneVessel,
+  usePhoneRoute,
+  usePhoneVesselReady,
+} from "../tessel/phoneRoute";
+import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
 import { DEVICE, FLASH_TOOL } from "@t3tools/tessaya-shared/productNames";
 
 const QUIET = { reportFailure: false } as const;
@@ -146,6 +154,7 @@ export function SettingsHardwareRouteScreen() {
         contentContainerClassName="gap-6 px-5 pt-4"
         contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
       >
+        <PhoneVesselSection />
         {selectedTargets.length === 0 ? (
           <Text className="text-foreground-muted">Connect an environment to see its devices.</Text>
         ) : (
@@ -166,6 +175,38 @@ export function SettingsHardwareRouteScreen() {
         )}
       </ScreenScrollView>
     </SettingsScreen>
+  );
+}
+
+/** "Reach her on this phone": the phone is a vessel of its own, so his headset's button talks to her anywhere. */
+function PhoneVesselSection() {
+  const chosen = usePhoneRoute();
+  const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
+  const ready = usePhoneVesselReady();
+  if (!phoneRouteAvailable) return null;
+  const on = chosen?.deviceId === PHONE_VESSEL_DEVICE;
+  return (
+    <SettingsSection title="This phone">
+      <Row
+        title="Reach her on this phone"
+        description={
+          on
+            ? ready
+              ? "On: press your headphones' button (AirPods too) to talk to her, at home or away."
+              : "On: waiting for her machine to answer."
+            : chosen !== null
+              ? `On through a ${DEVICE} now: away from it, this phone talks to her by itself.`
+              : `Press your headphones' button to talk to her, even with no ${DEVICE} near. Holds an audio session while on.`
+        }
+      >
+        <ControlPill
+          variant={on ? "pill" : "primary"}
+          label={on ? "Turn off" : "Turn on"}
+          disabled={!on && environmentId === null}
+          onPress={() => setPhoneVessel(on ? null : environmentId)}
+        />
+      </Row>
+    </SettingsSection>
   );
 }
 
