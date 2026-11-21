@@ -195,6 +195,14 @@ export class TessayaPhoneInbox extends Context.Service<
     readonly agentsInTurn: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
     /** The desktop's latest account of itself (`tessaya_state`), kept in memory only. */
     readonly publishState: (state: TessayaDesktopState) => Effect.Effect<void>;
+    /**
+     * A desktop's own inbox call (`DESK_OPS`) run on her brain, where the asks and cards wait; None on the brain, or
+     * when it can't be reached (B-044), and the call is then kept here.
+     */
+    readonly deskAtBrain: (
+      op: string,
+      args: Record<string, unknown>,
+    ) => Effect.Effect<Option.Option<unknown>>;
     readonly desktopState: Effect.Effect<{
       readonly at: number;
       readonly state: TessayaDesktopState;
@@ -312,6 +320,23 @@ export const inboxAtBrain = Effect.fn("BatonPhoneInbox.atBrain")(function* (
       return true;
     case "expired":
       return id === null ? undefined : yield* inbox.expired(id);
+    case "desk": {
+      // A worker's desktop takes asks and says how it is here, on the brain (desktop 0.1.169+ calls its own server).
+      const call = args["op"];
+      const callArgs = args["args"];
+      if (typeof call !== "string" || !DESK_OPS.has(call)) return undefined;
+      const answer = yield* phoneCall({
+        op: call,
+        args:
+          typeof callArgs === "object" && callArgs !== null
+            ? (callArgs as Record<string, unknown>)
+            : {},
+      } as TessayaPhoneCallInput).pipe(
+        Effect.provideService(TessayaPhoneInbox, inbox),
+        Effect.orElseSucceed(() => null),
+      );
+      return answer === null ? undefined : answer.value;
+    }
   }
   return undefined;
 });
@@ -632,7 +657,15 @@ export const make = Effect.gen(function* () {
     return (yield* brainSaid("expired", { id })) || (yield* expired(id));
   });
 
+  const deskAtBrain = Effect.fn("BatonPhoneInbox.deskAtBrain")(function* (
+    op: string,
+    args: Record<string, unknown>,
+  ) {
+    return yield* atBrain("desk", { op, args });
+  });
+
   return TessayaPhoneInbox.of({
+    deskAtBrain,
     post,
     get,
     recent,
@@ -685,11 +718,27 @@ const AGENT_ASK_OPEN =
 const AGENT_ASKS_FULL =
   "Agents already have three requests waiting for the Director, so nothing was asked. Try again later.";
 
+/**
+ * The calls a desktop makes as the one that takes asks and says how it is: on a worker they run on her brain, where the
+ * asks wait and "is the desktop connected?" is read (since 18 Nov the desktop's relay calls its own machine's server).
+ */
+const DESK_OPS = new Set(["take", "renew", "answer", "fail", "state", "stateGet"]);
+/** The brain link answers within 10 s, so a forwarded take waits less than that. */
+const DESK_TAKE_WAIT_MAX_MS = 7_000;
+
 /** The desktop's calls (`baton.phone.call`): every argument is checked here, whatever the window sent. */
 export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (
   input: TessayaPhoneCallInput,
 ) {
   const inbox = yield* TessayaPhoneInbox;
+  if (DESK_OPS.has(input.op)) {
+    const args =
+      input.op === "take" && typeof input.args["waitMs"] === "number"
+        ? { ...input.args, waitMs: Math.min(input.args["waitMs"], DESK_TAKE_WAIT_MAX_MS) }
+        : input.args;
+    const there = yield* inbox.deskAtBrain(input.op, args);
+    if (Option.isSome(there)) return { value: there.value };
+  }
   const a = input.args;
   const bad = () => new BatonPhoneError({ reason: "That phone call was not understood." });
   const id = str(a["id"], 80);
