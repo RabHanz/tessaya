@@ -112,8 +112,8 @@ it.effect(
             enabled: Effect.succeed(true),
             list: Effect.succeed([
               {
-                environmentId: EnvironmentId.make("env-onnyx"),
-                label: "onnyx",
+                environmentId: EnvironmentId.make("env-worker"),
+                label: "worker",
                 status: "reachable",
               },
               {
@@ -158,7 +158,7 @@ it.effect(
         ok: true,
         value: { answer: false, round: "r1", winner: "r1-office", until: 9 },
       });
-      // Only her brain is asked, though this worker has the desk device and onnyx is linked too.
+      // Only her brain is asked, though this worker has the desk device and another server is linked too.
       assert.deepStrictEqual(
         sent.map(([env, tool]) => [env, tool]),
         [["env-brain", "tessaya_voice_arbiter"]],
