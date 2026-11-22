@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-11-21T12:04:59.925Z",
-  "runUrl": "https://github.com/RabHanz/tessaya/actions/runs/44897928875",
+  "generatedAt": "2026-11-22T12:23:50.124Z",
+  "runUrl": "https://github.com/RabHanz/tessaya/actions/runs/45017743926",
   "versions": {
-    "main": "d55d0a5c0b",
-    "release": "baton-v0.1.189"
+    "main": "76190f2412",
+    "release": "baton-v0.1.190"
   },
   "checks": [
     {
@@ -54,7 +54,7 @@
     {
       "name": "every Tessaya test",
       "ref": "main",
-      "result": "fail"
+      "result": "pass"
     }
   ]
 }
