@@ -180,7 +180,7 @@ const recognisers = (online: () => boolean) => {
   };
   // Each one decodes faint noise at boot and every 45 s while an R1 is online: it stays quick, and its time is live,
   // so the fastest answers whatever the list order and however many are listed (24 Nov: after a restart the first
-  // listed, onnyx, took 4.5-12 s against hetzner's 0.4 s).
+  // listed, a loaded machine, took 4.5-12 s against another's 0.4 s).
   const probe = () => {
     for (const r of list) {
       const turn = recogniserTurn(r.url, r.token);

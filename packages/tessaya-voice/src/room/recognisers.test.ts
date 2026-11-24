@@ -30,12 +30,12 @@ it("sends the turn to the recogniser answering fastest lately, skipping busy and
 });
 
 it("picks by measured speed however old, so the order he lists them in never decides (24 Nov, 22:16 GMT+5)", () => {
-  // After a restart onnyx, listed before hetzner, took 4.5-12 s while hetzner took 0.4 s; its old times had gone stale.
-  const onnyx = { url: "onnyx", queue: 0, recent: at(9_000, 12_000) };
-  const hetzner = { url: "hetzner", queue: 0, recent: at(400, 600) };
-  expect(pickRecogniser([onnyx, hetzner])?.url).toBe("hetzner");
+  // After a restart the first listed, a loaded machine, took 4.5-12 s while the second took 0.4 s; both times were old.
+  const loaded = { url: "loaded", queue: 0, recent: at(9_000, 12_000) };
+  const quick = { url: "quick", queue: 0, recent: at(400, 600) };
+  expect(pickRecogniser([loaded, quick])?.url).toBe("quick");
   // One never measured yet does not beat one measured fast.
-  expect(pickRecogniser([{ ...onnyx, recent: [] }, hetzner])?.url).toBe("hetzner");
+  expect(pickRecogniser([{ ...loaded, recent: [] }, quick])?.url).toBe("quick");
 });
 
 it("hears a turn on the next recogniser, all of it, when the first turns it away", async () => {
