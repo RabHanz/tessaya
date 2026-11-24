@@ -5,7 +5,6 @@ import {
   noteTime,
   pickRecogniser,
   recognisersFor,
-  STALE_MS,
   turnAcross,
   type TurnOn,
 } from "./recognisers.ts";
@@ -15,29 +14,28 @@ const at = (...ms: number[]) => ms.map((m) => ({ ms: m, at: 0 }));
 it("sends the turn to the recogniser answering fastest lately, skipping busy and silent ones", () => {
   const near = { url: "near", queue: 0, recent: at(1400, 1300, 6000) };
   const far = { url: "far", queue: 0, recent: at(600, 700) };
-  expect(pickRecogniser([near, far], 0)?.url).toBe("far");
-  expect(pickRecogniser([near, { ...far, queue: 2 }], 0)?.url).toBe("near");
-  expect(pickRecogniser([near, { ...far, queue: null }], 0)?.url).toBe("near");
-  // Nothing measured yet: the first in his list.
+  expect(pickRecogniser([near, far])?.url).toBe("far");
+  expect(pickRecogniser([near, { ...far, queue: 2 }])?.url).toBe("near");
+  expect(pickRecogniser([near, { ...far, queue: null }])?.url).toBe("near");
+  // Nothing measured yet, before the boot probes answer: the first listed.
   expect(
-    pickRecogniser(
-      [
-        { ...near, recent: [] },
-        { ...far, recent: [] },
-      ],
-      0,
-    )?.url,
+    pickRecogniser([
+      { ...near, recent: [] },
+      { ...far, recent: [] },
+    ])?.url,
   ).toBe("near");
   // None answering: still try one rather than none.
-  expect(pickRecogniser([{ ...near, queue: null }], 0)?.url).toBe("near");
+  expect(pickRecogniser([{ ...near, queue: null }])?.url).toBe("near");
   expect(noteTime(at(1, 2, 3, 4, 5), 6, 9)).toEqual([...at(2, 3, 4, 5), { ms: 6, at: 9 }]);
 });
 
-it("tries a recogniser again once its slow turns are a minute old, instead of never", () => {
-  const slowOnce = { url: "near", queue: 0, recent: at(15_000, 12_000) };
-  const fast = { url: "far", queue: 0, recent: [{ ms: 2_000, at: STALE_MS }] };
-  expect(pickRecogniser([slowOnce, fast], STALE_MS - 1)?.url).toBe("far");
-  expect(pickRecogniser([slowOnce, fast], STALE_MS + 1)?.url).toBe("near");
+it("picks by measured speed however old, so the order he lists them in never decides (24 Nov, 22:16 GMT+5)", () => {
+  // After a restart the first listed, a loaded machine, took 4.5-12 s while the second took 0.4 s; both times were old.
+  const loaded = { url: "loaded", queue: 0, recent: at(9_000, 12_000) };
+  const quick = { url: "quick", queue: 0, recent: at(400, 600) };
+  expect(pickRecogniser([loaded, quick])?.url).toBe("quick");
+  // One never measured yet does not beat one measured fast.
+  expect(pickRecogniser([{ ...loaded, recent: [] }, quick])?.url).toBe("quick");
 });
 
 it("hears a turn on the next recogniser, all of it, when the first turns it away", async () => {
