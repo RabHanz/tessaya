@@ -264,20 +264,21 @@ export const fitProxies = (
     const b = rig.bones[to]?.rest;
     if (a && b) dist[part].push(segPoint(a, b, p));
   }
-  const pick = (part: keyof Proxies, pct: number) => {
+  const pick = (part: keyof Proxies, pct: number, most = 2) => {
     const d = dist[part].toSorted((x, y) => x - y);
     if (d.length < 20) return fallback[part];
-    // never thinner than half, never fatter than twice, her height's share: a stray vertex can't break it
+    // never thinner than half her height's share, never fatter than `most` times it: a stray vertex can't break it
     const r = d[Math.floor(d.length * pct)]!;
-    return Math.max(fallback[part] / 2, Math.min(fallback[part] * 2, r));
+    return Math.max(fallback[part] / 2, Math.min(fallback[part] * most, r));
   };
+  // clothes are skinned to these parts too (a puffy sleeve, a sweater, a skirt's flare), and what a limb meets is
+  // their outer surface: at the median, a walking arm went 5-8 cm through her skirt and top on her real mesh
   return {
-    trunk: pick("trunk", 0.5),
+    trunk: pick("trunk", 0.7),
     head: pick("head", 0.6),
-    // the median: clothes are skinned to the trunk and thighs too (a puffy sweater, a skirt's flare), and their outer
-    // surface is cloth a resting arm lies against, not body
-    thigh: pick("thigh", 0.5),
-    forearm: pick("forearm", 0.5),
+    thigh: pick("thigh", 0.8),
+    // a puffy sleeve can be three times a bare forearm
+    forearm: pick("forearm", 0.7, 3.5),
   };
 };
 

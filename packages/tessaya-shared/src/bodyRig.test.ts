@@ -442,6 +442,22 @@ describe("fitProxies", () => {
     expect(fitted.thigh).toBeCloseTo(0.07, 2);
     expect(fitted.trunk).toBeCloseTo(0.1, 2);
     expect(fitted.head).toBe(proxiesByHeight(vroid.height).head);
+    // clothes count at their outer surface: a puffy sleeve over a slim forearm (fewer of its vertices are sleeve) is as
+    // thick as the sleeve
+    const around = (r: number, n: number) =>
+      Array.from({ length: n }, (_, i) => {
+        const [a, b] = [AT["leftLowerArm"]!, AT["leftHand"]!];
+        const t = (i % 10) / 10;
+        const ang = (i / n) * Math.PI * 2;
+        const p: V3 = [
+          a[0] + (b[0] - a[0]) * t,
+          a[1] + r * Math.cos(ang),
+          a[2] + r * Math.sin(ang),
+        ];
+        return { bone: "leftLowerArm", p };
+      });
+    const sleeve = fitProxies(vroid, [...around(0.025, 42), ...around(0.05, 18)]);
+    expect(sleeve.forearm).toBeCloseTo(0.05, 2);
     // a model with fuller hips moves a resting hand further out than a slim one
     const hand = (proxies: typeof fitted) => {
       const rig = { ...vroid, proxies };
