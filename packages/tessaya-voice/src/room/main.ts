@@ -178,18 +178,19 @@ const recognisers = (online: () => boolean) => {
       s.url === url ? { ...s, recent: noteTime(s.recent, ms, Date.now()) } : s,
     );
   };
-  // After a quiet minute every time is stale and her wake check went to the first listed, the laptop: 2.2 s at 21:38
-  // on 14 Nov, against 0.5 s here. While an R1 is online each one decodes faint noise every 45 s, which keeps it quick
-  // and its time current.
-  setInterval(() => {
-    if (!online()) return;
+  // Each one decodes faint noise at boot and every 45 s while an R1 is online: it stays quick, and its time is live,
+  // so the fastest answers whatever the list order and however many are listed (24 Nov: after a restart the first
+  // listed, onnyx, took 4.5-12 s against hetzner's 0.4 s).
+  const probe = () => {
     for (const r of list) {
       const turn = recogniserTurn(r.url, r.token);
       const at = performance.now();
       turn.feed(WARM_CLIP);
       void turn.finish().then(() => turn.failed() || timed(r.url, performance.now() - at));
     }
-  }, 45_000);
+  };
+  probe();
+  setInterval(() => online() && probe(), 45_000);
   const status = () => states.map((s) => ({ url: s.url, up: s.queue !== null }));
   const across = (
     poolOf: (states: ReadonlyArray<RecogniserState>) => ReadonlyArray<RecogniserState>,
@@ -197,13 +198,13 @@ const recognisers = (online: () => boolean) => {
     turnAcross(
       (tried) => {
         const pool = poolOf(states.filter((s) => !tried.has(s.url)));
-        const chosen = pickRecogniser(pool, Date.now()) ?? pool[0];
+        const chosen = pickRecogniser(pool) ?? pool[0];
         if (chosen === undefined) return null;
         const token = list.find((r) => r.url === chosen.url)!.token;
         return { url: chosen.url, turn: recogniserTurn(chosen.url, token) };
       },
       (url, ms, failed, next, why) => {
-        // A failed one counts as very slow, so the next turns leave it alone for a while (STALE_MS).
+        // A failed one counts as very slow, so the next turns leave it alone until its probes are quick again.
         timed(url, failed ? 30_000 : ms);
         const host = url.replace(/^ws:\/\//, "");
         log(

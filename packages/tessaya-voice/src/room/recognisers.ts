@@ -24,8 +24,8 @@ export const recognisersFor = (
   return mine.length > 0 ? mine : general;
 };
 
-/** Times older than this stop counting, so a recogniser that was slow once is tried again rather than never. */
-export const STALE_MS = 60_000;
+/** What a recogniser not yet measured counts as: it waits for its first probe rather than winning on no data. */
+const UNTIMED_MS = 1_000;
 
 const median = (xs: ReadonlyArray<number>) => {
   if (xs.length === 0) return 0;
@@ -34,18 +34,16 @@ const median = (xs: ReadonlyArray<number>) => {
 };
 
 /** The recogniser for the next turn: answering ones first, then the least backlog, then the fastest lately. */
-export const pickRecogniser = (
-  states: ReadonlyArray<RecogniserState>,
-  now: number,
-): RecogniserState | null => {
+export const pickRecogniser = (states: ReadonlyArray<RecogniserState>): RecogniserState | null => {
   const up = states.filter((s) => s.queue !== null);
   const pool = up.length > 0 ? up : states;
   let best: RecogniserState | null = null;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const s of pool) {
-    // A queued decode costs about a second each; lately-measured speed decides between idle ones.
-    const lately = s.recent.filter((t) => now - t.at < STALE_MS).map((t) => t.ms);
-    const score = (s.queue ?? 0) * 1_000 + median(lately);
+    // A queued decode costs about a second each; measured speed decides between idle ones. Every recogniser is probed
+    // at boot and on a timer (main.ts), so its times stay current and the order they are listed in never decides.
+    const times = s.recent.map((t) => t.ms);
+    const score = (s.queue ?? 0) * 1_000 + (times.length > 0 ? median(times) : UNTIMED_MS);
     if (score < bestScore) {
       best = s;
       bestScore = score;
