@@ -87,7 +87,7 @@ interface Held {
   live: Map<string, number>;
   /** The member whose session first reported this client vessel; null: a room vessel, or the owner's from before. */
   member: string | null;
-  /** Put to sleep on purpose (state/sleep), since when: screens off, not listening, still on the hub. */
+  /** Put to sleep on purpose (state/sleep), since when: screens off, on the hub, still listening for her name. */
   asleep?: boolean;
   asleepAt?: number;
 }
