@@ -69,6 +69,7 @@ import {
   makeRig,
   manifestOf,
   REFERENCE_RIG,
+  keepApart,
   preparePose,
   proxiesByHeight,
   settled,
@@ -2080,6 +2081,7 @@ export function mountBody(
     const dt = lastSpring === 0 ? 1000 / 30 : Math.min(100, now - lastSpring);
     lastSpring = now;
     let moving = false;
+    const shownPose: Record<string, Q> = {};
     for (const b of POSE_BONES) {
       const node = vrm.humanoid.getNormalizedBoneNode(b);
       if (!node) continue;
@@ -2093,8 +2095,15 @@ export function mountBody(
       const shown = done ? { q: g, w: [0, 0, 0] as V3 } : next;
       if (!done) moving = true;
       springs.set(b, shown);
-      node.quaternion.set(shown.q[0], shown.q[1], shown.q[2], shown.q[3]);
+      shownPose[b] = shown.q;
     }
+    // between two goals each part springs at its own pace and the path can cut through her: what is drawn is kept
+    // apart too (the springs keep their own state, so this never fights them)
+    const drawn = moving ? keepApart(rig, shownPose).pose : shownPose;
+    for (const [b, q] of Object.entries(drawn))
+      vrm.humanoid
+        .getNormalizedBoneNode(b as VRMHumanBoneName)
+        ?.quaternion.set(q[0], q[1], q[2], q[3]);
     springing = moving;
     if (moving) lastMove = now;
     else lastSpring = 0;
@@ -4230,6 +4239,16 @@ export function mountBody(
         Object.entries(skeleton()).map(([k, v]) => [k, v.map((x) => Math.round(x * 1e4) / 1e4)]),
       );
       const palmsNow = palmsOf();
+      // the pose as drawn, in a cue's own Euler convention: a capture replays or is measured offline exactly
+      const e3 = new THREE.Euler();
+      const pose = Object.fromEntries(
+        POSE_BONES.flatMap((b) => {
+          const n = vrm?.humanoid.getNormalizedBoneNode(b);
+          if (!n) return [];
+          e3.setFromQuaternion(n.quaternion, "XYZ");
+          return [[b, [e3.x, e3.y, e3.z].map((x) => Math.round(x * 1e4) / 1e4)]];
+        }),
+      );
       const yaws = Object.fromEntries(
         facingOf.map((f) => {
           const v = f.ahead
@@ -4241,6 +4260,7 @@ export function mountBody(
       if (vrm === null || handMesh === null || !handMesh.group.visible || handFrame === null)
         return {
           world,
+          pose,
           palms: palmsNow,
           yaws,
           facing,
@@ -4280,6 +4300,7 @@ export function mountBody(
       for (const [x, side] of sides) x.side = side;
       return {
         world,
+        pose,
         palms: palmsNow,
         yaws,
         facing,

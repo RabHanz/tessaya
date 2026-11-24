@@ -894,6 +894,22 @@ const separateArms = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
   return issues;
 };
 
+/**
+ * Any pose in the model's own convention kept out of itself: arms and legs re-solved as hinges, hands and forearms
+ * resting on her body, legs and forearms beside each other. preparePose runs it on a goal; the renderer runs it on the
+ * frames between two goals too, where each part springs at its own pace and the path can cut through her.
+ */
+export const keepApart = (
+  rig: Rig,
+  pose: Pose,
+): { pose: Record<string, Q>; issues: RigIssue[] } => {
+  const limbs = solveLimbs(rig, pose);
+  return {
+    pose: limbs.pose,
+    issues: [...limbs.issues, ...separateLegs(rig, limbs.pose), ...separateArms(rig, limbs.pose)],
+  };
+};
+
 export interface SoftContact {
   /** Where the surfaces meet (world, metres). */
   readonly at: V3;
@@ -1066,8 +1082,8 @@ export const preparePose = (
   const fixed = (b: string) =>
     rig.restFix[b] !== undefined || rig.restFix[rig.bones[b]?.parent ?? ""] !== undefined;
   for (const b of Object.keys(rig.bones)) if (fixed(b)) local[b] = toModel(b, local[b] ?? QI);
-  const limbs = solveLimbs(rig, local);
-  issues.push(...limbs.issues, ...separateLegs(rig, limbs.pose), ...separateArms(rig, limbs.pose));
+  const limbs = keepApart(rig, local);
+  issues.push(...limbs.issues);
   const out: Record<string, Q> = {};
   for (const [b, q] of Object.entries(limbs.pose)) {
     // limits are written for the T-pose convention: check in it, then back onto the model's rest

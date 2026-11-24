@@ -11,12 +11,15 @@ import {
   fitProxies,
   proxiesByHeight,
   fk,
+  halfLifeOf,
+  keepApart,
   makeRig,
   manifestOf,
   preparePose,
   qAngle,
   qFromEuler,
   qMul,
+  qSlerp,
   qToEuler,
   qFromVec,
   qRotate,
@@ -222,6 +225,19 @@ describe("preparePose", () => {
     expect(Math.hypot(hand[0] - axisX, hand[2] - w["hips"]![2])).toBeGreaterThan(
       0.075 * vroid.height,
     );
+  });
+  it("keeps her hands out of her on the way between two postures, not only at them", () => {
+    // hands behind her back to hands together in front: each part springs at its own pace, and 120 ms in her hands
+    // are still behind her while her arms have swung forward, through her back
+    const from = preparePose(vroid, POSTURES.playful.bones).pose;
+    const to = preparePose(vroid, POSTURES.shy.bones).pose;
+    const mid: Record<string, Q> = {};
+    for (const b of new Set([...Object.keys(from), ...Object.keys(to)]))
+      mid[b] = qSlerp(from[b] ?? QI, to[b] ?? QI, 1 - 2 ** (-120 / halfLifeOf(b)));
+    const inside = (pose: Record<string, Q>) =>
+      keepApart(vroid, pose).issues.filter((i) => i.kind === "penetration" && i.by > 0.005);
+    expect(inside(mid).length).toBeGreaterThan(0);
+    expect(inside(keepApart(vroid, mid).pose)).toEqual([]);
   });
   it("lets an arm hang relaxed beside her clothed hips, its forearm turned as written (no A-pose)", () => {
     // a clothed model as fitted (a puffy top and a flared skirt count as thickness): her hand presses into the cloth
