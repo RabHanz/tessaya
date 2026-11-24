@@ -1,6 +1,6 @@
 // @effect-diagnostics globalFetch:off
 /**
- * The shared Playwright browser bridge (VentureOS docs/operations/BROWSER-BRIDGE.md): one MCP endpoint on his laptop,
+ * The shared Playwright browser bridge (its own operations doc, BROWSER-BRIDGE.md): one MCP endpoint on his laptop,
  * `localhost:8931/mcp`, that every agent uses to drive the "Agents" browser profile. The proxy files each MCP client
  * name under a tab group, so her work is `tessaya-<task>` and Sebastian's outreach is `sebastian-<task>`. Its tools
  * reach her model as `web_<name>` on her own tool server, so her gate judges every call (webPolicy.ts).

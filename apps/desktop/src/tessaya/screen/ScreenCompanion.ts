@@ -589,7 +589,7 @@ export interface ScreenCompanion {
       readonly tool: string;
       readonly args: Readonly<Record<string, unknown>>;
       readonly origin?: HandsOrigin;
-      /** The remote caller's name for itself (`ventureos-desk`). */
+      /** The remote caller's name for itself (`ops-desk`). */
       readonly caller?: string;
     }) => Promise<HandsResult>;
   };

@@ -1,5 +1,5 @@
 /**
- * The assistant in his browser (D3) through the shared Playwright bridge (VentureOS docs/operations/BROWSER-BRIDGE.md):
+ * The assistant in his browser (D3) through the shared Playwright bridge (its own operations doc, BROWSER-BRIDGE.md):
  * its tools reach the model as `web_<tool>` on her own tool server. Reading is routine and taints the turn; a submit,
  * send, purchase, delete or settings change asks aloud; money movement is refused. Social sites follow a setting (on,
  * with a plain switch to turn it off), and every action there asks, is rate-limited and is logged.

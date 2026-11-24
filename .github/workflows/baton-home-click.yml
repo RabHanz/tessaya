@@ -48,7 +48,7 @@ jobs:
           esbuild="$(ls -d ../../node_modules/.pnpm/esbuild@*/node_modules/esbuild/bin/esbuild | tail -1)"
           mkdir -p node_modules/.cache/baton-smoke
           "$esbuild" src/tessaya/screen/smoke/homeClickThrough.ts --bundle --platform=node --format=cjs \
-            --external:electron --external:onnxruntime-node --log-level=warning \
+            --external:electron --external:onnxruntime-node --external:ffi-rs --log-level=warning \
             --outfile=node_modules/.cache/baton-smoke/homeClick.cjs
       - name: Click everything, recorded
         shell: bash

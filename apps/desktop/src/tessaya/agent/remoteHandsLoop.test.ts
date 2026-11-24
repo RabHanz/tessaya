@@ -89,7 +89,7 @@ describe("remote hands loop", () => {
                   args: {},
                   session: "turn:R1",
                   origin,
-                  caller: "ventureos-desk",
+                  caller: "ops-desk",
                 },
               },
             }
@@ -110,6 +110,6 @@ describe("remote hands loop", () => {
     // What a remote MCP caller lists goes up the same way, only when it changed.
     expect(takes.map((b) => "remoteTools" in (b as object))).toEqual([true, false, true]);
     expect(seen[0]).toEqual(origin);
-    expect(callers[0]).toBe("ventureos-desk");
+    expect(callers[0]).toBe("ops-desk");
   });
 });

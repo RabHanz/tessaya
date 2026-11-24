@@ -43,11 +43,11 @@ describe("remote hands API", () => {
     const taking = handleHands(b, { method: "POST", path: "take", ...host }, 500);
     const asking = handleHands(b, {
       ...asker,
-      json: { tool: "ui_tree", args: {}, caller: "ventureos-desk" },
+      json: { tool: "ui_tree", args: {}, caller: "ops-desk" },
     });
     const call = (await taking).json["call"] as { id: string; session: string; caller: string };
     expect(call.session).toBe("remote-1");
-    expect(call.caller).toBe("ventureos-desk");
+    expect(call.caller).toBe("ops-desk");
     expect(
       (
         await handleHands(b, {
@@ -66,7 +66,7 @@ describe("remote hands API", () => {
     await handleHands(b, { method: "POST", path: "take", ...host }, 1);
     const r = await handleHands(b, {
       ...asker,
-      json: { tool: "click", args: { x: 1, y: 2 }, caller: "ventureos-desk" },
+      json: { tool: "click", args: { x: 1, y: 2 }, caller: "ops-desk" },
     });
     expect(r.json["error"]).toContain("not a remote hands tool");
     const audit = await handleHands(b, {
@@ -89,8 +89,8 @@ describe("remote hands API", () => {
       expect(r.status, String(caller)).toBe(400);
     }
     expect(b.audit()).toEqual([]);
-    await handleHands(b, { ...asker, json: { tool: "click", args: {}, caller: "ventureos-desk" } });
-    expect(b.audit()[0]).toMatchObject({ caller: "ventureos-desk", outcome: "refused" });
+    await handleHands(b, { ...asker, json: { tool: "click", args: {}, caller: "ops-desk" } });
+    expect(b.audit()[0]).toMatchObject({ caller: "ops-desk", outcome: "refused" });
   });
 
   it("speaks MCP on the same door: the caller is its client name, tools are what the desktop offers remote callers", async () => {
@@ -123,12 +123,12 @@ describe("remote hands API", () => {
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
-      params: { protocolVersion: "2025-06-18", clientInfo: { name: "ventureos-desk" } },
+      params: { protocolVersion: "2025-06-18", clientInfo: { name: "ops-desk" } },
     });
-    expect(init.headers?.["mcp-session-id"]).toBe("ventureos-desk");
+    expect(init.headers?.["mcp-session-id"]).toBe("ops-desk");
     expect(init.json["result"]).toMatchObject({ capabilities: { tools: {} } });
     expect(
-      (await mcp({ jsonrpc: "2.0", method: "notifications/initialized" }, "ventureos-desk")).status,
+      (await mcp({ jsonrpc: "2.0", method: "notifications/initialized" }, "ops-desk")).status,
     ).toBe(202);
     // A call with no session names no caller.
     expect(
@@ -141,16 +141,16 @@ describe("remote hands API", () => {
       { method: "POST", path: "take", ...host, json: { remoteTools: [spec] } },
       500,
     );
-    const listed = await mcp({ jsonrpc: "2.0", id: 3, method: "tools/list" }, "ventureos-desk");
+    const listed = await mcp({ jsonrpc: "2.0", id: 3, method: "tools/list" }, "ops-desk");
     expect(listed.json["result"]).toEqual({
       tools: [{ name: "ui_tree", description: "Controls", inputSchema: { type: "object" } }],
     });
     const calling = mcp(
       { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "ui_tree", arguments: {} } },
-      "ventureos-desk",
+      "ops-desk",
     );
     const call = (await taking).json["call"] as { id: string; caller: string };
-    expect(call.caller).toBe("ventureos-desk");
+    expect(call.caller).toBe("ops-desk");
     await handleHands(b, {
       method: "POST",
       path: "reply",

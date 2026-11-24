@@ -24,7 +24,7 @@ export const REMOTE_HANDS_TOOLS: ReadonlySet<string> = new Set([
 
 export const ARGS_MAX_BYTES = 20_000;
 
-/** Who is calling, as `<agent>-<task>` in lower case (`ventureos-desk`, `margin-post`): logged, shown and asked by. */
+/** Who is calling, as `<agent>-<task>` in lower case (`ops-desk`, `margin-post`): logged, shown and asked by. */
 const CALLER = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export const validCaller = (raw: unknown): string | null =>
   typeof raw === "string" && raw.length >= 2 && raw.length <= 64 && CALLER.test(raw) ? raw : null;

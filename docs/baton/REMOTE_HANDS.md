@@ -24,8 +24,8 @@ hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool
   Automation patterns first; a pointer click only when a control has no pattern, and then the previous window gets the keyboard back (the
   answer says when Windows refused that). `type_text` with a `window` adds the text to that window's box by its UI Automation value (no
   keyboard, clipboard or focus); keys go out only when the named window already has the keyboard, and are refused otherwise.
-- **Every call names its caller**, `<agent>-<task>` in lower case (`ventureos-desk`): `caller` on `/call`, the MCP client name on
-  `/mcp`. A call without one is refused. The caller is in the audit line, in the pill ("Remote: ventureos-desk"), in every question he is
+- **Every call names its caller**, `<agent>-<task>` in lower case (`ops-desk`): `caller` on `/call`, the MCP client name on
+  `/mcp`. A call without one is refused. The caller is in the audit line, in the pill ("Remote: ops-desk"), in every question he is
   asked, and in the action log as a `hands.remote` event (actor: the caller, evidence: the token's session). The name is the caller's own
   claim; the `baton:hands` token is what is proven.
 - **Hard lines, whatever the grant** (`handsRefusal` in `remoteHandsTools.ts`): nothing on a Windows security prompt (the secure desktop,
@@ -63,7 +63,7 @@ than the window itself (`open_page` opens Home).
 
 ```
 curl -s -X POST "$HUB/tessaya/hands/call" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"tool":"ui_tree","args":{"window":"Notepad"},"caller":"ventureos-desk"}'
+  -d '{"tool":"ui_tree","args":{"window":"Notepad"},"caller":"ops-desk"}'
 ```
 
 The answer is `{ok, text, images?, error?}`; `images` holds a PNG (base64) for `window_capture`. `GET /tessaya/hands/audit` lists the recent calls.

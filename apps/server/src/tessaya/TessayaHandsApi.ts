@@ -34,7 +34,7 @@ export interface HandsResponse {
 }
 
 const CALLER_HELP =
-  "Name yourself: caller (over MCP, clientInfo.name) is <agent>-<task> in lower case, like ventureos-desk.";
+  "Name yourself: caller (over MCP, clientInfo.name) is <agent>-<task> in lower case, like ops-desk.";
 
 /** The hands over MCP (streamable HTTP, JSON answers): the caller is the client name, kept as the session id. */
 const handsMcp = async (broker: HandsBroker, req: HandsRequest): Promise<HandsResponse> => {
