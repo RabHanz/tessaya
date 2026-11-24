@@ -589,6 +589,25 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
     }
     // As TessayaSessionInsight answers, for his "deploy check" (CI) and "parity sync" (merged) sessions.
     case "tessaya_session_insight": {
+      // A terminal session its machine cannot read: no live copy there and no history index.
+      if (/ledger/i.test(String(args["session"] ?? "")))
+        return {
+          found: true,
+          session: "ledger",
+          key: "claude:0a1b2c3d-0001",
+          machine: "studio",
+          state: "working",
+          private: false,
+          job: null,
+          goal: null,
+          lastStep: null,
+          now: null,
+          waitingOn: null,
+          files: [],
+          errors: [],
+          prs: [],
+          line: "ledger is working, but I can't read it: studio has no live copy of it and no history index.",
+        };
       const parity = /parity/i.test(String(args["session"] ?? ""));
       return {
         found: true,

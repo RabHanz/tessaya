@@ -770,6 +770,15 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/\bCI\b|checks?/i],
   },
   {
+    // She says it is working and why she can't read more, never just that she can't tell.
+    id: "session-unreadable",
+    source: 'Director 24 Nov: "What is <a terminal session> doing?" got "I can\'t tell"',
+    said: ["What is the ledger session doing?"],
+    verified: true,
+    calls: ["tessaya_session_insight"],
+    lastSays: [/working/i, /index|live copy|copy of it/i],
+  },
+  {
     id: "session-last-step",
     source: "M-104, Director 20 Nov",
     said: ["What was the last step on the parity PR?"],

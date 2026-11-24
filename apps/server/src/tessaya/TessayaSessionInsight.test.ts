@@ -3,7 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
-import { assert, it } from "@effect/vitest";
+import { assert, it, vi } from "@effect/vitest";
 import type { TessayaSessionSummary } from "@t3tools/tessaya-contracts";
 import type { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -48,7 +48,15 @@ const row = (
   access: null,
 });
 
-const setup = () => {
+const setup = (
+  messages: ReadonlyArray<{ readonly role: "user" | "assistant"; readonly text: string }> = [
+    { role: "user", text: "rerun the speed tests" },
+    {
+      role: "assistant",
+      text: `Ran them; opened https://github.com/acme/tessaya/pull/1596. Key ${"sk-" + "ant-api03-" + "a".repeat(40)}`,
+    },
+  ],
+) => {
   const sent: Array<{ to: string; text: string }> = [];
   const threadSends: Array<{ readonly threadId: ThreadId; readonly text: string }> = [];
   const prompts: Array<string> = [];
@@ -61,7 +69,7 @@ const setup = () => {
           sessions: [
             row("work:env-here:t-build", "Build lane", "t-build"),
             row("work:env-here:j-diary", "Diary notes", "t-diary"),
-            row("claude:c-parity", "Parity sync", null, "p-7"),
+            row("claude:c0ffee12-0001", "Parity sync", null, "p-7"),
             row("work:env-here:j-shop", "Checkout fix", "t-shop"),
             {
               ...row("thread:env-laptop:t-print", "V-Minion printer", "t-print"),
@@ -75,13 +83,7 @@ const setup = () => {
     }),
     TessayaEngine.layerStatic({
       sent: threadSends,
-      messages: [
-        { role: "user", text: "rerun the speed tests" },
-        {
-          role: "assistant",
-          text: `Ran them; opened https://github.com/acme/tessaya/pull/1596. Key ${"sk-" + "ant-api03-" + "a".repeat(40)}`,
-        },
-      ],
+      messages,
     }),
     Layer.mock(PeerLinks.PeerLinks)({
       list: Effect.succeed([{ environmentId: "env-laptop", label: "Laptop" }] as never),
@@ -177,7 +179,27 @@ it.effect(
       assert.isNull(build.job);
       const missing = yield* insight.insight({ session: "mascot" });
       assert.isFalse(missing.found);
+
+      // A terminal session reads its live mirror thread, not the daily history index.
+      const parity = yield* insight.insight({ session: "parity" });
+      assert.strictEqual(parity.lastStep, "Ran the speed tests");
+      assert.notInclude(prompts.join(""), "sk-ant");
     }).pipe(Effect.provide(layer));
+  },
+);
+
+it.effect(
+  "says why a terminal session with no live copy and no history index can't be read",
+  () => {
+    vi.stubEnv("TESSAYA_HISTORY_SEARCH", "");
+    const { layer } = setup([]);
+    return Effect.gen(function* () {
+      const parity = yield* (yield* TessayaSessionInsight).insight({ session: "parity" });
+      assert.strictEqual(
+        parity.line,
+        "Parity sync is working, but I can't read it: studio has no live copy of it and no history index.",
+      );
+    }).pipe(Effect.provide(layer), Effect.ensuring(Effect.sync(() => vi.unstubAllEnvs())));
   },
 );
 
