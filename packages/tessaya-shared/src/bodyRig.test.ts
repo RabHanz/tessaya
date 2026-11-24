@@ -11,12 +11,15 @@ import {
   fitProxies,
   proxiesByHeight,
   fk,
+  halfLifeOf,
+  keepApart,
   makeRig,
   manifestOf,
   preparePose,
   qAngle,
   qFromEuler,
   qMul,
+  qSlerp,
   qToEuler,
   qFromVec,
   qRotate,
@@ -223,6 +226,19 @@ describe("preparePose", () => {
       0.075 * vroid.height,
     );
   });
+  it("keeps her hands out of her on the way between two postures, not only at them", () => {
+    // hands behind her back to hands together in front: each part springs at its own pace, and 120 ms in her hands
+    // are still behind her while her arms have swung forward, through her back
+    const from = preparePose(vroid, POSTURES.playful.bones).pose;
+    const to = preparePose(vroid, POSTURES.shy.bones).pose;
+    const mid: Record<string, Q> = {};
+    for (const b of new Set([...Object.keys(from), ...Object.keys(to)]))
+      mid[b] = qSlerp(from[b] ?? QI, to[b] ?? QI, 1 - 2 ** (-120 / halfLifeOf(b)));
+    const inside = (pose: Record<string, Q>) =>
+      keepApart(vroid, pose).issues.filter((i) => i.kind === "penetration" && i.by > 0.005);
+    expect(inside(mid).length).toBeGreaterThan(0);
+    expect(inside(keepApart(vroid, mid).pose)).toEqual([]);
+  });
   it("lets an arm hang relaxed beside her clothed hips, its forearm turned as written (no A-pose)", () => {
     // a clothed model as fitted (a puffy top and a flared skirt count as thickness): her hand presses into the cloth
     // at her side, which gives, so the arm is not pushed out into an A-pose, and the palm stays toward her thigh
@@ -426,6 +442,22 @@ describe("fitProxies", () => {
     expect(fitted.thigh).toBeCloseTo(0.07, 2);
     expect(fitted.trunk).toBeCloseTo(0.1, 2);
     expect(fitted.head).toBe(proxiesByHeight(vroid.height).head);
+    // clothes count at their outer surface: a puffy sleeve over a slim forearm (fewer of its vertices are sleeve) is as
+    // thick as the sleeve
+    const around = (r: number, n: number) =>
+      Array.from({ length: n }, (_, i) => {
+        const [a, b] = [AT["leftLowerArm"]!, AT["leftHand"]!];
+        const t = (i % 10) / 10;
+        const ang = (i / n) * Math.PI * 2;
+        const p: V3 = [
+          a[0] + (b[0] - a[0]) * t,
+          a[1] + r * Math.cos(ang),
+          a[2] + r * Math.sin(ang),
+        ];
+        return { bone: "leftLowerArm", p };
+      });
+    const sleeve = fitProxies(vroid, [...around(0.025, 42), ...around(0.05, 18)]);
+    expect(sleeve.forearm).toBeCloseTo(0.05, 2);
     // a model with fuller hips moves a resting hand further out than a slim one
     const hand = (proxies: typeof fitted) => {
       const rig = { ...vroid, proxies };

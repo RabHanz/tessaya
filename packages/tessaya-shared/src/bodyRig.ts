@@ -264,20 +264,21 @@ export const fitProxies = (
     const b = rig.bones[to]?.rest;
     if (a && b) dist[part].push(segPoint(a, b, p));
   }
-  const pick = (part: keyof Proxies, pct: number) => {
+  const pick = (part: keyof Proxies, pct: number, most = 2) => {
     const d = dist[part].toSorted((x, y) => x - y);
     if (d.length < 20) return fallback[part];
-    // never thinner than half, never fatter than twice, her height's share: a stray vertex can't break it
+    // never thinner than half her height's share, never fatter than `most` times it: a stray vertex can't break it
     const r = d[Math.floor(d.length * pct)]!;
-    return Math.max(fallback[part] / 2, Math.min(fallback[part] * 2, r));
+    return Math.max(fallback[part] / 2, Math.min(fallback[part] * most, r));
   };
+  // clothes are skinned to these parts too (a puffy sleeve, a sweater, a skirt's flare), and what a limb meets is
+  // their outer surface: at the median, a walking arm went 5-8 cm through her skirt and top on her real mesh
   return {
-    trunk: pick("trunk", 0.5),
+    trunk: pick("trunk", 0.7),
     head: pick("head", 0.6),
-    // the median: clothes are skinned to the trunk and thighs too (a puffy sweater, a skirt's flare), and their outer
-    // surface is cloth a resting arm lies against, not body
-    thigh: pick("thigh", 0.5),
-    forearm: pick("forearm", 0.5),
+    thigh: pick("thigh", 0.8),
+    // a puffy sleeve can be three times a bare forearm
+    forearm: pick("forearm", 0.7, 3.5),
   };
 };
 
@@ -894,6 +895,22 @@ const separateArms = (rig: Rig, pose: Record<string, Q>): RigIssue[] => {
   return issues;
 };
 
+/**
+ * Any pose in the model's own convention kept out of itself: arms and legs re-solved as hinges, hands and forearms
+ * resting on her body, legs and forearms beside each other. preparePose runs it on a goal; the renderer runs it on the
+ * frames between two goals too, where each part springs at its own pace and the path can cut through her.
+ */
+export const keepApart = (
+  rig: Rig,
+  pose: Pose,
+): { pose: Record<string, Q>; issues: RigIssue[] } => {
+  const limbs = solveLimbs(rig, pose);
+  return {
+    pose: limbs.pose,
+    issues: [...limbs.issues, ...separateLegs(rig, limbs.pose), ...separateArms(rig, limbs.pose)],
+  };
+};
+
 export interface SoftContact {
   /** Where the surfaces meet (world, metres). */
   readonly at: V3;
@@ -1066,8 +1083,8 @@ export const preparePose = (
   const fixed = (b: string) =>
     rig.restFix[b] !== undefined || rig.restFix[rig.bones[b]?.parent ?? ""] !== undefined;
   for (const b of Object.keys(rig.bones)) if (fixed(b)) local[b] = toModel(b, local[b] ?? QI);
-  const limbs = solveLimbs(rig, local);
-  issues.push(...limbs.issues, ...separateLegs(rig, limbs.pose), ...separateArms(rig, limbs.pose));
+  const limbs = keepApart(rig, local);
+  issues.push(...limbs.issues);
   const out: Record<string, Q> = {};
   for (const [b, q] of Object.entries(limbs.pose)) {
     // limits are written for the T-pose convention: check in it, then back onto the model's rest
