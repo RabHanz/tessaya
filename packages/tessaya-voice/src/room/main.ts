@@ -79,6 +79,7 @@ import { createPlaybackWindows, PLAYBACK_TOPIC } from "./playbackWindow.ts";
 import { createHealthReport, readHost } from "./healthReport.ts";
 import { createTurnCapture } from "./turnCapture.ts";
 import { farCentroid } from "./farVoice.ts";
+import { createMicWatch } from "./micWatch.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
@@ -778,7 +779,13 @@ const main = async () => {
     capBytes: Number(process.env["R1_WAKE_TRACE_MB"] ?? "50") * 1_048_576,
     log,
   });
-  const wakeLog = bothCaptures(trace, capture);
+  const wakeLog = bothCaptures(
+    bothCaptures(trace, capture),
+    createMicWatch({
+      restart: (id) => mqtt.publish(`freya/r1/${id}/cmd/voice/wake/restart`, "{}"),
+      log,
+    }),
+  );
   // `R1_KWS_WAKE=Tessaya=0.9,...` ("" for none). W2 real cascade (15 Nov): the kws at 0.9 beats openWakeWord on
   // every row, 32 of his 41 held-out names against 16 at 0.63 against 0.84 false wakes/h; OR-ing both doubles them.
   const kwsWords = (text: string, also: boolean) =>

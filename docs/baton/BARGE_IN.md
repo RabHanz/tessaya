@@ -31,8 +31,8 @@ does not subtract anything. It only has to tell a voice from what is left of her
 2. **A soft pause.** She goes quiet at once (the Tessel's queue is flushed), but her reply is not cancelled.
 3. **Whose voice.** From 0.6 s of it, CAM++ compares it with every enrolled profile here (any household member, not only
    him; `memberByVoice` holds the short-clip cut-offs). A member stops her, and their words are answered, not held to a
-   stop phrase. Anyone else: she goes on from where she paused (from her sentence's start if the pause ran past 2 s), and
-   their words are not answered.
+   stop phrase. Anyone else: she goes on from where she paused, and their words are not answered. Never from her
+   sentence's start: Voice ID needs about 2 s on a voice over hers, so that rule repeated nearly every sentence (24 Nov).
 
 Level is no guide to whose voice it is: a rule that a voice must rise 10 dB over the room's own loud moments kept a TV out,
 and kept him out of a busy room three times in four. Open mode is the default; Settings → Hardware → "Talk over her" on a Tessel is the one switch (the server keeps it and

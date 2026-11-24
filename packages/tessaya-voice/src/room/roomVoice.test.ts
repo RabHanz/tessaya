@@ -2525,6 +2525,8 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     verifiedFirst = false,
     // Her echo through the mic during the "him" phase (the new case's coupling), heard as these words.
     echoOver: string | null = null,
+    // How long each Voice ID check takes (24 Nov: up to 1.2 s), on the test clock.
+    voiceIdMs = 0,
   ) => {
     const logs: string[] = [];
     const t = setup({
@@ -2540,7 +2542,10 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
             }),
           }
         : {}),
-      member: async () => likeness,
+      member: async () => {
+        t.advance(voiceIdMs);
+        return likeness;
+      },
       members: () => enrolled,
       // Her echo alone is recognised as her own words so far (her first clause), which with her sound make it hers.
       recognise: heardInTurn([
@@ -2615,6 +2620,14 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
       asked: t.brainCalls.map((c) => c.messages.at(-1)!.content),
       // Her reply reached the R1 exactly once: nothing dropped, nothing sent twice.
       sentOnce: sent() === her.length * 2,
+      // What reached the R1 is her reply in order so far: no part of it sent again.
+      inOrder: (() => {
+        const got = t.published
+          .filter((p) => p.topic.endsWith("/voice/down"))
+          .flatMap((p) => [...(p.payload as Uint8Array)]);
+        const want = toBytes(her);
+        return got.every((b, i) => b === want[i]);
+      })(),
       paused: logs.some((l) => l.endsWith("a voice over hers; she paused")),
       stopped: logs.filter((l) => l.endsWith("talked over; she stopped")).length,
     };
@@ -2632,13 +2645,27 @@ describe("the 13 Nov audit: one sentence, one answer, and only what she means to
     // Someone not in the household, or her echo in a case (18 Nov, 03:23 GMT+5): her feed pauses without a flush,
     // which would drop what the R1 holds and skip her speech, then goes on from the next sample; not answered.
     // In a session he opened (S2 here) she stays paused until that voice stops or 2 s of it is surely not his (20 Nov
-    // 17:15), so a long pause goes on from her sentence's start.
+    // 17:15), then goes on from where she paused: from her sentence's start she said it twice (24 Nov, 22:20 GMT+5).
     expect(await run("open", true, 0.05)).toMatchObject({
       flushed: false,
       asked: ["What time is it?"],
       paused: true,
       stopped: 0,
     });
+    // Voice ID slow to rule the voice out, so the pause runs past 2 s: she still goes on from where she paused, never
+    // saying her sentence again (24 Nov, 22:20 GMT+5).
+    expect(
+      await run(
+        "open",
+        true,
+        0.05,
+        true,
+        "It's seven forty here, and the sun is up.",
+        false,
+        null,
+        400,
+      ),
+    ).toMatchObject({ paused: true, stopped: 0, inOrder: true });
     // His own session (his voice verified on the turn before): mixed with hers in the new case his words over her
     // scored -0.09 to 0.20 (19 Nov, 05:01-05:02) and were dropped. Now they are answered, and nothing is sent twice.
     expect(
