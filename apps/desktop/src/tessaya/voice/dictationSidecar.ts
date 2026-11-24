@@ -228,6 +228,10 @@ export interface UiTree {
 export interface FocusState {
   readonly window?: string;
   readonly focus?: string | null;
+  /** The focused box is a password box or named like a secret (a code, card or vault field). */
+  readonly secret?: boolean;
+  /** A Windows security prompt (UAC, the secure desktop) holds the screen. */
+  readonly secure?: boolean;
   readonly error?: string;
 }
 

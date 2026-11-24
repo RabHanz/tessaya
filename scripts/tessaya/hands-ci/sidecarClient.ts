@@ -37,6 +37,8 @@ export const startSidecar = (exe: string) => {
         call<never>({ cmd: "ui_tree", ...(window === undefined ? {} : { window }) }),
       setValue: (window: string, text: string) => call<never>({ cmd: "set_value", window, text }),
       captureWindow: (i: Record<string, unknown>) => call<never>({ cmd: "capture_window", ...i }),
+      focusState: (window?: string) =>
+        call<never>({ cmd: "focus_state", ...(window === undefined ? {} : { window }) }),
     },
   };
 };

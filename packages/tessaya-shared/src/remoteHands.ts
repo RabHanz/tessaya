@@ -23,6 +23,11 @@ export const REMOTE_HANDS_TOOLS: ReadonlySet<string> = new Set([
 ]);
 
 export const ARGS_MAX_BYTES = 20_000;
+
+/** Who is calling, as `<agent>-<task>` in lower case (`ventureos-desk`, `margin-post`): logged, shown and asked by. */
+const CALLER = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+export const validCaller = (raw: unknown): string | null =>
+  typeof raw === "string" && raw.length >= 2 && raw.length <= 64 && CALLER.test(raw) ? raw : null;
 export const CALL_TIMEOUT_MS = 60_000;
 /** The desktop counts as listening if it asked for work this recently. */
 export const HOST_LISTENING_MS = 45_000;
@@ -54,6 +59,8 @@ export interface HandsCall {
   readonly session: string;
   /** Set for a brain turn's call; absent for a remote session's. */
   readonly origin?: HandsOrigin;
+  /** The remote caller's own name for itself (`validCaller`); absent for a brain turn's call. */
+  readonly caller?: string;
 }
 
 const SPECS_MAX = 64;
@@ -88,6 +95,8 @@ export interface HandsResult {
 export interface HandsAudit {
   readonly at: number;
   readonly session: string;
+  /** The remote caller's name, when one called. */
+  readonly caller?: string;
   readonly tool: string;
   /** Short and never the text typed: its length only. */
   readonly what: string;
@@ -120,6 +129,8 @@ export const createHandsBroker = (input: {
   let lastTake = Number.NEGATIVE_INFINITY;
   const audit: HandsAudit[] = [];
   let published: ReadonlyArray<HandsToolSpec> = [];
+  /** What it offers remote callers, with their schemas, for an MCP client's tools/list. */
+  let remoteSpecs: ReadonlyArray<HandsToolSpec> = [];
 
   const record = (entry: HandsAudit) => {
     audit.push(entry);
@@ -132,9 +143,12 @@ export const createHandsBroker = (input: {
   const take = (
     waitMs: number,
     tools?: ReadonlyArray<HandsToolSpec>,
+    remote?: ReadonlyArray<HandsToolSpec>,
   ): Promise<HandsCall | null> => {
     lastTake = input.now();
     if (tools !== undefined) published = tools;
+    if (remote !== undefined)
+      remoteSpecs = remote.filter((spec) => REMOTE_HANDS_TOOLS.has(spec.name));
     const next = queue.shift();
     if (next !== undefined) return Promise.resolve(next);
     return new Promise((resolve) => {
@@ -157,11 +171,20 @@ export const createHandsBroker = (input: {
     tool: string,
     args: Readonly<Record<string, unknown>>,
     origin?: HandsOrigin,
+    caller?: string,
   ): Promise<HandsResult> => {
     const started = input.now();
     const what = auditWhat(tool, args);
     const finish = (outcome: HandsAudit["outcome"], result: HandsResult): HandsResult => {
-      record({ at: started, session, tool, what, outcome, ms: input.now() - started });
+      record({
+        at: started,
+        session,
+        ...(caller === undefined ? {} : { caller }),
+        tool,
+        what,
+        outcome,
+        ms: input.now() - started,
+      });
       return result;
     };
     // A remote session reaches only the hands; a brain turn, only what the desktop offers.
@@ -200,6 +223,7 @@ export const createHandsBroker = (input: {
       args,
       session,
       ...(origin === undefined ? {} : { origin }),
+      ...(caller === undefined ? {} : { caller }),
     };
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -238,6 +262,8 @@ export const createHandsBroker = (input: {
     },
     /** What the desktop offers a brain turn now; nothing while it is not listening. */
     published: (): ReadonlyArray<HandsToolSpec> => (connected() ? published : []),
+    /** What a remote caller may use now, with schemas; nothing while the desktop is not listening. */
+    remoteTools: (): ReadonlyArray<HandsToolSpec> => (connected() ? remoteSpecs : []),
     audit: () => [...audit],
   };
 };

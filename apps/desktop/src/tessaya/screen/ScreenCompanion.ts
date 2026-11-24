@@ -131,7 +131,12 @@ import {
   type ConversationRoute,
 } from "@t3tools/tessaya-shared/conversation";
 import { BATON_TOOL_PREFIX, isOwnTool } from "@t3tools/tessaya-shared/operator";
-import { createInputPause, createMouseConsent, pointerMoved } from "../agent/pointerGuard.ts";
+import {
+  createInputPause,
+  createMouseConsent,
+  pointerMoved,
+  scaledPointerRefusal,
+} from "../agent/pointerGuard.ts";
 import {
   createAgentGate,
   createCutInMark,
@@ -190,7 +195,13 @@ import {
   realRelaunchPorts,
   relaunchChromeWithAccessibility,
 } from "./browserRoute.ts";
-import { checkChromeWithin, realProbe, type ChromeCheck } from "./chromeCheck.ts";
+import {
+  bridgeClientName,
+  bridgeOwner,
+  createBridge,
+  webTools,
+  type BridgeCheck,
+} from "./browserBridge.ts";
 import { createDesktopMemory } from "../memory/memoryClient.ts";
 import { syncSkillsToMemory } from "../pack/skillMemory.ts";
 import type { PrivateMemory } from "../memory/privateMemoryClient.ts";
@@ -284,7 +295,7 @@ interface ScreenSettings {
   /** Who does the work behind Baton. Both answer to the same gate. */
   readonly operator: "claude" | "codex";
   readonly codexBinary: string;
-  /** Let the assistant drive his own Chrome through Claude in Chrome (D3). Off until tried on his machine. */
+  /** Let the assistant use the shared browser bridge (D3, browserBridge.ts). Off until he turns it on. */
   readonly browserChrome: boolean;
   /** He (or the first-run check) has decided; until then a connected Chrome turns it on once. */
   readonly browserChromeSet: boolean;
@@ -345,6 +356,9 @@ const OPERATOR_TURN_MS = 30 * 60_000;
 const FOCUS_WAIT_MS = 400;
 const KEYBOARD_WAIT_MS = 1_500;
 const REMOTE_QUIET_MS = 4_000;
+/** His Stop within this long of a remote call pauses remote hands for REMOTE_STOP_PAUSE_MS. */
+const REMOTE_STOP_WINDOW_MS = 120_000;
+const REMOTE_STOP_PAUSE_MS = 10 * 60_000;
 const TEACH_MAX_STEPS = 30;
 const TEACH_IDLE_MS = 10 * 60_000;
 /**
@@ -569,10 +583,14 @@ export interface ScreenCompanion {
     readonly enabled: () => boolean;
     /** What this desktop offers a brain turn on its server: its own hands, published with each take. */
     readonly offered: () => ReadonlyArray<HandsToolSpec>;
+    /** What a remote caller may use, with schemas (an MCP client's tools/list); nothing while remote hands are off. */
+    readonly remoteOffered: () => ReadonlyArray<HandsToolSpec>;
     readonly run: (call: {
       readonly tool: string;
       readonly args: Readonly<Record<string, unknown>>;
       readonly origin?: HandsOrigin;
+      /** The remote caller's name for itself (`ventureos-desk`). */
+      readonly caller?: string;
     }) => Promise<HandsResult>;
   };
   /** Decide what was said and carry it out; a refusal comes back for the caller to say. */
@@ -966,20 +984,21 @@ export const startScreenCompanion = (input: {
   const isPrivate = (_persona: string): boolean => false;
   const nameOf = (id: string) =>
     readPack(NodePath.join(input.stateDir, PACK_FOLDER)).personas.find((p) => p.id === id)?.name;
-  // The Chrome check never runs on the render path and never blocks or throws: it runs off to the side, gives up
+  // The bridge check never runs on the render path and never blocks or throws: it runs off to the side, gives up
   // after a few seconds, and the window shows the last answer.
-  let chromeSeen: { readonly at: number; readonly check: ChromeCheck } = {
+  const bridge = createBridge();
+  let chromeSeen: { readonly at: number; readonly check: BridgeCheck } = {
     at: 0,
-    check: { state: "not-connected", message: "Checking Chrome..." },
+    check: { state: "not-connected", message: "Checking the browser bridge..." },
   };
   let chromeChecking = false;
-  const refreshChrome = async (): Promise<ChromeCheck> => {
+  const refreshChrome = async (): Promise<BridgeCheck> => {
     if (chromeChecking) return chromeSeen.check;
     chromeChecking = true;
     try {
       chromeSeen = {
         at: Date.now(),
-        check: await checkChromeWithin(realProbe(input.platform), 4_000),
+        check: await bridge.check(),
       };
     } finally {
       chromeChecking = false;
@@ -987,7 +1006,7 @@ export const startScreenCompanion = (input: {
     return chromeSeen.check;
   };
   /** The last answer, and a fresh look started in the background when it is old. */
-  const chromeStatus = (): ChromeCheck => {
+  const chromeStatus = (): BridgeCheck => {
     if (Date.now() - chromeSeen.at > 10_000) void refreshChrome();
     return chromeSeen.check;
   };
@@ -1111,7 +1130,14 @@ export const startScreenCompanion = (input: {
    * or lesson, the assistant's turn, and a paired device's or standing job's turn. `quiet` (Esc, a click, "never
    * mind") says nothing and leaves a device's or standing job's turn running.
    */
+  /** Who the remote call running now is, as it named itself; when one last ran; until when his Stop holds them off. */
+  let remoteCaller = "A remote session";
+  let remoteLastAt = 0;
+  let remotePausedUntil = 0;
   const stopAll = (quiet = false) => {
+    // His Stop is a stop for a remote caller at work too: its next calls are refused for a while.
+    if (!quiet && Date.now() - remoteLastAt < REMOTE_STOP_WINDOW_MS)
+      remotePausedUntil = Date.now() + REMOTE_STOP_PAUSE_MS;
     const busy = runningMode() !== null || answering > 0 || (!quiet && turnLock.deviceRunning());
     hush();
     // The answering turn does nothing more (stopsOnCutIn), as when he talks over her.
@@ -2181,6 +2207,7 @@ export const startScreenCompanion = (input: {
       actWithoutAsking: () => settings.actWithoutAsking,
       chrome: {
         socialOn: () => settings.socialOn,
+        owner: () => bridgeOwner(face),
         now: () => Date.now(),
         log: (line) =>
           NodeFS.appendFileSync(
@@ -2293,7 +2320,7 @@ export const startScreenCompanion = (input: {
         ? false
         : (await askHandsFree(
             {
-              title: `Remote: ${p.title}`,
+              title: `${remoteCaller}: ${p.title}`,
               detail: p.detail,
               buttons: ["Go ahead", "Not now"],
               cancel: 1,
@@ -2303,7 +2330,7 @@ export const startScreenCompanion = (input: {
             0,
             p.noOnExpiry,
           )) === 0,
-    record: (entry) => input.onAction?.({ by: "remote-hands", ...entry }),
+    record: (entry) => input.onAction?.({ by: `remote-hands:${remoteCaller}`, ...entry }),
     keysAllowed: (at) => void (remoteKeysAllowed = at),
   });
   // Its pointer clicks ask every call, as its taint does not carry over; away, the answer is no (CU-6).
@@ -2312,25 +2339,26 @@ export const startScreenCompanion = (input: {
       ? false
       : (await askHandsFree(
           {
-            title: "Remote: use your mouse?",
-            detail:
-              "A remote session needs to use your mouse: the pointer moves and clicks. Say no and nothing is clicked.",
+            title: `${remoteCaller}: use your mouse?`,
+            detail: `${remoteCaller} needs to use your mouse: the pointer moves and clicks. Say no and nothing is clicked.`,
             buttons: ["Go ahead", "Not now"],
             cancel: 1,
             scoped: true,
           },
-          "A remote session needs to use your mouse. Is that all right?",
+          `${remoteCaller} needs to use your mouse. Is that all right?`,
           0,
           true,
         )) === 0,
   );
-  /** A remote session at work shows as one line in the pill, gone a moment after its last call. */
+  /** A remote session at work shows as one line in the pill, by its name, gone a moment after its last call. */
   let remoteQuiet: ReturnType<typeof setTimeout> | null = null;
   const remoteActivity = (tool: string | null) => {
     if (remoteQuiet !== null) clearTimeout(remoteQuiet);
     remoteQuiet = null;
-    if (tool !== null) activity("Remote session", tool);
-    else remoteQuiet = setTimeout(() => activity(null), REMOTE_QUIET_MS);
+    if (tool !== null) {
+      remoteLastAt = Date.now();
+      activity(`Remote: ${remoteCaller}`, tool);
+    } else remoteQuiet = setTimeout(() => activity(null), REMOTE_QUIET_MS);
   };
   let remoteTools: ReadonlyMap<string, TessayaToolType> | null = null;
   const remoteToolsOf = (): ReadonlyMap<string, TessayaToolType> => {
@@ -2351,13 +2379,14 @@ export const startScreenCompanion = (input: {
               const dip = Electron.screen.screenToDipPoint(to);
               await pointerAction(dip, () => driverFor().clickAt(dip, "left", double ? 2 : 1));
             },
+            // His keys stay his: a remote caller waits out his typing as she does.
             type: async (text) => {
               await checkKeys(null, remoteKeysAllowed);
-              await driverFor().type(text);
+              await ownInput(() => driverFor().type(text));
             },
             press: async (keys) => {
               await checkKeys(keys, remoteKeysAllowed);
-              await driverFor().press(keys);
+              await ownInput(() => driverFor().press(keys));
             },
             keyboardIn: async (window) =>
               (await focusSoon())?.label.toLowerCase().includes(window.toLowerCase()) === true,
@@ -2458,6 +2487,8 @@ export const startScreenCompanion = (input: {
     }
   };
   const pointerAction = async (to: { x: number; y: number }, act: () => Promise<void>) => {
+    const scaled = scaledPointerRefusal(Electron.screen.getAllDisplays(), to);
+    if (scaled !== null) throw new Error(scaled);
     const here = Electron.screen.getCursorScreenPoint();
     if (pointerMoved(leftPointer, here)) {
       throw new Error("He moved the mouse, so I stopped. Tell him, and carry on only if he asks.");
@@ -2674,8 +2705,8 @@ export const startScreenCompanion = (input: {
         task: ask.task,
         url: ask.url,
         needsLogin: ask.needsLogin,
-        ownChromeOn: settings.browserChrome,
-        chrome: check,
+        bridgeOn: settings.browserChrome,
+        bridge: check,
         chromeVisible: null,
         accessibility,
         relaunchApproved: chromeRelaunched,
@@ -3151,11 +3182,17 @@ export const startScreenCompanion = (input: {
       }
     },
   };
+  /** The bridge's tools while he has it on, each call filed under the answering persona's line of work. */
+  const bridgeTools = async (task: string) =>
+    settings.browserChrome ? webTools(bridge, () => bridgeClientName(bridgeOwner(face), task)) : [];
   const agentStart = (systemPrompt: string, chosen = leadBrain()): Promise<VisionSession> =>
     sessionWithOwnMcp(
-      () =>
+      async () =>
         startTessayaMcp({
-          tools: withFailureGuard(buildTessayaTools(hisHost), toolFailures),
+          tools: withFailureGuard(
+            [...buildTessayaTools(hisHost), ...(await bridgeTools("desk"))],
+            toolFailures,
+          ),
           gate: stopsOnCutIn(agentGate, cutIns.since),
           scrub: (text) => vaultHost?.scrub(text) ?? text,
           onResult: ({ text, ...r }) => {
@@ -3181,7 +3218,6 @@ export const startScreenCompanion = (input: {
             cutIns.since,
           ),
           mcp: { url: mcp.url, token: mcp.token },
-          chrome: settings.browserChrome,
           onTool: (call) => turns.current().tools.push(call.tool),
         }),
       agentMcps,
@@ -3201,7 +3237,10 @@ export const startScreenCompanion = (input: {
   ): Promise<VisionSession> => {
     const mcp = await startTessayaMcp({
       tools: (slot.wrap ?? ((tools) => tools))(
-        withFailureGuard(buildTessayaTools(slot.host), slot.failures),
+        withFailureGuard(
+          [...buildTessayaTools(slot.host), ...(await bridgeTools("vessel"))],
+          slot.failures,
+        ),
       ),
       gate: slot.gate,
       scrub: (text) => vaultHost?.scrub(text) ?? text,
@@ -3220,7 +3259,6 @@ export const startScreenCompanion = (input: {
       timeoutMs: OPERATOR_TURN_MS,
       gate: async (call) => (isOwnTool(call.tool) ? { allow: true as const } : slot.gate(call)),
       mcp: { url: mcp.url, token: mcp.token },
-      chrome: settings.browserChrome,
       onTool: (call) => turns.current().tools.push(call.tool),
     });
   };
@@ -4163,7 +4201,7 @@ export const startScreenCompanion = (input: {
       conversations.setCurrent(face.id);
     },
     warm: (wake) => {
-      // First run: a Chrome that is already connected turns this on, once; otherwise it stays off and asks again next time.
+      // First run: a bridge that already answers turns this on, once; otherwise it stays off and asks again next time.
       if (!settings.browserChromeSet) {
         void refreshChrome().then((check) => {
           if (check.state !== "ready" || settings.browserChromeSet) return;
@@ -4171,7 +4209,7 @@ export const startScreenCompanion = (input: {
           save({ browserChrome: true, browserChromeSet: true });
           linger(
             "Tessaya",
-            "Chrome is connected, so the assistant can use it. Turn it off under Assistant if you would rather not.",
+            "The browser bridge answers, so the assistant can use it. Turn it off under Assistant if you would rather not.",
           );
         });
       }
@@ -4226,10 +4264,29 @@ export const startScreenCompanion = (input: {
     remoteHands: {
       enabled: () => settings.remoteHands || settings.serverBrain,
       offered: () => (settings.serverBrain ? brainHands.offered() : []),
+      remoteOffered: () => {
+        if (!settings.remoteHands) return [];
+        try {
+          return [...remoteToolsOf().values()].map((t) => ({
+            name: t.name,
+            description: t.description,
+            input_schema: t.inputSchema,
+          }));
+        } catch {
+          return [];
+        }
+      },
       run: async (call) => {
         if (call.origin !== undefined) return brainHands.run(call.tool, call.args);
         if (!settings.remoteHands)
           return { ok: false, error: "Remote hands are off on this computer." };
+        const paused = remotePausedUntil - Date.now();
+        if (paused > 0)
+          return {
+            ok: false,
+            error: `He pressed Stop, so remote hands are paused for ${Math.ceil(paused / 60_000)} more minutes. Nothing was done.`,
+          };
+        remoteCaller = call.caller ?? "A remote session";
         remoteTaint.reset();
         remoteMouse.reset();
         remoteActivity(call.tool);
@@ -4414,15 +4471,15 @@ export const startScreenCompanion = (input: {
       {
         id: "s.chrome",
         section: "Working for you",
-        label: "Use my Chrome",
-        hint: "Lets the assistant read and use pages in your own Chrome through Claude in Chrome. Reading is routine; a submit, send, purchase, delete or settings change asks aloud, and moving money is refused. Not yet tried on this computer.",
+        label: "Use the browser bridge",
+        hint: "Lets the assistant read and use pages through the shared browser bridge, in the Agents browser profile and in its own tab group (Sebastian's outreach in his). Reading is routine; a submit, send, purchase, delete or settings change asks aloud, everything Sebastian would send waits for your yes to the exact words, and moving money is refused.",
         kind: "toggle",
         on: settings.browserChrome,
       },
       {
         id: "s.chromeCheck",
         section: "Working for you",
-        label: "Chrome",
+        label: "Browser bridge",
         kind: "check",
         status: chromeStatus().state === "ready" ? "ok" : "warn",
         detail: chromeStatus().message,
@@ -4431,8 +4488,8 @@ export const startScreenCompanion = (input: {
       {
         id: "s.social",
         section: "Working for you",
-        label: "Allow social accounts in Chrome",
-        hint: "Applies once Use my Chrome is on. Reading is routine; every post, comment, like, follow, message, share, delete or profile change asks aloud and shows what it would send, ten at most an hour, each logged in social-actions.ndjson. Off, social sites are refused.",
+        label: "Allow social accounts in the browser",
+        hint: "Applies once Use the browser bridge is on. Reading is routine; every post, comment, like, follow, message, share, delete or profile change asks aloud and shows what it would send, ten at most an hour, each logged in social-actions.ndjson. Off, social sites are refused.",
         kind: "toggle",
         on: settings.socialOn,
       },

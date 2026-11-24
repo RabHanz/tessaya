@@ -11,8 +11,8 @@ import {
 const base: RouteInput = {
   task: "act",
   needsLogin: true,
-  ownChromeOn: true,
-  chrome: { state: "ready", message: "Chrome is connected." },
+  bridgeOn: true,
+  bridge: { state: "ready", message: "The shared browser bridge answers." },
   chromeVisible: true,
   accessibility: "unknown",
   relaunchApproved: false,
@@ -27,33 +27,33 @@ describe("chooseBrowserRoute", () => {
     expect(
       chooseBrowserRoute({ ...base, task: "read", needsLogin: true, url: "https://example.test" })
         .route,
-    ).toBe("chrome");
+    ).toBe("bridge");
   });
 
-  it("uses his Chrome when it is on and connected, bringing a hidden tab forward first", () => {
-    expect(chooseBrowserRoute(base).steps).toEqual(["call with a 10 second limit and one retry"]);
-    const hidden = chooseBrowserRoute({ ...base, chromeVisible: null });
-    expect(hidden.route).toBe("chrome");
-    expect(hidden.steps[0]).toContain("bring");
+  it("uses the shared Playwright bridge when it is on and answering, never the Claude in Chrome extension", () => {
+    const choice = chooseBrowserRoute(base);
+    expect(choice.route).toBe("bridge");
+    expect(choice.steps.join(" ")).toContain("web_snapshot");
+    expect(JSON.stringify(choice)).not.toMatch(/claude in chrome|extension/i);
+    // The bridge drives its own window, so whether a Chrome window is on screen does not matter.
+    expect(chooseBrowserRoute({ ...base, chromeVisible: false }).route).toBe("bridge");
   });
 
-  it("falls back with a reason when his Chrome is off, missing or not connected", () => {
-    const off = chooseBrowserRoute({ ...base, ownChromeOn: false, accessibility: "on" });
+  it("falls back with a reason when the bridge is off or not answering", () => {
+    const off = chooseBrowserRoute({ ...base, bridgeOn: false, accessibility: "on" });
     expect(off).toMatchObject({ route: "uia" });
-    expect(off.why).toContain("own Chrome is off");
+    expect(off.why).toContain("browser bridge is off");
     const gone = chooseBrowserRoute({
       ...base,
-      chrome: {
-        state: "not-connected",
-        message: "The Chrome extension is installed but not connected.",
-      },
+      bridge: { state: "not-connected", message: "The browser bridge is not answering." },
       accessibility: "on",
     });
-    expect(gone.why).toContain("not connected");
+    expect(gone.route).toBe("uia");
+    expect(gone.why).toContain("not answering");
   });
 
   it("asks before restarting Chrome for accessibility, reads pixels meanwhile, and uses the controls once restarted", () => {
-    const off = { ...base, ownChromeOn: false, accessibility: "off" as const };
+    const off = { ...base, bridgeOn: false, accessibility: "off" as const };
     expect(chooseBrowserRoute(off)).toMatchObject({
       route: "pixels",
       needsApproval: "relaunch-accessibility",
@@ -62,10 +62,10 @@ describe("chooseBrowserRoute", () => {
   });
 
   it("says plainly when there is no window to work in, and reads pixels when nothing is known", () => {
-    expect(chooseBrowserRoute({ ...base, ownChromeOn: false, chromeVisible: false })).toMatchObject(
-      { route: "none" },
-    );
-    expect(chooseBrowserRoute({ ...base, ownChromeOn: false }).route).toBe("pixels");
+    expect(chooseBrowserRoute({ ...base, bridgeOn: false, chromeVisible: false })).toMatchObject({
+      route: "none",
+    });
+    expect(chooseBrowserRoute({ ...base, bridgeOn: false }).route).toBe("pixels");
   });
 });
 

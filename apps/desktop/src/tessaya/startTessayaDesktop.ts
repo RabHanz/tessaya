@@ -1097,6 +1097,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
         post,
         enabled: () => companion.remoteHands.enabled(),
         offered: () => companion.remoteHands.offered(),
+        remoteOffered: () => companion.remoteHands.remoteOffered(),
         run: (call) => companion.remoteHands.run(call),
       });
       hands.start();

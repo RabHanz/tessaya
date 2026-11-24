@@ -5,7 +5,7 @@ import * as NodePath from "node:path";
 import { REMOTE_HANDS_TOOLS } from "@t3tools/tessaya-shared/remoteHands";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildRemoteHandsTools, type RemoteHandsDeps } from "./remoteHandsTools.ts";
+import { buildRemoteHandsTools, handsRefusal, type RemoteHandsDeps } from "./remoteHandsTools.ts";
 
 const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hands-"));
 const make = (
@@ -25,6 +25,12 @@ const make = (
       uiTree: async () => ({ window: "Notepad", controls: ["button: Save"] }),
       captureWindow: async () => ({}),
       setValue: async () => ({ set: false }),
+      focusState: async () => ({
+        window: "Notepad",
+        focus: "edit: Text",
+        secret: false,
+        secure: false,
+      }),
       ...over,
     },
     scratchDir: dir,
@@ -177,5 +183,46 @@ describe("remote hands tools", () => {
       ],
     });
     expect(out.text).toContain("Stopped before step 2");
+  });
+
+  it("never acts on a secret box, a private window or a Windows security prompt, and says why", async () => {
+    const fg: RemoteHandsDeps["foreground"] = {
+      clickAt: async () => undefined,
+      type: async () => undefined,
+      press: async () => undefined,
+      keyboardIn: async () => true,
+      restoreFocus: async (run) => (await run(), true),
+    };
+    const secret = make(
+      { focusState: async () => ({ window: "Sign up", focus: "edit: Card number", secret: true }) },
+      fg,
+    );
+    await expect(secret.tools.get("type_text")!.run({ text: "4111" })).rejects.toThrow(
+      "He types those himself",
+    );
+    await expect(secret.tools.get("press_keys")!.run({ keys: ["enter"] })).rejects.toThrow(
+      "He types those himself",
+    );
+    const uac = make({ focusState: async () => ({ window: "", focus: null, secure: true }) }, fg);
+    for (const [tool, args] of [
+      ["ui_tree", {}],
+      ["click_element", { label: "Yes", why: "w" }],
+      ["type_text", { text: "x" }],
+      ["window_capture", {}],
+    ] as const)
+      await expect(uac.tools.get(tool)!.run(args), tool).rejects.toThrow("security prompt");
+    const vault = make({ focusState: async () => ({ window: "Bitwarden", focus: null }) }, fg);
+    await expect(vault.tools.get("ui_tree")!.run({ window: "Bitwarden" })).rejects.toThrow(
+      "private",
+    );
+    // Not knowing what holds the keyboard is a refusal for typing, never a pass.
+    const unknown = make({ focusState: async () => ({ error: "busy" }) }, fg);
+    await expect(unknown.tools.get("type_text")!.run({ text: "x" })).rejects.toThrow(
+      "could not check",
+    );
+    expect(handsRefusal("look", { window: "Notepad", focus: null })).toBeNull();
+    expect(
+      handsRefusal("type", { window: "Notepad", focus: "edit: Text", secret: false }),
+    ).toBeNull();
   });
 });

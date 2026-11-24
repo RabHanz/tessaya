@@ -1,24 +1,24 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off
 /**
- * Which way to work a browser (computer-use reliability): his own Chrome through the Claude in Chrome
- * extension, the operating system's UI Automation on the real window, pixels, or a plain fetch for reads.
+ * Which way to work a browser (computer-use reliability): the shared Playwright bridge (browserBridge.ts), the
+ * operating system's UI Automation on the real window, pixels, or a plain fetch for reads.
  * The choice is pure and always comes with a reason, so a failure is spoken as a reason and the turn log
  * says which route ran and why.
  */
 import * as NodeChildProcess from "node:child_process";
 
-import type { ChromeCheck } from "./chromeCheck.ts";
+import type { BridgeCheck } from "./browserBridge.ts";
 
-export type Route = "chrome" | "uia" | "pixels" | "fetch" | "none";
+export type Route = "bridge" | "uia" | "pixels" | "fetch" | "none";
 
 export interface RouteInput {
   readonly task: "read" | "act";
   readonly url?: string | undefined;
   /** The page needs his login or his tabs, so a plain fetch would not see what he sees. */
   readonly needsLogin: boolean;
-  /** "Use my Chrome" is switched on in Settings. */
-  readonly ownChromeOn: boolean;
-  readonly chrome: ChromeCheck;
+  /** "Use the browser bridge" is switched on in Settings. */
+  readonly bridgeOn: boolean;
+  readonly bridge: BridgeCheck;
   /** A Chrome window is on screen and not minimised; null when that could not be told. */
   readonly chromeVisible: boolean | null;
   /** Whether Chrome exposes its page to UI Automation. */
@@ -43,22 +43,17 @@ export const chooseBrowserRoute = (i: RouteInput): RouteChoice => {
   if (i.task === "read" && !i.needsLogin && i.url !== undefined) {
     return { route: "fetch", why: "A plain read of a public page needs no browser.", steps: [] };
   }
-  if (i.ownChromeOn && i.chrome.state === "ready") {
+  if (i.bridgeOn && i.bridge.state === "ready") {
     return {
-      route: "chrome",
-      why: "Using your own Chrome, which is connected.",
-      steps:
-        i.chromeVisible === true
-          ? ["call with a 10 second limit and one retry"]
-          : [
-              "bring the Chrome window and the tab to the front",
-              "call with a 10 second limit and one retry",
-            ],
+      route: "bridge",
+      why: "Using the shared browser bridge, which answers; the work lands in its own tab.",
+      steps: [
+        "web_navigate to the page, then web_snapshot to read it",
+        "act by the snapshot's refs (web_click, web_type); close only your own tab when done",
+      ],
     };
   }
-  const reason = !i.ownChromeOn
-    ? "Using your own Chrome is off"
-    : i.chrome.message.replace(/\.$/, "");
+  const reason = !i.bridgeOn ? "The browser bridge is off" : i.bridge.message.replace(/\.$/, "");
   if (i.chromeVisible === false) {
     return {
       route: "none",

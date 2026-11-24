@@ -5,6 +5,7 @@ import {
   createMouseConsent,
   PAUSE_MAX_MS,
   pointerMoved,
+  scaledPointerRefusal,
 } from "./pointerGuard.ts";
 
 describe("the mouse stays his", () => {
@@ -99,5 +100,23 @@ describe("his keyboard stays his", () => {
     await quiet.before();
     const fresh = createInputPause({ idleMs: async () => 0, now: () => 5, sleep: async () => {} });
     await fresh.before();
+  });
+});
+
+describe("a pointer on his mixed-DPI screens (REQ-15-257)", () => {
+  // His laptop on 2026-11-24: the 100% landscape primary, DISPLAY1 portrait at 150% to its left, DISPLAY5 above.
+  const his = [
+    { bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1 },
+    { bounds: { x: -1440, y: -400, width: 1440, height: 2560 / 1.5 }, scaleFactor: 1.5 },
+    { bounds: { x: 0, y: -1440, width: 2560, height: 1440 }, scaleFactor: 1 },
+  ];
+  it("never moves the pointer onto a scaled screen when the screens mix scales; patterns only there", () => {
+    expect(scaledPointerRefusal(his, { x: 500, y: 500 })).toBeNull();
+    expect(scaledPointerRefusal(his, { x: 300, y: -700 })).toBeNull();
+    expect(scaledPointerRefusal(his, { x: -700, y: 300 })).toContain("scaled screen");
+  });
+  it("leaves one scale everywhere alone, even when it is not 100%", () => {
+    const laptop = [{ bounds: { x: 0, y: 0, width: 1280, height: 800 }, scaleFactor: 1.5 }];
+    expect(scaledPointerRefusal(laptop, { x: 10, y: 10 })).toBeNull();
   });
 });

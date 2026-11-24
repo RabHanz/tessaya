@@ -74,6 +74,7 @@ describe("remote hands loop", () => {
     let up = true;
     const origin = { label: "R1", hisVoice: true, member: "owner", assurance: 2, tainted: false };
     const seen: Array<unknown> = [];
+    const callers: Array<unknown> = [];
     const loop = createRemoteHandsLoop({
       post: async (path, body) => {
         if (!up) throw new Error("down");
@@ -82,14 +83,22 @@ describe("remote hands loop", () => {
           ? {
               status: 200,
               json: {
-                call: { id: "c3", tool: "screen_capture", args: {}, session: "turn:R1", origin },
+                call: {
+                  id: "c3",
+                  tool: "screen_capture",
+                  args: {},
+                  session: "turn:R1",
+                  origin,
+                  caller: "ventureos-desk",
+                },
               },
             }
           : { status: 200, json: {} };
       },
       enabled: () => true,
       offered: () => [{ name: "screen_capture", description: "d", input_schema: {} }],
-      run: async (call) => (seen.push(call.origin), { ok: true }),
+      remoteOffered: () => [{ name: "ui_tree", description: "c", input_schema: {} }],
+      run: async (call) => (seen.push(call.origin), callers.push(call.caller), { ok: true }),
     });
     await loop.tick();
     await loop.tick();
@@ -98,6 +107,9 @@ describe("remote hands loop", () => {
     up = true;
     await loop.tick();
     expect(takes.map((b) => "tools" in (b as object))).toEqual([true, false, true]);
+    // What a remote MCP caller lists goes up the same way, only when it changed.
+    expect(takes.map((b) => "remoteTools" in (b as object))).toEqual([true, false, true]);
     expect(seen[0]).toEqual(origin);
+    expect(callers[0]).toBe("ventureos-desk");
   });
 });

@@ -24,7 +24,7 @@ const turns = [
   {
     at: "2026-11-03T10:00:00Z",
     kind: "action",
-    tool: "mcp__claude-in-chrome__navigate",
+    tool: "mcp__baton__web_navigate",
     outcome: "refused",
   },
   {

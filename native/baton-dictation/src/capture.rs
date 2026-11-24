@@ -9,7 +9,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
-use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEINPUT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP, MOUSEINPUT, VK_MENU,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     BringWindowToTop, GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, IsIconic, SetForegroundWindow, ShowWindow,
     SwitchToThisWindow, SW_RESTORE,
@@ -95,6 +97,15 @@ pub fn focus_window(window: isize) -> Result<Value, String> {
         SendInput(&[nothing], std::mem::size_of::<INPUT>() as i32);
         if SetForegroundWindow(hwnd).as_bool() && landed() {
             return Ok(json!({"focused": true, "how": "input"}));
+        }
+        // An Alt tap counts as keyboard input of ours, which some foreground locks need (proven 2026-11-24 on his laptop).
+        let alt = |flags| INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_MENU, dwFlags: flags, ..Default::default() } },
+        };
+        SendInput(&[alt(Default::default()), alt(KEYEVENTF_KEYUP)], std::mem::size_of::<INPUT>() as i32);
+        if SetForegroundWindow(hwnd).as_bool() && landed() {
+            return Ok(json!({"focused": true, "how": "alt"}));
         }
         let me = GetCurrentThreadId();
         let front = GetWindowThreadProcessId(GetForegroundWindow(), None);

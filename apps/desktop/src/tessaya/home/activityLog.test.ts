@@ -37,7 +37,7 @@ describe("what Tessaya did, in plain words", () => {
     ["mcp__baton__job_refine", "", "assistant", "Updated a job"],
     ["mcp__baton__cloud_dispatch", "", "assistant", "Worked with a cloud machine"],
     ["mcp__baton__brand_new_tool", "", "assistant", "Did something for you"],
-    ["mcp__claude-in-chrome__navigate", "https://x.test", "assistant", "Opened a page in Chrome"],
+    ["mcp__baton__web_navigate", "https://x.test", "assistant", "Opened a page in the browser"],
     ["mcp__someone__thing", "", "assistant", "Did something for you"],
     ["Bash", "rm -rf build", "assistant", "Ran a command"],
   ])("%s (%s) reads as a sentence", (tool, action, kind, text) => {

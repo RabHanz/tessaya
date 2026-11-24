@@ -236,9 +236,10 @@ export const createAgentGate = (input: {
   }) => void;
   /** The site the window in front is on, read from its address bar; null when it is not a browser or has none. */
   readonly frontSite?: () => Promise<string | null>;
-  /** His own Chrome (D3): whether social accounts are on, the clock, and a line sink for what is done on them. */
+  /** His browser through the bridge (D3): social on, the clock, a line sink, and whose work the turn is. */
   readonly chrome?: {
     readonly socialOn: () => boolean;
+    readonly owner?: () => "tessaya" | "sebastian";
     readonly now: () => number;
     readonly log: (line: string) => void;
   };
@@ -298,6 +299,7 @@ export const createAgentGate = (input: {
               socialOn: input.chrome?.socialOn() ?? false,
               pageHost,
               recentSocial: recent,
+              ...(input.chrome?.owner === undefined ? {} : { owner: input.chrome.owner() }),
             },
           }
         : {}),
@@ -392,7 +394,7 @@ export const createAgentGate = (input: {
     };
     /** The tab goes where a navigation took it; later clicks are judged against that site. */
     const noteNavigation = () => {
-      if (chromeCall && /__(navigate|tabs_create_mcp)$/.test(call.tool)) {
+      if (chromeCall && (/web_navigate$/.test(call.tool) || call.input["action"] === "new")) {
         pageHost = typeof call.input["url"] === "string" ? hostForCall(call.input, null) : pageHost;
       }
     };
@@ -414,7 +416,7 @@ export const createAgentGate = (input: {
     if (judged.verdict === "allow") {
       noteNavigation();
       allowKeys(false);
-      if (chromeReads(call.tool, call.input)) input.taint.mark();
+      if (chromeReads(call.tool)) input.taint.mark();
       logSocial("allowed");
       after();
       input.record({
