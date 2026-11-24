@@ -17,7 +17,7 @@ import {
 } from "@t3tools/tessaya-contracts";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { collectStreamAsString } from "@t3tools/provider-core/server/snapshotProbe";
-import { askHistory } from "@t3tools/tessaya-shared/historyIndex";
+import { NOT_HERE, askHistory } from "@t3tools/tessaya-shared/historyIndex";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import {
   pickSession,
@@ -39,6 +39,7 @@ import * as Schema from "effect/Schema";
 import * as ServerConfig from "../config.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
+import { liveThreadId } from "./LiveSessionMirror.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { TessayaEngine } from "./TessayaEngine.ts";
 import { TessayaHousehold } from "./TessayaHousehold.ts";
@@ -204,17 +205,26 @@ export const make = Effect.gen(function* () {
           `Working notes: goal ${synopsis.goal || "unknown"}; now ${synopsis.currentAction ?? "unknown"}; files ${synopsis.changedFiles.slice(0, 8).join(", ") || "none"}; next ${synopsis.next.join("; ") || "none"}.`,
         );
     }
-    const threadId = row.thread === null ? null : ThreadId.make(row.thread.threadId);
+    const claudeId = row.key.startsWith("claude:") ? row.key.slice("claude:".length) : null;
+    // A terminal session is mirrored live into a thread on its own machine; the history index is only filled daily.
+    const threadId =
+      row.thread !== null
+        ? ThreadId.make(row.thread.threadId)
+        : claudeId === null
+          ? null
+          : liveThreadId(claudeId);
     if (threadId !== null) {
       for (const m of yield* engine.recentMessages(threadId, 3)) parts.push(`${m.role}: ${m.text}`);
       if ((yield* engine.pendingRuntimeRequests(threadId)).length > 0)
         notes.push("It is waiting for his approval of a tool call.");
-    } else if (row.key.startsWith("claude:")) {
-      // A terminal session with no thread here: the history index holds its transcript, never a copy of ours.
-      const answer = yield* Effect.promise(() =>
-        askHistory(process.env, { session: row.key.slice("claude:".length) }),
-      );
+    }
+    let unread: string | null = null;
+    if (claudeId !== null && parts.length === 0) {
+      const answer = yield* Effect.promise(() => askHistory(process.env, { session: claudeId }));
       if (answer.ok) parts.push(answer.text);
+      else
+        unread =
+          answer.why === NOT_HERE ? "no history index" : "the history index has nothing for it";
     }
     const excerpt = readableExcerpt([...notes, ...parts], privateTexts());
     const read =
@@ -240,7 +250,9 @@ export const make = Effect.gen(function* () {
       prs: yield* prs(prUrlsIn(parts.join("\n"))),
       line:
         excerpt === ""
-          ? `${row.session} is ${row.state}; there is nothing in it I can read.`
+          ? unread !== null
+            ? `${row.session} is ${row.state}, but I can't read it: ${row.box} has no live copy of it and ${unread}.`
+            : `${row.session} is ${row.state}; there is nothing in it I can read.`
           : read === null
             ? `${row.session} is ${row.state}; I could not summarise it just now.`
             : `${row.session} is ${row.state}.`,
