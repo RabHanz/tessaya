@@ -3155,16 +3155,13 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         });
     };
 
-    /** Not the household's voice: she goes on from where she paused, or from her sentence's start after a long pause. */
+    /** Not the household's voice: she goes on from where she paused (Voice ID's ~2 s makes any restart a repeat). */
     const resume = (h: NonNullable<typeof hold>) => {
       h.resuming = true;
-      const long = deps.now() - h.since > 2_000;
-      deps.log(
-        `[${id}] not a household voice; she goes on${long ? " from her sentence's start" : ""}`,
-      );
+      deps.log(`[${id}] not a household voice; she goes on from where she paused`);
       resumedAt = deps.now();
       if (!presumedHis()) otherVoice = { from: h.since - 1_000, until: deps.now() };
-      goOn(h, long, 0);
+      goOn(h, false, 0);
     };
 
     /**
