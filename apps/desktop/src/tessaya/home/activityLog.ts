@@ -125,8 +125,8 @@ const OTHER: ReadonlyArray<readonly [RegExp, string]> = [
   [/^(Edit|MultiEdit|Write|NotebookEdit)$/, "Changed a file"],
   [/^(Glob|Grep|LS)$/, "Searched your files"],
   [/^(WebFetch|WebSearch)$/, "Looked something up online"],
-  [/^mcp__claude-in-chrome__(navigate|tabs_create_mcp)$/, "Opened a page in Chrome"],
-  [/^mcp__claude-in-chrome__/, "Worked in Chrome"],
+  [/^mcp__baton__web_navigate$/, "Opened a page in the browser"],
+  [/^mcp__baton__web_/, "Worked in the browser"],
 ];
 
 /** The words for one action line: a sentence, never the tool's name. Null for a line not worth a row. */

@@ -40,7 +40,7 @@ const CALLS = [
   "WebSearch",
   "fileChange",
   "commandExecution",
-  "mcp__claude-in-chrome__navigate",
+  "mcp__baton__web_navigate",
   "SomethingNew",
 ].flatMap((tool) => INPUTS.map((input) => ({ tool, input })));
 
@@ -272,7 +272,7 @@ describe("One Trust", () => {
 });
 
 describe("a plan lease from his yes on a job's plan", () => {
-  const C = "mcp__claude-in-chrome__";
+  const C = "mcp__baton__web_";
   const leases = [
     {
       job: "j1",
@@ -288,7 +288,7 @@ describe("a plan lease from his yes on a job's plan", () => {
     tainted: true,
     chrome: { socialOn: false, pageHost: "www.booking.com", recentSocial: 0 },
   };
-  const click = { tool: `${C}computer`, input: { action: "left_click", coordinate: [1, 2] } };
+  const click = { tool: `${C}click`, input: { element: "Reserve", ref: "e1" } };
   const lease = (over = {}) => ({ leases, persona: "butler", now: 0, ...over });
   it("runs what follows a read on a leased site, for that persona and in time, and nothing else", () => {
     expect(decideTrust({ call: click, context: read }).verdict).toBe("ask");
@@ -305,7 +305,10 @@ describe("a plan lease from his yes on a job's plan", () => {
       "ask",
     );
     // A typed Enter may submit: that ask is not the one a lease lifts.
-    const enter = { tool: `${C}computer`, input: { action: "type", text: "hotels\n enter" } };
+    const enter = {
+      tool: `${C}type`,
+      input: { element: "Search", ref: "e2", text: "hotels", submit: true },
+    };
     expect(decideTrust({ call: enter, context: read, lease: lease() }).verdict).toBe("ask");
   });
   it("covers an app's hands steps only in the leased app, never a command line", () => {

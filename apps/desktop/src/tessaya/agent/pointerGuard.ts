@@ -18,6 +18,38 @@ export const pointerMoved = (
 ): boolean =>
   left !== null && (Math.abs(left.x - now.x) > tolerance || Math.abs(left.y - now.y) > tolerance);
 
+interface ScreenArea {
+  readonly bounds: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly scaleFactor: number;
+}
+
+/**
+ * Where screens mix scales, the pointer never goes to a scaled one (REQ-15-257): a DIP-to-pixel guess there landed a
+ * click on the wrong control on his laptop, so those controls are pressed by their UI Automation patterns only.
+ * `at` is in DIPs. One scale everywhere maps exactly, so it is left alone.
+ */
+export const scaledPointerRefusal = (
+  screens: ReadonlyArray<ScreenArea>,
+  at: Point,
+): string | null => {
+  if (new Set(screens.map((s) => s.scaleFactor)).size < 2) return null;
+  const here = screens.find(
+    (s) =>
+      at.x >= s.bounds.x &&
+      at.x < s.bounds.x + s.bounds.width &&
+      at.y >= s.bounds.y &&
+      at.y < s.bounds.y + s.bounds.height,
+  );
+  return here === undefined || here.scaleFactor !== 1
+    ? "That spot is on a scaled screen beside screens of another scale, where a pointer click can land on the wrong control, so the pointer stays put. Press it by name with click_element, or ask him to click it."
+    : null;
+};
+
 /**
  * His mouse moves only as a last resort, and only after he says yes (CU-6): once a turn, since one task can need a few
  * clicks. A no throws, so the model hears it and finds another way.

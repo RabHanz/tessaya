@@ -88,8 +88,6 @@ export interface VisionSessionOptions {
   readonly onResult?: (event: Record<string, unknown>) => void;
   /** Baton's own tool server for this session: its address and the token it needs (D143). */
   readonly mcp?: { readonly url: string; readonly token: string };
-  /** Pass `--chrome` so the session can use his Claude in Chrome extension (D3). */
-  readonly chrome?: boolean;
   /** `--effort`; medium when absent, and none for the fast router model. */
   readonly effort?: string;
   /** What the usage ledger files its answers under; `screen` when absent. */
@@ -119,8 +117,6 @@ export const visionArgs = (
   operator = false,
   /** A file naming the MCP servers this session may use, and no others (D143). */
   mcpConfigFile?: string,
-  /** Claude in Chrome: the session can drive his own browser (D3). Off unless he turned it on. */
-  chrome = false,
   effort = "medium",
 ): ReadonlyArray<string> => [
   "-p",
@@ -143,7 +139,6 @@ export const visionArgs = (
   ...(mcpConfigFile === undefined ? [] : ["--mcp-config", mcpConfigFile, "--strict-mcp-config"]),
   // Without a gate the CLI's own permission mode would refuse our tools unless his default is bypass; our server gates them.
   ...(mcpConfigFile === undefined || operator ? [] : ["--allowedTools", "mcp__baton"]),
-  ...(chrome ? ["--chrome"] : []),
   "--no-session-persistence",
   "--system-prompt-file",
   systemPromptFile,
@@ -347,14 +342,9 @@ export const startVisionSession = (options: VisionSessionOptions): VisionSession
   const viaShell = options.platform === "win32" && /\.cmd$/i.test(binary);
   const child = NodeChildProcess.spawn(
     binary,
-    visionArgs(
-      promptFile,
-      options.model,
-      options.gate !== undefined,
-      mcpFile,
-      options.chrome === true,
-      options.effort,
-    ).map((a) => (viaShell ? `"${a}"` : a)),
+    visionArgs(promptFile, options.model, options.gate !== undefined, mcpFile, options.effort).map(
+      (a) => (viaShell ? `"${a}"` : a),
+    ),
     {
       cwd: options.cwd ?? ledgered,
       env: {

@@ -275,6 +275,8 @@ describe("the operator's Claude session", () => {
     expect(assistant).toContain("--strict-mcp-config");
     expect(assistant[assistant.indexOf("--setting-sources") + 1]).toBe("");
     expect(assistant).not.toContain("--allowedTools");
+    // His browser goes through the shared bridge on her own tool server, never the Claude in Chrome extension.
+    expect(assistant).not.toContain("--chrome");
     // A replay has no gate, so its own server's tools are allowed by name rather than by his CLI default.
     const replay = visionArgs("p.txt", "sonnet", false, "mcp.json");
     expect(replay[replay.indexOf("--allowedTools") + 1]).toBe("mcp__baton");

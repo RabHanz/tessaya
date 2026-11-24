@@ -16,9 +16,13 @@ const AWAY_WAIT_MS = 3_000;
 export const createRemoteHandsLoop = (input: {
   readonly post: HubPost;
   readonly enabled: () => boolean;
-  readonly run: (call: Pick<HandsCall, "tool" | "args" | "origin">) => Promise<HandsResult>;
+  readonly run: (
+    call: Pick<HandsCall, "tool" | "args" | "origin" | "caller">,
+  ) => Promise<HandsResult>;
   /** What this desktop offers a brain turn; sent with a take only when it changed. */
   readonly offered?: () => ReadonlyArray<HandsToolSpec>;
+  /** What it offers a remote caller, with schemas for an MCP client's tools/list; sent the same way. */
+  readonly remoteOffered?: () => ReadonlyArray<HandsToolSpec>;
   readonly wait?: (ms: number) => Promise<void>;
 }) => {
   const wait = input.wait ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -31,8 +35,9 @@ export const createRemoteHandsLoop = (input: {
     let call: HandsCall | null;
     try {
       const tools = input.offered?.() ?? [];
-      const offer = JSON.stringify(tools);
-      const taken = await input.post("take", offer === sent ? {} : { tools });
+      const remoteTools = input.remoteOffered?.() ?? [];
+      const offer = JSON.stringify([tools, remoteTools]);
+      const taken = await input.post("take", offer === sent ? {} : { tools, remoteTools });
       // A server that went away may have restarted and forgotten the offer: send it again.
       if (taken.status !== 200) {
         sent = null;
@@ -50,6 +55,7 @@ export const createRemoteHandsLoop = (input: {
         tool: call.tool,
         args: call.args,
         ...(call.origin === undefined ? {} : { origin: call.origin }),
+        ...(call.caller === undefined ? {} : { caller: call.caller }),
       })
       .catch((e: unknown): HandsResult => ({
         ok: false,

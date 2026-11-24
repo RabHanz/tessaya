@@ -162,9 +162,14 @@ pub fn clip(value: &str) -> String {
     format!("{head} … {tail}")
 }
 
-/// A box whose name says it holds a secret (a PIN or one-time code box is rarely marked as a password box).
+/// A box whose name says it holds a secret (a PIN, one-time code, card or vault box is rarely marked as a password box).
 pub fn secret_name(name: &str) -> bool {
-    tokens(name).iter().any(|t| t.starts_with("pass") || ["pin", "otp", "cvv", "cvc"].contains(&t.as_str()))
+    let words = tokens(name);
+    let has = |w: &str| words.iter().any(|t| t == w);
+    words.iter().any(|t| {
+        t.starts_with("pass") || ["pin", "otp", "totp", "2fa", "mfa", "cvv", "cvc", "vault", "iban"].contains(&t.as_str())
+    }) || (has("code") && ["security", "verification", "authentication", "recovery", "backup"].iter().any(|w| has(w)))
+        || (has("card") && ["number", "credit", "debit"].iter().any(|w| has(w)))
 }
 
 /// What a control holds and how it stands: ` = "value"` (never a password box's, nor one named like a secret), then
@@ -565,6 +570,10 @@ pub fn set_value(window: &str, text: &str) -> Result<Value, String> {
                 continue;
             }
             let name = element.CurrentName().map(|n| n.to_string()).unwrap_or_default();
+            // Never typed into, whoever asks: he types passwords, codes and card numbers himself.
+            if element.CurrentIsPassword().map(|p| p.as_bool()).unwrap_or(true) || secret_name(&name) {
+                continue;
+            }
             let focused = element.CurrentHasKeyboardFocus().map(|f| f.as_bool()).unwrap_or(false);
             if focused || pick.is_none() {
                 pick = Some((value, name));
@@ -766,11 +775,21 @@ pub fn focus_state(window: Option<&str>) -> Result<Value, String> {
                 root.FindFirstBuildCache(TreeScope_Descendants, &has, &request)
             }),
         };
-        let focus = focused.ok().map(|element| {
-            let s = snap(&element, true);
-            format!("{}: {}{}", s.kind, s.name.trim().chars().take(80).collect::<String>(), detail(&element, true, &s.name))
-        });
-        Ok(json!({"window": title, "handle": top.0 as isize, "focus": focus}))
+        let (focus, secret) = match focused.ok() {
+            Some(element) => {
+                let s = snap(&element, true);
+                let password = element.CachedIsPassword().map(|p| p.as_bool()).unwrap_or(true);
+                let line = format!(
+                    "{}: {}{}",
+                    s.kind,
+                    s.name.trim().chars().take(80).collect::<String>(),
+                    detail(&element, true, &s.name)
+                );
+                (Some(line), password || secret_name(&s.name))
+            }
+            None => (None, false),
+        };
+        Ok(json!({"window": title, "handle": top.0 as isize, "focus": focus, "secret": secret}))
     }
 }
 
@@ -989,6 +1008,12 @@ mod tests {
         assert!(secret_name("Enter PIN"));
         assert!(secret_name("OTP code"));
         assert!(secret_name("CVV"));
+        assert!(secret_name("Card number"));
+        assert!(secret_name("Verification code"));
+        assert!(secret_name("2FA"));
+        assert!(secret_name("Vault"));
+        assert!(!secret_name("Add a card"));
+        assert!(!secret_name("Source code"));
         assert!(!secret_name("Shopping list"));
         assert!(!secret_name("Spinner"));
         assert!(!secret_name("File name"));

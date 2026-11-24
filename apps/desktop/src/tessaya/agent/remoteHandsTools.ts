@@ -7,6 +7,7 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
+import { PRIVATE_WINDOW, redactWindow } from "@t3tools/tessaya-shared/awareness";
 import { REMOTE_HANDS_TOOLS, createHandleRegistry } from "@t3tools/tessaya-shared/remoteHands";
 
 import type {
@@ -72,10 +73,40 @@ export interface RemoteHandsDeps {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** What a remote call does: looks (a tree, a picture, a wait), presses a control, or sends keys and text. */
+export type HandsUse = "look" | "act" | "type";
+
+/**
+ * Hard lines for a remote caller, whatever its grant: a Windows security prompt and a private window (password
+ * manager, sign-in, bank) are never touched, and nothing is typed into a secret box. Not knowing is a no for acting.
+ */
+export const handsRefusal = (use: HandsUse, state: FocusState | null): string | null => {
+  if (state === null || typeof state.error === "string") {
+    return use === "look"
+      ? null
+      : "Tessaya could not check what holds the keyboard there, so nothing was done.";
+  }
+  if (state.secure === true)
+    return "A Windows security prompt is up. Only he answers it, so nothing was done.";
+  if (redactWindow("", state.window ?? "").title === PRIVATE_WINDOW)
+    return "That window is private (a password manager, sign-in, bank or payment page), so remote hands do not touch it.";
+  if (use === "type" && state.secret === true)
+    return "The box with the keyboard holds a secret (a password, code, card or vault field). He types those himself.";
+  return null;
+};
 const POLL_MS = 150;
 const LOG_TAIL_BYTES = 256_000;
 
 export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<TessayaTool> => {
+  const guard = async (use: HandsUse, window: string | undefined) => {
+    const state =
+      deps.sidecar.focusState === undefined
+        ? null
+        : await deps.sidecar.focusState(window).catch(() => null);
+    const refusal = handsRefusal(use, state);
+    if (refusal !== null) throw new Error(refusal);
+  };
   // This session's last numbered tree: its numbers are the only ones its clicks may use.
   let lastTree: number | undefined;
   const located = (label: string | number, window: string | undefined, invoke: boolean) =>
@@ -106,6 +137,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Tess
       throw new Error("Use window_capture.");
     },
     uiTree: async (window, find) => {
+      await guard("look", window);
       const tree = await deps.sidecar.uiTree(window, find, true);
       if (typeof tree.error === "string")
         throw new Error(`The window's controls can't be read: ${tree.error}`);
@@ -123,6 +155,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Tess
           },
         }),
     clickElement: async (target, double, window) => {
+      await guard("act", window);
       const found = await located(target, window, !double);
       const label = typeof target === "number" ? `line ${target}` : target;
       if (found.stale === true)
@@ -151,6 +184,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Tess
       return `Clicked ${found.name ?? label} (pointer; ${restored ? "focus given back" : "the window he was using could not be given the keyboard back"}).`;
     },
     waitFor: async (label, seconds, window) => {
+      await guard("look", window);
       const until = Date.now() + seconds * 1000;
       do {
         const found = await located(label, window, false).catch(() => null);
@@ -171,6 +205,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Tess
       throw new Error("Dragging is not a remote hands tool.");
     },
     type: async (text, window) => {
+      await guard("type", window);
       const added =
         window === undefined ? null : await typeByValue(deps.sidecar.setValue, window, text);
       if (added !== null) return added;
@@ -179,6 +214,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Tess
       return window === undefined ? "Typed where the keyboard is." : `Typed into "${window}".`;
     },
     press: async (keys, window) => {
+      await guard("type", window);
       const fg = await keyboard("Keys", window);
       await fg.press(keys);
       return window === undefined ? "Pressed where the keyboard is." : `Pressed in "${window}".`;
@@ -223,6 +259,7 @@ export const buildRemoteHandsTools = (deps: RemoteHandsDeps): ReadonlyArray<Tess
       run: async (a) => {
         const out = NodePath.join(deps.scratchDir, `capture-${Date.now()}.bmp`);
         const window = typeof a["window"] === "string" ? a["window"] : undefined;
+        await guard("look", window);
         const done = await deps.sidecar.captureWindow({
           ...(window === undefined ? {} : { window }),
           out,

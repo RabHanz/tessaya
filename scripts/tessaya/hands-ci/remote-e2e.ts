@@ -123,7 +123,7 @@ const step = async (name: string, run: () => Promise<{ pass: boolean; note: stri
   rows.push({ step: name, ms: Math.round(performance.now() - t0), ...r });
 };
 const remote = (tool: string, args: Record<string, unknown>) =>
-  post("caller-token", "call", { tool, args });
+  post("caller-token", "call", { tool, args, caller: "ci-e2e" });
 
 ps("Start-Process notepad.exe; Start-Sleep -Seconds 3");
 await step("ui_tree of Notepad (by window title)", async () => {
@@ -180,7 +180,7 @@ await step("a click on a raw point is not a remote tool", async () => {
   };
 });
 await step("a session without baton:hands gets 403", async () => {
-  const r = await post("reader-token", "call", { tool: "ui_tree", args: {} });
+  const r = await post("reader-token", "call", { tool: "ui_tree", args: {}, caller: "ci-e2e" });
   return { pass: r.status === 403, note: `status ${r.status}` };
 });
 await step("the audit log holds every call, and no typed text", async () => {

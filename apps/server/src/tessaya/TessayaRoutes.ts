@@ -341,11 +341,14 @@ export const routes = HttpRouter.use((router) =>
           scopes: new Set(session.value.scopes),
           session: session.value.subject,
           ...(json === undefined ? {} : { json }),
+          ...(typeof request.headers["mcp-session-id"] === "string"
+            ? { mcpSession: request.headers["mcp-session-id"] }
+            : {}),
         }),
       );
       return HttpServerResponse.jsonUnsafe(answer.json, {
         status: answer.status,
-        headers: PAGE_HEADERS,
+        headers: { ...PAGE_HEADERS, ...answer.headers },
       });
     }).pipe(
       Effect.catchCause(() =>

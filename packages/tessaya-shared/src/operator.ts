@@ -89,11 +89,12 @@ export interface JudgeContext {
   readonly browser?: boolean;
   /** Typed into a browser's address bar this turn since Ctrl+T or Ctrl+L opened it; absent when it is not there. */
   readonly addressBar?: string;
-  /** His own Chrome (Claude in Chrome): what the gate knows about the page and the accounts. */
+  /** His browser through the shared bridge: what the gate knows about the page and the accounts. */
   readonly chrome?: {
     readonly socialOn: boolean;
     readonly pageHost: string | null;
     readonly recentSocial: number;
+    readonly owner?: "tessaya" | "sebastian";
   };
 }
 
@@ -665,6 +666,7 @@ export const judgeToolCall = (call: ToolCall, context: JudgeContext): ToolVerdic
       socialOn: context.chrome?.socialOn ?? false,
       pageHost: context.chrome?.pageHost ?? null,
       recentSocial: context.chrome?.recentSocial ?? 0,
+      ...(context.chrome?.owner === undefined ? {} : { owner: context.chrome.owner }),
     });
   }
   if (BATON_TOOLS.has(baton)) return judgeTessayaTool(baton, call, context);

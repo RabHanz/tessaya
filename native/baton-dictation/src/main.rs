@@ -1927,9 +1927,40 @@ fn ui_tree(id: Option<u64>, _window: Option<&str>, _find: Option<&str>, _numbere
     json!({"ev": "tree", "id": id, "error": "not on this platform yet"})
 }
 
+/// A Windows security prompt holds the screen: the secure desktop (UAC, Ctrl+Alt+Del, the lock screen) refuses to open
+/// for us, or the consent or credential prompt is in front on his own desktop. Only he answers those.
+#[cfg(windows)]
+fn secure_prompt_up() -> bool {
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::StationsAndDesktops::{
+        CloseDesktop, GetUserObjectInformationW, OpenInputDesktop, DESKTOP_CONTROL_FLAGS, DESKTOP_READOBJECTS, UOI_NAME,
+    };
+    let Ok(desk) = (unsafe { OpenInputDesktop(DESKTOP_CONTROL_FLAGS(0), false, DESKTOP_READOBJECTS) }) else {
+        return true;
+    };
+    let mut name = [0u16; 64];
+    let named = unsafe {
+        GetUserObjectInformationW(
+            HANDLE(desk.0),
+            UOI_NAME,
+            Some(name.as_mut_ptr().cast()),
+            (name.len() * 2) as u32,
+            None,
+        )
+    }
+    .is_ok();
+    let _ = unsafe { CloseDesktop(desk) };
+    let len = name.iter().position(|&c| c == 0).unwrap_or(name.len());
+    if !named || !String::from_utf16_lossy(&name[..len]).eq_ignore_ascii_case("default") {
+        return true;
+    }
+    matches!(window_app(foreground_window()).0.as_str(), "consent.exe" | "credentialuibroker.exe")
+}
+
 #[cfg(windows)]
 fn focus_state_event(id: Option<u64>, window: Option<&str>) -> Value {
     let mut out = uia::focus_state(window).unwrap_or_else(|e| json!({"error": e}));
+    out["secure"] = json!(secure_prompt_up());
     out["ev"] = json!("focus_state");
     out["id"] = json!(id);
     out

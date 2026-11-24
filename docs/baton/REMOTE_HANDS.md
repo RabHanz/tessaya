@@ -24,9 +24,20 @@ hub server --long poll (baton:hands-host)--> desktop app --> gate --> hands tool
   Automation patterns first; a pointer click only when a control has no pattern, and then the previous window gets the keyboard back (the
   answer says when Windows refused that). `type_text` with a `window` adds the text to that window's box by its UI Automation value (no
   keyboard, clipboard or focus); keys go out only when the named window already has the keyboard, and are refused otherwise.
-- **He can see it and take it back.** While a remote call runs the pill says "Remote session"; Trust lists remote hands, and "turn off
-  remote hands" turns them off. While he is present, a window picture or `ui_tree` follows his screen setting (it may ask); "I'm away" is
-  his standing yes (D153).
+- **Every call names its caller**, `<agent>-<task>` in lower case (`ops-desk`): `caller` on `/call`, the MCP client name on
+  `/mcp`. A call without one is refused. The caller is in the audit line, in the pill ("Remote: ops-desk"), in every question he is
+  asked, and in the action log as a `hands.remote` event (actor: the caller, evidence: the token's session). The name is the caller's own
+  claim; the `baton:hands` token is what is proven.
+- **Hard lines, whatever the grant** (`handsRefusal` in `remoteHandsTools.ts`): nothing on a Windows security prompt (the secure desktop,
+  or the UAC consent or credential prompt in front), nothing in a private window (password manager, sign-in, bank or payment page, as
+  `awareness.ts` names them), and no keys or text into a box that holds a secret (a password, code, card or vault field, as the sidecar's
+  `secret_name` says). Not being able to check is a refusal for acting. The sidecar's `set_value` never fills a secret box for anyone.
+- **His keys and mouse stay his.** Remote keys and text wait out his typing as hers do; a pointer click asks him every call; on a
+  scaled screen beside screens of another scale the pointer is never used (REQ-15-257), only patterns.
+- **He can see it and stop it.** While a remote call runs the pill says "Remote: <caller>". His Stop (the pill's Stop, Esc, a spoken
+  stop) within two minutes of a remote call pauses remote hands for ten minutes. Trust lists remote hands, and "turn off remote hands"
+  turns them off; the Settings switch is reachable by voice (owner class). While he is present, a window picture or `ui_tree` follows his
+  screen setting (it may ask); "I'm away" is his standing yes (D153).
 - **Ops tools**: `app_version`, `log_tail` (named logs only, last N lines), `process_list` / `process_stop` (only an id `process_list` returned),
   `app_update` (the app's own updater, to a given version, replacing scp and scheduled tasks), `open_page` (a page in the Home window).
 
@@ -52,7 +63,12 @@ than the window itself (`open_page` opens Home).
 
 ```
 curl -s -X POST "$HUB/tessaya/hands/call" -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"tool":"ui_tree","args":{"window":"Notepad"}}'
+  -d '{"tool":"ui_tree","args":{"window":"Notepad"},"caller":"ops-desk"}'
 ```
 
 The answer is `{ok, text, images?, error?}`; `images` holds a PNG (base64) for `window_capture`. `GET /tessaya/hands/audit` lists the recent calls.
+The body needs `"caller":"<agent>-<task>"`.
+
+The same door speaks MCP (streamable HTTP, JSON answers, no server stream) at `$HUB/tessaya/hands/mcp`, with the same bearer token:
+`{"type":"http","url":"$HUB/tessaya/hands/mcp","headers":{"Authorization":"Bearer $TOKEN"}}`. The client name given at `initialize`
+is the caller and comes back as the `mcp-session-id`; `tools/list` is what the desktop offers remote callers now, with its schemas.

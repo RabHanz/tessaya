@@ -985,7 +985,7 @@ const buildBaseTools = (host: ToolHost, remote: boolean): ReadonlyArray<TessayaT
     {
       name: "browser_route",
       description:
-        "Before a browser task, ask which way to work it: his own Chrome through the extension, the window's controls (ui_tree and click_element), pixels (screen_capture and click), or a plain fetch for reading a public page. Returns the route, why, and what to do first. If it says a route is not possible, tell him the reason in plain words.",
+        "Before a browser task, ask which way to work it: the shared browser bridge (the web_ tools), the window's controls (ui_tree and click_element), pixels (screen_capture and click), or a plain fetch for reading a public page. Returns the route, why, and what to do first. If it says a route is not possible, tell him the reason in plain words.",
       inputSchema: object(
         {
           task: { type: "string", enum: ["read", "act"] },

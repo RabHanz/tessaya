@@ -71,13 +71,13 @@ export interface AssistantCase {
   }>;
 }
 
-/** His Chrome as the 2026-11-12 session had it: his own Chrome off, so the window is worked by sight and keys. */
+/** His browser as the 2026-11-12 session had it: the bridge off, so the window is worked by sight and keys. */
 const chromeBySight = (() => {
   const choice = chooseBrowserRoute({
     task: "act",
     needsLogin: false,
-    ownChromeOn: false,
-    chrome: { state: "not-connected", message: "Chrome is not connected." },
+    bridgeOn: false,
+    bridge: { state: "not-connected", message: "The browser bridge is not answering." },
     chromeVisible: true,
     accessibility: "unknown",
     relaunchApproved: false,

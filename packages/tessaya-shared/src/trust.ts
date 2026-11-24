@@ -15,7 +15,7 @@ import {
 } from "./operator.ts";
 import type { Assurance, MemberRole, PrincipalRole } from "./household.ts";
 import { leaseDecision, type PlanLease } from "./planLease.ts";
-import { CHROME_PREFIX, hostForCall, isChromeTool } from "./webPolicy.ts";
+import { bridgeToolName, CHROME_PREFIX, hostForCall, isChromeTool } from "./webPolicy.ts";
 import type { ProjectRef } from "./osPack.ts";
 
 /** Who is asking: a persona from the roster. `tools: null` is no list of its own, so only the base rules apply. */
@@ -332,12 +332,10 @@ const planCovers = (
 
 /** What a call does, as a plan lease names act kinds; null for what no lease covers. */
 const actKind = (tool: string, args: Readonly<Record<string, unknown>>): string | null => {
-  if (tool === "navigate" || tool === "tabs_create_mcp") return "open";
+  if (tool === "navigate" || (tool === "tabs" && args["action"] === "new")) return "open";
   if (tool === "click" || tool === "click_element") return "click";
-  if (tool === "type_text" || tool === "form_input") return "type";
-  if (tool !== "computer") return null;
-  const action = String(args["action"] ?? "");
-  return /click$/.test(action) ? "click" : action === "type" ? "type" : null;
+  if (["type_text", "type", "fill_form", "select_option"].includes(tool)) return "type";
+  return null;
 };
 
 /**
@@ -378,7 +376,7 @@ const leaseCovers = (ask: TrustAsk): boolean => {
         ) === "run",
     );
   };
-  if (chrome) return covered(ask.call.tool.slice(CHROME_PREFIX.length), ask.call.input);
+  if (chrome) return covered(bridgeToolName(ask.call.tool), ask.call.input);
   if (!isOwnTool(ask.call.tool)) return false;
   const name = tessayaToolName(ask.call.tool);
   if (name !== "act_batch") return covered(name, ask.call.input);

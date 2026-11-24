@@ -22,6 +22,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
+import { emitActionSync } from "../provenance/ActionLog.ts";
 import type { ToolOutcome } from "../home/R1Brain.ts";
 import type { VesselTool } from "./TessayaBrain.ts";
 import type { Consent } from "./consent.ts";
@@ -55,8 +56,22 @@ export const layer = Layer.effect(
       now: () => Date.now(),
       newId: () => globalThis.crypto.randomUUID(),
       // In order, and rolled to one `.1` file past AUDIT_MAX_BYTES, so the record never grows without end.
-      onAudit: (entry) =>
-        void (audited = audited.then(async () => {
+      onAudit: (entry) => {
+        // A remote caller's every call is an action in the record: who (as it named itself), what, how it ended.
+        if (entry.caller !== undefined)
+          emitActionSync(
+            {
+              kind: "hands.remote",
+              // Self-named; what is proven is the session's baton:hands token, kept as evidence.
+              actor: { kind: "agent", id: entry.caller, certainty: 0.5 },
+              subject: entry.tool,
+              outcome: entry.outcome,
+              data: { what: entry.what, ms: entry.ms },
+              evidence: [{ kind: "session", ref: entry.session }],
+            },
+            { now: entry.at },
+          );
+        audited = audited.then(async () => {
           try {
             if ((await NodeFS.promises.stat(file)).size > AUDIT_MAX_BYTES)
               await NodeFS.promises.rename(file, `${file}.1`);
@@ -66,7 +81,8 @@ export const layer = Layer.effect(
           await NodeFS.promises
             .appendFile(file, `${JSON.stringify(entry)}\n`)
             .catch(() => undefined);
-        })),
+        });
+      },
     });
   }),
 );
