@@ -18,6 +18,28 @@ const LOCKED_RENAME_RETRIES = 20;
 const LOCKED_RENAME_RETRY_DELAY = "100 millis";
 const CHUNK_WRITE_LENGTH = 1 << 20;
 
+const encoder = new TextEncoder();
+
+/** Flushes the bytes to disk before returning, so a later rename cannot outlive them after a power cut. */
+export const writeFileSynced = (
+  fs: FileSystem.FileSystem,
+  filePath: string,
+  contents: string | Uint8Array,
+) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const file = yield* fs.open(filePath, { flag: "w" });
+      yield* file.writeAll(typeof contents === "string" ? encoder.encode(contents) : contents);
+      yield* file.sync;
+    }),
+  );
+
+/** Best effort: persists a rename's directory entry. Windows cannot open a directory, so it is a no-op there. */
+export const syncDirectory = (fs: FileSystem.FileSystem, directory: string) =>
+  Effect.scoped(Effect.flatMap(fs.open(directory, { flag: "r" }), (dir) => dir.sync)).pipe(
+    Effect.ignore,
+  );
+
 /** Resolves symlink targets before renaming so writes preserve the link. Iterable contents stream in bounded batches. */
 export const writeFileStringAtomically = (input: {
   readonly filePath: string;
@@ -44,13 +66,12 @@ export const writeFileStringAtomically = (input: {
 
       const contents = input.contents;
       if (typeof contents === "string") {
-        yield* fs.writeFileString(tempPath, contents);
+        yield* writeFileSynced(fs, tempPath, contents);
       } else {
         // Closed before the rename, which Windows refuses for open files.
         yield* Effect.scoped(
           Effect.gen(function* () {
             const file = yield* fs.open(tempPath, { flag: "w" });
-            const encoder = new TextEncoder();
             let batch: string[] = [];
             let batchLength = 0;
             for (const chunk of contents) {
@@ -62,10 +83,14 @@ export const writeFileStringAtomically = (input: {
               batchLength = 0;
             }
             if (batchLength > 0) yield* file.writeAll(encoder.encode(batch.join("")));
+            yield* file.sync;
           }),
         );
       }
-      if (platform !== "win32") return yield* fs.rename(tempPath, targetPath);
+      if (platform !== "win32") {
+        yield* fs.rename(tempPath, targetPath);
+        return yield* syncDirectory(fs, targetDirectory);
+      }
 
       // Stop retrying if another save changes the target; read-only targets also return permanent EPERM.
       const targetVersion = fs.stat(targetPath).pipe(

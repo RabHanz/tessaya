@@ -11,10 +11,12 @@ import {
   type ConnectionCatalogDocument as RuntimeConnectionCatalogDocumentType,
 } from "@t3tools/client-runtime/platform";
 import type { PersistedSavedEnvironmentRecord } from "@t3tools/contracts";
+import { syncDirectory, writeFileSynced } from "@t3tools/shared/atomicWrite";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Base64 from "effect/encoding/Base64";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -22,6 +24,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
 import * as DesktopSavedEnvironments from "../settings/DesktopSavedEnvironments.ts";
 import * as DesktopEnvironment from "./DesktopEnvironment.ts";
@@ -216,6 +219,27 @@ const readDocument = (
     ),
   );
 
+const backupPathOf = (catalogPath: string) => `${catalogPath}.bak`;
+
+// Keeps one last good copy; a catalog that does not decode never overwrites it.
+const backUpCatalog = (fileSystem: FileSystem.FileSystem, catalogPath: string) =>
+  readDocument(fileSystem, catalogPath).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.void,
+        onSome: (document) =>
+          encodeEncryptedConnectionCatalogDocumentJson(document).pipe(
+            Effect.flatMap((encoded) =>
+              writeFileSynced(fileSystem, backupPathOf(catalogPath), `${encoded}\n`),
+            ),
+          ),
+      }),
+    ),
+    Effect.catch((error) =>
+      Effect.logWarning("Could not back up the connection catalog.", { catalogPath, error }),
+    ),
+  );
+
 const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(function* (input: {
   readonly fileSystem: FileSystem.FileSystem;
   readonly path: Path.Path;
@@ -246,7 +270,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
     ),
   );
   yield* Effect.gen(function* () {
-    yield* input.fileSystem.writeFileString(tempPath, `${encoded}\n`).pipe(
+    yield* writeFileSynced(input.fileSystem, tempPath, `${encoded}\n`).pipe(
       Effect.mapError(
         (cause) =>
           new DesktopConnectionCatalogStoreWriteError({
@@ -256,6 +280,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
           }),
       ),
     );
+    yield* backUpCatalog(input.fileSystem, input.catalogPath);
     yield* input.fileSystem.rename(tempPath, input.catalogPath).pipe(
       Effect.mapError(
         (cause) =>
@@ -266,6 +291,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
           }),
       ),
     );
+    yield* syncDirectory(input.fileSystem, directory);
   }).pipe(
     Effect.ensuring(
       input.fileSystem.remove(tempPath, { force: true }).pipe(
@@ -383,6 +409,7 @@ export const make = Effect.gen(function* () {
   const safeStorage = yield* ElectronSafeStorage.ElectronSafeStorage;
   const random = yield* SecureRandom.SecureRandom;
   const savedEnvironments = yield* DesktopSavedEnvironments.DesktopSavedEnvironments;
+  const dialog = yield* ElectronDialog.ElectronDialog;
   const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
   const encryptionAvailable = safeStorage.isEncryptionAvailable.pipe(
     Effect.mapError(
@@ -461,9 +488,66 @@ export const make = Effect.gen(function* () {
     return Option.some(encoded);
   });
 
+  // A power cut can leave the catalog zero-filled; failing every read would hide all connections forever.
+  const recoverCorruptCatalog = Effect.fn("desktop.connectionCatalogStore.recoverCorruptCatalog")(
+    function* (error: DesktopConnectionCatalogStoreDocumentDecodeError) {
+      const stamp = DateTime.formatIso(yield* DateTime.now).replace(/[:.]/g, "-");
+      const corruptPath = `${catalogPath}.corrupt-${stamp}`;
+      yield* fileSystem.rename(catalogPath, corruptPath).pipe(
+        Effect.catch((cause) =>
+          Effect.logWarning("Could not move the damaged connection catalog aside.", {
+            catalogPath,
+            cause,
+          }),
+        ),
+      );
+      const backup = yield* readDocument(fileSystem, backupPathOf(catalogPath)).pipe(
+        Effect.catch(() => Effect.succeedNone),
+      );
+      if (Option.isSome(backup)) {
+        yield* writeDocument({
+          fileSystem,
+          path,
+          catalogPath,
+          document: backup.value,
+          suffix: (yield* random.uuidV4()).replace(/-/g, ""),
+        }).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Could not restore the connection catalog from its backup.", {
+              catalogPath,
+              cause,
+            }),
+          ),
+        );
+      }
+      const restored = Option.isSome(backup);
+      yield* Effect.logWarning("The connection catalog was damaged and has been moved aside.", {
+        catalogPath,
+        corruptPath,
+        restored,
+        error,
+      });
+      yield* dialog
+        .showMessageBox({
+          type: "warning",
+          title: "Saved connections",
+          message: restored
+            ? "Your saved connections file was damaged. It was restored from the last backup."
+            : "Your saved connections file was damaged and no backup could be read. Saved connections may need to be added again.",
+          detail: `The damaged file was kept at ${corruptPath}.`,
+        })
+        .pipe(Effect.ignore, Effect.forkDetach);
+      return backup;
+    },
+  );
+
   return DesktopConnectionCatalogStore.of({
     get: Effect.gen(function* () {
-      const document = yield* readDocument(fileSystem, catalogPath);
+      const document = yield* readDocument(fileSystem, catalogPath).pipe(
+        Effect.catchTags({
+          DesktopConnectionCatalogStoreDocumentDecodeError: recoverCorruptCatalog,
+        }),
+      );
       if (Option.isNone(document)) {
         return yield* migrateLegacyCatalog;
       }

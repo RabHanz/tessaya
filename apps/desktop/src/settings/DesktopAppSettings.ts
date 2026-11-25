@@ -5,6 +5,7 @@ import {
   type DesktopUpdateChannel,
 } from "@t3tools/contracts";
 import { fromLenientJson } from "@t3tools/shared/schemaJson";
+import { syncDirectory, writeFileSynced } from "@t3tools/shared/atomicWrite";
 import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -458,7 +459,7 @@ const writeSettings = Effect.fn("desktop.settings.writeSettings")(function* (inp
     ),
   );
   yield* Effect.gen(function* () {
-    yield* input.fileSystem.writeFileString(tempPath, `${encoded}\n`).pipe(
+    yield* writeFileSynced(input.fileSystem, tempPath, `${encoded}\n`).pipe(
       Effect.mapError(
         (cause) =>
           new DesktopSettingsWriteError({
@@ -478,6 +479,7 @@ const writeSettings = Effect.fn("desktop.settings.writeSettings")(function* (inp
           }),
       ),
     );
+    yield* syncDirectory(input.fileSystem, directory);
   }).pipe(Effect.ensuring(input.fileSystem.remove(tempPath, { force: true }).pipe(Effect.ignore)));
 });
 

@@ -1,3 +1,4 @@
+import { syncDirectory, writeFileSynced } from "@t3tools/shared/atomicWrite";
 import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
@@ -199,9 +200,10 @@ export const make = Effect.gen(function* () {
       Effect.flatMap((uuid) => {
         const tempPath = `${secretPath}.${uuid}.tmp`;
         return Effect.gen(function* () {
-          yield* fileSystem.writeFile(tempPath, value);
+          yield* writeFileSynced(fileSystem, tempPath, value);
           yield* fileSystem.chmod(tempPath, 0o600);
           yield* fileSystem.rename(tempPath, secretPath);
+          yield* syncDirectory(fileSystem, path.dirname(secretPath));
           yield* fileSystem.chmod(secretPath, 0o600);
         }).pipe(
           Effect.catch((cause) =>

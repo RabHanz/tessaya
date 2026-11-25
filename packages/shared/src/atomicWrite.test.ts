@@ -239,7 +239,11 @@ it.effect("succeeds when the write lands but its temp directory cannot be remove
         ),
       makeDirectory: () => Effect.void,
       makeTempDirectory: () => Effect.succeed("/home/settings.json.abc123"),
-      writeFileString: () => Effect.void,
+      open: () =>
+        Effect.succeed({
+          writeAll: () => Effect.void,
+          sync: Effect.void,
+        } as unknown as FileSystem.File),
       rename: (_from, to) => Effect.sync(() => void renamed.push(to)),
       remove: (path) =>
         Effect.sync(() => void removed.push(path)).pipe(
