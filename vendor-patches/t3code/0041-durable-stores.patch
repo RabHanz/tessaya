@@ -1,0 +1,411 @@
+Durable JSON stores: fsync before rename, and the desktop connection catalog keeps a .bak and recovers from a corrupt file after a power cut.
+
+diff --git a/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts b/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts
+index 5dfde9103f152bcb038ec9eed64e700bf700ccad..170afeba7116a07ff3f41172f266c10b0e78f482 100644
+--- a/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts
++++ b/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts
+@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
+ import * as Ref from "effect/Ref";
+ import * as Schema from "effect/Schema";
+ 
++import * as ElectronDialog from "../electron/ElectronDialog.ts";
+ import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
+ import * as DesktopSavedEnvironments from "../settings/DesktopSavedEnvironments.ts";
+ import * as DesktopConfig from "./DesktopConfig.ts";
+@@ -72,9 +73,16 @@ function layerFor(
+     ),
+   );
+   const layerSafeStorage = layerSafeStorageFor(encryptionAvailable, failDecrypt);
++  const layerDialog = Layer.succeed(ElectronDialog.ElectronDialog, {
++    pickFolder: () => Effect.succeedNone,
++    pickFiles: () => Effect.succeed([]),
++    showMessageBox: () => Effect.succeed({ response: 0, checkboxChecked: false }),
++    showErrorBox: () => Effect.void,
++  } satisfies ElectronDialog.ElectronDialog["Service"]);
+   const layerDependencies = Layer.mergeAll(
+     layerEnvironment,
+     layerSafeStorage,
++    layerDialog,
+     NodeServices.layer,
+     NodeCrypto.layer,
+     fileSystemLayer,
+@@ -242,7 +250,10 @@ describe("DesktopConnectionCatalogStore", () => {
+     ),
+   );
+ 
+-  it.effect("surfaces malformed catalog documents without deleting them", () =>
++  it.effect.each([
++    { case: "malformed JSON", contents: "{not-json" },
++    { case: "an all-zeros file left by a power cut", contents: "\0".repeat(4964) },
++  ])("moves a catalog holding $case aside and starts empty", ({ contents }) =>
+     withStore(
+       Effect.gen(function* () {
+         const path = yield* Path.Path;
+@@ -251,16 +262,46 @@ describe("DesktopConnectionCatalogStore", () => {
+         const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
+         const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
+         yield* fileSystem.makeDirectory(environment.stateDir, { recursive: true });
+-        yield* fileSystem.writeFileString(catalogPath, "{not-json");
++        yield* fileSystem.writeFileString(catalogPath, contents);
+ 
+-        const error = yield* store.get.pipe(Effect.flip);
+-        assert.instanceOf(
+-          error,
+-          DesktopConnectionCatalogStore.DesktopConnectionCatalogStoreDocumentDecodeError,
++        assert.deepStrictEqual(yield* store.get, Option.none());
++        assert.isFalse(yield* fileSystem.exists(catalogPath));
++        const corrupt = (yield* fileSystem.readDirectory(environment.stateDir)).filter((name) =>
++          name.startsWith("connection-catalog.json.corrupt-"),
++        );
++        assert.equal(corrupt.length, 1);
++        assert.equal(
++          yield* fileSystem.readFileString(path.join(environment.stateDir, corrupt[0]!)),
++          contents,
+         );
+-        assert.equal(error.catalogPath, catalogPath);
+-        assert.exists(error.cause);
+-        assert.equal(yield* fileSystem.readFileString(catalogPath), "{not-json");
++
++        const catalog = '{"schemaVersion":1,"targets":[]}';
++        assert.isTrue(yield* store.set(catalog));
++        assert.deepStrictEqual(yield* store.get, Option.some(catalog));
++      }),
++    ),
++  );
++
++  it.effect("restores a damaged catalog from the last good backup", () =>
++    withStore(
++      Effect.gen(function* () {
++        const path = yield* Path.Path;
++        const environment = yield* DesktopEnvironment.DesktopEnvironment;
++        const fileSystem = yield* FileSystem.FileSystem;
++        const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
++        const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
++        const first = '{"schemaVersion":1,"targets":["first"]}';
++        const zeros = "\0".repeat(4964);
++
++        assert.isTrue(yield* store.set(first));
++        assert.isTrue(yield* store.set('{"schemaVersion":1,"targets":["second"]}'));
++        yield* fileSystem.writeFileString(catalogPath, zeros);
++        // A damaged catalog must not replace the last good backup.
++        assert.isTrue(yield* store.set('{"schemaVersion":1,"targets":["third"]}'));
++        yield* fileSystem.writeFileString(catalogPath, zeros);
++
++        assert.deepStrictEqual(yield* store.get, Option.some(first));
++        assert.deepStrictEqual(yield* store.get, Option.some(first));
+       }),
+     ),
+   );
+diff --git a/apps/desktop/src/app/DesktopConnectionCatalogStore.ts b/apps/desktop/src/app/DesktopConnectionCatalogStore.ts
+index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d9246ac3b 100644
+--- a/apps/desktop/src/app/DesktopConnectionCatalogStore.ts
++++ b/apps/desktop/src/app/DesktopConnectionCatalogStore.ts
+@@ -11,10 +11,12 @@ import {
+   type ConnectionCatalogDocument as RuntimeConnectionCatalogDocumentType,
+ } from "@t3tools/client-runtime/platform";
+ import type { PersistedSavedEnvironmentRecord } from "@t3tools/contracts";
++import { syncDirectory, writeFileSynced } from "@t3tools/shared/atomicWrite";
+ import { fromLenientJson } from "@t3tools/shared/schemaJson";
+ import * as Context from "effect/Context";
+ import * as SecureRandom from "effect/crypto/SecureRandom";
+ import * as Effect from "effect/Effect";
++import * as DateTime from "effect/DateTime";
+ import * as Base64 from "effect/encoding/Base64";
+ import * as FileSystem from "effect/FileSystem";
+ import * as Layer from "effect/Layer";
+@@ -22,6 +24,7 @@ import * as Option from "effect/Option";
+ import * as Path from "effect/Path";
+ import * as Schema from "effect/Schema";
+ 
++import * as ElectronDialog from "../electron/ElectronDialog.ts";
+ import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
+ import * as DesktopSavedEnvironments from "../settings/DesktopSavedEnvironments.ts";
+ import * as DesktopEnvironment from "./DesktopEnvironment.ts";
+@@ -216,6 +219,27 @@ const readDocument = (
+     ),
+   );
+ 
++const backupPathOf = (catalogPath: string) => `${catalogPath}.bak`;
++
++// Keeps one last good copy; a catalog that does not decode never overwrites it.
++const backUpCatalog = (fileSystem: FileSystem.FileSystem, catalogPath: string) =>
++  readDocument(fileSystem, catalogPath).pipe(
++    Effect.flatMap(
++      Option.match({
++        onNone: () => Effect.void,
++        onSome: (document) =>
++          encodeEncryptedConnectionCatalogDocumentJson(document).pipe(
++            Effect.flatMap((encoded) =>
++              writeFileSynced(fileSystem, backupPathOf(catalogPath), `${encoded}\n`),
++            ),
++          ),
++      }),
++    ),
++    Effect.catch((error) =>
++      Effect.logWarning("Could not back up the connection catalog.", { catalogPath, error }),
++    ),
++  );
++
+ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(function* (input: {
+   readonly fileSystem: FileSystem.FileSystem;
+   readonly path: Path.Path;
+@@ -246,7 +270,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
+     ),
+   );
+   yield* Effect.gen(function* () {
+-    yield* input.fileSystem.writeFileString(tempPath, `${encoded}\n`).pipe(
++    yield* writeFileSynced(input.fileSystem, tempPath, `${encoded}\n`).pipe(
+       Effect.mapError(
+         (cause) =>
+           new DesktopConnectionCatalogStoreWriteError({
+@@ -256,6 +280,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
+           }),
+       ),
+     );
++    yield* backUpCatalog(input.fileSystem, input.catalogPath);
+     yield* input.fileSystem.rename(tempPath, input.catalogPath).pipe(
+       Effect.mapError(
+         (cause) =>
+@@ -266,6 +291,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
+           }),
+       ),
+     );
++    yield* syncDirectory(input.fileSystem, directory);
+   }).pipe(
+     Effect.ensuring(
+       input.fileSystem.remove(tempPath, { force: true }).pipe(
+@@ -383,6 +409,7 @@ export const make = Effect.gen(function* () {
+   const safeStorage = yield* ElectronSafeStorage.ElectronSafeStorage;
+   const random = yield* SecureRandom.SecureRandom;
+   const savedEnvironments = yield* DesktopSavedEnvironments.DesktopSavedEnvironments;
++  const dialog = yield* ElectronDialog.ElectronDialog;
+   const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
+   const encryptionAvailable = safeStorage.isEncryptionAvailable.pipe(
+     Effect.mapError(
+@@ -461,9 +488,66 @@ export const make = Effect.gen(function* () {
+     return Option.some(encoded);
+   });
+ 
++  // A power cut can leave the catalog zero-filled; failing every read would hide all connections forever.
++  const recoverCorruptCatalog = Effect.fn("desktop.connectionCatalogStore.recoverCorruptCatalog")(
++    function* (error: DesktopConnectionCatalogStoreDocumentDecodeError) {
++      const stamp = DateTime.formatIso(yield* DateTime.now).replace(/[:.]/g, "-");
++      const corruptPath = `${catalogPath}.corrupt-${stamp}`;
++      yield* fileSystem.rename(catalogPath, corruptPath).pipe(
++        Effect.catch((cause) =>
++          Effect.logWarning("Could not move the damaged connection catalog aside.", {
++            catalogPath,
++            cause,
++          }),
++        ),
++      );
++      const backup = yield* readDocument(fileSystem, backupPathOf(catalogPath)).pipe(
++        Effect.catch(() => Effect.succeedNone),
++      );
++      if (Option.isSome(backup)) {
++        yield* writeDocument({
++          fileSystem,
++          path,
++          catalogPath,
++          document: backup.value,
++          suffix: (yield* random.uuidV4()).replace(/-/g, ""),
++        }).pipe(
++          Effect.catch((cause) =>
++            Effect.logWarning("Could not restore the connection catalog from its backup.", {
++              catalogPath,
++              cause,
++            }),
++          ),
++        );
++      }
++      const restored = Option.isSome(backup);
++      yield* Effect.logWarning("The connection catalog was damaged and has been moved aside.", {
++        catalogPath,
++        corruptPath,
++        restored,
++        error,
++      });
++      yield* dialog
++        .showMessageBox({
++          type: "warning",
++          title: "Saved connections",
++          message: restored
++            ? "Your saved connections file was damaged. It was restored from the last backup."
++            : "Your saved connections file was damaged and no backup could be read. Saved connections may need to be added again.",
++          detail: `The damaged file was kept at ${corruptPath}.`,
++        })
++        .pipe(Effect.ignore, Effect.forkDetach);
++      return backup;
++    },
++  );
++
+   return DesktopConnectionCatalogStore.of({
+     get: Effect.gen(function* () {
+-      const document = yield* readDocument(fileSystem, catalogPath);
++      const document = yield* readDocument(fileSystem, catalogPath).pipe(
++        Effect.catchTags({
++          DesktopConnectionCatalogStoreDocumentDecodeError: recoverCorruptCatalog,
++        }),
++      );
+       if (Option.isNone(document)) {
+         return yield* migrateLegacyCatalog;
+       }
+diff --git a/apps/desktop/src/settings/DesktopAppSettings.ts b/apps/desktop/src/settings/DesktopAppSettings.ts
+index e81da706606481dc9e86b924a81d247ac9cb9763..3d4cc1568b33df67f497437170df1089d6dd1abd 100644
+--- a/apps/desktop/src/settings/DesktopAppSettings.ts
++++ b/apps/desktop/src/settings/DesktopAppSettings.ts
+@@ -5,6 +5,7 @@ import {
+   type DesktopUpdateChannel,
+ } from "@t3tools/contracts";
+ import { fromLenientJson } from "@t3tools/shared/schemaJson";
++import { syncDirectory, writeFileSynced } from "@t3tools/shared/atomicWrite";
+ import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
+ import * as Context from "effect/Context";
+ import * as SecureRandom from "effect/crypto/SecureRandom";
+@@ -458,7 +459,7 @@ const writeSettings = Effect.fn("desktop.settings.writeSettings")(function* (inp
+     ),
+   );
+   yield* Effect.gen(function* () {
+-    yield* input.fileSystem.writeFileString(tempPath, `${encoded}\n`).pipe(
++    yield* writeFileSynced(input.fileSystem, tempPath, `${encoded}\n`).pipe(
+       Effect.mapError(
+         (cause) =>
+           new DesktopSettingsWriteError({
+@@ -478,6 +479,7 @@ const writeSettings = Effect.fn("desktop.settings.writeSettings")(function* (inp
+           }),
+       ),
+     );
++    yield* syncDirectory(input.fileSystem, directory);
+   }).pipe(Effect.ensuring(input.fileSystem.remove(tempPath, { force: true }).pipe(Effect.ignore)));
+ });
+ 
+diff --git a/apps/desktop/src/settings/DesktopClientSettings.ts b/apps/desktop/src/settings/DesktopClientSettings.ts
+index b840bb7a058e3d6237ae37b89eb93052a35e7236..34f4807838180e2b73f1a7ab362afe1b48c6c426 100644
+--- a/apps/desktop/src/settings/DesktopClientSettings.ts
++++ b/apps/desktop/src/settings/DesktopClientSettings.ts
+@@ -1,5 +1,6 @@
+ import { ClientSettingsSchema, type ClientSettings } from "@t3tools/contracts";
+ import { fromLenientJson } from "@t3tools/shared/schemaJson";
++import { syncDirectory, writeFileSynced } from "@t3tools/shared/atomicWrite";
+ import { resolveSymlinkTarget } from "@t3tools/shared/symlink";
+ import * as Context from "effect/Context";
+ import * as SecureRandom from "effect/crypto/SecureRandom";
+@@ -163,7 +164,7 @@ const writeClientSettings = Effect.fnUntraced(function* (input: {
+     ),
+   );
+   yield* Effect.gen(function* () {
+-    yield* input.fileSystem.writeFileString(tempPath, `${encoded}\n`).pipe(
++    yield* writeFileSynced(input.fileSystem, tempPath, `${encoded}\n`).pipe(
+       Effect.mapError(
+         (cause) =>
+           new DesktopClientSettingsWriteError({
+@@ -183,6 +184,7 @@ const writeClientSettings = Effect.fnUntraced(function* (input: {
+           }),
+       ),
+     );
++    yield* syncDirectory(input.fileSystem, directory);
+   }).pipe(Effect.ensuring(input.fileSystem.remove(tempPath, { force: true }).pipe(Effect.ignore)));
+ });
+ 
+diff --git a/apps/server/src/auth/ServerSecretStore.ts b/apps/server/src/auth/ServerSecretStore.ts
+index e950acb38a71dc5f47d08ca28426b6e9a90c2386..bc423eec5e48c3b43db98ea1a1c303ab053bf520 100644
+--- a/apps/server/src/auth/ServerSecretStore.ts
++++ b/apps/server/src/auth/ServerSecretStore.ts
+@@ -1,3 +1,4 @@
++import { syncDirectory, writeFileSynced } from "@t3tools/shared/atomicWrite";
+ import * as Context from "effect/Context";
+ import * as SecureRandom from "effect/crypto/SecureRandom";
+ import * as Effect from "effect/Effect";
+@@ -199,9 +200,10 @@ export const make = Effect.gen(function* () {
+       Effect.flatMap((uuid) => {
+         const tempPath = `${secretPath}.${uuid}.tmp`;
+         return Effect.gen(function* () {
+-          yield* fileSystem.writeFile(tempPath, value);
++          yield* writeFileSynced(fileSystem, tempPath, value);
+           yield* fileSystem.chmod(tempPath, 0o600);
+           yield* fileSystem.rename(tempPath, secretPath);
++          yield* syncDirectory(fileSystem, path.dirname(secretPath));
+           yield* fileSystem.chmod(secretPath, 0o600);
+         }).pipe(
+           Effect.catch((cause) =>
+diff --git a/packages/shared/src/atomicWrite.test.ts b/packages/shared/src/atomicWrite.test.ts
+index 6aec907c049adafb0b4891a26a18983de79844c6..48dffad44cd64e0e03a9caa6e92589ab06d268fc 100644
+--- a/packages/shared/src/atomicWrite.test.ts
++++ b/packages/shared/src/atomicWrite.test.ts
+@@ -239,7 +239,11 @@ it.effect("succeeds when the write lands but its temp directory cannot be remove
+         ),
+       makeDirectory: () => Effect.void,
+       makeTempDirectory: () => Effect.succeed("/home/settings.json.abc123"),
+-      writeFileString: () => Effect.void,
++      open: () =>
++        Effect.succeed({
++          writeAll: () => Effect.void,
++          sync: Effect.void,
++        } as unknown as FileSystem.File),
+       rename: (_from, to) => Effect.sync(() => void renamed.push(to)),
+       remove: (path) =>
+         Effect.sync(() => void removed.push(path)).pipe(
+diff --git a/packages/shared/src/atomicWrite.ts b/packages/shared/src/atomicWrite.ts
+index 39904817fb67332b5c0bb56d391b1fe857f3182d..c0726263bf706befb29a66b3442392b9b25640cf 100644
+--- a/packages/shared/src/atomicWrite.ts
++++ b/packages/shared/src/atomicWrite.ts
+@@ -18,6 +18,28 @@ const LOCKED_RENAME_RETRIES = 20;
+ const LOCKED_RENAME_RETRY_DELAY = "100 millis";
+ const CHUNK_WRITE_LENGTH = 1 << 20;
+ 
++const encoder = new TextEncoder();
++
++/** Flushes the bytes to disk before returning, so a later rename cannot outlive them after a power cut. */
++export const writeFileSynced = (
++  fs: FileSystem.FileSystem,
++  filePath: string,
++  contents: string | Uint8Array,
++) =>
++  Effect.scoped(
++    Effect.gen(function* () {
++      const file = yield* fs.open(filePath, { flag: "w" });
++      yield* file.writeAll(typeof contents === "string" ? encoder.encode(contents) : contents);
++      yield* file.sync;
++    }),
++  );
++
++/** Best effort: persists a rename's directory entry. Windows cannot open a directory, so it is a no-op there. */
++export const syncDirectory = (fs: FileSystem.FileSystem, directory: string) =>
++  Effect.scoped(Effect.flatMap(fs.open(directory, { flag: "r" }), (dir) => dir.sync)).pipe(
++    Effect.ignore,
++  );
++
+ /** Resolves symlink targets before renaming so writes preserve the link. Iterable contents stream in bounded batches. */
+ export const writeFileStringAtomically = (input: {
+   readonly filePath: string;
+@@ -44,13 +66,12 @@ export const writeFileStringAtomically = (input: {
+ 
+       const contents = input.contents;
+       if (typeof contents === "string") {
+-        yield* fs.writeFileString(tempPath, contents);
++        yield* writeFileSynced(fs, tempPath, contents);
+       } else {
+         // Closed before the rename, which Windows refuses for open files.
+         yield* Effect.scoped(
+           Effect.gen(function* () {
+             const file = yield* fs.open(tempPath, { flag: "w" });
+-            const encoder = new TextEncoder();
+             let batch: string[] = [];
+             let batchLength = 0;
+             for (const chunk of contents) {
+@@ -62,10 +83,14 @@ export const writeFileStringAtomically = (input: {
+               batchLength = 0;
+             }
+             if (batchLength > 0) yield* file.writeAll(encoder.encode(batch.join("")));
++            yield* file.sync;
+           }),
+         );
+       }
+-      if (platform !== "win32") return yield* fs.rename(tempPath, targetPath);
++      if (platform !== "win32") {
++        yield* fs.rename(tempPath, targetPath);
++        return yield* syncDirectory(fs, targetDirectory);
++      }
+ 
+       // Stop retrying if another save changes the target; read-only targets also return permanent EPERM.
+       const targetVersion = fs.stat(targetPath).pipe(

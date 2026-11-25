@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 
+import * as ElectronDialog from "../electron/ElectronDialog.ts";
 import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
 import * as DesktopSavedEnvironments from "../settings/DesktopSavedEnvironments.ts";
 import * as DesktopConfig from "./DesktopConfig.ts";
@@ -72,9 +73,16 @@ function layerFor(
     ),
   );
   const layerSafeStorage = layerSafeStorageFor(encryptionAvailable, failDecrypt);
+  const layerDialog = Layer.succeed(ElectronDialog.ElectronDialog, {
+    pickFolder: () => Effect.succeedNone,
+    pickFiles: () => Effect.succeed([]),
+    showMessageBox: () => Effect.succeed({ response: 0, checkboxChecked: false }),
+    showErrorBox: () => Effect.void,
+  } satisfies ElectronDialog.ElectronDialog["Service"]);
   const layerDependencies = Layer.mergeAll(
     layerEnvironment,
     layerSafeStorage,
+    layerDialog,
     NodeServices.layer,
     NodeCrypto.layer,
     fileSystemLayer,
@@ -242,7 +250,10 @@ describe("DesktopConnectionCatalogStore", () => {
     ),
   );
 
-  it.effect("surfaces malformed catalog documents without deleting them", () =>
+  it.effect.each([
+    { case: "malformed JSON", contents: "{not-json" },
+    { case: "an all-zeros file left by a power cut", contents: "\0".repeat(4964) },
+  ])("moves a catalog holding $case aside and starts empty", ({ contents }) =>
     withStore(
       Effect.gen(function* () {
         const path = yield* Path.Path;
@@ -251,16 +262,46 @@ describe("DesktopConnectionCatalogStore", () => {
         const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
         const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
         yield* fileSystem.makeDirectory(environment.stateDir, { recursive: true });
-        yield* fileSystem.writeFileString(catalogPath, "{not-json");
+        yield* fileSystem.writeFileString(catalogPath, contents);
 
-        const error = yield* store.get.pipe(Effect.flip);
-        assert.instanceOf(
-          error,
-          DesktopConnectionCatalogStore.DesktopConnectionCatalogStoreDocumentDecodeError,
+        assert.deepStrictEqual(yield* store.get, Option.none());
+        assert.isFalse(yield* fileSystem.exists(catalogPath));
+        const corrupt = (yield* fileSystem.readDirectory(environment.stateDir)).filter((name) =>
+          name.startsWith("connection-catalog.json.corrupt-"),
         );
-        assert.equal(error.catalogPath, catalogPath);
-        assert.exists(error.cause);
-        assert.equal(yield* fileSystem.readFileString(catalogPath), "{not-json");
+        assert.equal(corrupt.length, 1);
+        assert.equal(
+          yield* fileSystem.readFileString(path.join(environment.stateDir, corrupt[0]!)),
+          contents,
+        );
+
+        const catalog = '{"schemaVersion":1,"targets":[]}';
+        assert.isTrue(yield* store.set(catalog));
+        assert.deepStrictEqual(yield* store.get, Option.some(catalog));
+      }),
+    ),
+  );
+
+  it.effect("restores a damaged catalog from the last good backup", () =>
+    withStore(
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const environment = yield* DesktopEnvironment.DesktopEnvironment;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const store = yield* DesktopConnectionCatalogStore.DesktopConnectionCatalogStore;
+        const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
+        const first = '{"schemaVersion":1,"targets":["first"]}';
+        const zeros = "\0".repeat(4964);
+
+        assert.isTrue(yield* store.set(first));
+        assert.isTrue(yield* store.set('{"schemaVersion":1,"targets":["second"]}'));
+        yield* fileSystem.writeFileString(catalogPath, zeros);
+        // A damaged catalog must not replace the last good backup.
+        assert.isTrue(yield* store.set('{"schemaVersion":1,"targets":["third"]}'));
+        yield* fileSystem.writeFileString(catalogPath, zeros);
+
+        assert.deepStrictEqual(yield* store.get, Option.some(first));
+        assert.deepStrictEqual(yield* store.get, Option.some(first));
       }),
     ),
   );
