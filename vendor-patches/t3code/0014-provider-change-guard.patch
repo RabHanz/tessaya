@@ -16,7 +16,7 @@ index 3520f72293f89697f68043295020b9645956ac3e..ac76ffed0900af0c2d8e27c560b568d2
      createdAt: "2026-10-30T00:00:00.000Z",
      setRuntimeMode: record("setRuntimeMode"),
 diff --git a/apps/mobile/src/features/threads/resume-thread.ts b/apps/mobile/src/features/threads/resume-thread.ts
-index e11242386825448233eb004a3feaef186f155d8b..d45160f998dc25a41d7b29d4dabc28b80333b5d3 100644
+index 94bed891d7ae498b2cc0d56efd052a90857c6cce..43359123a532406aaa8f01c4ca3c9a3ebcfaabcb 100644
 --- a/apps/mobile/src/features/threads/resume-thread.ts
 +++ b/apps/mobile/src/features/threads/resume-thread.ts
 @@ -33,6 +33,8 @@ export async function resumeThread<E>(input: {
@@ -37,10 +37,10 @@ index e11242386825448233eb004a3feaef186f155d8b..d45160f998dc25a41d7b29d4dabc28b8
            messageId: input.messageId,
            role: "user",
 diff --git a/apps/mobile/src/state/thread-outbox-model.ts b/apps/mobile/src/state/thread-outbox-model.ts
-index 64fe62d8a15f753e6e9d3e812eeb880c994d7f9e..9abbebe3ac9a39ebf9cdbfee9534535cd81d3ef5 100644
+index e7e9fe9a302a0f0fa7361f0b3c80a83105ff050d..1973954ccc9c00a0a5aa1551da39132a5f8353bf 100644
 --- a/apps/mobile/src/state/thread-outbox-model.ts
 +++ b/apps/mobile/src/state/thread-outbox-model.ts
-@@ -57,6 +57,7 @@ export const QueuedThreadMessageSchema = Schema.Struct({
+@@ -62,6 +62,7 @@ export const QueuedThreadMessageSchema = Schema.Struct({
    context: Schema.optional(OrchestrationMessageContext),
    attachments: Schema.Array(DraftComposerAttachmentSchema),
    modelSelection: Schema.optional(ModelSelection),
@@ -48,7 +48,7 @@ index 64fe62d8a15f753e6e9d3e812eeb880c994d7f9e..9abbebe3ac9a39ebf9cdbfee9534535c
    dispatchMode: Schema.optional(Schema.Literals(["auto", "queue", "steer", "restart"])),
    compactBeforeSend: Schema.optional(Schema.Boolean),
    freshContext: Schema.optional(Schema.Boolean),
-@@ -89,6 +90,8 @@ export interface QueuedThreadMessage {
+@@ -99,6 +100,8 @@ export interface QueuedThreadMessage {
    readonly context?: OrchestrationMessageContext;
    readonly attachments: ReadonlyArray<DraftComposerAttachment>;
    readonly modelSelection?: ModelSelectionType;
@@ -58,10 +58,10 @@ index 64fe62d8a15f753e6e9d3e812eeb880c994d7f9e..9abbebe3ac9a39ebf9cdbfee9534535c
    readonly interactionMode?: ProviderInteractionModeType;
    /** Captured at enqueue because draining may occur long after the tap. */
 diff --git a/apps/mobile/src/state/threadOutboxDelivery.ts b/apps/mobile/src/state/threadOutboxDelivery.ts
-index c64215ed26cd374b173de56d499e5debc3938265..69693f67f7b409610b1418fcac12b18dc313ef51 100644
+index ca7fbf4fda33763f62fd806e30f88ac42ee31aae..157cef7f2c76b823da40254b1424e68d5f48f027 100644
 --- a/apps/mobile/src/state/threadOutboxDelivery.ts
 +++ b/apps/mobile/src/state/threadOutboxDelivery.ts
-@@ -907,6 +907,7 @@ export function createThreadOutboxDelivery(): {
+@@ -988,6 +988,7 @@ export function createThreadOutboxDelivery(): {
              idleCompaction: "onReturn",
            },
            modelSelection: sendSettings.modelSelection,
@@ -69,28 +69,28 @@ index c64215ed26cd374b173de56d499e5debc3938265..69693f67f7b409610b1418fcac12b18d
            runtimeMode: sendSettings.runtimeMode,
            interactionMode: sendSettings.interactionMode,
            createdAt: queuedMessage.createdAt,
-@@ -943,6 +944,7 @@ export function createThreadOutboxDelivery(): {
+@@ -1024,6 +1025,7 @@ export function createThreadOutboxDelivery(): {
            attachments: prepared.attachments,
          },
          modelSelection: sendSettings.modelSelection,
 +        providerChangeApproved: queuedMessage.providerChangeApproved === true,
-         titleSeed: deriveThreadTitleSeed({
-           text: queuedMessage.text,
-           attachments: queuedMessage.attachments,
+         titleSeed: deriveThreadTitleSeed(
+           { text: queuedMessage.text, attachments: queuedMessage.attachments },
+           m,
 diff --git a/apps/mobile/src/state/use-thread-composer-state.ts b/apps/mobile/src/state/use-thread-composer-state.ts
-index a3a191d54cbd11f9aa69a6c5e38de84d5f6497c6..2fa81b9922010b70523f03bec133d11f19b4e74b 100644
+index 278b9eb67599bcae9f32364fae092e732c12d4fd..8623b77b20532ba0b015a2a3331a785918fc8dc9 100644
 --- a/apps/mobile/src/state/use-thread-composer-state.ts
 +++ b/apps/mobile/src/state/use-thread-composer-state.ts
-@@ -8,6 +8,7 @@ import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/shell";
- import type { ThreadCheckpointSummary } from "@t3tools/client-runtime/state/thread-checkpoints";
- import { threadSteersDuringCompaction } from "@t3tools/client-runtime/state/thread-workflows";
+@@ -12,6 +12,7 @@ import {
+   threadSteersDuringCompaction,
+ } from "@t3tools/client-runtime/state/thread-workflows";
  import { resolvePendingHandoff } from "@t3tools/client-runtime/handoff";
 +import { pinnedLiveSelection } from "@t3tools/tessaya-shared/liveThread";
  import {
    announcedRun,
    isDetailBehindShell,
-@@ -319,7 +320,13 @@ export function useThreadComposerState(input: {
-   const selectedDraft = useComposerDraftSettings(selectedThreadKey);
+@@ -348,7 +349,13 @@ export function useThreadComposerState(input: {
+   const threadDraftSettings = useComposerDraftSettings(selectedThreadKey);
    const selectedThreadQueueCount = selectedThreadQueuedMessages.length;
    const selectedThread = selectedThreadShell;
 -  const modelSelection = selectedDraft.modelSelection ?? selectedThread?.modelSelection ?? null;
@@ -104,7 +104,7 @@ index a3a191d54cbd11f9aa69a6c5e38de84d5f6497c6..2fa81b9922010b70523f03bec133d11f
    const serverConfig = selectedEnvironmentRuntime?.serverConfig;
    const pendingHandoff = resolvePendingHandoff(
      selectedThreadProjection?.projection,
-@@ -808,6 +815,7 @@ export function useThreadComposerState(input: {
+@@ -911,6 +918,7 @@ export function useThreadComposerState(input: {
        attachments,
        context: draft.context,
        modelSelection,
@@ -112,7 +112,7 @@ index a3a191d54cbd11f9aa69a6c5e38de84d5f6497c6..2fa81b9922010b70523f03bec133d11f
        runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
        ...(compactBeforeSend
-@@ -929,6 +937,7 @@ export function useThreadComposerState(input: {
+@@ -1082,6 +1090,7 @@ export function useThreadComposerState(input: {
      cancelQueuedRunEdit,
      onRemoveQueuedEditAttachment,
      modelSelection,
@@ -121,10 +121,10 @@ index a3a191d54cbd11f9aa69a6c5e38de84d5f6497c6..2fa81b9922010b70523f03bec133d11f
      canSwitchThreadProvider,
      runtimeMode,
 diff --git a/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts b/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
-index acfd20af787490e87bef36227799b6fed0e08fb6..20742daeabcae6e9e9873988385830d772b16f57 100644
+index 2b97201512fcc47490d0b241d807e241b6c27564..ca169b5b3774ced71ef2ec86e8fce1bb9c454f39 100644
 --- a/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
 +++ b/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
-@@ -1231,6 +1231,7 @@ it.effect(
+@@ -1259,6 +1259,7 @@ it.effect(
                text: id,
                attachments: [],
                modelSelection: selection,
@@ -132,7 +132,7 @@ index acfd20af787490e87bef36227799b6fed0e08fb6..20742daeabcae6e9e9873988385830d7
                dispatchMode: { type: "steer_active", targetRunId: started[0]!.runId },
                createdBy: "user",
                creationSource: "web",
-@@ -2275,6 +2276,7 @@ const scheduledDeliveryAfterClaudeSwitch = (name: string, text: string) =>
+@@ -3191,6 +3192,7 @@ const scheduledDeliveryAfterClaudeSwitch = (name: string, text: string) =>
          commandId: CommandId.make("select-claude"),
          threadId,
          modelSelection: claudeSelection,
@@ -141,10 +141,10 @@ index acfd20af787490e87bef36227799b6fed0e08fb6..20742daeabcae6e9e9873988385830d7
        return { threadId, queuedRun };
      });
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
-index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07cb570552 100644
+index c48826f703f7ff9e7808707b57cee86f36806376..40acde8f66bb23226e8c420cb527087326e7ce95 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
-@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
+@@ -32,6 +32,7 @@ import * as Effect from "effect/Effect";
  import * as Fiber from "effect/Fiber";
  import * as Layer from "effect/Layer";
  import * as PubSub from "effect/PubSub";
@@ -152,10 +152,10 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
  import * as Ref from "effect/Ref";
  import * as Stream from "effect/Stream";
  import * as Schema from "effect/Schema";
-@@ -131,10 +132,16 @@ function makeTestAdapter(input: {
-   readonly backgroundTasksEndWithProcess?: true;
-   readonly backgroundWork?: Ref.Ref<boolean>;
-   readonly closedSessions?: Ref.Ref<ReadonlyArray<string>>;
+@@ -143,10 +144,16 @@ function makeTestAdapter(input: {
+   // ACP cannot truncate, so its rollback answers with a fresh, empty native session.
+   readonly rollback?: "truncates" | "replaces_native_thread";
+   readonly beforeForcedNativeThread?: Effect.Effect<void>;
 +  /** Gives the instance a movable login and its sessions a switchAccount that records the target. */
 +  readonly switchedAccounts?: Ref.Ref<ReadonlyArray<string>>;
  }): ProviderAdapter.ProviderAdapterV2["Service"] {
@@ -169,7 +169,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
      getCapabilities: () => Effect.succeed(input.capabilities),
      planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
      openSession: (sessionInput) =>
-@@ -169,6 +176,14 @@ function makeTestAdapter(input: {
+@@ -188,6 +195,14 @@ function makeTestAdapter(input: {
            ...(input.backgroundTasksEndWithProcess === undefined
              ? {}
              : { backgroundTasksEndWithProcess: input.backgroundTasksEndWithProcess }),
@@ -184,7 +184,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
            ...(input.pendingBackgroundWork === undefined
              ? {}
              : {
-@@ -637,6 +652,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -718,6 +733,7 @@ describe("orchestration v2 provider switching", () => {
          const dispatch = (ordinal: number, text: string, selection: ModelSelection) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -192,7 +192,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              commandId: CommandId.make(`regression:${ordinal}`),
              threadId,
              messageId: MessageId.make(`regression:${ordinal}`),
-@@ -1133,6 +1149,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -1214,6 +1230,7 @@ describe("orchestration v2 provider switching", () => {
            const dispatch = (ordinal: number, text: string, selection: ModelSelection) =>
              orchestrator.dispatch({
                type: "message.dispatch",
@@ -200,7 +200,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
                commandId: CommandId.make(`retry:${ordinal}`),
                threadId,
                messageId: MessageId.make(`retry:${ordinal}`),
-@@ -1313,6 +1330,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -1394,6 +1411,7 @@ describe("orchestration v2 provider switching", () => {
              attachments: [],
              modelSelection: selection,
              dispatchMode: { type: "start_immediately" },
@@ -208,7 +208,15 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
            });
          const wait = (ordinal: number) =>
            orchestrator.streamStoredEvents.pipe(
-@@ -1395,6 +1413,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -1595,6 +1613,7 @@ describe("orchestration v2 provider switching", () => {
+           Effect.gen(function* () {
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               commandId: CommandId.make(`imported-native:${ordinal}`),
+               threadId,
+               messageId: MessageId.make(`imported-native:${ordinal}`),
+@@ -1908,6 +1927,7 @@ describe("orchestration v2 provider switching", () => {
            const runToCompletion = Effect.fn("runToCompletion")(function* (ordinal: number) {
              yield* orchestrator.dispatch({
                type: "message.dispatch",
@@ -216,7 +224,15 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
                commandId: CommandId.make(`resume-fallback:${ordinal}`),
                threadId,
                messageId: MessageId.make(`resume-fallback:${ordinal}`),
-@@ -1553,6 +1572,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2063,6 +2083,7 @@ describe("orchestration v2 provider switching", () => {
+             dispatchRequest: (ordinal, selection) =>
+               orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(`unverified-replacement:${ordinal}`),
+                 threadId,
+                 messageId: MessageId.make(`unverified-replacement:${ordinal}`),
+@@ -2408,6 +2429,7 @@ describe("orchestration v2 provider switching", () => {
              }
              yield* orchestrator.dispatch({
                type: "message.dispatch",
@@ -224,7 +240,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
                commandId: CommandId.make(`handoff-order:${ordinal}`),
                threadId,
                messageId: MessageId.make(`handoff-order:${ordinal}`),
-@@ -1673,6 +1693,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2861,6 +2883,7 @@ describe("orchestration v2 provider switching", () => {
          const run = Effect.fn("run")(function* (ordinal: number) {
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -232,7 +248,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              commandId: CommandId.make(`refused-start:${ordinal}`),
              threadId,
              messageId: MessageId.make(`refused-start:${ordinal}`),
-@@ -1824,6 +1845,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3025,6 +3048,7 @@ describe("orchestration v2 provider switching", () => {
          ) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -240,7 +256,15 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              commandId: CommandId.make(`command:handoff:${key}`),
              threadId,
              messageId: MessageId.make(`message:handoff:${key}`),
-@@ -2099,6 +2121,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3299,6 +3323,7 @@ describe("orchestration v2 provider switching", () => {
+             const dispatch = (key: string, text: string, modelSelection: ModelSelection) =>
+               orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(`command:slash-handoff:${key}`),
+                 threadId,
+                 messageId: MessageId.make(`message:slash-handoff:${key}`),
+@@ -3430,6 +3455,7 @@ describe("orchestration v2 provider switching", () => {
            });
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -248,7 +272,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-capability:first:${key}`),
-@@ -2113,6 +2136,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3444,6 +3470,7 @@ describe("orchestration v2 provider switching", () => {
            yield* worker.drain();
            const queue = orchestrator.dispatch({
              type: "message.dispatch",
@@ -256,7 +280,23 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-capability:claude:${key}`),
-@@ -2207,6 +2231,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3601,6 +3628,7 @@ describe("orchestration v2 provider switching", () => {
+       const orchestrator = yield* Orchestrator.OrchestratorV2;
+       return yield* orchestrator.dispatch({
+         type: "message.dispatch",
++        providerChangeApproved: true,
+         createdBy: "user",
+         creationSource: "web",
+         commandId: CommandId.make(`command:steer-provider-switch:${key}:codex`),
+@@ -3707,6 +3735,7 @@ describe("orchestration v2 provider switching", () => {
+         // An explicit steer without a delivery intent, as thread tools send it.
+         yield* orchestrator.dispatch({
+           type: "message.dispatch",
++          providerChangeApproved: true,
+           createdBy: "user",
+           creationSource: "web",
+           commandId: CommandId.make("command:steer-provider-switch:goal:codex"),
+@@ -3814,6 +3843,7 @@ describe("orchestration v2 provider switching", () => {
          ) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -264,7 +304,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-steer-provider-switch:${key}`),
-@@ -2401,6 +2426,14 @@ describe("orchestration v2 provider switching", () => {
+@@ -4008,6 +4038,14 @@ describe("orchestration v2 provider switching", () => {
            responseByRunOrdinal: { 2: "Alternate account complete" },
            capturedTurns,
          }),
@@ -279,7 +319,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
        ];
        const layerRegistry = Layer.succeed(
          ProviderAdapterRegistry.ProviderAdapterRegistryV2,
-@@ -2409,7 +2442,9 @@ describe("orchestration v2 provider switching", () => {
+@@ -4016,7 +4054,9 @@ describe("orchestration v2 provider switching", () => {
              const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
              return adapter === undefined
                ? Effect.fail(
@@ -290,7 +330,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
                  )
                : Effect.succeed(adapter);
            },
-@@ -2418,7 +2453,9 @@ describe("orchestration v2 provider switching", () => {
+@@ -4025,7 +4065,9 @@ describe("orchestration v2 provider switching", () => {
              const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
              return adapter === undefined
                ? Effect.fail(
@@ -301,7 +341,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
                  )
                : Effect.succeed({
                    driver: CODEX_DRIVER,
-@@ -2464,6 +2501,50 @@ describe("orchestration v2 provider switching", () => {
+@@ -4071,6 +4113,50 @@ describe("orchestration v2 provider switching", () => {
            dispatchMode: { type: "start_immediately" },
          });
          yield* Deferred.await(started);
@@ -352,7 +392,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
          yield* orchestrator.dispatch({
            type: "message.dispatch",
            createdBy: "user",
-@@ -2590,6 +2671,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -4197,6 +4283,7 @@ describe("orchestration v2 provider switching", () => {
          const dispatch = (ordinal: number, modelSelection: ModelSelection) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -360,7 +400,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-provider-switch:${ordinal}`),
-@@ -2792,239 +2874,329 @@ describe("orchestration v2 provider switching", () => {
+@@ -4399,242 +4486,332 @@ describe("orchestration v2 provider switching", () => {
    it.live.each([
      [
        "detaches the previous instance's session when a send hands off to another instance",
@@ -604,7 +644,23 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
 -        });
 -        yield* send(1, CLAUDE_MODEL_SELECTION);
 +          yield* send(1, CLAUDE_MODEL_SELECTION);
-+
+ 
+-        if (queued) {
+-          yield* Deferred.await(firstStarted);
+-          yield* send(2, secondSelection);
+-          const queuedRunId = (yield* orchestrator.getThreadProjection(handoffThreadId)).runs[1]
+-            ?.id;
+-          assert.isDefined(queuedRunId);
+-          yield* Deferred.succeed(releaseFirst, undefined);
+-          yield* orchestrator.streamStoredEvents.pipe(
+-            Stream.filter(
+-              ({ event }) =>
+-                event.type === "run.updated" &&
+-                event.runId === queuedRunId &&
+-                (event.payload.queueHeld === true || event.payload.status === "completed"),
+-            ),
+-            Stream.runHead,
+-          );
 +          if (queued) {
 +            yield* Deferred.await(firstStarted);
 +            if (midTurn) {
@@ -692,27 +748,14 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
 +            assert.deepEqual(yield* Ref.get(closedSessions), [firstSession!.id]);
 +            return;
 +          }
- 
--        if (queued) {
--          yield* Deferred.await(firstStarted);
--          yield* send(2, secondSelection);
--          const queuedRunId = (yield* orchestrator.getThreadProjection(handoffThreadId)).runs[1]
--            ?.id;
--          assert.isDefined(queuedRunId);
--          yield* Deferred.succeed(releaseFirst, undefined);
--          yield* orchestrator.streamStoredEvents.pipe(
--            Stream.filter(
--              ({ event }) =>
--                event.type === "run.updated" &&
--                event.runId === queuedRunId &&
--                (event.payload.queueHeld === true || event.payload.status === "completed"),
--            ),
--            Stream.runHead,
--          );
++
++          yield* worker.drain();
++          yield* waitForIdle(handoffThreadId);
++          // The run completes before its checkpoint capture; let the capture finish first.
            yield* worker.drain();
 -          const afterQueue = yield* orchestrator.getThreadProjection(handoffThreadId);
 -          const firstSession = afterQueue.providerSessions.find(
-+          const afterFirst = yield* waitForIdle(handoffThreadId);
++          const afterFirst = yield* orchestrator.getThreadProjection(handoffThreadId);
 +          const firstSession = afterFirst.providerSessions.find(
              (session) => session.providerInstanceId === CLAUDE_MODEL_SELECTION.instanceId,
            );
@@ -795,7 +838,10 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
 -        }
 -
 -        yield* worker.drain();
--        const afterFirst = yield* waitForIdle(handoffThreadId);
+-        yield* waitForIdle(handoffThreadId);
+-        // The run completes before its checkpoint capture; let the capture finish first.
+-        yield* worker.drain();
+-        const afterFirst = yield* orchestrator.getThreadProjection(handoffThreadId);
 -        const firstSession = afterFirst.providerSessions.find(
 -          (session) => session.providerInstanceId === CLAUDE_MODEL_SELECTION.instanceId,
 -        );
@@ -886,7 +932,23 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
  
    // regression: #16000 thread setting changes must not end a Claude session's background work
    it.live.each([
-@@ -3197,6 +3369,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -4776,6 +4953,7 @@ describe("orchestration v2 provider switching", () => {
+           const send = (ordinal: number, modelSelection: ModelSelection) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:retained-session-background:${ordinal}`),
+@@ -4790,6 +4968,7 @@ describe("orchestration v2 provider switching", () => {
+             orchestrator.dispatch({
+               type: "thread.model-selection.set",
+               commandId: CommandId.make(`command:retained-session-background:select:${attempt}`),
++              providerChangeApproved: true,
+               threadId,
+               modelSelection: GROK_MODEL_SELECTION,
+             });
+@@ -4958,6 +5137,7 @@ describe("orchestration v2 provider switching", () => {
            ) =>
              orchestrator.dispatch({
                type: "message.dispatch",
@@ -894,7 +956,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
                createdBy: "user",
                creationSource: "web",
                commandId: CommandId.make(`command:fresh-context:${key}:${name}`),
-@@ -3589,6 +3762,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5533,6 +5713,7 @@ describe("orchestration v2 provider switching", () => {
          ) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -902,7 +964,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:fresh-context-reserved:${name}`),
-@@ -3747,6 +3921,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5700,6 +5881,7 @@ describe("orchestration v2 provider switching", () => {
            const dispatch = (text: string, modelSelection: ModelSelection) =>
              orchestrator.dispatch({
                type: "message.dispatch",
@@ -910,7 +972,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
                commandId: CommandId.make(text),
                messageId: MessageId.make(text),
                threadId,
-@@ -3937,6 +4112,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5895,6 +6077,7 @@ describe("orchestration v2 provider switching", () => {
          });
          yield* orchestrator.dispatch({
            type: "message.dispatch",
@@ -918,7 +980,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
            createdBy: "user",
            creationSource: "web",
            commandId: CommandId.make("command:queued-handoff-rejection:first"),
-@@ -3988,6 +4164,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5946,6 +6129,7 @@ describe("orchestration v2 provider switching", () => {
          });
          yield* orchestrator.dispatch({
            type: "message.dispatch",
@@ -926,7 +988,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
            createdBy: "user",
            creationSource: "web",
            commandId: CommandId.make("command:queued-handoff-rejection:claude"),
-@@ -4000,6 +4177,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5958,6 +6142,7 @@ describe("orchestration v2 provider switching", () => {
          });
          yield* orchestrator.dispatch({
            type: "message.dispatch",
@@ -934,7 +996,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
            createdBy: "user",
            creationSource: "web",
            commandId: CommandId.make("command:queued-handoff-rejection:later"),
-@@ -4314,6 +4492,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -6280,6 +6465,7 @@ describe("orchestration v2 provider switching", () => {
  
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -942,7 +1004,7 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:provider-switch:legacy-import:failed"),
-@@ -4331,6 +4510,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -6297,6 +6483,7 @@ describe("orchestration v2 provider switching", () => {
            }
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -950,19 +1012,43 @@ index e4371b54ee4b55fb619930255a0a429c8b7a4539..5f258e48671e490823df072fe76bea07
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:provider-switch:legacy-import:recovery"),
+@@ -6435,6 +6622,7 @@ describe("orchestration v2 provider switching", () => {
+           const send = (threadId: ThreadId, name: string, modelSelection: ModelSelection) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:fork-switch-history:${key}:${name}`),
+@@ -6620,6 +6808,7 @@ describe("orchestration v2 provider switching", () => {
+             step += 1;
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:dropped-handoff:${variant}:msg-${step}`),
+@@ -6864,6 +7053,7 @@ describe("orchestration v2 provider switching", () => {
+             step += 1;
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:carried-handoff-cut:msg-${step}`),
 diff --git a/apps/web/src/components/ChatView.logic.test.ts b/apps/web/src/components/ChatView.logic.test.ts
-index 8aa4df4c09ba58bca32d4f65574d92717473f082..017ca376147c972ff6abba65b3c7d1b39e827a62 100644
+index a79fed15935d0f57f5c273650076d42104058203..f6046f3661ec36bf6a74da7542ccce113c60c7f3 100644
 --- a/apps/web/src/components/ChatView.logic.test.ts
 +++ b/apps/web/src/components/ChatView.logic.test.ts
-@@ -58,6 +58,7 @@ import {
+@@ -72,6 +72,7 @@ import {
    createLocalDispatchSnapshot,
    deriveCommittedServerUserMessageIds,
    deriveComposerSendState,
 +  relinkRewoundAttachmentReferences,
    deriveLockedProvider,
+   hasCompactableConversation,
    hasServerAcknowledgedLocalDispatch,
-   waitForRevertedMessage,
-@@ -135,6 +136,75 @@ describe("deriveComposerSendState", () => {
+@@ -150,6 +151,75 @@ describe("deriveComposerSendState", () => {
      expect(state.expiredTerminalContextCount).toBe(1);
      expect(state.hasSendableContent).toBe(true);
    });
@@ -1038,7 +1124,7 @@ index 8aa4df4c09ba58bca32d4f65574d92717473f082..017ca376147c972ff6abba65b3c7d1b3
  });
  
  describe("isThreadEnvironmentLocked", () => {
-@@ -625,6 +695,30 @@ describe("resolveComposerProviderSelection", () => {
+@@ -720,6 +790,30 @@ describe("resolveComposerProviderSelection", () => {
      },
    );
  
@@ -1070,16 +1156,15 @@ index 8aa4df4c09ba58bca32d4f65574d92717473f082..017ca376147c972ff6abba65b3c7d1b3
      const signedOutEntry = entry("antigravity", "google_work", {
        status: "error",
 diff --git a/apps/web/src/components/ChatView.logic.ts b/apps/web/src/components/ChatView.logic.ts
-index 94fc6a8cad2794cfdcbf31a2a3f47a2a9430f651..c9631e62021ed006c543b8ba992f23c3523132b3 100644
+index ef3d87e8440d690959dfb1469338496952b92218..f33759881be298580f52a3a9c9b3839a2f71c732 100644
 --- a/apps/web/src/components/ChatView.logic.ts
 +++ b/apps/web/src/components/ChatView.logic.ts
-@@ -83,8 +83,14 @@ import {
+@@ -91,8 +91,13 @@ import {
    removeInlineContextReference,
    stripInlineContextReferences,
  } from "~/lib/composerContextReferences";
 +import {
 +  collectComposerContextReferences,
-+  replaceComposerContextReferences,
 +  toKindScopedComposerContextId,
 +} from "@t3tools/shared/composerContextReferences";
  import {
@@ -1088,7 +1173,7 @@ index 94fc6a8cad2794cfdcbf31a2a3f47a2a9430f651..c9631e62021ed006c543b8ba992f23c3
    reviewCommentContextLabel,
    terminalContextReference,
  } from "../lib/composerContextRecords";
-@@ -474,6 +480,8 @@ export function resolveComposerProviderSelection(input: {
+@@ -500,6 +505,8 @@ export function resolveComposerProviderSelection(input: {
    candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
    lockedProvider: ProviderDriverKind | null;
    lockedInstanceId: ProviderInstanceId | null | undefined;
@@ -1097,7 +1182,7 @@ index 94fc6a8cad2794cfdcbf31a2a3f47a2a9430f651..c9631e62021ed006c543b8ba992f23c3
  }) {
    const requestedInstanceId = input.candidateInstanceIds.find(
      (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
-@@ -498,7 +506,15 @@ export function resolveComposerProviderSelection(input: {
+@@ -524,7 +531,15 @@ export function resolveComposerProviderSelection(input: {
        (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
        (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
    );
@@ -1113,7 +1198,7 @@ index 94fc6a8cad2794cfdcbf31a2a3f47a2a9430f651..c9631e62021ed006c543b8ba992f23c3
      input.candidateInstanceIds
        .map((candidate) =>
          compatibleEntries.find(
-@@ -718,10 +734,47 @@ export function cloneComposerImageForRetry(
+@@ -751,10 +766,47 @@ export function cloneComposerImageForRetry(
    }
  }
  
@@ -1161,7 +1246,7 @@ index 94fc6a8cad2794cfdcbf31a2a3f47a2a9430f651..c9631e62021ed006c543b8ba992f23c3
    terminalContexts: ReadonlyArray<TerminalContextDraft>;
    elementContextCount?: number;
  }): {
-@@ -729,13 +782,31 @@ export function deriveComposerSendState(options: {
+@@ -762,13 +814,31 @@ export function deriveComposerSendState(options: {
    sendableTerminalContexts: TerminalContextDraft[];
    expiredTerminalContextCount: number;
    hasSendableContent: boolean;
@@ -1194,19 +1279,45 @@ index 94fc6a8cad2794cfdcbf31a2a3f47a2a9430f651..c9631e62021ed006c543b8ba992f23c3
      sendableTerminalContexts,
      expiredTerminalContextCount,
 diff --git a/apps/web/src/components/chat/useComposerProviderModel.ts b/apps/web/src/components/chat/useComposerProviderModel.ts
-index 105df9fa4df54d3344c5c1ce911a304c83d7da7a..61debc6b0b094da1ade9e57eb3137d7a4171dcd4 100644
+index a3db11d09a0fa21bc8d8fb28dd5ddcb95b7616d8..f0914f2d7b5eab6a34f9b42bd82806dd92e1eab3 100644
 --- a/apps/web/src/components/chat/useComposerProviderModel.ts
 +++ b/apps/web/src/components/chat/useComposerProviderModel.ts
-@@ -48,6 +48,7 @@ export function useComposerProviderModel(
-     candidateInstanceIds,
+@@ -8,6 +8,7 @@ import {
+   type ModelSelection,
+   type ProjectId,
+   ProviderDriverKind,
++  type ProviderInstanceId,
+   type ScopedThreadRef,
+   type ServerProvider,
+ } from "@t3tools/contracts";
+@@ -37,6 +38,8 @@ export function useComposerProviderModel(
+     readonly projectModelSelection: ModelSelection | null | undefined;
+     readonly promptInjectionState: ReturnType<typeof getComposerPromptInjectionState>;
+     readonly threadStarted: boolean;
++    /** Tessaya: the draft's provider, pinned to a live thread's session. */
++    readonly draftProvider: ProviderInstanceId | null;
+   },
+ ) {
+   const {
+@@ -51,6 +54,8 @@ export function useComposerProviderModel(
      lockedProvider,
      lockedInstanceId,
+     threadStarted,
 +    handoffInstanceId,
++    draftProvider,
    } = input;
    const draftModelState = useComposerDraftModelState(threadRef);
    const providerInstanceEntries: ReadonlyArray<ProviderInstanceEntry> = providerInstanceEntriesFor(
-@@ -60,6 +61,7 @@ export function useComposerProviderModel(
-     candidateInstanceIds,
+@@ -61,13 +66,12 @@ export function useComposerProviderModel(
+   const selection = resolveComposerProviderSelection({
+     entries: providerInstanceEntries,
+     candidateInstanceIds: [
+-      draftModelSelectionApplies(draftModelState, threadStarted)
+-        ? draftModelState.activeProvider
+-        : null,
++      draftModelSelectionApplies(draftModelState, threadStarted) ? draftProvider : null,
+       ...candidateInstanceIds,
+     ],
      lockedProvider,
      lockedInstanceId,
 +    handoffInstanceId,
@@ -1214,10 +1325,10 @@ index 105df9fa4df54d3344c5c1ce911a304c83d7da7a..61debc6b0b094da1ade9e57eb3137d7a
    const selectedInstanceId =
      selection.selectedProviderEntry?.instanceId ?? NO_PROVIDER_MODEL_SELECTION.instanceId;
 diff --git a/apps/web/src/components/chat/useComposerResume.ts b/apps/web/src/components/chat/useComposerResume.ts
-index d525811e2fac7804632fdc3653653fb5bcbe928e..9664d88586df04ee3dca50085949f66408514ff3 100644
+index a38800c38ecbf79e6c49f5f7398d5f59c9d46ca5..0f71257df1f03b2d27d1c9f28088d2d206727bac 100644
 --- a/apps/web/src/components/chat/useComposerResume.ts
 +++ b/apps/web/src/components/chat/useComposerResume.ts
-@@ -109,7 +109,8 @@ export function useComposerResume(input: ComposerResumeInput) {
+@@ -112,7 +112,8 @@ export function useComposerResume(input: ComposerResumeInput) {
        }
        // Read before the first await: the composer follows the route, so after the user switches
        // threads it holds the other thread's model.
@@ -1227,7 +1338,7 @@ index d525811e2fac7804632fdc3653653fb5bcbe928e..9664d88586df04ee3dca50085949f664
        const createdAt = new Date().toISOString();
        const settingsResult = await persistThreadSettingsForNextTurn({
          threadId,
-@@ -127,6 +128,7 @@ export function useComposerResume(input: ComposerResumeInput) {
+@@ -130,6 +131,7 @@ export function useComposerResume(input: ComposerResumeInput) {
            threadId,
            manualContinuationOfRunId: resumableRunId,
            ...(modelSelection ? { modelSelection } : {}),
@@ -1236,10 +1347,10 @@ index d525811e2fac7804632fdc3653653fb5bcbe928e..9664d88586df04ee3dca50085949f664
              messageId: newMessageId(),
              role: "user",
 diff --git a/apps/web/src/components/chat/useThreadLifecycle.tsx b/apps/web/src/components/chat/useThreadLifecycle.tsx
-index 66b2a9f6b3fd389370e8977521bb64389a1d6f7e..f9dd1500e292f985ee44b472dbce02eefb4d0ded 100644
+index fb28a051c9fcb2317140207c70ae69b6ae43f498..520b71c89c5f42baf9e843666bda9d50c8367c1d 100644
 --- a/apps/web/src/components/chat/useThreadLifecycle.tsx
 +++ b/apps/web/src/components/chat/useThreadLifecycle.tsx
-@@ -552,6 +552,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
+@@ -583,6 +583,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
                threadId,
                message: { messageId, role: "user", text, attachments: [] },
                modelSelection: context.selectedModelSelection,
@@ -1286,10 +1397,10 @@ index 48a1227429312f786b4ee34f370cd9de2099d990..9c98d57678b81e4cd3af769da7e2a8a5
    const target = providers.find((provider) => provider.instanceId === selection.instanceId);
    const needsHandoff =
 diff --git a/packages/client-runtime/src/operations/commands.ts b/packages/client-runtime/src/operations/commands.ts
-index c6f5c8c34166ee7a3c8858de4c16c9bfdffcef57..f1163fc706e887aac0313807d24519e8ede8dd9d 100644
+index 17d6264c401879b1689b284e4b8335e54285296c..dc4faf7b537ccfb804f737a6f2a5fa971db2c39f 100644
 --- a/packages/client-runtime/src/operations/commands.ts
 +++ b/packages/client-runtime/src/operations/commands.ts
-@@ -141,6 +141,8 @@ export interface UpdateThreadMetadataInput extends ThreadCommandInput {
+@@ -152,6 +152,8 @@ export interface UpdateThreadMetadataInput extends ThreadCommandInput {
    readonly limitRecovery?: import("@t3tools/contracts").OrchestrationV2LimitRecoveryUpdate | null;
    readonly title?: string;
    readonly modelSelection?: ModelSelection;
@@ -1298,7 +1409,7 @@ index c6f5c8c34166ee7a3c8858de4c16c9bfdffcef57..f1163fc706e887aac0313807d24519e8
    readonly branch?: string | null;
    readonly worktreePath?: string | null;
    readonly regenerateTitle?: boolean;
-@@ -188,6 +190,8 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
+@@ -201,6 +203,8 @@ export interface StartThreadTurnInput extends ThreadCommandInput {
      readonly idleCompaction?: import("@t3tools/contracts").OrchestrationV2IdleCompaction;
    };
    readonly modelSelection?: ModelSelection;
@@ -1307,7 +1418,7 @@ index c6f5c8c34166ee7a3c8858de4c16c9bfdffcef57..f1163fc706e887aac0313807d24519e8
    readonly titleSeed?: string;
    readonly runtimeMode: RuntimeMode;
    readonly interactionMode: ProviderInteractionMode;
-@@ -710,6 +714,7 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
+@@ -747,6 +751,7 @@ export const updateThreadMetadata = Effect.fn("EnvironmentCommands.updateThreadM
          commandId: result === null ? commandId : CommandId.make(`${commandId}:model-selection`),
          threadId: input.threadId,
          modelSelection: input.modelSelection,
@@ -1315,7 +1426,7 @@ index c6f5c8c34166ee7a3c8858de4c16c9bfdffcef57..f1163fc706e887aac0313807d24519e8
        });
      }
      return result ?? { sequence: 0 };
-@@ -852,6 +857,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
+@@ -902,6 +907,7 @@ export const startThreadTurn = Effect.fn("EnvironmentCommands.startThreadTurn")(
        attachments,
        ...(input.titleSeed === undefined ? {} : { titleSeed: input.titleSeed }),
        ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),

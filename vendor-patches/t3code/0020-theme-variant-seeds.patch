@@ -2,10 +2,10 @@ Published themes: a light or dark variant is generated from its own canvas and a
 inherits T3 Chat's pink for every role it does not name.
 
 diff --git a/apps/web/src/themePalette.ts b/apps/web/src/themePalette.ts
-index c86d1350391573c26ccaca1110a725f39c315da8..0a867c9bb3c7a6485a14d73960ac2b53118076d8 100644
+index d04e7e167183553aa81aa391e58621a8543b5f18..768a4f48b758df211c1cfa41854cf21f30f458fa 100644
 --- a/apps/web/src/themePalette.ts
 +++ b/apps/web/src/themePalette.ts
-@@ -250,12 +250,13 @@ function publishedThemeColors(
+@@ -261,12 +261,13 @@ function publishedThemeColors(
    appearance: ThemeAppearance,
    colors: Readonly<Record<string, string>> | undefined,
  ): ThemeColors {

@@ -1,8 +1,8 @@
 diff --git a/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
-index 4b0ca00e88666b97f6aa61fa54d8fb837155a9b7..5d5d8c3a6db85bda661ef979896b1783018b36cf 100644
+index 6e18e2146dd92f15f4b59ab63564ede0d9a27fca..15d284be5872211f023f9eb1d3214aaff5c1bde7 100644
 --- a/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsVoiceRouteScreen.tsx
-@@ -32,10 +32,12 @@ import {
+@@ -35,10 +35,12 @@ import {
  import { LocalModelChoice } from "./VoiceModelSection";
  import { CloudVoiceChoice } from "./CloudVoiceSection";
  import type { VoiceGrant } from "../voice-input/voiceGrantStorage";
@@ -15,24 +15,24 @@ index 4b0ca00e88666b97f6aa61fa54d8fb837155a9b7..5d5d8c3a6db85bda661ef979896b1783
  import { SettingsScreen } from "./components/SettingsScreen";
  import { SettingsSection } from "./components/SettingsSection";
  import {
-@@ -320,6 +322,7 @@ export function SettingsVoiceRouteScreen() {
+@@ -340,6 +342,7 @@ export function SettingsVoiceRouteScreen() {
              }
            />
          ) : null}
 +        <DictationCleanupSection />
          {!grant && transcriber === null ? (
-           <Text className="px-2 text-sm text-foreground-muted">{UNAVAILABLE_EXPLANATION}</Text>
+           <Text className="px-2 text-sm text-foreground-muted">{m(UNAVAILABLE_EXPLANATION)}</Text>
          ) : null}
-@@ -383,6 +386,7 @@ export function SettingsVoiceRouteScreen() {
-             ? " Android may still use a different microphone if the preferred one can’t be routed."
-             : null}
+@@ -406,6 +409,7 @@ export function SettingsVoiceRouteScreen() {
+                 "Voice input uses the first connected microphone in this list. A wired or Bluetooth microphone is added by name the first time you dictate with it connected; until then it falls under Other. Swipe left on a named microphone to forget it.",
+               )}
          </Text>
 +        <VoiceIdSection />
        </ScrollView>
      </SettingsScreen>
    );
 diff --git a/apps/server/src/serverSettings.ts b/apps/server/src/serverSettings.ts
-index 4dc30d29a6cffd394fd14d6ac4dde70e51ceb2e3..89defd31df0eb120285f6c62ff6e20e65871a508 100644
+index 1484df35853212461acd962cb2906c6a60dc1d57..0a7cc34627ad2305d1a474e56e217137e19426e3 100644
 --- a/apps/server/src/serverSettings.ts
 +++ b/apps/server/src/serverSettings.ts
 @@ -18,6 +18,7 @@ import {
@@ -43,7 +43,7 @@ index 4dc30d29a6cffd394fd14d6ac4dde70e51ceb2e3..89defd31df0eb120285f6c62ff6e20e6
    isSecretReference,
    type SecretReference,
    withIdleCompaction,
-@@ -548,6 +549,8 @@ const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+@@ -604,6 +605,8 @@ const ATOMIC_SETTINGS_KEYS: ReadonlySet<string> = new Set([
    "textGenerationModelSelection",
    "fallbackModelSelection",
    "pullRequestMergeMethod",
@@ -52,7 +52,7 @@ index 4dc30d29a6cffd394fd14d6ac4dde70e51ceb2e3..89defd31df0eb120285f6c62ff6e20e6
    // Empty by default, these hold one whole value, which a managed policy can default.
    ...Object.entries(DEFAULT_SERVER_SETTINGS).flatMap(([key, value]) =>
      value === null ? [key] : [],
-@@ -823,6 +826,7 @@ const make = Effect.gen(function* () {
+@@ -865,6 +868,7 @@ const make = Effect.gen(function* () {
      // it to `idleCompaction`, so that switch goes to clients as a boolean. The
      // defaults gain the field too, which tells clients this server reads modes.
      settings = withIdleCompaction(settings, globalIdleCompaction(settings));
@@ -61,10 +61,10 @@ index 4dc30d29a6cffd394fd14d6ac4dde70e51ceb2e3..89defd31df0eb120285f6c62ff6e20e6
      // A file that failed to decode must stay on disk for the user to repair.
      const settingsFileTrusted = Option.isNone(parseFailure);
 diff --git a/apps/web/src/appInit.tsx b/apps/web/src/appInit.tsx
-index faa71137db0493e09fcf9d3f505dab27b360cda1..f37bff0e2e3ce4ef67f3d6d07ec16d3e47dca0cb 100644
+index df7cd77df41150627f937ffc4657a18a7d21788a..366079879266240897a5e781a32b8cc964138262 100644
 --- a/apps/web/src/appInit.tsx
 +++ b/apps/web/src/appInit.tsx
-@@ -44,6 +44,7 @@ import {
+@@ -46,6 +46,7 @@ import {
    startModelPreferencesMigration,
    subscribeClientSettings,
  } from "./hooks/useSettings";
@@ -72,23 +72,23 @@ index faa71137db0493e09fcf9d3f505dab27b360cda1..f37bff0e2e3ce4ef67f3d6d07ec16d3e
  import { syncBrowserChromeTheme } from "./hooks/useTheme";
  import { startThreadVisitedMigration } from "./hooks/useThreadVisitedMigration";
  import { installDesktopPasteAsText } from "./lib/desktopPasteAsText";
-@@ -59,6 +60,7 @@ import { primaryServerConfigAtom } from "./state/server";
- import { environmentShell } from "./state/shell";
- import { installChatRouteCommands } from "./shortcuts/chatRouteCommands";
- import { startWorkspaceFocus } from "./lib/workspaceFocus";
+@@ -64,6 +65,7 @@ import { startWorkspaceFocus } from "./lib/workspaceFocus";
+ import { m } from "./i18n/messages";
+ import { startI18n, subscribeI18n } from "./i18n/runtime";
+ import { guardDomAgainstPageTranslation } from "./lib/pageTranslationGuard";
 +import { startStillIndicators } from "./lib/visibleAnimation";
- import { startI18n } from "./i18n/runtime";
  import { installCommandPaletteCommands } from "./shortcuts/commandPaletteCommands";
  import { registerOpenFavoriteEditorCommand } from "./components/chat/OpenInPickerShortcut";
-@@ -260,6 +262,7 @@ export function startAppServices(): AppRouter {
-   installDesktopPasteAsText(window.desktopBridge, window);
+ import { environmentThreadShells, threadEnvironment } from "./state/threads";
+@@ -275,6 +277,7 @@ export function startAppServices(): AppRouter {
+   guardDomAgainstPageTranslation();
  
    startClientAppearance();
 +  startStillIndicators();
    startI18n();
    startDocumentTitle(router);
    startHostEnvironmentLookup();
-@@ -267,6 +270,7 @@ export function startAppServices(): AppRouter {
+@@ -286,6 +289,7 @@ export function startAppServices(): AppRouter {
    startBrowserChromeThemeSync(router);
    startDefaultThemeAdoption();
    startModelPreferencesMigration();
@@ -97,19 +97,19 @@ index faa71137db0493e09fcf9d3f505dab27b360cda1..f37bff0e2e3ce4ef67f3d6d07ec16d3e
    if (isElectron) startElectronBrowserHost();
    startPreviewTitleRecording();
 diff --git a/apps/web/src/components/settings/VoiceSettingsPanel.tsx b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca75346085 100644
+index 9798c471fb418f6d8aefcf4859af32e913772c15..46c58aa6389c2ad94e5f414254233260704dea8f 100644
 --- a/apps/web/src/components/settings/VoiceSettingsPanel.tsx
 +++ b/apps/web/src/components/settings/VoiceSettingsPanel.tsx
-@@ -51,6 +51,8 @@ import {
- } from "lucide-react";
+@@ -60,6 +60,8 @@ import {
  import { useEffect, useRef, useState, type ReactNode } from "react";
+ import { msg, T, useGT, useLocale, useMessages, Var } from "gt-react";
  
 +import { useAtomValue } from "@effect/atom-react";
 +import { changesFromCustomWords } from "@t3tools/tessaya-shared/vocabulary";
  import { useStableCallback } from "~/hooks/useStableCallback";
+ import { supportsAppleSpeechLocale, useAppleSpeechLocales } from "../../speech/appleSpeech";
  import { cn } from "~/lib/utils";
- import {
-@@ -69,6 +71,7 @@ import {
+@@ -79,6 +81,7 @@ import {
    chooseTranscriptCleanup,
    useCleanupGrant,
  } from "../../speech/voiceConsent";
@@ -117,7 +117,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
  import { updateClientSettings, useClientSettings } from "../../hooks/useSettings";
  import { runEnvironmentSpeech } from "../../speech/runEnvironmentSpeech";
  import {
-@@ -76,9 +79,15 @@ import {
+@@ -86,9 +89,15 @@ import {
    resolveAppModelSelectionState,
  } from "../../modelSelection";
  import { useTextGenerationTargets } from "../../textGenerators";
@@ -133,8 +133,8 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
 +import { useAtomCommand } from "../../state/use-atom-command";
  import {
    useEnvironmentSpeechInput,
-   useVoiceTranscriptionDestination,
-@@ -117,6 +126,7 @@ import {
+   APPLE_SPEECH_LABEL,
+@@ -128,6 +137,7 @@ import {
    SelectValue,
  } from "../ui/select";
  import { Switch } from "../ui/switch";
@@ -142,7 +142,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
  import { Textarea } from "../ui/textarea";
  import { toastManager } from "../ui/toast";
  import { MicrophoneOrderList } from "./MicrophoneOrderList";
-@@ -126,6 +136,7 @@ import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
+@@ -137,6 +147,7 @@ import { ModelBenchmarks, orderSpeechLanguages } from "./SpeechModelComparison";
  import { languageLabel, SpeechLanguageSelect } from "./SpeechLanguageSelect";
  import { filterSpeechModels, type SpeechModelSort } from "./speechModelBrowser";
  import { AdvancedSettings } from "./AdvancedSettings";
@@ -150,7 +150,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
  import {
    SETTINGS_PICKER_TRIGGER_CLASSNAME,
    SettingsPageContainer,
-@@ -471,8 +482,24 @@ function ProjectDictionaryRow() {
+@@ -528,8 +539,24 @@ function ProjectDictionaryRow() {
    const scope = useOptionalSettingsScope();
    const words = useScopedSettings((settings) => settings.speechProjectCustomWords);
    const updateScopedSettings = useUpdateScopedSettings();
@@ -175,17 +175,19 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
    return (
      <SettingsRow
        serverScoped
-@@ -482,26 +509,31 @@ function ProjectDictionaryRow() {
+@@ -539,28 +566,35 @@ function ProjectDictionaryRow() {
        description={
          isProjectScope
-           ? `Used by everyone who dictates in ${scope.scope.label}.`
--          : "Used by everyone who dictates on this environment."
-+          : "Your dictionary, used by dictation, the Tessel and everyone who dictates on this environment. Shows the 100 most used words."
+           ? gt("Used by everyone who dictates in {label}.", { label: scope.scope.label })
+-          : gt("Used by everyone who dictates on this environment.")
++          : gt(
++              "Your dictionary, used by dictation, the Tessel and everyone who dictates on this environment. Shows the 100 most used words.",
++            )
        }
      >
        <div className="mt-3 pb-2">
          <DictionaryEditor
-           label={isProjectScope ? "project dictionary" : "shared dictionary"}
+           label={isProjectScope ? gt("project dictionary") : gt("shared dictionary")}
            words={words}
 -          disabled={scope.connectedEnvironments.length === 0}
 -          onChange={(next) => updateScopedSettings({ speechProjectCustomWords: next })}
@@ -205,13 +207,15 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
 +
  /** Cleanup runs on the draft's environment, so its model is an environment setting there. */
  function CleanupModelRow() {
+   const setting = useSearchableSetting();
+   const gt = useGT();
    const { environment, connectedEnvironments } = useSettingsScope();
    const settings = useScopedSettings();
 -  const updateSettings = useUpdateScopedSettings();
    const providersByEnvironment = useEnvironmentProviders();
    const providers =
      (environment?.serverConfig
-@@ -512,15 +544,13 @@ function CleanupModelRow() {
+@@ -571,15 +605,13 @@ function CleanupModelRow() {
      settings,
      providers: providers.filter((provider) => provider.supportsTextGeneration !== false),
      projectId: null,
@@ -230,8 +234,8 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
    const selection = resolveAppModelSelectionState(
      {
        ...settings,
-@@ -545,15 +575,18 @@ function CleanupModelRow() {
-       toastManager.add({ type: "error", title: "Cleanup model not saved", description: reason });
+@@ -608,17 +640,22 @@ function CleanupModelRow() {
+       });
        return;
      }
 -    updateSettings({ speechPostProcessingModelSelection: next });
@@ -242,18 +246,24 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
 -      serverScoped
 -      settingKeys={["speechPostProcessingModelSelection"]}
 +      settingKeys={["dictationCleanup"]}
-       {...searchableSetting("speech-post-processing-model")}
-       title="Cleanup model"
--      description="Model for transcript cleanup, such as a cheaper or faster one. When disabled, use the text generation model configured for this environment."
+       {...setting("speech-post-processing-model")}
+       title={gt("Cleanup model")}
+-      description={gt(
+-        "Model for transcript cleanup, such as a cheaper or faster one. When disabled, use the text generation model configured for this environment.",
+-      )}
 +      description={
 +        dedicated
-+          ? "Every environment, the desktop and the phone use this model for cleanup instead of the environment’s text generation model."
-+          : "Cleanup uses each environment’s text generation model. Pick another model if you want a cheaper or faster one; the choice applies everywhere."
++          ? gt(
++              "Every environment, the desktop and the phone use this model for cleanup instead of the environment’s text generation model.",
++            )
++          : gt(
++              "Cleanup uses each environment’s text generation model. Pick another model if you want a cheaper or faster one; the choice applies everywhere.",
++            )
 +      }
        control={
          connectedEnvironments.length === 0 ? (
-           <span className="text-sm text-muted-foreground">Connect an environment first.</span>
-@@ -596,8 +629,8 @@ function CleanupModelRow() {
+           <span className="text-sm text-muted-foreground">
+@@ -663,8 +700,8 @@ function CleanupModelRow() {
                checked={dedicated}
                disabled={!dedicated && !hasProvider}
                onCheckedChange={(checked) =>
@@ -264,15 +274,15 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
                      ? createModelSelection(
                          settings.textGenerationModelSelection.instanceId,
                          settings.textGenerationModelSelection.model,
-@@ -1190,6 +1223,7 @@ function TranscriptionTest(props: {
- 
- export function VoiceSettingsPanel() {
+@@ -1343,6 +1380,7 @@ export function VoiceSettingsPanel() {
+   const setting = useSearchableSetting();
+   const gt = useGT();
    const cleanupEnabled = useCleanupGrant() !== null;
 +  const chooseCleanup = useChooseDictationCleanup();
    const settings = useClientSettings();
    const settingsScope = useOptionalSettingsScope();
    const destination = useVoiceTranscriptionDestination();
-@@ -1199,6 +1233,7 @@ export function VoiceSettingsPanel() {
+@@ -1362,6 +1400,7 @@ export function VoiceSettingsPanel() {
      environmentId: EnvironmentId;
    } | null>(null);
    const { environments } = useEnvironments();
@@ -280,15 +290,16 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
    const [microphones, setMicrophones] = useState<BrowserMicrophone[]>([]);
    const prepared = destination.cloudProvider ? null : destination.prepared;
    const catalog = useVoiceModels(prepared);
-@@ -1603,12 +1638,15 @@ export function VoiceSettingsPanel() {
-       <SettingsSection id={searchableSetting("speech-post-processing").id} title="Cleanup">
+@@ -1831,13 +1870,16 @@ export function VoiceSettingsPanel() {
          <SettingsRow
-           title="Clean up transcripts"
--          description="Off by default. Sends the transcript and nearby draft text, never audio, to the cleanup model."
-+          description="Off by default; one setting everywhere. Sends the transcript and nearby draft text, never audio, to the draft environment’s text generation provider."
+           title={gt("Clean up transcripts")}
+           description={gt(
+-            "Off by default. Sends the transcript and nearby draft text, never audio, to the cleanup model.",
++            "Off by default; one setting everywhere. Sends the transcript and nearby draft text, never audio, to the draft environment’s text generation provider.",
+           )}
            control={
              <Switch
-               aria-label="Clean up transcripts"
+               aria-label={gt("Clean up transcripts")}
                checked={cleanupEnabled}
 -              onCheckedChange={chooseTranscriptCleanup}
 +              onCheckedChange={(enabled) => {
@@ -298,7 +309,7 @@ index 22ae59e55d31e3e10e1243da64fecf0165378def..d1155984932b8d6888f0028e2957d3ca
              />
            }
          />
-@@ -1692,6 +1730,10 @@ export function VoiceSettingsPanel() {
+@@ -1927,6 +1969,10 @@ export function VoiceSettingsPanel() {
            />
          ) : null}
        </SettingsSection>

@@ -11,6 +11,7 @@ Write or run an eval when a change affects what a model sees or does: agent inst
 | [pr-content](pr-content/)                         | Whether PR generation describes the diff when project instructions try to redirect it.                                          |
 | [voice-cleanup](voice-cleanup/)                   | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.                                        |
 | [test-signal](test-signal/)                       | Whether a cheap model running the test-signal check flags low-signal tests.                                                     |
+| [workflow-authoring](workflow-authoring/)         | Whether a model writes a working workflow file from the `t3-workflows` skill alone.                                             |
 | [tessaya-assistant](tessaya-assistant/)           | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                                                   |
 | [tessaya-body-direction](tessaya-body-direction/) | Whether a direction to her body ("act like you just heard great news") becomes a whole, valid performance, seen against unseen. |
 | [tessaya-outside](tessaya-outside/)               | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                              |

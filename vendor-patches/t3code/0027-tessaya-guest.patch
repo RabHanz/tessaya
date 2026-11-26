@@ -1,50 +1,62 @@
 Tessaya's window loads T3's guest page (tessayaGuest.tsx), not the whole app: bootstrap picks it by flag, and the connection layer and utils stop loading the drafts store.
 
 diff --git a/apps/web/src/bootstrap.ts b/apps/web/src/bootstrap.ts
-index b6f422c5d68f4dd5bbcd95b1cd66812745957462..bbdf898654481faddbe0d394ab6b8e4f0734bf49 100644
+index fe07e58b028726304bcb0ff89942ff63b6ce9d5a..07130a1a51510586b41ddd8459a3d2fd7853e0fb 100644
 --- a/apps/web/src/bootstrap.ts
 +++ b/apps/web/src/bootstrap.ts
-@@ -1,4 +1,8 @@
+@@ -1,11 +1,13 @@
 -import { showBootError } from "./lib/bootError";
 +import { showBootError, watchBoot } from "./lib/bootError";
+ import { chunkLoadState, handleChunkLoadErrors } from "./lib/chunkReloadGuard";
 +import { isTessayaGuest } from "./tessayaGuestFlag";
  
+ handleChunkLoadErrors();
+ 
  // Shared dev chunks need the React refresh preamble first. Catch failures before React mounts.
--void import("./main").then(({ startup }) => startup).catch(showBootError);
-+void watchBoot(
+-export const boot = import("./main")
+-  .then(({ startup }) => startup)
+-  .catch((error: unknown) => {
++export const boot = watchBoot(
 +  () => (isTessayaGuest() ? import("./tessayaGuest") : import("./main")),
-+  showBootError,
++  (error) => {
+     if (!chunkLoadState.reloadScheduled) showBootError(error);
+-  });
++  },
 +);
 diff --git a/apps/web/src/bundledDev.test.ts b/apps/web/src/bundledDev.test.ts
-index 770b26e0a686b75139c3c4e87f33e34e6a211f3d..a3616afc6879725d000a7231bfdbcd319b66c708 100644
+index 5517910d754db6b7bc05905f7343feb5bbfc3be3..9c9cfed88018ac0420c1ed3e33fd6a0bc1484941 100644
 --- a/apps/web/src/bundledDev.test.ts
 +++ b/apps/web/src/bundledDev.test.ts
-@@ -26,7 +26,17 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
+@@ -26,11 +26,22 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
    try {
      await NodeFSP.mkdir(NodePath.join(root, "src/lib"), { recursive: true });
      await NodeFSP.writeFile(NodePath.join(root, "package.json"), '{"type":"module"}');
--    for (const file of ["index.html", "src/bootstrap.ts", "src/lib/bootError.ts"]) {
 +    // Tessaya: bootstrap also picks its guest page; the stub keeps that branch resolvable.
 +    await NodeFSP.writeFile(
 +      NodePath.join(root, "src/tessayaGuest.tsx"),
 +      "export const startup = null;",
 +    );
-+    for (const file of [
-+      "index.html",
-+      "src/bootstrap.ts",
-+      "src/lib/bootError.ts",
++    // Tessaya's boot error names the app; the real branding module pulls in workspace packages.
++    await NodeFSP.writeFile(
++      NodePath.join(root, "src/branding.ts"),
++      'export const APP_BASE_NAME = "Tessaya";',
++    );
+     for (const file of [
+       "index.html",
+       "src/bootstrap.ts",
+       "src/lib/bootError.ts",
+       "src/lib/chunkReloadGuard.ts",
 +      "src/tessayaGuestFlag.ts",
-+    ]) {
+     ]) {
        await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
      }
-     await NodeFSP.writeFile(
 diff --git a/apps/web/src/components/settings/SettingsScopeSentence.tsx b/apps/web/src/components/settings/SettingsScopeSentence.tsx
-index f22844c8abc293b8513d4b50950b4ff5844aafe1..51b2e65171bd8f352d6ff6b5c8b40038dba41c82 100644
+index a4d9cca6fea68a528ef844d21e81548831bc9286..e8ab63a5a65c3ece2ce4e03d83145c6c36d7969f 100644
 --- a/apps/web/src/components/settings/SettingsScopeSentence.tsx
 +++ b/apps/web/src/components/settings/SettingsScopeSentence.tsx
-@@ -71,7 +71,13 @@ export function SettingsScopeSentence() {
+@@ -72,7 +72,13 @@ export function SettingsScopeSentence() {
    const scope = useOptionalSettingsScope();
-   const pathname = useLocation({ select: (location) => location.pathname });
+   const pathname = useRenderedSettingsPathname();
    const { environments } = useEnvironments();
 -  if (scope === null || SETTINGS_DEVICE_ONLY_PATHS.has(pathname)) return null;
 +  // Tessaya's pages are one household's, so no machine or project picker (D-038).
@@ -58,10 +70,10 @@ index f22844c8abc293b8513d4b50950b4ff5844aafe1..51b2e65171bd8f352d6ff6b5c8b40038
      value: scope.search,
      singleEnvironment: scope.singleEnvironment,
 diff --git a/apps/web/src/connection/platform.ts b/apps/web/src/connection/platform.ts
-index dcd50342f1c91c78d4dca18286a96073e284da98..1e6d56d4450185ad622d3011c0efe5a4a7209f0f 100644
+index 7fa47da4bb14f45851c4bda7da6b6734db882c76..eabb5130994fb84a172890cce62ef9321c4e1fc4 100644
 --- a/apps/web/src/connection/platform.ts
 +++ b/apps/web/src/connection/platform.ts
-@@ -49,7 +49,6 @@ import {
+@@ -50,7 +50,6 @@ import {
    readPrimaryEnvironmentTarget,
    type PrimaryEnvironmentTarget,
  } from "../environments/primary/target";
@@ -69,37 +81,37 @@ index dcd50342f1c91c78d4dca18286a96073e284da98..1e6d56d4450185ad622d3011c0efe5a4
  import { isHostedStaticApp } from "../hostedPairing";
  import { isLocalEnvironmentDisabled } from "../localEnvironment";
  import { randomUUID } from "../lib/utils";
-@@ -794,9 +793,12 @@ const layerEnvironmentOwnedDataCleanup = Layer.succeed(
+@@ -840,9 +839,12 @@ const layerEnvironmentOwnedDataCleanup = Layer.succeed(
    Persistence.EnvironmentOwnedDataCleanup,
    Persistence.EnvironmentOwnedDataCleanup.of({
      clear: Effect.fn("Persistence.EnvironmentOwnedDataCleanup.clear")(function (environmentId) {
 -      return Effect.sync(() => {
 -        clearComposerDraftsEnvironment(environmentId);
--      });
+-      }).pipe(
 +      // Lazy: Tessaya's guest page connects environments but must never load (and persist) the drafts store.
 +      return Effect.promise(() =>
 +        import("../composerDraftStore").then((drafts) =>
 +          drafts.clearComposerDraftsEnvironment(environmentId),
 +        ),
-+      );
-     }),
-   }),
- );
++      ).pipe(
+         Effect.andThen(
+           Effect.ignore(browserThreadTriageOutboxStore.clearEnvironment(environmentId)),
+         ),
 diff --git a/apps/web/src/lib/utils.ts b/apps/web/src/lib/utils.ts
-index 747af2d52dd35966d69ec22cf3a61c35d1f6755f..162bb90846c51b89f66caf3fd4cd0003fcfe69db 100644
+index 2202c44765303cb71f76c1ecbcef1d6ef5ed8dbd..49a4b4985c52fa3f9304a2975883550b44bfedf5 100644
 --- a/apps/web/src/lib/utils.ts
 +++ b/apps/web/src/lib/utils.ts
-@@ -3,7 +3,7 @@ import { isMacPlatform } from "@t3tools/shared/keybindings";
- import { type CxOptions, cx } from "class-variance-authority";
+@@ -4,7 +4,7 @@ import { type CxOptions, cx } from "class-variance-authority";
  import * as Hex from "effect/encoding/Hex";
+ import { msg } from "gt-react";
  import { extendTailwindMerge } from "tailwind-merge";
 -import { DraftId } from "../composerDraftStore";
 +import { DraftId } from "../draftId";
+ import { m, type MessageResolver } from "../i18n/messages";
  
  // Register extra font sizes and background images so tailwind-merge does not
- // treat text-2xs or bg-composer-seam-below as colors.
 diff --git a/packages/shared/src/devProxy.ts b/packages/shared/src/devProxy.ts
-index cdacfce098f47ccca6a47d44949e93775d526d54..c92e9a2041f948327939ca37c76e8079c1d71b15 100644
+index 9e2539e6b78fc67ade4a47397c5998aaac1fb59d..9e7fd5bb852630bb2c1f2de2681ad973f70eef25 100644
 --- a/packages/shared/src/devProxy.ts
 +++ b/packages/shared/src/devProxy.ts
 @@ -1,5 +1,13 @@
@@ -115,5 +127,5 @@ index cdacfce098f47ccca6a47d44949e93775d526d54..c92e9a2041f948327939ca37c76e8079
 +  "/tessaya/playground",
 +] as const;
  
- /** Preserve origins for OAuth metadata validation and /ws cookie-session Origin/Host checks. */
- export const DEV_PROXIED_ORIGIN_PRESERVING_PREFIXES: ReadonlySet<string> = new Set([
+ export function isDevProxiedPath(pathname: string): boolean {
+   return DEV_PROXIED_PATH_PREFIXES.some(

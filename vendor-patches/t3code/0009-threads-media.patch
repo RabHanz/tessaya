@@ -1,42 +1,44 @@
 diff --git a/apps/mobile/src/features/home/HomeRouteScreen.tsx b/apps/mobile/src/features/home/HomeRouteScreen.tsx
-index cc66e114d21be7514f5e8a6a2bc44d33c6d4fcd6..186c26da6f6cc801d54ec403627b2aaf8129bc45 100644
+index 2550f965087299c5f7d2e6fb74b298dc4261542b..dfb491ca01480e9b813808509f2cc5f264589668 100644
 --- a/apps/mobile/src/features/home/HomeRouteScreen.tsx
 +++ b/apps/mobile/src/features/home/HomeRouteScreen.tsx
-@@ -37,9 +37,11 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
+@@ -40,11 +40,13 @@ import { useSelectWorkspaceTab } from "../layout/workspace/useSelectWorkspaceTab
  import { useSelectWorkspaceDetail } from "../layout/workspace/useSelectWorkspaceDetail";
  import { WorkspaceListEmptyDetail } from "../layout/workspace/WorkspaceListEmptyDetail";
  import { WorkspaceListHeader } from "../layout/workspace/WorkspaceListHeader";
 +import { useTessayaLiveOnly } from "../threads/tessayaLiveOnly";
- import { buildHomeListFilterMenuItems } from "./home-list-filter-menu";
+ import { buildHomeListFilterMenuItems, homeListFilterEnvironments } from "./home-list-filter-menu";
  
  export function HomeRouteScreen() {
+   const gt = useGT();
+   const m = useMessages();
 +  const tessayaLiveOnly = useTessayaLiveOnly();
    const nativePrimaryColumn = use(NativePrimaryColumnContext);
    const { layout, setPrimarySidebarSearchQuery, startNewTask } = useAdaptiveWorkspaceLayout();
    const { primarySidebarSearchQuery } = useWorkspacePaneState();
-@@ -170,7 +172,8 @@ export function HomeRouteScreen() {
-             accessibilityLabel: "Search threads",
+@@ -173,7 +175,8 @@ export function HomeRouteScreen() {
+             accessibilityLabel: gt("Search threads"),
            }}
            filter={{
 -            customized: selectedEnvironmentId !== null || selectedProjectKey !== null,
 +            customized:
 +              selectedEnvironmentId !== null || selectedProjectKey !== null || tessayaLiveOnly,
-             items: buildHomeListFilterMenuItems({
-               environments,
-               projects: projectFilterOptions,
-@@ -178,6 +181,7 @@ export function HomeRouteScreen() {
-               selectedProjectKey,
-               onEnvironmentChange: setSelectedEnvironmentId,
-               onProjectChange: setSelectedProjectKey,
-+              liveOnly: tessayaLiveOnly,
-             }),
-           }}
-         />
+             items: buildHomeListFilterMenuItems(
+               {
+                 environments,
+@@ -182,6 +185,7 @@ export function HomeRouteScreen() {
+                 selectedProjectKey,
+                 onEnvironmentChange: setSelectedEnvironmentId,
+                 onProjectChange: setSelectedProjectKey,
++                liveOnly: tessayaLiveOnly,
+               },
+               m,
+             ),
 diff --git a/apps/mobile/src/features/home/HomeScreen.tsx b/apps/mobile/src/features/home/HomeScreen.tsx
-index af25be18bb46f430e8cd003a66f74e56deaa29a9..30f4c4b0e2a7a142aaf711e7623236c239d90036 100644
+index e5b23a2627d9c65542f62164e2677ee7f629ecf4..77ffe124f0ab19ded72b8081890d602f3632d342 100644
 --- a/apps/mobile/src/features/home/HomeScreen.tsx
 +++ b/apps/mobile/src/features/home/HomeScreen.tsx
-@@ -100,6 +100,12 @@ import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-
+@@ -104,6 +104,12 @@ import { holdLaunchSplashForHomeRows, settleLaunchSplashHomeRows } from "./home-
  import { useWorkspaceTabs } from "../layout/workspace/WorkspaceTabsContext";
  import { ThreadListFilters } from "./ThreadListFilters";
  import { deriveHomeEmptyState } from "./home-empty-state";
@@ -49,7 +51,7 @@ index af25be18bb46f430e8cd003a66f74e56deaa29a9..30f4c4b0e2a7a142aaf711e7623236c2
  
  interface HomeScreenProps {
    /** Whether this list is the one on screen; see `useHomeRouteVisible`. */
-@@ -403,13 +409,15 @@ export function HomeScreen(props: HomeScreenProps) {
+@@ -413,13 +419,15 @@ export function HomeScreen(props: HomeScreenProps) {
    } = listEnvironments;
    const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
    const pendingOrder = usePendingThreadOrder();
@@ -66,7 +68,7 @@ index af25be18bb46f430e8cd003a66f74e56deaa29a9..30f4c4b0e2a7a142aaf711e7623236c2
      pendingTasks: props.pendingTasks,
      environmentId: props.selectedEnvironmentId,
      projectRefs: v2ScopedProjectGroup === null ? null : v2ScopedProjectGroup.projectRefs,
-@@ -521,6 +529,7 @@ export function HomeScreen(props: HomeScreenProps) {
+@@ -530,6 +538,7 @@ export function HomeScreen(props: HomeScreenProps) {
      const thread = item.item.thread;
      return (
        <ThreadListV2Row
@@ -75,10 +77,10 @@ index af25be18bb46f430e8cd003a66f74e56deaa29a9..30f4c4b0e2a7a142aaf711e7623236c2
          selected={scopedThreadKey(thread.environmentId, thread.id) === selectedThreadKey}
          fullSwipeWidth={fullSwipeWidth}
 diff --git a/apps/mobile/src/features/home/ThreadListFilters.tsx b/apps/mobile/src/features/home/ThreadListFilters.tsx
-index 196e6a86480b561b1c9efa0a41b54a56791b843c..521e878ab184cc0842792e561d314d1d37aa17fd 100644
+index eb8bd29b89c9bf9e17ede13e2e08e857d03f40a7..3fd592ac0ad19217db4a2b99a0f8e025b48e57d1 100644
 --- a/apps/mobile/src/features/home/ThreadListFilters.tsx
 +++ b/apps/mobile/src/features/home/ThreadListFilters.tsx
-@@ -1,6 +1,7 @@
+@@ -2,6 +2,7 @@ import { useGT } from "gt-react-native";
  import { Pressable, ScrollView } from "react-native";
  import { SymbolView } from "../../components/ui/AppSymbol";
  import { ListFilterMenu } from "../layout/workspace/ListFilterMenu";
@@ -86,25 +88,25 @@ index 196e6a86480b561b1c9efa0a41b54a56791b843c..521e878ab184cc0842792e561d314d1d
  import type { EnvironmentId } from "@t3tools/contracts";
  import type {
    HomeListFilterMenuEnvironment,
-@@ -17,6 +18,7 @@ export function ThreadListFilters(props: {
-   /** List padding the scroller bleeds through so pills start where row content does. */
+@@ -19,6 +20,7 @@ export function ThreadListFilters(props: {
    readonly gutter: number;
  }) {
+   const gt = useGT();
 +  const liveOnly = useTessayaLiveOnly();
    const selectedEnvironment = props.environments.find(
      (environment) => environment.environmentId === props.selectedEnvironmentId,
    );
-@@ -98,6 +100,16 @@ export function ThreadListFilters(props: {
+@@ -100,6 +102,16 @@ export function ThreadListFilters(props: {
            <SymbolView name="xmark.circle.fill" size={18} tintColorClassName="accent-icon-muted" />
          </Pressable>
        ) : null}
 +      <ListFilterMenu
-+        label={liveOnly ? "Live only" : "All threads"}
-+        accessibilityLabel="Filter threads to live sessions"
++        label={liveOnly ? gt("Live only") : gt("All threads")}
++        accessibilityLabel={gt("Filter threads to live sessions")}
 +        active={liveOnly}
 +        actions={[
-+          { id: "all", title: "All threads", state: liveOnly ? "off" : "on" },
-+          { id: "live", title: "Live only", state: liveOnly ? "on" : "off" },
++          { id: "all", title: gt("All threads"), state: liveOnly ? "off" : "on" },
++          { id: "live", title: gt("Live only"), state: liveOnly ? "on" : "off" },
 +        ]}
 +        onSelect={(id) => setTessayaLiveOnly(id === "live")}
 +      />
@@ -112,45 +114,45 @@ index 196e6a86480b561b1c9efa0a41b54a56791b843c..521e878ab184cc0842792e561d314d1d
    );
  }
 diff --git a/apps/mobile/src/features/home/home-list-filter-menu.ts b/apps/mobile/src/features/home/home-list-filter-menu.ts
-index 617c3fa0988ef6c84236de5282f79e423c840695..ec83b56803040ef97c4d6af4ca87ce9b96a5cac2 100644
+index 213d2490a5ed88a745d408c6bb75ce389e0863ee..41308da22e512f9481a4a91008c72c5b6c47955f 100644
 --- a/apps/mobile/src/features/home/home-list-filter-menu.ts
 +++ b/apps/mobile/src/features/home/home-list-filter-menu.ts
-@@ -2,6 +2,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
- 
- import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
+@@ -8,6 +8,8 @@ import type { AppBarMenuItem } from "../../components/ui/AppBar.types";
+ import { m, type MessageResolver } from "../../i18n/messages";
+ import type { WorkspaceEnvironment } from "../../state/workspaceModel";
  
 +import { setTessayaLiveOnly } from "../threads/tessayaLiveOnly";
 +
  export interface HomeListFilterMenuEnvironment {
    readonly environmentId: EnvironmentId;
    readonly label: string;
-@@ -19,6 +21,7 @@ export function buildHomeListFilterMenuItems(props: {
-   readonly selectedProjectKey: string | null;
-   readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
-   readonly onProjectChange: (projectKey: string | null) => void;
-+  readonly liveOnly: boolean;
- }): AppBarMenuItem[] {
-   const items: AppBarMenuItem[] = [
-     {
-@@ -64,5 +67,25 @@ export function buildHomeListFilterMenuItems(props: {
+@@ -39,6 +41,7 @@ export function buildHomeListFilterMenuItems(
+     readonly selectedProjectKey: string | null;
+     readonly onEnvironmentChange: (environmentId: EnvironmentId | null) => void;
+     readonly onProjectChange: (projectKey: string | null) => void;
++    readonly liveOnly: boolean;
+   },
+   resolve: MessageResolver = m,
+ ): AppBarMenuItem[] {
+@@ -86,5 +89,25 @@ export function buildHomeListFilterMenuItems(
      });
    }
  
 +  // Tessaya: live sessions only (P5).
 +  items.push({
 +    id: "live",
-+    title: "Sessions",
++    title: resolve(msg("Sessions")),
 +    items: [
 +      {
 +        id: "live:all",
-+        title: "All threads",
++        title: resolve(msg("All threads")),
 +        selected: !props.liveOnly,
 +        onPress: () => setTessayaLiveOnly(false),
 +      },
 +      {
 +        id: "live:only",
-+        title: "Live only",
-+        subtitle: "Claude Code sessions running in a terminal",
++        title: resolve(msg("Live only")),
++        subtitle: resolve(msg("Claude Code sessions running in a terminal")),
 +        selected: props.liveOnly,
 +        onPress: () => setTessayaLiveOnly(true),
 +      },
@@ -159,24 +161,25 @@ index 617c3fa0988ef6c84236de5282f79e423c840695..ec83b56803040ef97c4d6af4ca87ce9b
    return items;
  }
 diff --git a/apps/mobile/src/features/threads/PendingUserInputCard.tsx b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
-index 12640fdb6e7e87411b6ccb171a0872a1bcf329ab..90239aa7ee5769a4df2a5aff97a868758da3e403 100644
+index 34d44a309800fae2f211b50e14572a06c16939bf..c03c1eda1f36f4d3a58b20f958fe97ea8be9c034 100644
 --- a/apps/mobile/src/features/threads/PendingUserInputCard.tsx
 +++ b/apps/mobile/src/features/threads/PendingUserInputCard.tsx
-@@ -8,7 +8,7 @@ import {
-   type TextDirection,
+@@ -9,7 +9,7 @@ import {
  } from "@t3tools/shared/textDirection";
  import { useNavigation } from "@react-navigation/native";
+ import { Plural, T, useGT, Var } from "gt-react-native";
 -import { useRef } from "react";
 +import { useRef, useState } from "react";
  import { Platform, Pressable, ScrollView, View, type LayoutChangeEvent } from "react-native";
  import Animated, {
    useAnimatedStyle,
-@@ -75,6 +75,27 @@ function proseDirectionStyle(text: string, setDirection: TextDirection | undefin
+@@ -77,6 +77,30 @@ function proseDirectionStyle(text: string, setDirection: TextDirection | undefin
    } as const;
  }
  
 +/** The raw text behind a plainly worded question, folded until asked for. */
 +function QuestionDetails(props: { readonly details: string }) {
++  const gt = useGT();
 +  const [open, setOpen] = useState(false);
 +  return (
 +    <View className="gap-1">
@@ -185,7 +188,9 @@ index 12640fdb6e7e87411b6ccb171a0872a1bcf329ab..90239aa7ee5769a4df2a5aff97a86875
 +        accessibilityState={{ expanded: open }}
 +        onPress={() => setOpen(!open)}
 +      >
-+        <Text className="text-xs text-foreground-muted">{open ? "Hide details" : "Details"}</Text>
++        <Text className="text-xs text-foreground-muted">
++          {open ? gt("Hide details") : gt("Details")}
++        </Text>
 +      </Pressable>
 +      {open ? (
 +        <Text selectable className="font-mono text-xs text-foreground-muted">
@@ -199,7 +204,7 @@ index 12640fdb6e7e87411b6ccb171a0872a1bcf329ab..90239aa7ee5769a4df2a5aff97a86875
  function QuestionText(props: {
    readonly markdown: string;
    readonly environmentId: EnvironmentId;
-@@ -275,6 +296,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
+@@ -301,6 +325,7 @@ export function PendingUserInputCard(props: PendingUserInputCardProps) {
                  setDirection={setDirection}
                  preserveSoftBreaks
                />
@@ -208,10 +213,10 @@ index 12640fdb6e7e87411b6ccb171a0872a1bcf329ab..90239aa7ee5769a4df2a5aff97a86875
                  {question.options.map((option) => {
                    const optionValue = option.value ?? option.label.trim();
 diff --git a/apps/mobile/src/features/threads/ThreadFeed.tsx b/apps/mobile/src/features/threads/ThreadFeed.tsx
-index 3d186f9e9830cb8fa4ee2119f17a6b1ff6d47b17..94f5dadeef195f2da6cebae34e1a16d3188f2e7d 100644
+index 992ba4779f34df37bf50fa21cb72cb898e27f5ff..b55a896edde0090d15e2479b241ac5d66e2c2b0e 100644
 --- a/apps/mobile/src/features/threads/ThreadFeed.tsx
 +++ b/apps/mobile/src/features/threads/ThreadFeed.tsx
-@@ -3410,22 +3410,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
+@@ -3938,22 +3938,18 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
      }
      return new Set(terminalIdsByTurn.values());
    })();
@@ -241,31 +246,31 @@ index 3d186f9e9830cb8fa4ee2119f17a6b1ff6d47b17..94f5dadeef195f2da6cebae34e1a16d3
            ...current,
            expandedTurnIds: new Set(current.expandedTurnIds).add(latest.runId),
 diff --git a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
-index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..d26d53e5e4e7d3f433bfc902ce73ef626c1160b8 100644
+index 681f5d3c6fa0a7b3dd81980e357999208385ef87..388d2cb4f51f52508ef85755b5ac267d97e17289 100644
 --- a/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
 +++ b/apps/mobile/src/features/threads/ThreadNavigationSidebar.tsx
-@@ -44,6 +44,12 @@ import { useThreadJumpShortcuts } from "../keyboard/threadKeyboardShortcuts";
- import { requestThreadMessageJump } from "./threadMessageJump";
- import { useThreadListSearchMatches } from "./useThreadListSearchMatches";
- import { useHomeListOptions } from "../home/home-list-options";
+@@ -55,6 +55,12 @@ import {
+   resolveHomeProjectFilterScope,
+   sortHomeProjectScopes,
+ } from "../home/homeThreadList";
 +import {
 +  isRunningLive,
 +  liveThreadsOnly,
 +  runningLiveThreads,
 +  useTessayaLiveOnly,
 +} from "./tessayaLiveOnly";
- import { buildHomeListFilterMenuItems } from "../home/home-list-filter-menu";
- import { buildHomeProjectScopes, resolveHomeProjectFilterScope } from "../home/homeThreadList";
  import { SwipeableScrollGateProvider, useSwipeableScrollGate } from "../home/thread-swipe-actions";
-@@ -112,6 +118,7 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
- }
- 
+ import { usePendingTaskListActions } from "../home/usePendingTaskListActions";
+ import { useThreadListActions } from "../home/useThreadListActions";
+@@ -123,6 +129,7 @@ export function ThreadNavigationSidebar(props: ThreadNavigationSidebarProps) {
  function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+   const gt = useGT();
+   const messages = useMessages();
 +  const tessayaLiveOnly = useTessayaLiveOnly();
    const floatingTabsEnabled = useAndroidFloatingTabs();
    const { themeVariables: materialTheme } = useAppearancePreferences();
    const drawerColor = materialTheme["--color-drawer"];
-@@ -254,13 +261,14 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+@@ -271,13 +278,14 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
    } = listEnvironments;
    const resolveProviderInstance = useThreadRowProviderInstanceResolver(providersByEnvironmentId);
    const pendingOrder = usePendingThreadOrder();
@@ -281,7 +286,7 @@ index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..d26d53e5e4e7d3f433bfc902ce73ef62
      pendingTasks,
      environmentId: options.selectedEnvironmentId,
      projectRefs: selectedProjectScope === null ? null : selectedProjectScope.projectRefs,
-@@ -402,6 +410,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+@@ -418,6 +426,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
          const scopeKey = scopedProjectKey(thread.environmentId, thread.projectId);
          return (
            <ThreadListV2Row
@@ -289,29 +294,29 @@ index fb0db83a4dab76b96ae8a4d53ddd35b232934d78..d26d53e5e4e7d3f433bfc902ce73ef62
              onNewThreadOnBranch={props.onNewThreadOnBranch}
              thread={thread}
              variant={item.item.variant}
-@@ -530,7 +539,8 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
-         accessibilityLabel: "Search threads",
+@@ -546,7 +555,8 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+         accessibilityLabel: gt("Search threads"),
        }}
        filter={{
 -        customized: options.selectedEnvironmentId !== null || selectedProjectKey !== null,
 +        customized:
 +          options.selectedEnvironmentId !== null || selectedProjectKey !== null || tessayaLiveOnly,
-         items: buildHomeListFilterMenuItems({
-           environments,
-           projects: projectFilterOptions,
-@@ -538,6 +548,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
-           selectedProjectKey,
-           onEnvironmentChange: setSelectedEnvironmentId,
-           onProjectChange: setSelectedProjectKey,
-+          liveOnly: tessayaLiveOnly,
-         }),
-       }}
-       sidebar={{
+         items: buildHomeListFilterMenuItems(
+           {
+             environments,
+@@ -555,6 +565,7 @@ function ThreadNavigationSidebarPane(props: ThreadNavigationSidebarProps) {
+             selectedProjectKey,
+             onEnvironmentChange: setSelectedEnvironmentId,
+             onProjectChange: setSelectedProjectKey,
++            liveOnly: tessayaLiveOnly,
+           },
+           messages,
+         ),
 diff --git a/apps/mobile/src/features/threads/thread-list-v2-items.tsx b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
-index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..46c86974760c41f7ee60c3e35de6ae7eb9b569d5 100644
+index c6b0f0d5352116ac7afca636024e4808c656bc7f..971f27e3225f1eb5ed9bb8308a6031f5ff2e1079 100644
 --- a/apps/mobile/src/features/threads/thread-list-v2-items.tsx
 +++ b/apps/mobile/src/features/threads/thread-list-v2-items.tsx
-@@ -38,6 +38,7 @@ import type { ThreadListProvider } from "../../state/thread-list-environments";
+@@ -46,6 +46,7 @@ import type { ThreadListProvider } from "../../state/thread-list-environments";
  import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
  import { AppText as Text } from "../../components/ui/AppText";
  import { Menu } from "../../components/ui/Menu";
@@ -319,7 +324,7 @@ index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..46c86974760c41f7ee60c3e35de6ae7e
  import { EnvironmentMachineSymbol } from "../../components/EnvironmentMachineSymbol";
  import { ProjectFavicon } from "../../components/ProjectFavicon";
  import {
-@@ -645,6 +646,8 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
+@@ -747,6 +748,8 @@ export const ThreadListV2PendingRow = memo(function ThreadListV2PendingRow(props
  
  export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
    readonly thread: EnvironmentThreadShell;
@@ -328,10 +333,10 @@ index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..46c86974760c41f7ee60c3e35de6ae7e
    readonly variant: "card" | "slim";
    readonly hasQueuedMessages?: boolean;
    readonly snoozed?: boolean;
-@@ -1291,21 +1294,25 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1518,21 +1521,25 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
        ) : null}
        <View className="mt-1 flex-row items-center gap-2" style={{ paddingLeft: titleTextInset }}>
-         {(status === "failed" || status === "limited") && thread.runtime?.lastError ? (
+         {(rawStatus === "failed" || rawStatus === "limited") && thread.runtime?.lastError ? (
 -          <Text
 -            className={cn(
 -              "flex-1 text-xs",
@@ -367,7 +372,7 @@ index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..46c86974760c41f7ee60c3e35de6ae7e
              {props.environmentMachine ? (
                <EnvironmentMachineSymbol
                  kind={props.environmentMachine}
-@@ -1330,7 +1337,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
+@@ -1557,7 +1564,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
              </Text>
            </View>
          ) : (
@@ -379,7 +384,7 @@ index d724d8056e95ef3c42a13edd4a8b3b5f04d270a8..46c86974760c41f7ee60c3e35de6ae7e
          {pr ? (
            <Pressable
 diff --git a/apps/server/scripts/dev-replay-agent.ts b/apps/server/scripts/dev-replay-agent.ts
-index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40a35d85e9 100644
+index 7995bb701491088b4f2812935d86666be3250804..3af61f771d07e87ca9fc504efc149bbe9af62adc 100644
 --- a/apps/server/scripts/dev-replay-agent.ts
 +++ b/apps/server/scripts/dev-replay-agent.ts
 @@ -44,6 +44,7 @@ const FIXTURES = "../src/orchestration-v2/testkit/fixtures";
@@ -391,7 +396,7 @@ index b6eea893ad6b7420994fcbaacc3647bb6914ae93..8811e5b8ff23e59e8c54b5a74ac40f40
      id: "todo-list",
      name: "Plan and reads",
 diff --git a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
-index fddffcd6ee19d47fb231a43a622d3a0a2569a27a..f5c0f43bac49aae81bb8b726db0a22b16668369d 100644
+index 02057de1cae6d2973474dee9ace69b84319d0f2e..e998e927cf11eebb5e2d04a093a8e4b791b4338d 100644
 --- a/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 +++ b/apps/server/src/orchestration-v2/ProviderEventIngestor.ts
 @@ -5,6 +5,7 @@ import {
@@ -402,7 +407,7 @@ index fddffcd6ee19d47fb231a43a622d3a0a2569a27a..f5c0f43bac49aae81bb8b726db0a22b1
    type OrchestrationV2Subagent,
    type OrchestrationV2ThreadProjection,
    type ModelSelection,
-@@ -21,6 +22,7 @@ import * as Context from "effect/Context";
+@@ -22,6 +23,7 @@ import * as Context from "effect/Context";
  import * as DateTime from "effect/DateTime";
  import * as Effect from "effect/Effect";
  import * as Layer from "effect/Layer";
@@ -410,7 +415,7 @@ index fddffcd6ee19d47fb231a43a622d3a0a2569a27a..f5c0f43bac49aae81bb8b726db0a22b1
  import * as Schema from "effect/Schema";
  import * as SqlError from "effect/sql/SqlError";
  
-@@ -34,7 +36,11 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+@@ -35,7 +37,11 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
  import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
  import { UsageLimitResetFallback } from "../usage/UsageLimitSources.ts";
  import * as EventSink from "./EventSink.ts";
@@ -422,7 +427,7 @@ index fddffcd6ee19d47fb231a43a622d3a0a2569a27a..f5c0f43bac49aae81bb8b726db0a22b1
  import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
-@@ -147,6 +153,13 @@ function withPlanStepDurations(
+@@ -149,6 +155,13 @@ function withPlanStepDurations(
    };
  }
  
@@ -436,7 +441,7 @@ index fddffcd6ee19d47fb231a43a622d3a0a2569a27a..f5c0f43bac49aae81bb8b726db0a22b1
  const CONVERSATION_RUN_STATUSES = new Set<OrchestrationV2Run["status"]>([
    "completed",
    "interrupted",
-@@ -258,6 +271,57 @@ export const layer: Layer.Layer<
+@@ -260,6 +273,57 @@ export const layer: Layer.Layer<
      const usageLimitResets = yield* UsageLimitResetFallback;
      const scope = yield* Effect.scope;
      const completedTurnAnalytics = new Set<string>();
@@ -494,7 +499,7 @@ index fddffcd6ee19d47fb231a43a622d3a0a2569a27a..f5c0f43bac49aae81bb8b726db0a22b1
  
      const makeDomainEvent =
        /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
-@@ -560,28 +624,63 @@ export const layer: Layer.Layer<
+@@ -595,28 +659,63 @@ export const layer: Layer.Layer<
                    nodeId: input.event.subagent.id,
                  }),
                ];
@@ -565,10 +570,10 @@ index fddffcd6ee19d47fb231a43a622d3a0a2569a27a..f5c0f43bac49aae81bb8b726db0a22b1
                return [
                  yield* makeDomainEvent(input, {
 diff --git a/apps/web/src/components/chat/ChatMarkdownMedia.tsx b/apps/web/src/components/chat/ChatMarkdownMedia.tsx
-index b1bcc650bdf9f3820c31d570cbd5af04ecdfc117..3f65d81fadafccdd52a5fbc6838b08729959cac4 100644
+index 78093d0bc90df49a45e58af5a825180606211a37..3097285eea5716198a7d87b48136b02971d7c900 100644
 --- a/apps/web/src/components/chat/ChatMarkdownMedia.tsx
 +++ b/apps/web/src/components/chat/ChatMarkdownMedia.tsx
-@@ -140,10 +140,7 @@ export function ChatMarkdownImageFallback(props: {
+@@ -159,10 +159,7 @@ export function ChatMarkdownImageFallback(props: {
    const content = (
      <span
        data-markdown-copy={props.copyMarkdown}
@@ -580,7 +585,7 @@ index b1bcc650bdf9f3820c31d570cbd5af04ecdfc117..3f65d81fadafccdd52a5fbc6838b0872
      >
        <ChatMarkdownMediaUnavailableLabel alt={props.alt} kind={props.kind} detail={props.detail} />
      </span>
-@@ -251,6 +248,17 @@ export function ChatMarkdownImage(props: {
+@@ -274,6 +271,17 @@ export function ChatMarkdownImage(props: {
        />
      );
    }
@@ -598,7 +603,7 @@ index b1bcc650bdf9f3820c31d570cbd5af04ecdfc117..3f65d81fadafccdd52a5fbc6838b0872
    return (
      <MediaActions source={props.actionsSource}>
        <span
-@@ -298,6 +306,16 @@ export function ChatMarkdownVideo(props: {
+@@ -322,6 +330,16 @@ export function ChatMarkdownVideo(props: {
    readonly actionsSource?: MediaActionSource | undefined;
    readonly onRetry?: (() => Promise<unknown>) | undefined;
  }) {
@@ -616,10 +621,10 @@ index b1bcc650bdf9f3820c31d570cbd5af04ecdfc117..3f65d81fadafccdd52a5fbc6838b0872
      <MediaVideoPlayer
        key={props.mediaIdentity ?? props.copyMarkdown ?? props.src}
 diff --git a/apps/web/src/components/chat/ComposerControlsBar.tsx b/apps/web/src/components/chat/ComposerControlsBar.tsx
-index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c3468671907a 100644
+index 0688cdfe2b2ad029fdd2c7e94a7c12f9536ef561..3c9a57c2e9f08519d55fc9d2734d760b469737df 100644
 --- a/apps/web/src/components/chat/ComposerControlsBar.tsx
 +++ b/apps/web/src/components/chat/ComposerControlsBar.tsx
-@@ -28,6 +28,16 @@ import {
+@@ -29,6 +29,16 @@ import {
    ComposerPickerFooter,
    describeComposerEffort,
  } from "./ComposerModelEffort";
@@ -636,7 +641,7 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c346
  import type { useComposerProviderModel } from "./useComposerProviderModel";
  import { resolveComposerControlsOwnership } from "./composerControlsOwnership";
  
-@@ -86,6 +96,7 @@ export function ComposerControlsBar(props: {
+@@ -87,6 +97,7 @@ export function ComposerControlsBar(props: {
    onModelPickerOpenChange: (open: boolean) => void;
    modelPickerIconClassName: string | undefined;
    getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
@@ -644,8 +649,8 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c346
  }) {
    const {
      environmentId,
-@@ -147,21 +158,26 @@ export function ComposerControlsBar(props: {
-   const controlSize = composerControlsCollapsed ? "xs" : "sm";
+@@ -150,21 +161,26 @@ export function ComposerControlsBar(props: {
+   const m = useMessages();
    const applyThreadModelPick = useApplyThreadModelPick();
    const applyRouteThreadModelPick = useStableCallback(() => applyThreadModelPick(routeThreadRef));
 -  const traitsInput = resolveComposerTraitsInput({
@@ -680,12 +685,12 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c346
 +      onPromptEdit,
 +    }),
 +  );
-   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
+   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize, m);
 +  const railEntries = tessayaRailEntries(providerInstanceEntries, selectedInstanceId);
    const restingBlockDefs = showModeBlock
      ? [
          {
-@@ -194,7 +210,12 @@ export function ComposerControlsBar(props: {
+@@ -197,7 +213,12 @@ export function ComposerControlsBar(props: {
        multipleModelSelections={multipleModelSelections}
        onMultipleModelSelectionsChange={onMultipleModelSelectionsChange}
        selectedModelSelection={selectedModelSelection}
@@ -699,7 +704,7 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c346
        activeInstanceId={
          providerCatalogPending
            ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
-@@ -207,16 +228,24 @@ export function ComposerControlsBar(props: {
+@@ -210,16 +231,24 @@ export function ComposerControlsBar(props: {
        }
        lockedProvider={lockedProvider}
        lockedContinuationGroupKey={lockedContinuationGroupKey}
@@ -727,7 +732,7 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c346
        triggerDetail={effort.detail}
        triggerShortcuts={
          pickerOwnsModeShortcut ? "composer.effort composer.mode" : "composer.effort"
-@@ -228,8 +257,33 @@ export function ComposerControlsBar(props: {
+@@ -231,8 +260,33 @@ export function ComposerControlsBar(props: {
            runtimeMode={compatibleRuntimeMode}
            runtimeModeOptions={compatibleRuntimeModeOptions}
            onRuntimeModeChange={handleRuntimeModeChange}
@@ -763,10 +768,18 @@ index 302330f29156b6be2a36fe78bf477d593dc93b29..3df3741ebe094fc5d0b0f31532b3c346
        open={modelPickerOpen}
        instanceIndicatorBackground={
 diff --git a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
-index 4101bed5713addbbb4342450a632dda9fde8f6f0..2149a76708c3f5ef59c92e19c7db5a88ab9fa4a4 100644
+index a83b57e6cc258f05213bba773a78a4cf13691e5e..e7cc2203a57842727a51b36f5d85b3d4206b87c8 100644
 --- a/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
 +++ b/apps/web/src/components/chat/ComposerPendingUserInputPanel.tsx
-@@ -103,6 +103,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
+@@ -1,6 +1,6 @@
+ import { type RuntimeRequestId, type ScopedThreadRef } from "@t3tools/contracts";
+ import { markdownProseDirection, textDirection } from "~/textDirection";
+-import { useGT } from "gt-react";
++import { T, useGT } from "gt-react";
+ import { memo, use, useEffect, useEffectEvent, useRef, useState } from "react";
+ import { BackgroundThreadContext } from "./backgroundThread";
+ import { useStableCallback } from "~/hooks/useStableCallback";
+@@ -105,6 +105,8 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
        !customAnswerActive && progress.selectedOptionValues.includes(option.value ?? option.label),
    );
    const isCollapsed = collapsedQuestionId !== null && collapsedQuestionId === activeQuestion?.id;
@@ -775,13 +788,15 @@ index 4101bed5713addbbb4342450a632dda9fde8f6f0..2149a76708c3f5ef59c92e19c7db5a88
  
    if (
      optimisticSingleSelect &&
-@@ -265,6 +267,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
+@@ -274,6 +276,16 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
                lineBreaks
                className={cn("pt-0.5 text-foreground/85", questionTextAlign)}
              />
 +            {details ? (
 +              <details className="mt-1 text-secondary-label text-xs">
-+                <summary className="cursor-pointer select-none">Details</summary>
++                <summary className="cursor-pointer select-none">
++                  <T>Details</T>
++                </summary>
 +                <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-2xs">
 +                  {details}
 +                </pre>
@@ -791,10 +806,10 @@ index 4101bed5713addbbb4342450a632dda9fde8f6f0..2149a76708c3f5ef59c92e19c7db5a88
              <div className="-ms-2 mt-1.5 sm:-ms-1.5">
                {activeQuestion.options.map((option, index) => {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts b/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
-index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70b5b38b89 100644
+index d05bbdcf325570f29e2770b35ab3f46e9f37a56d..372133d5aee8aa69a80b2732d2f8d999789c8c30 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.active-tools.test.ts
-@@ -36,9 +36,12 @@ describe("long active tool groups", () => {
+@@ -40,9 +40,12 @@ describe("long active tool groups", () => {
        expect(live).toBeDefined();
        expect(live?.entry.id).toBe("work-999");
        expect(live && liveWorkEntryLabel(live.entry, undefined, live.active)).toContain("999");
@@ -810,7 +825,7 @@ index b689f11c66016e0dbca062e891d2417d122ab36c..85286c1795ce42988fdcc84461ca8f70
        expect(live?.groupId).toBe("work-group:work-entry-0");
        const details = rows.filter((row) => row.kind === "work");
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e39f4f0048 100644
+index fc7a5e07e3a747f650c93dd27c83a59d565d3c1b..17cba188040f4b34c118b19564633a2cdd07afca 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -25,6 +25,11 @@ import {
@@ -825,7 +840,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
  import { MessageId, RunId } from "@t3tools/contracts";
  import {
    computeStableMessagesTimelineRows,
-@@ -259,8 +264,9 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -277,8 +282,9 @@ describe("deriveMessagesTimelineRows", () => {
      const afterSteer = rows([first, steer]);
      expect(afterSteer.some((row) => row.kind === "work-live")).toBe(false);
      expect(afterSteer.at(-1)?.kind).toBe("thinking");
@@ -837,7 +852,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
      });
      for (const entries of [
        [first, steer, next],
-@@ -1868,6 +1874,103 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -1960,6 +1966,103 @@ describe("deriveMessagesTimelineRows", () => {
      expect(rows.some((row) => row.kind === "thinking")).toBe(false);
    });
  
@@ -941,7 +956,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
    it("carries the latest thought on the live row while a later tool runs", () => {
      type WorkEntry = Extract<
        Parameters<typeof deriveMessagesTimelineRows>[0]["timelineEntries"][number],
-@@ -1918,8 +2021,10 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -2010,8 +2113,10 @@ describe("deriveMessagesTimelineRows", () => {
  
      expect(rows.find((row) => row.kind === "work-live")).toMatchObject({
        entry: { id: "running-command" },
@@ -953,7 +968,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
    });
  
    it("keeps an actually running tool in the shared activity row", () => {
-@@ -2848,6 +2953,32 @@ describe("deriveMessagesTimelineRows", () => {
+@@ -2950,6 +3055,32 @@ describe("deriveMessagesTimelineRows", () => {
        }
      },
    );
@@ -986,7 +1001,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
  });
  
  describe("v2 run and attempt history", () => {
-@@ -3947,6 +4078,9 @@ describe("streaming v2 row projection", () => {
+@@ -4049,6 +4180,9 @@ describe("streaming v2 row projection", () => {
          for (const [index, row] of previous.rows.entries()) {
            const holdsItem =
              row.id === source.streamingItemId ||
@@ -996,7 +1011,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
              ((row.kind === "work" || row.kind === "work-live") &&
                row.groupedEntries.some((entry) => entry.id === source.streamingItemId));
            if (!holdsItem) expect(projection.rows[index]).toBe(row);
-@@ -4103,8 +4237,10 @@ describe("streaming v2 row projection", () => {
+@@ -4205,8 +4339,10 @@ describe("streaming v2 row projection", () => {
        if (!running) continue;
        for (const [index, row] of previous.rows.entries()) {
          const holdsItem =
@@ -1009,7 +1024,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
          if (!holdsItem) expect(projection.rows[index]).toBe(row);
        }
      }
-@@ -4833,6 +4969,7 @@ describe("live subagents after their parent turn settles", () => {
+@@ -4956,6 +5092,7 @@ describe("live subagents after their parent turn settles", () => {
        expect(rows.map((row) => row.id)).toEqual([
          "user",
          `turn-fold:${runId}`,
@@ -1017,7 +1032,7 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
          "child",
          "assistant",
        ]);
-@@ -4841,7 +4978,13 @@ describe("live subagents after their parent turn settles", () => {
+@@ -4964,7 +5101,13 @@ describe("live subagents after their parent turn settles", () => {
  
    it("keeps a launch batch visible while any member is still running", () => {
      const rows = rowsFor([child("done", 3, "completed"), child("live", 4, "running")]);
@@ -1032,13 +1047,16 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
      expect(rows.find((row) => row.id === "done")).toMatchObject({
        subagents: [{ item: { id: "done" } }, { item: { id: "live" } }],
      });
-@@ -4991,7 +5134,52 @@ describe("subagent continued by a later turn", () => {
+@@ -5235,6 +5378,7 @@ describe("subagent continued by a later turn", () => {
        "answer-1",
        "prompt-2",
        `turn-fold:${run2}`,
 +      "thought:reasoning-2",
        "closing-2",
      ]);
+   });
+@@ -5261,3 +5405,47 @@ describe("workEntryReadOutput", () => {
+     ).toBe("/workspace/t3code/src/app.ts\n~/.claude/CLAUDE.md\n~/.gitconfig");
    });
  });
 +
@@ -1086,10 +1104,10 @@ index 1bdb26aecfd62b0bd1464d757c3d2263909ecc1b..7a7a3798319ea6196a61e0afd84237e3
 +  });
 +});
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9ac58d5d2 100644
+index 90b324598ba72817969302d328af49cd4a87a496..15516767761d69f2f2239ead0027211af89c160d 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-@@ -526,6 +526,14 @@ type MessagesTimelineRowContent =
+@@ -556,6 +556,14 @@ type MessagesTimelineRowContent =
        /** A running compaction owns the working row, so its divider appears only once it ends. */
        compacting?: true;
      }
@@ -1104,7 +1122,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
    | {
        kind: "thinking";
        id: string;
-@@ -546,6 +554,8 @@ type MessagesTimelineRowContent =
+@@ -578,6 +586,8 @@ type MessagesTimelineRowContent =
        toolSurface?: WorkLogEntry["toolSurface"];
        toolIcon?: WorkLogEntry["toolIcon"];
        hasFailure: boolean;
@@ -1113,19 +1131,19 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
      }
    | {
        /** Images the agent opened in the tool group above, kept visible while the group is collapsed. */
-@@ -1530,6 +1540,11 @@ export function deriveMessagesTimelineRows(input: {
-   expandedRunIds?: ReadonlySet<RunId>;
-   expandedAttemptIds?: ReadonlySet<RunAttemptId>;
-   expandedWorkGroupIds?: ReadonlySet<string>;
-+  /** "Keep work groups expanded": a finished turn's work shows unless its run is in `collapsedRunIds`. */
-+  keepWorkExpanded?: boolean;
-+  collapsedRunIds?: ReadonlySet<RunId>;
-+  /** Thinking rows he closed, by item id; every other one of the latest turn is open. */
-+  closedThoughtIds?: ReadonlySet<string>;
-   isWorking: boolean;
-   /** Native subagent work has no app run; runless entries form the live response. */
-   runlessWorkActive?: boolean;
-@@ -1609,7 +1624,10 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1618,6 +1628,11 @@ export function deriveMessagesTimelineRows(
+     expandedRunIds?: ReadonlySet<RunId>;
+     expandedAttemptIds?: ReadonlySet<RunAttemptId>;
+     expandedWorkGroupIds?: ReadonlySet<string>;
++    /** "Keep work groups expanded": a finished turn's work shows unless its run is in `collapsedRunIds`. */
++    keepWorkExpanded?: boolean;
++    collapsedRunIds?: ReadonlySet<RunId>;
++    /** Thinking rows he closed, by item id; every other one of the latest turn is open. */
++    closedThoughtIds?: ReadonlySet<string>;
+     isWorking: boolean;
+     /** Native subagent work has no app run; runless entries form the live response. */
+     runlessWorkActive?: boolean;
+@@ -1698,7 +1713,10 @@ export function deriveMessagesTimelineRows(
    const collapsedEntryIds = new Set<string>();
    const collapsedFoldMemberIds = new Set<string>();
    for (const fold of foldsByAnchorEntryId.values()) {
@@ -1137,7 +1155,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
        for (const entryId of fold.hiddenEntryIds) {
          collapsedEntryIds.add(entryId);
        }
-@@ -1816,16 +1834,49 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1905,16 +1923,49 @@ export function deriveMessagesTimelineRows(
    let hasActivityRow = false;
    const hasActiveCompaction =
      activeCompactionEntry !== undefined || (activeRunIsCompaction && !compactionRunFinished);
@@ -1189,7 +1207,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
          ),
        );
      }
-@@ -1833,7 +1884,7 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1922,7 +1973,7 @@ export function deriveMessagesTimelineRows(
        ...viewedImagesRows(
          activeWorkRow.groupId,
          activeWorkRow.createdAt,
@@ -1198,7 +1216,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
        ),
      );
    };
-@@ -1886,6 +1937,10 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1975,6 +2026,10 @@ export function deriveMessagesTimelineRows(
      }
  
      if (collapsedEntryIds.has(timelineEntry.id)) {
@@ -1209,7 +1227,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
        continue;
      }
  
-@@ -2005,9 +2060,11 @@ export function deriveMessagesTimelineRows(input: {
+@@ -2103,9 +2158,11 @@ export function deriveMessagesTimelineRows(
          groupedEntries.push(nextEntry.entry);
          cursor += 1;
        }
@@ -1222,15 +1240,17 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
        if (visibleGroupedEntries.length > 0) {
          const activeInProgressToolEntries = visibleGroupedEntries.filter(workEntryIsInActiveRun);
          if (activeInProgressToolEntries.length > 0) {
-@@ -2087,6 +2144,7 @@ export function deriveMessagesTimelineRows(input: {
+@@ -2185,6 +2242,9 @@ export function deriveMessagesTimelineRows(
              hasFailure:
                latestToolEntry !== undefined &&
                workEntryDisplayIndicatesToolFailure(latestToolEntry),
-+            viewedImagePaths: workEntriesViewedImagePaths(visibleGroupedEntries).slice(0, 4),
++            viewedImagePaths: workEntriesViewedImages(visibleGroupedEntries)
++              .slice(0, 4)
++              .map((image) => image.path),
            });
            if (expanded) {
              nextRows.push(
-@@ -2558,7 +2616,13 @@ function replaceStreamingMessageRows(
+@@ -2673,7 +2733,13 @@ function replaceStreamingMessageRows(
      }
      if (row.kind === "work-live") {
        const groupedEntries = patchGroup(row.groupedEntries);
@@ -1245,7 +1265,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
        for (const entry of groupedEntries) {
          if (thoughts.has(entry.id)) patchedLiveThoughtIds.add(entry.id);
        }
-@@ -2573,6 +2637,14 @@ function replaceStreamingMessageRows(
+@@ -2688,6 +2754,14 @@ function replaceStreamingMessageRows(
        const groupedEntries = patchGroup(row.groupedEntries);
        return groupedEntries === row.groupedEntries ? row : { ...row, groupedEntries };
      }
@@ -1260,7 +1280,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
      if (row.kind !== "message" && row.kind !== "assistant-meta") return row;
      const entry = replacements.get(row.message);
      return entry
-@@ -2658,6 +2730,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+@@ -2774,6 +2848,10 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
        return (
          a.createdAt === (b as typeof a).createdAt && a.compacting === (b as typeof a).compacting
        );
@@ -1270,8 +1290,8 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
 +    }
      case "thinking": {
        const bt = b as typeof a;
-       return a.createdAt === bt.createdAt && a.groupId === bt.groupId && a.expanded === bt.expanded;
-@@ -2769,7 +2845,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
+       return (
+@@ -2898,7 +2976,8 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
          a.summaryKind === bw.summaryKind &&
          a.toolSurface === bw.toolSurface &&
          Equal.equals(a.toolIcon, bw.toolIcon) &&
@@ -1281,7 +1301,7 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
        );
      }
  
-@@ -2816,3 +2893,37 @@ export function sameRowsInput(
+@@ -2944,3 +3023,37 @@ export function sameRowsInput(
    }
    return Object.keys(left).length === Object.keys(right).length;
  }
@@ -1320,12 +1340,12 @@ index 90690dc0810ecb54d5f52ce7f08b8dd82a66be0d..758c62f4281b8f08d5b628c1aa6938f9
 +  return next;
 +}
 diff --git a/apps/web/src/components/chat/MessagesTimeline.tsx b/apps/web/src/components/chat/MessagesTimeline.tsx
-index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a518a99a557 100644
+index 07e42d0a6542e480a996fcc21b277ea871c1f356..51fa547e3402b4eb9ae0e1149772dd1adf5976e5 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.tsx
 +++ b/apps/web/src/components/chat/MessagesTimeline.tsx
-@@ -85,11 +85,14 @@ import {
+@@ -90,11 +90,14 @@ import {
    resolveTimelineMinimapVisibleRange,
-   resolveTimelineMinimapHitStripWidth,
+   resolveTimelineMinimapHitStrip,
    TIMELINE_MINIMAP_TARGET_OFFSET,
 +  collapsedWorkRunsAfterToggle,
 +  expandedRunsAfterLatestRunChange,
@@ -1338,7 +1358,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
  import { type ThreadFindMatch } from "./threadFind";
  import { useThreadFindNavigation } from "./useThreadFindNavigation";
  import { TooltipScrollDismissArea } from "../ui/tooltip";
-@@ -116,6 +119,7 @@ import {
+@@ -121,6 +124,7 @@ import {
    WorkGroupSection,
    WorkingTimelineRow,
    ThinkingTimelineRow,
@@ -1346,7 +1366,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
    LiveWorkEntryTimelineRow,
    WorkGroupToggleTimelineRow,
  } from "./TimelineWorkGroupRows";
-@@ -429,6 +433,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -456,6 +460,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
    const [expandedRunIds, setExpandedRunIds] = useState<ReadonlySet<RunId>>(
      () => listState.rememberedPosition?.disclosures?.runs ?? new Set(),
    );
@@ -1357,7 +1377,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
    const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
      () => listState.rememberedPosition?.disclosures?.workGroups ?? new Set(),
    );
-@@ -471,6 +479,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -498,6 +506,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      paintedExpandedWorkGroupIds = rememberedPosition?.disclosures?.workGroups ?? new Set();
      paintedExpandedAttemptIds = rememberedPosition?.disclosures?.attempts ?? new Set();
      setExpandedRunIds(paintedExpandedRunIds);
@@ -1365,7 +1385,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
      setExpandedWorkGroupIds(paintedExpandedWorkGroupIds);
      setExpandedAttemptIds(paintedExpandedAttemptIds);
    }
-@@ -556,6 +565,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -583,6 +592,17 @@ const ConversationTimeline = memo(function ConversationTimeline({
    // Turn and attempt folds reveal later rows rather than growing their own row.
    const onToggleTurnFold = (runId: RunId) => {
      preserveDisclosurePosition(`turn-fold:${runId}`);
@@ -1383,7 +1403,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
      setExpandedRunIds((existing) => {
        const next = new Set(existing);
        if (next.has(runId)) {
-@@ -566,6 +586,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -593,6 +613,13 @@ const ConversationTimeline = memo(function ConversationTimeline({
        return next;
      });
    };
@@ -1397,7 +1417,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
    const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
      preserveDisclosurePosition(
        anchorKey,
-@@ -621,12 +648,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -648,12 +675,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
            setExpandedRunIds((existing) => new Set(existing).add(latestRun.runId));
          }
        } else {
@@ -1411,7 +1431,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
        }
      }
    }
-@@ -711,6 +733,40 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -739,6 +761,40 @@ const ConversationTimeline = memo(function ConversationTimeline({
        ? paintedExpandedRunIds
        : new Set(paintedExpandedRunIds).add(activeFindRunId);
  
@@ -1452,8 +1472,8 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
    const activeFindAttemptId = activeFindMatch
      ? timelineEntries.find((entry) => entry.id === activeFindMatch.entryId)?.attempt?.id
      : undefined;
-@@ -739,8 +795,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
-     latestRun,
+@@ -768,8 +824,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
+     usageLimitRunId,
      runningRunId,
      expandedRunIds: visibleExpandedRunIds,
 +    keepWorkExpanded,
@@ -1464,7 +1484,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
      isWorking,
      runlessWorkActive,
      activeTurnStartedAt,
-@@ -1131,6 +1190,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
+@@ -1164,6 +1223,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
      onToggleTurnFold,
      onToggleAttemptFold,
      onToggleWorkGroup,
@@ -1472,7 +1492,7 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
      onToggleWorkEntry: (anchorKey, collapsed, entryId) =>
        preserveDisclosurePosition(anchorKey, collapsed ? undefined : { entryId }),
      onWorkEntryContentReady: (anchorKey, entryId) => {
-@@ -1666,6 +1726,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
+@@ -1732,6 +1792,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
            {row.kind === "thinking" ? <ThinkingTimelineRow row={row} /> : null}
          </WorkLogBlock>
        ) : null}
@@ -1481,10 +1501,10 @@ index eb4bd6fea6efd4497eec9eb6bb4a7ca96fc4b8dd..f9235cc7f8a5a8582b7b0fff88005a51
        {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
        {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
 diff --git a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
-index 8fd7436d0e099f98b1281a628507ab85be513e51..f98e9744d63c58ebcb30d1ecbf53e14cbd1ffa51 100644
+index 24b9d0ad92c42302ed5fc4e38e9c50fd3bf9d305..ea38deb41ed204947f13dc373200834a9019be84 100644
 --- a/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
 +++ b/apps/web/src/components/chat/TimelineWorkGroupRows.tsx
-@@ -16,8 +16,8 @@ import { memo, use, useLayoutEffect, useRef, useState, type ReactNode } from "re
+@@ -17,8 +17,8 @@ import { memo, use, useLayoutEffect, useRef, useState, type ReactNode } from "re
  import { LegendList, type LegendListRef } from "@legendapp/list/react";
  import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
  import ChatMarkdown from "../ChatMarkdown";
@@ -1495,15 +1515,16 @@ index 8fd7436d0e099f98b1281a628507ab85be513e51..f98e9744d63c58ebcb30d1ecbf53e14c
  import { Button } from "../ui/button";
  import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
  import {
-@@ -426,6 +426,41 @@ function CompactingLabel({ createdAt }: { createdAt: string | null }) {
+@@ -440,6 +440,44 @@ function CompactingLabel({ createdAt }: { createdAt: string | null }) {
    );
  }
  
 +/** A thinking summary: open while it is the latest turn's, closed only by him or by the next turn. */
 +export function ThoughtTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thought" }> }) {
 +  const ctx = use(TimelineRowCtx);
++  const gt = useGT();
 +  return (
-+    <section aria-label="Thinking" className="py-0.5">
++    <section aria-label={gt("Thinking")} className="py-0.5">
 +      <button
 +        type="button"
 +        aria-expanded={row.open}
@@ -1516,7 +1537,9 @@ index 8fd7436d0e099f98b1281a628507ab85be513e51..f98e9744d63c58ebcb30d1ecbf53e14c
 +          className="block size-4 shrink-0 stroke-2"
 +          muted
 +        />
-+        <span className="text-sm">Thought</span>
++        <span className="text-sm">
++          <T>Thought</T>
++        </span>
 +        <ChevronRightIcon
 +          aria-hidden
 +          className={cn(
@@ -1536,20 +1559,17 @@ index 8fd7436d0e099f98b1281a628507ab85be513e51..f98e9744d63c58ebcb30d1ecbf53e14c
 +
  export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
    const ctx = use(TimelineRowCtx);
-   const { isCompacting, isPreparingWorktree, liveAnswerPreview, providerStartingLabel } =
-@@ -577,7 +612,10 @@ export function LiveWorkEntryTimelineRow({
+   const gt = useGT();
+@@ -631,7 +669,7 @@ export function LiveWorkEntryTimelineRow({
    const failed = workEntryDisplayIndicatesToolFailure(row.entry);
    const thoughtLine =
      row.thought && !row.expanded
--      ? liveThoughtLine((row.thought.detail ?? "").slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH))
-+      ? liveThoughtLine(
-+          (row.thought.detail ?? "").slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH),
-+          row.active,
-+        )
+-      ? liveThoughtLine(sliceThoughtPreviewSource(row.thought.detail ?? ""))
++      ? liveThoughtLine(sliceThoughtPreviewSource(row.thought.detail ?? ""), row.active)
        : "";
    const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
  
-@@ -609,7 +647,7 @@ export function LiveWorkEntryTimelineRow({
+@@ -665,7 +703,7 @@ export function LiveWorkEntryTimelineRow({
              </span>
            }
            label={
@@ -1558,7 +1578,7 @@ index 8fd7436d0e099f98b1281a628507ab85be513e51..f98e9744d63c58ebcb30d1ecbf53e14c
                <ChatMarkdown
                  inline
                  text={thoughtLine}
-@@ -663,17 +701,40 @@ export function WorkGroupToggleTimelineRow({
+@@ -723,17 +761,40 @@ export function WorkGroupToggleTimelineRow({
    row: Extract<TimelineRow, { kind: "work-toggle" }>;
  }) {
    const ctx = use(TimelineRowCtx);
@@ -1610,23 +1630,23 @@ index 8fd7436d0e099f98b1281a628507ab85be513e51..f98e9744d63c58ebcb30d1ecbf53e14c
  }
  
 diff --git a/apps/web/src/components/chat/chatViewSend.ts b/apps/web/src/components/chat/chatViewSend.ts
-index c5c65e7d6e78379bf0c657a16bc03097a5edb9e3..c98b0ebffdffcf0662d2c7e758761c936bd95559 100644
+index 278ba0505b5798aa1cfd42f7674c2c75d75d8da1..04fbc54ae09d11227cb4d3b31f0be3ccd5e06750 100644
 --- a/apps/web/src/components/chat/chatViewSend.ts
 +++ b/apps/web/src/components/chat/chatViewSend.ts
-@@ -40,6 +40,7 @@ import {
+@@ -46,6 +46,7 @@ import {
    readFileAsDataUrl,
    prepareRevertedMessageAttachments,
    waitForRevertedMessage,
 +  relinkRewoundAttachmentReferences,
  } from "../ChatView.logic";
  import { readPreparedConnection } from "../../state/session";
- import { recallableComposerPrompt } from "./composerPromptHistory";
-@@ -216,17 +217,9 @@ export async function rewindToMessage(input: {
+ import { recallComposerMessage } from "./composerPromptHistory";
+@@ -249,22 +250,10 @@ export async function rewindToMessage(input: {
+         ),
        });
-       if (result._tag === "Failure") throw squashAtomCommandFailure(result);
-     });
+     }
 -    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
--    const restoredPrompt = recallableComposerPrompt(message.text);
+-    const { prompt: restoredPrompt, mentions } = recallComposerMessage(message);
 -    const nextPrompt =
 -      restoredPrompt.length === 0
 -        ? currentPrompt
@@ -1634,13 +1654,19 @@ index c5c65e7d6e78379bf0c657a16bc03097a5edb9e3..c98b0ebffdffcf0662d2c7e758761c93
 -          ? `${currentPrompt}\n\n${restoredPrompt}`
 -          : restoredPrompt;
 -    store.setPrompt(draftTarget, nextPrompt);
+-    // The restored prompt already carries the chips; these add only their records.
+-    store.addThreadContexts(draftTarget, mentions.threadContexts, { appendReference: false });
+-    store.addEnvironmentContexts(draftTarget, mentions.environmentContexts, {
+-      appendReference: false,
+-    });
++    const { prompt: recalledPrompt, mentions } = recallComposerMessage(message);
      const images: ComposerImageAttachment[] = [];
      const restoredFiles: ComposerFileAttachment[] = [];
 +    const restored: Array<ComposerImageAttachment | ComposerFileAttachment> = [];
      files.forEach((file, index) => {
        const attachment = {
          id: randomUUID(),
-@@ -236,11 +229,32 @@ export async function rewindToMessage(input: {
+@@ -274,11 +263,33 @@ export async function rewindToMessage(input: {
          file,
        };
        if (message.attachments?.[index]?.type === "image") {
@@ -1660,11 +1686,7 @@ index c5c65e7d6e78379bf0c657a16bc03097a5edb9e3..c98b0ebffdffcf0662d2c7e758761c93
        }
      });
 +    const currentPrompt = store.getComposerDraft(draftTarget)?.prompt ?? "";
-+    const restoredPrompt = relinkRewoundAttachmentReferences(
-+      recallableComposerPrompt(message.text),
-+      message,
-+      restored,
-+    );
++    const restoredPrompt = relinkRewoundAttachmentReferences(recalledPrompt, message, restored);
 +    const nextPrompt =
 +      restoredPrompt.length === 0
 +        ? currentPrompt
@@ -1672,14 +1694,19 @@ index c5c65e7d6e78379bf0c657a16bc03097a5edb9e3..c98b0ebffdffcf0662d2c7e758761c93
 +          ? `${currentPrompt}\n\n${restoredPrompt}`
 +          : restoredPrompt;
 +    store.setPrompt(draftTarget, nextPrompt);
++    // The restored prompt already carries the chips; these add only their records.
++    store.addThreadContexts(draftTarget, mentions.threadContexts, { appendReference: false });
++    store.addEnvironmentContexts(draftTarget, mentions.environmentContexts, {
++      appendReference: false,
++    });
      store.addImages(draftTarget, images, { allowDuplicates: true });
      store.addFiles(draftTarget, restoredFiles, { allowDuplicates: true });
      return { error: null, prompt: nextPrompt };
 diff --git a/apps/web/src/components/chat/timelineRowContext.ts b/apps/web/src/components/chat/timelineRowContext.ts
-index 6a298fd6de0499eb8dd2531aa6ff07b3554edc3b..fb38a72daf06a79889307f4747e7abbceedda026 100644
+index a7e41217d82d512a418831faf21508a2e3b0b980..6569581ab63cdf058cdc7a77176998c65730b4fd 100644
 --- a/apps/web/src/components/chat/timelineRowContext.ts
 +++ b/apps/web/src/components/chat/timelineRowContext.ts
-@@ -96,6 +96,7 @@ export interface TimelineRowSharedState {
+@@ -99,6 +99,7 @@ export interface TimelineRowSharedState {
    onFileDownload: (attachment: ChatFileAttachment) => void;
    openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
    onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
@@ -1688,10 +1715,15 @@ index 6a298fd6de0499eb8dd2531aa6ff07b3554edc3b..fb38a72daf06a79889307f4747e7abbc
    onWorkEntryContentReady?: (anchorKey: string, entryId: string) => void;
    onCancelWorktreeSetup: (() => void) | null;
 diff --git a/apps/web/src/components/chat/useComposerSelection.ts b/apps/web/src/components/chat/useComposerSelection.ts
-index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..9b3c482af107f8608d82de2e604dcf4ac12e4246 100644
+index ff62eebe2b37bc6e898d5b7e969002215af28e6a..4658d764c640830391a7b790205cb5f06e5f33a3 100644
 --- a/apps/web/src/components/chat/useComposerSelection.ts
 +++ b/apps/web/src/components/chat/useComposerSelection.ts
-@@ -17,6 +17,15 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+@@ -1,3 +1,4 @@
++import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+ import type { UnifiedSettings } from "@t3tools/contracts";
+ import { useMessages } from "gt-react";
+@@ -17,6 +18,15 @@ import type { deriveThreadStructureRuntime } from "@t3tools/client-runtime/state
  import { type SetStateAction } from "react";
  import { useNavigate } from "@tanstack/react-router";
  import { toastManager } from "../ui/toast";
@@ -1705,10 +1737,10 @@ index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..9b3c482af107f8608d82de2e604dcf4a
 +  useLiveSessionChange,
 +} from "./TessayaLiveModel";
  import { resolveAppModelSelectionForInstance } from "../../modelSelection";
- import { resolveNewDraftStartFromOrigin } from "../../lib/chatThreadActions";
- import { type DraftThreadEnvMode, useComposerDraftStore } from "../../composerDraftStore";
-@@ -118,6 +127,17 @@ export function useComposerSelection(input: ComposerSelectionInput) {
-       : null,
+ import {
+   draftModelSelectionApplies,
+@@ -131,6 +141,17 @@ export function useComposerSelection(input: ComposerSelectionInput) {
+     messages,
    );
  
 +  // A mirrored terminal session changes model inside itself; another provider continues in a new thread (liveChangeRoute).
@@ -1725,9 +1757,9 @@ index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..9b3c482af107f8608d82de2e604dcf4a
    const onProviderModelSelect = (
      instanceId: ProviderInstanceId,
      model: string,
-@@ -125,6 +145,36 @@ export function useComposerSelection(input: ComposerSelectionInput) {
-   ) => {
+@@ -139,6 +160,36 @@ export function useComposerSelection(input: ComposerSelectionInput) {
      if (!activeThread) return;
+     cancelHeldComposerSend(composerTargetKey(composerDraftTarget));
      const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
 +    if (liveSession.sessionId !== null) {
 +      const liveLogin = liveLoginOf(instanceId, liveAccounts);
@@ -1763,10 +1795,10 @@ index c9bba2ae76bc3b87161f80b5e91c71e59bc78c4d..9b3c482af107f8608d82de2e604dcf4a
      if (
        !supportsProviderSwitchingViaHandoff &&
 diff --git a/apps/web/src/components/chat/useComposerSend.ts b/apps/web/src/components/chat/useComposerSend.ts
-index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c0c1e8553 100644
+index 2993f9ff3b61ff2c5a7d4dd410b9800a5a410180..09cc52ba1ba965580356a238649eca5e4c607cac 100644
 --- a/apps/web/src/components/chat/useComposerSend.ts
 +++ b/apps/web/src/components/chat/useComposerSend.ts
-@@ -130,6 +130,7 @@ import {
+@@ -143,6 +143,7 @@ import {
    prepareTurnAttachments,
    restoreComposerDraft,
  } from "./chatViewSend";
@@ -1774,7 +1806,7 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
  import type {
    EnvironmentProject,
    EnvironmentThreadShell,
-@@ -588,6 +589,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -808,6 +809,7 @@ export function useComposerSend(input: ComposerSendInput) {
        selectedProviderModels: ctxSelectedProviderModels,
        selectedPromptEffort: ctxSelectedPromptEffort,
        selectedModelSelection: ctxSelectedModelSelection,
@@ -1782,7 +1814,7 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
      } = sendCtx;
      const { images: composerImages, previewAnnotations: composerPreviewAnnotations } =
        mergeDirectPreviewAnnotation({
-@@ -654,9 +656,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -866,9 +868,11 @@ export function useComposerSend(input: ComposerSendInput) {
        sendableTerminalContexts: sendableComposerTerminalContexts,
        expiredTerminalContextCount,
        hasSendableContent,
@@ -1794,7 +1826,7 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
        terminalContexts: composerTerminalContexts,
        elementContextCount:
          composerPreviewAnnotations.length +
-@@ -664,6 +668,16 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -876,6 +880,24 @@ export function useComposerSend(input: ComposerSendInput) {
          composerThreadContexts.length +
          composerEnvironmentContexts.length,
      });
@@ -1802,8 +1834,16 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
 +      toastManager.add(
 +        stackedThreadToast({
 +          type: "warning",
-+          title: `${unattachedLabels.map((label) => `"${label}"`).join(", ")} ${unattachedLabels.length === 1 ? "is" : "are"} no longer attached`,
-+          description: "Attach it again or remove its chip, then send.",
++          title: m(
++            msg(
++              "{count, plural, =1 {{labels} is no longer attached} other {{labels} are no longer attached}}",
++              {
++                count: unattachedLabels.length,
++                labels: unattachedLabels.map((label) => `"${label}"`).join(", "),
++              },
++            ),
++          ),
++          description: m(msg("Attach it again or remove its chip, then send.")),
 +        }),
 +      );
 +      return;
@@ -1811,7 +1851,7 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
      const feedbackCommand =
        ctxSelectedProvider === "codex" &&
        composerImages.length === 0 &&
-@@ -1236,6 +1250,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1524,6 +1546,7 @@ export function useComposerSend(input: ComposerSendInput) {
              idleCompaction: "onReturn",
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1819,7 +1859,7 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
            runtimeMode,
            interactionMode: DEFAULT_INTERACTION_MODE,
          },
-@@ -1305,6 +1320,7 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1594,6 +1617,7 @@ export function useComposerSend(input: ComposerSendInput) {
              }),
            },
            modelSelection: ctxSelectedModelSelection,
@@ -1827,7 +1867,7 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
            titleSeed: title,
            runtimeMode,
            interactionMode: DEFAULT_INTERACTION_MODE,
-@@ -1348,6 +1364,11 @@ export function useComposerSend(input: ComposerSendInput) {
+@@ -1637,6 +1661,11 @@ export function useComposerSend(input: ComposerSendInput) {
              checkoutPullRequestUrl,
            );
          }
@@ -1840,10 +1880,10 @@ index 7257dee5ced9eca4eef8d42c10e9b5f1a4201db8..aeedbda4d60cc948166cd9dec02cf47c
          if (freshArm !== undefined) disarmFreshSession(routeThreadKey, freshArm);
          clearUsageLimitsFor(routeThreadKey);
 diff --git a/apps/web/src/components/threadActionMenu.logic.ts b/apps/web/src/components/threadActionMenu.logic.ts
-index 1e3eddd0b9389356d6d1c1ba16b8b6a3d9044ea9..46a1895e7e5d6dfb267d4236c749d75b37e4aef0 100644
+index 211e812c671f786e3310f0d8d6723c2d91734452..ebce8e00cf6e5fe136118e252c666ec7d32114f5 100644
 --- a/apps/web/src/components/threadActionMenu.logic.ts
 +++ b/apps/web/src/components/threadActionMenu.logic.ts
-@@ -3,6 +3,9 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
+@@ -6,6 +6,9 @@ import { m, type MessageResolver } from "../i18n/messages";
  
  export type ThreadActionMenuId =
    | "find"
@@ -1853,16 +1893,16 @@ index 1e3eddd0b9389356d6d1c1ba16b8b6a3d9044ea9..46a1895e7e5d6dfb267d4236c749d75b
    | "new-thread-on-branch"
    | "filter-by-project"
    | "turn-into-project"
-@@ -70,6 +73,8 @@ export function buildDraftActionMenuItems(options: {
- export interface ThreadActionMenuState {
-   readonly canOperate: boolean;
+@@ -100,6 +103,8 @@ export interface ThreadActionMenuState {
    readonly canFind?: boolean;
+   /** False where no inline title editor is rendered, such as sidebar search results. */
+   readonly canRename?: boolean;
 +  /** "Keep work groups expanded", for the toggle's label; absent where the thread has no work groups to manage. */
 +  readonly keepWorkExpanded?: boolean;
    readonly branch: string | null;
    readonly projectFilter: {
      readonly label: string;
-@@ -101,6 +106,9 @@ export interface ThreadActionMenuState {
+@@ -133,6 +138,9 @@ export interface ThreadActionMenuState {
  export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean {
    return ![
      "find",
@@ -1872,20 +1912,28 @@ index 1e3eddd0b9389356d6d1c1ba16b8b6a3d9044ea9..46a1895e7e5d6dfb267d4236c749d75b
      "new-thread-on-branch",
      "project-settings",
      "mark-unread",
-@@ -120,6 +128,19 @@ export function buildThreadActionMenuItems(
+@@ -163,6 +171,27 @@ export function buildThreadActionMenuItems(
      ...(state.canFind
-       ? [{ id: "find" as const, label: "Find in thread", icon: "text-search" }]
+       ? [{ id: "find" as const, label: resolve(msg("Find in thread")), icon: "text-search" }]
        : []),
 +    ...(state.keepWorkExpanded === undefined
 +      ? []
 +      : [
-+          { id: "expand-work" as const, label: "Expand all work", icon: "chevrons-up-down" },
-+          { id: "collapse-work" as const, label: "Collapse all work", icon: "chevrons-down-up" },
++          {
++            id: "expand-work" as const,
++            label: resolve(msg("Expand all work")),
++            icon: "chevrons-up-down",
++          },
++          {
++            id: "collapse-work" as const,
++            label: resolve(msg("Collapse all work")),
++            icon: "chevrons-down-up",
++          },
 +          {
 +            id: "keep-work-expanded" as const,
 +            label: state.keepWorkExpanded
-+              ? "Stop keeping work groups expanded"
-+              : "Keep work groups expanded",
++              ? resolve(msg("Stop keeping work groups expanded"))
++              : resolve(msg("Keep work groups expanded")),
 +            icon: "chevrons-up-down",
 +          },
 +        ]),
@@ -1893,18 +1941,18 @@ index 1e3eddd0b9389356d6d1c1ba16b8b6a3d9044ea9..46a1895e7e5d6dfb267d4236c749d75b
        ? [
            {
 diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
-index c698f96e92e394016392b8adb11547bddc0e6e27..cc62244fcabbf8eb3778446b6b87e3e1a3c49512 100644
+index f23a9b00e06d4ac69ed43ea446583059877a896d..4174d91c068bacc6a140ba004943074364e72802 100644
 --- a/apps/web/src/composerDraftStore.test.ts
 +++ b/apps/web/src/composerDraftStore.test.ts
-@@ -92,6 +92,7 @@ import {
-   type ComposerImageAttachment,
+@@ -94,6 +94,7 @@ import {
    composerFileNeedsReattach,
+   hydrateImagesFromPersisted,
    partializeComposerDraftStoreState,
 +  restoreComposerImageBackups,
    useComposerDraftStore,
    DraftId,
  } from "./composerDraftStore";
-@@ -418,6 +419,81 @@ describe("composerDraftStore file attachments", () => {
+@@ -419,6 +420,81 @@ describe("composerDraftStore file attachments", () => {
      ]);
    });
  
@@ -1987,7 +2035,7 @@ index c698f96e92e394016392b8adb11547bddc0e6e27..cc62244fcabbf8eb3778446b6b87e3e1
      const store = useComposerDraftStore.getState();
      store.addFiles(threadRef, [makeFile("file-pending")]);
 diff --git a/apps/web/src/composerDraftStore.ts b/apps/web/src/composerDraftStore.ts
-index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df43205c11c 100644
+index 50c116b2f8056d750b1c35c49c36efe4ee7809e6..762c11a9d12acb7740054d15d2fd30ddb9aac06d 100644
 --- a/apps/web/src/composerDraftStore.ts
 +++ b/apps/web/src/composerDraftStore.ts
 @@ -93,6 +93,7 @@ import {
@@ -1997,8 +2045,8 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
 +import { startComposerImageBackup } from "./composerImageBackup";
  import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
  import { useShallow } from "zustand/react/shallow";
- import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
-@@ -106,6 +107,8 @@ import { UnifiedSettings } from "@t3tools/contracts/settings";
+ import { draftModelSelectionApplies } from "./lib/chatThreadActions";
+@@ -107,6 +108,8 @@ import { UnifiedSettings } from "@t3tools/contracts/settings";
  
  const isElementContextDetails = Schema.is(ElementContextDetails);
  import { ReviewCommentContextSchema, type ReviewCommentContext } from "./reviewCommentContext";
@@ -2007,7 +2055,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
  const isRuntimeMode = Schema.is(RuntimeMode);
  const isProviderDriverKind = Schema.is(ProviderDriverKind);
  const isReviewCommentContext = Schema.is(ReviewCommentContextSchema);
-@@ -120,8 +123,7 @@ const COMPOSER_DRAFT_STORAGE_VERSION = 9;
+@@ -121,8 +124,7 @@ const COMPOSER_DRAFT_STORAGE_VERSION = 9;
  const DraftThreadEnvModeSchema = Schema.Literals(["local", "worktree"]);
  export type DraftThreadEnvMode = typeof DraftThreadEnvModeSchema.Type;
  
@@ -2017,7 +2065,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
  
  const COMPOSER_PERSIST_DEBOUNCE_MS = 300;
  
-@@ -129,8 +131,9 @@ type ComposerPersistState =
+@@ -130,8 +132,9 @@ type ComposerPersistState =
    | { capturedState: ComposerDraftStoreState }
    | PersistedComposerDraftStoreState;
  
@@ -2028,7 +2076,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
  
  interface ComposerDraftWrite {
    readonly text: string;
-@@ -337,6 +340,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
+@@ -339,6 +342,8 @@ type PersistedTerminalContextDraft = typeof PersistedTerminalContextDraft.Type;
  const PersistedComposerThreadDraftState = Schema.Struct({
    prompt: Schema.String,
    attachments: Schema.Array(PersistedComposerImageAttachment),
@@ -2037,7 +2085,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
    files: Schema.optionalKey(Schema.Array(PersistedComposerDraftFileAttachment)),
    terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
    previewAnnotations: Schema.optionalKey(Schema.Array(PreviewAnnotationPayloadSchema)),
-@@ -2029,6 +2034,9 @@ function normalizePersistedDraftsByThreadId(
+@@ -2170,6 +2175,9 @@ function normalizePersistedDraftsByThreadId(
            return normalized ? [normalized] : [];
          })
        : [];
@@ -2047,7 +2095,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
      const files = Array.isArray(draftCandidate.files)
        ? draftCandidate.files.filter(isPersistedComposerDraftFileAttachment)
        : [];
-@@ -2159,6 +2167,7 @@ function normalizePersistedDraftsByThreadId(
+@@ -2300,6 +2308,7 @@ function normalizePersistedDraftsByThreadId(
      if (
        promptCandidate.length === 0 &&
        attachments.length === 0 &&
@@ -2055,7 +2103,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
        files.length === 0 &&
        terminalContexts.length === 0 &&
        previewAnnotations.length === 0 &&
-@@ -2187,6 +2196,7 @@ function normalizePersistedDraftsByThreadId(
+@@ -2328,6 +2337,7 @@ function normalizePersistedDraftsByThreadId(
      nextDraftsByThreadKey[normalizedThreadKey] = {
        prompt,
        attachments,
@@ -2063,7 +2111,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
        ...(files.length > 0 ? { files } : {}),
        ...(terminalContexts.length > 0 ? { terminalContexts } : {}),
        ...(previewAnnotations.length > 0 ? { previewAnnotations } : {}),
-@@ -2293,6 +2303,7 @@ export function partializeComposerDraftStoreState(
+@@ -2434,6 +2444,7 @@ export function partializeComposerDraftStoreState(
      if (
        draft.prompt.length === 0 &&
        draft.persistedAttachments.length === 0 &&
@@ -2071,7 +2119,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
        draft.files.length === 0 &&
        draft.terminalContexts.length === 0 &&
        draft.previewAnnotations.length === 0 &&
-@@ -2309,6 +2320,9 @@ export function partializeComposerDraftStoreState(
+@@ -2450,6 +2461,9 @@ export function partializeComposerDraftStoreState(
      const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
        prompt: draft.prompt,
        attachments: draft.persistedAttachments,
@@ -2081,7 +2129,7 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
        ...(draft.files.length > 0
          ? {
              files: draft.files.map((file) => ({
-@@ -4469,6 +4483,57 @@ composerDraftLoadedState = partializeComposerDraftStoreState(composerDraftStore.
+@@ -4597,6 +4611,57 @@ composerDraftLoadedState = partializeComposerDraftStoreState(composerDraftStore.
  
  export const useComposerDraftStore = composerDraftStore;
  
@@ -2140,10 +2188,10 @@ index 68fdc2b2bca36b86720b527117b6f5931c0667b4..82040291e0dabecfcdafe2ebb1672df4
    readonly registry: AtomRegistry.AtomRegistry;
    readonly threadRefsAtom: Atom.Atom<ReadonlyArray<ScopedThreadRef>>;
 diff --git a/apps/web/src/hooks/useThreadActionMenu.ts b/apps/web/src/hooks/useThreadActionMenu.ts
-index bf22bd066b9a45318c09814cc2fd55d1d3f770a9..fdedc898d4cd1064e3f5115e9274ba2516f5f271 100644
+index 9c3bda0413ea2a9eafbe7d089588986989fecced..1e12fd0734d69d93399a788cf3be16f2380dfd51 100644
 --- a/apps/web/src/hooks/useThreadActionMenu.ts
 +++ b/apps/web/src/hooks/useThreadActionMenu.ts
-@@ -46,6 +46,11 @@ import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
+@@ -51,6 +51,11 @@ import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
  import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
  import { useCopyToClipboard } from "./useCopyToClipboard";
  import { useNewThreadHandler } from "./useHandleNewThread";
@@ -2155,15 +2203,15 @@ index bf22bd066b9a45318c09814cc2fd55d1d3f770a9..fdedc898d4cd1064e3f5115e9274ba25
  import { useClientSettings } from "./useSettings";
  import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
  
-@@ -140,6 +145,7 @@ export function useThreadActionMenu(input: {
-       const items = buildThreadActionMenuItems({
-         canOperate: readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope),
-         canFind: onFind !== undefined,
-+        keepWorkExpanded: getKeepWorkExpanded(),
-         branch: thread.branch ?? null,
-         projectFilter: null,
-         isPinned: thread.pinnedAt != null,
-@@ -197,6 +203,13 @@ export function useThreadActionMenu(input: {
+@@ -138,6 +143,7 @@ export function useThreadActionMenu(input: {
+       canTriage: threadTriagePermitted(threadRef.environmentId),
+       canFind: onFind !== undefined,
+       canRename: onStartRename !== undefined,
++      keepWorkExpanded: getKeepWorkExpanded(),
+       branch: thread.branch ?? null,
+       projectFilter: null,
+       isPinned: thread.pinnedAt != null,
+@@ -198,6 +204,13 @@ export function useThreadActionMenu(input: {
          case "find":
            onFind?.(threadRef);
            return;
@@ -2178,13 +2226,13 @@ index bf22bd066b9a45318c09814cc2fd55d1d3f770a9..fdedc898d4cd1064e3f5115e9274ba25
            const project = projects.find(
              (candidate) =>
 diff --git a/docs/user/thread-sidebar.md b/docs/user/thread-sidebar.md
-index e5fe950e140a26853edf22c9c593b5a7b41d1a65..ffd72bad580cce959491599fd3a4b7501958add9 100644
+index b739242ea5c422388429b1325c7024a5ff170d34..f204c9d6a26e3d58f961ca71695f94157dcef57f 100644
 --- a/docs/user/thread-sidebar.md
 +++ b/docs/user/thread-sidebar.md
-@@ -339,3 +339,11 @@ A snoozed thread keeps working and stays hidden until its wake time, even while
- its agent wakes itself for background work. It comes back early for an approval,
- a new question, a failed run, or a message or answer you send. You can snooze an existing
- question and answer when the thread wakes; the question stays unanswered.
+@@ -94,3 +94,11 @@ Ask a quick side question about a thread without polluting its history. A side c
+ - **Find later**: Listed under **Side chats** in thread details (web/desktop) or above the composer (mobile); hidden from the main sidebar.
+ - **Bring results back**: Click **Add to chat** in the side chat, or `@`-mention its title in the parent composer (not readable by external OpenCode servers).
+ - **Lifecycle**: Closing an unused side chat deletes it. Deleting or archiving the parent thread deletes or archives its side chats.
 +
 +## Pictures, videos and thinking in a thread
 +
@@ -2194,11 +2242,11 @@ index e5fe950e140a26853edf22c9c593b5a7b41d1a65..ffd72bad580cce959491599fd3a4b750
 +
 +When a Claude Code session mirrored from a terminal stops on a question, an approval or a multi-question form, the thread shows the question and its choices, and answering there presses the same keys in the terminal: pick a choice, type your own answer, and on the last screen of a form choose Submit answers, Cancel or Go back. A message that is not an answer waits in order and sends when the session is ready. The web and desktop apps show the question as a card; the official phone app shows T3's own question prompt where it supports one, and otherwise you answer from the web or desktop app.
 diff --git a/packages/client-runtime/src/work-log/presentation.test.ts b/packages/client-runtime/src/work-log/presentation.test.ts
-index f79cd14c91981455a5eb4699beebdead0c129aff..3a8511bd7e998e427a88a21f34d6083fba0207d2 100644
+index 76a95dc8c3c7f2411f550643eee329e1b89bf05f..ffb02b02b4df4df31e9744a37b7a14ba1710ebc2 100644
 --- a/packages/client-runtime/src/work-log/presentation.test.ts
 +++ b/packages/client-runtime/src/work-log/presentation.test.ts
-@@ -204,3 +204,12 @@ describe("resolveWorkEntryToolPresentation", () => {
-     ).toBeNull();
+@@ -315,3 +315,12 @@ describe("workEntriesViewedImages", () => {
+     ).toEqual(["/repo/a.png", "/repo/b.png"]);
    });
  });
 +
@@ -2211,10 +2259,10 @@ index f79cd14c91981455a5eb4699beebdead0c129aff..3a8511bd7e998e427a88a21f34d6083f
 +  });
 +});
 diff --git a/packages/client-runtime/src/work-log/presentation.ts b/packages/client-runtime/src/work-log/presentation.ts
-index e2097ed4a46c482ca5eac5873d3e6d2eae0844be..b0f44a3dc54be617b64c77a93f8cb41eb4adaa47 100644
+index 848a3735e5cfa21a64f29483d3e333402663934a..c144a6342d315f75a5d2a9781e0a6cd26394098b 100644
 --- a/packages/client-runtime/src/work-log/presentation.ts
 +++ b/packages/client-runtime/src/work-log/presentation.ts
-@@ -678,8 +678,9 @@ export function toolGroupSummaryKind(
+@@ -885,8 +885,9 @@ export function toolGroupSummaryKind(
    return fallbackKinds.size === 1 ? fallbackKinds.values().next().value! : "mixed";
  }
  
@@ -2226,20 +2274,20 @@ index e2097ed4a46c482ca5eac5873d3e6d2eae0844be..b0f44a3dc54be617b64c77a93f8cb41e
    const text = (heading ?? markdown)
      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
      .replace(/^[ \t]*(?:#{1,6}|[-*+]|\d+\.)[ \t]+/gm, "")
-@@ -687,7 +688,7 @@ export function liveThoughtLine(markdown: string): string {
+@@ -894,7 +895,7 @@ export function liveThoughtLine(markdown: string): string {
      .replace(/(^|[^\w*])[*_]([^*_\n]+)[*_](?![\w*])/g, "$1$2")
      .replace(/\s+/g, " ")
      .trim();
 -  if (heading !== undefined) return text;
 +  if (full || heading !== undefined) return text;
-   const end = /[.?!]["'”’)]?(?=\s)/.exec(text);
+   // CJK sentences end in full-width marks with no space after them.
+   const end = /[.?!]["'”’)]?(?=\s)|[。！？]["'”’）」』]?/.exec(text);
    return end ? text.slice(0, end.index + end[0].length) : text;
- }
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..d7aa8d416be562449091d168f0f3a3ec36a7ae90 100644
+index ded60ba899b37e849112706a394e761dba35a9f0..0be697344ed12defdfe1cf2734de380936077ec2 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
-@@ -1426,6 +1426,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
+@@ -1589,6 +1589,8 @@ export const OrchestrationV2UserInputQuestion = Schema.Struct({
    allowCustomAnswer: Schema.optional(Schema.Boolean),
    initialAnswer: Schema.optional(Schema.String),
    required: Schema.optional(Schema.Boolean),
@@ -2248,7 +2296,7 @@ index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..d7aa8d416be562449091d168f0f3a3ec
  });
  export type OrchestrationV2UserInputQuestion = typeof OrchestrationV2UserInputQuestion.Type;
  
-@@ -3293,7 +3295,9 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3602,7 +3604,9 @@ export const OrchestrationV2Command = Schema.Union([
      type: Schema.Literal("thread.model-selection.set"),
      commandId: CommandId,
      threadId: ThreadId,
@@ -2259,7 +2307,7 @@ index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..d7aa8d416be562449091d168f0f3a3ec
    }),
    Schema.Struct({
      type: Schema.Literal("provider-session.detach"),
-@@ -3322,6 +3326,8 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3633,6 +3637,8 @@ export const OrchestrationV2Command = Schema.Union([
      attachments: Schema.Array(ChatAttachment),
      titleSeed: Schema.optional(TrimmedNonEmptyString),
      modelSelection: Schema.optional(ModelSelection),
@@ -2268,7 +2316,7 @@ index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..d7aa8d416be562449091d168f0f3a3ec
      sourcePlanRef: Schema.optional(Schema.Struct({ threadId: ThreadId, planId: PlanId })),
      restartContinuationOfRunId: Schema.optional(RunId),
      usageLimitContinuationOfRunId: Schema.optional(RunId),
-@@ -3531,7 +3537,9 @@ export const OrchestrationV2Command = Schema.Union([
+@@ -3844,7 +3850,9 @@ export const OrchestrationV2Command = Schema.Union([
      type: Schema.Literal("provider.switch"),
      commandId: CommandId,
      threadId: ThreadId,
@@ -2279,7 +2327,7 @@ index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..d7aa8d416be562449091d168f0f3a3ec
    }),
  ]);
  export type OrchestrationV2Command = typeof OrchestrationV2Command.Type;
-@@ -3904,6 +3912,11 @@ export const OrchestrationV2SubscribeShellInput = Schema.Struct({
+@@ -4244,6 +4252,11 @@ export const OrchestrationV2SubscribeShellInput = Schema.Struct({
     * `getOlderSettledThreads`. Send only to servers that advertise `shellOlderSettled`.
     */
    omitOlderSettled: Schema.optionalKey(Schema.Boolean),
@@ -2292,10 +2340,10 @@ index bf6b53666f4d724ec4e0b64e3e3932a4580f8ec0..d7aa8d416be562449091d168f0f3a3ec
  export type OrchestrationV2SubscribeShellInput = typeof OrchestrationV2SubscribeShellInput.Type;
  
 diff --git a/packages/shared/package.json b/packages/shared/package.json
-index ba0b394f26d0c5e136b3cb6ed37259ce5b76dd03..82846356721d943ecdc64258d4bacf4a2026f808 100644
+index 123da46863a99311e0cd7ee6a6aebd6aef3355d2..909d589b3e7f39d1c4defaae92afeb46b8d365d6 100644
 --- a/packages/shared/package.json
 +++ b/packages/shared/package.json
-@@ -323,6 +323,14 @@
+@@ -359,6 +359,14 @@
        "types": "./src/previewViewport.ts",
        "import": "./src/previewViewport.ts"
      },

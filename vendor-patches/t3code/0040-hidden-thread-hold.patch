@@ -2,10 +2,10 @@ Tessaya: a hidden window gets a streaming thread's newest state at most every 5 
 again, it catches up at once (B-041).
 
 diff --git a/packages/client-runtime/src/state/threads.ts b/packages/client-runtime/src/state/threads.ts
-index a3984290e7b6b06c4caf17228a1abc0690f2b5f4..9f52d3d003dca26f9f6bf7a0d0d64d0d362639ad 100644
+index c0921417ba5cf3c5f6647fe908b6a3f704d67ed5..f87cb1ee07a81d476e2a14d0f8c0b9355a5ea458 100644
 --- a/packages/client-runtime/src/state/threads.ts
 +++ b/packages/client-runtime/src/state/threads.ts
-@@ -59,6 +59,10 @@ import {
+@@ -65,6 +65,10 @@ import {
    type EnvironmentThreadState,
    type EnvironmentThreadStatus,
  } from "./threadState.ts";
@@ -16,7 +16,7 @@ index a3984290e7b6b06c4caf17228a1abc0690f2b5f4..9f52d3d003dca26f9f6bf7a0d0d64d0d
  
  const THREAD_SUBSCRIPTION_RETRY_DELAY = "250 millis";
  
-@@ -1165,7 +1169,7 @@ function threadStateChanges(
+@@ -1256,7 +1260,7 @@ function threadStateChanges(
      environmentId,
      Stream.unwrap(
        makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),

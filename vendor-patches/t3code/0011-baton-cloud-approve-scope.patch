@@ -1,7 +1,7 @@
 Approving a cloud task is its own permission (baton:cloud-approve): not in the standard client scopes, held by the desktop app session and by a client paired for it.
 
 diff --git a/apps/server/src/auth/McpOAuth.test.ts b/apps/server/src/auth/McpOAuth.test.ts
-index 4cd276c51133bbcc1d88b59421dad9e4856037c4..1634bcd01fe888437a793c76d5663fe74c133e5f 100644
+index ea321bcf0241c669593e8bd73945bf1fe4edb1bb..886a0840914e1d9e987228c9099b5a5514ba315b 100644
 --- a/apps/server/src/auth/McpOAuth.test.ts
 +++ b/apps/server/src/auth/McpOAuth.test.ts
 @@ -1,7 +1,10 @@
@@ -15,7 +15,7 @@ index 4cd276c51133bbcc1d88b59421dad9e4856037c4..1634bcd01fe888437a793c76d5663fe7
    AuthStandardClientScopes,
    type AuthCreatePairingCredentialInput,
    type EnvironmentCloudLinkStateResult,
-@@ -538,6 +541,65 @@ it.live("a code minted with an access level's scopes approves that access", () =
+@@ -703,6 +706,65 @@ it.live("a code minted with an access level's scopes approves that access", () =
    ),
  );
  
@@ -81,7 +81,7 @@ index 4cd276c51133bbcc1d88b59421dad9e4856037c4..1634bcd01fe888437a793c76d5663fe7
  it.live("an app approval code approves only an app sign-in, at its own level", () =>
    withRoutes((handler, auth) =>
      Effect.gen(function* () {
-@@ -805,3 +867,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
+@@ -970,3 +1032,25 @@ it("matches loopback redirects on everything but the port, and https redirects e
    expect(matches("https://bot.example/cb", "https://bot.example/cb?x=1")).toBe(false);
    expect(matches("https://bot.example/cb", "https://evil.example/cb")).toBe(false);
  });
@@ -108,7 +108,7 @@ index 4cd276c51133bbcc1d88b59421dad9e4856037c4..1634bcd01fe888437a793c76d5663fe7
 +  ),
 +);
 diff --git a/apps/server/src/auth/PairingGrantStore.test.ts b/apps/server/src/auth/PairingGrantStore.test.ts
-index 5184beb09680728f6a28aee95cd95d9e124a21ad..8297f3b19cb99a5f6690af876db0850b94364427 100644
+index 4d70e65caecf88d7baa38a83b87b2c1536f2776a..542c7fe87985a152946df64e609d6e727da59f02 100644
 --- a/apps/server/src/auth/PairingGrantStore.test.ts
 +++ b/apps/server/src/auth/PairingGrantStore.test.ts
 @@ -1,4 +1,4 @@
@@ -117,7 +117,7 @@ index 5184beb09680728f6a28aee95cd95d9e124a21ad..8297f3b19cb99a5f6690af876db0850b
  import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
  import * as NodeServices from "@effect/platform-node/NodeServices";
  import { expect, it } from "@effect/vitest";
-@@ -56,6 +56,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
+@@ -57,6 +57,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
  
        expect(first.method).toBe("one-time-token");
        expect(first.scopes).toEqual(AuthStandardClientScopes);
@@ -125,7 +125,7 @@ index 5184beb09680728f6a28aee95cd95d9e124a21ad..8297f3b19cb99a5f6690af876db0850b
        expect(first.subject).toBe("one-time-token");
        expect(first.label).toBe("Julius iPhone");
        expect(issued.label).toBe("Julius iPhone");
-@@ -139,6 +140,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
+@@ -156,6 +157,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("PairingGrantStor
        const otherCase = yield* Effect.flip(bootstrapCredentials.consume("ABCDEFGHJKMN"));
  
        expect(exact.method).toBe("desktop-bootstrap");
@@ -135,24 +135,26 @@ index 5184beb09680728f6a28aee95cd95d9e124a21ad..8297f3b19cb99a5f6690af876db0850b
      }).pipe(
        Effect.provide(
 diff --git a/apps/server/src/auth/PairingGrantStore.ts b/apps/server/src/auth/PairingGrantStore.ts
-index bf9eccee8c51ba5aa4718808f4ac9396267cd725..9106249368d8d2a5908cf0ff09a4d1fa3e32041c 100644
+index 800486ce8689dd9163239a8968cfa0c91372bb3a..156e377db28934cd33d035e104a949acb884b3e2 100644
 --- a/apps/server/src/auth/PairingGrantStore.ts
 +++ b/apps/server/src/auth/PairingGrantStore.ts
-@@ -1,4 +1,7 @@
+@@ -1,5 +1,8 @@
  import {
+   AuthAdministrativeClientScopes,
 +  AuthTessayaCloudApproveScope,
 +  AuthTessayaHandsHostScope,
 +  AuthTessayaMemorySyncScope,
    AuthStandardClientScopes,
-   type AuthEnvironmentScope,
-   type AuthMcpClientAccess,
-@@ -259,6 +262,14 @@ type ConsumeResult =
-     };
- 
- const DEFAULT_ONE_TIME_TOKEN_TTL_MINUTES = Duration.minutes(5);
+   type AuthClientMetadata,
+   type AuthConnectDevice,
+@@ -341,6 +344,15 @@ const toPairingLink = (row: AuthPairingLinks.AuthPairingLinkRecord): AuthPairing
+       }
+     : {}),
+ });
++
 +/** The desktop app's own session may also approve cloud tasks; a paired client never gets that by default. */
 +const DESKTOP_SCOPES = [
-+  ...AuthStandardClientScopes,
++  ...AuthAdministrativeClientScopes,
 +  AuthTessayaCloudApproveScope,
 +  AuthTessayaHandsHostScope,
 +  // So the desktop can hand out a sync-only credential for this server ("Pair for memory sync").
@@ -161,20 +163,20 @@ index bf9eccee8c51ba5aa4718808f4ac9396267cd725..9106249368d8d2a5908cf0ff09a4d1fa
  const DESKTOP_BOOTSTRAP_TTL_HOURS = Duration.hours(24);
  const DEV_STARTUP_TTL_HOURS = Duration.hours(24);
  const PAIRING_TOKEN_REJECTION_LIMIT =
-@@ -332,7 +343,7 @@ const make = Effect.gen(function* () {
+@@ -415,7 +427,7 @@ const make = Effect.gen(function* () {
      const now = yield* DateTime.now;
      yield* seedGrant(config.desktopBootstrapToken, {
        method: "desktop-bootstrap",
--      scopes: AuthStandardClientScopes,
+-      scopes: AuthAdministrativeClientScopes,
 +      scopes: DESKTOP_SCOPES,
        subject: "desktop-bootstrap",
        expiresAt: DateTime.add(now, {
          milliseconds: Duration.toMillis(DESKTOP_BOOTSTRAP_TTL_HOURS),
-@@ -460,7 +471,7 @@ const make = Effect.gen(function* () {
+@@ -536,7 +548,7 @@ const make = Effect.gen(function* () {
        if (yield* consumeRotatingDesktopToken(credential, now.epochMilliseconds)) {
          return {
            method: "desktop-bootstrap",
--          scopes: AuthStandardClientScopes,
+-          scopes: AuthAdministrativeClientScopes,
 +          scopes: DESKTOP_SCOPES,
            subject: "desktop-bootstrap",
            expiresAt: DateTime.add(now, {
@@ -207,10 +209,10 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..c04425b8d60e29690f02f33b293cf108
 +    ),
    );
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
-index 718a9dda93c0ed95020cf66522eaf2a06d05f7a7..a580ce5893ffccc3d93bc76ec114a3f2ff3924f8 100644
+index a3b1861ca035162c603a6358e594031627e41542..f5122dfecb3b3c5738116deeeb0666d7098b1dc8 100644
 --- a/packages/client-runtime/src/state/commandPermissions.test.ts
 +++ b/packages/client-runtime/src/state/commandPermissions.test.ts
-@@ -128,6 +128,53 @@ describe("command permissions", () => {
+@@ -129,6 +129,53 @@ describe("command permissions", () => {
      }),
    );
  
@@ -374,7 +376,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd41
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165941162c7 100644
+index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02caa03fe5ed 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
 @@ -1,4 +1,5 @@
@@ -383,10 +385,10 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
  import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
  
  import {
-@@ -46,7 +47,44 @@ export const AuthAccessReadScope = "access:read" as const;
- export const AuthAccessWriteScope = "access:write" as const;
+@@ -48,7 +49,44 @@ export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
+ export const AuthRelayConfigureScope = "relay:configure" as const;
 -export const AuthEnvironmentScope = Schema.Literals([
 +/**
 + * Approving or denying a cloud task. Never part of the standard client scopes: only the desktop app's own
@@ -429,10 +431,10 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
    AuthSettingsWriteScope,
-@@ -64,16 +102,79 @@ export const AuthEnvironmentScope = Schema.Literals([
-   AuthAccessWriteScope,
+@@ -67,16 +105,80 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthRelayReadScope,
    AuthRelayWriteScope,
+   AuthRelayConfigureScope,
 +  AuthTessayaCloudApproveScope,
 +  AuthTessayaHandsScope,
 +  AuthTessayaHandsHostScope,
@@ -461,17 +463,18 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
 +const fromRenamed = <S extends string>(scope: S | RenamedSpelling): S =>
 +  (SCOPE_OF_RENAMED.get(scope) ?? scope) as S;
 +export type AuthEnvironmentScope = typeof AuthEnvironmentScopeName.Type;
-+export const AuthEnvironmentScope = Schema.Literals([
-+  ...AuthEnvironmentScopeName.literals,
-+  ...RENAMED_SPELLINGS,
-+]).pipe(
-+  Schema.decodeTo(
-+    AuthEnvironmentScopeName,
-+    SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
-+      decode: fromRenamed,
-+      encode: (scope) => scope,
-+    }),
++// `literals` as upstream's plain Literals schema has it: the current names, without the old spellings.
++export const AuthEnvironmentScope = Object.assign(
++  Schema.Literals([...AuthEnvironmentScopeName.literals, ...RENAMED_SPELLINGS]).pipe(
++    Schema.decodeTo(
++      AuthEnvironmentScopeName,
++      SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
++        decode: fromRenamed,
++        encode: (scope) => scope,
++      }),
++    ),
 +  ),
++  { literals: AuthEnvironmentScopeName.literals },
 +);
  export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
  export type AuthEnvironmentScopes = typeof AuthEnvironmentScopes.Type;
@@ -513,7 +516,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
  
  const legacyScopes = new Set<AuthEnvironmentScope>([
-@@ -109,10 +210,24 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -112,13 +214,25 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
@@ -521,6 +524,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
 +// `legacyParents`, it never grants anything: a session holding "operate" does not hold it.
 +const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>> = {
 +  ...legacyParents,
++  [AuthRelayConfigureScope]: AuthRelayWriteScope,
 +  [AuthTessayaCloudApproveScope]: AuthOrchestrationOperateScope,
 +  [AuthTessayaHandsScope]: AuthOrchestrationOperateScope,
 +  [AuthTessayaHandsHostScope]: AuthOrchestrationOperateScope,
@@ -534,12 +538,15 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
  /** Keep permission denials decodable by clients with the original scope enum. */
  export function authScopeRequiredResponse(requiredPermission: AuthEnvironmentScope) {
    return {
--    requiredScope: legacyParents[requiredPermission] ?? requiredPermission,
+-    requiredScope:
+-      requiredPermission === AuthRelayConfigureScope
+-        ? AuthRelayWriteScope
+-        : (legacyParents[requiredPermission] ?? requiredPermission),
 +    requiredScope: denialFallbacks[requiredPermission] ?? requiredPermission,
      requiredPermission,
    };
  }
-@@ -261,21 +376,39 @@ export const AuthMcpClientAccess = Schema.Literals([
+@@ -273,21 +387,39 @@ export const AuthMcpClientAccess = Schema.Literals([
    "auto-accept-edits",
    "auto",
    "full-access",
@@ -587,7 +594,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
  
  /** The random part of a one-time pairing code: this many characters from this alphabet. */
  export const PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-@@ -287,6 +420,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
+@@ -299,6 +431,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
    "auto-accept-edits": "EDITS",
    auto: "AUTO",
    "full-access": "FULL",
@@ -596,7 +603,7 @@ index 77e703e6f86b2525a80d0bf2e6c3e1bbed0eb600..8a07162a3f2d8f89ad5fb3da6e2b9165
  
  const MCP_APPROVAL_CODE_PATTERN = new RegExp(
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..e54ab42cf9e5c8f28ee96337f789fbde61a75c0e 100644
+index 7d68cb5114c068035d8a83efbb55feff552ebc0a..ca47c6012bcfe4c0a0157e187c74d84e93e4eae8 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
@@ -607,9 +614,9 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..e54ab42cf9e5c8f28ee96337f789fbde
    AuthEnvironmentMaintainScope,
    AuthOrchestrationOperateScope,
    AuthOrchestrationReadScope,
-@@ -84,6 +85,22 @@ export type ClientGuardedRpcTag = keyof typeof CLIENT_GUARDED_RPC_SCOPES;
- const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThreadInput);
+@@ -112,6 +113,22 @@ const decodePrepareThread = Schema.decodeUnknownSync(GitPreparePullRequestThread
  const decodeStackedAction = Schema.decodeUnknownSync(GitRunStackedActionInput);
+ const decodeLinkPairing = Schema.decodeUnknownSync(PeerLinkLinkPairingInput);
  
 +/** Tessaya's device door (`BATON_DEVICES_WS_METHODS.call`); this package cannot import tessaya-contracts. */
 +const DEVICES_CALL = "baton.devices.call";
@@ -630,9 +637,9 @@ index 8681c1ea8abeb7fcd4453d6f6f9bc5964b7173f2..e54ab42cf9e5c8f28ee96337f789fbde
  export function clientRpcRequiredScopes(
    method: string,
    input: unknown,
-@@ -101,6 +118,29 @@ export function clientRpcRequiredScopes(
-     )
-       return [AuthSourceControlWriteScope, AuthOrchestrationReadScope];
+@@ -137,6 +154,29 @@ export function clientRpcRequiredScopes(
+   if (method === WS_METHODS.guestShareCreate) {
+     return [AuthAccessWriteScope, AuthOrchestrationReadScope];
    }
 +  // Its kind sets the scope, as the server's missingTessayaScope does: owner is the camera, reboot and pictures.
 +  if (method === DEVICES_CALL) {

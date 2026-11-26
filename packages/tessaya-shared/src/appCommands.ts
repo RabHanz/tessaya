@@ -87,6 +87,8 @@ export const APP_COMMAND_VOICE: {
   "terminal.split": view("split the terminal side by side", "Split the terminal."),
   "terminal.splitVertical": view("split the terminal top and bottom", "Split the terminal."),
   "terminal.new": view("open a new terminal", "Opened a new terminal."),
+  "terminal.next": view("go to the next terminal", "Next terminal."),
+  "terminal.previous": view("go to the previous terminal", "Previous terminal."),
   "terminal.close": asks(
     "close this terminal",
     "Closed the terminal.",

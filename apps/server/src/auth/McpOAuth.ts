@@ -55,8 +55,12 @@ import { requestUrl } from "../requestUrl.ts";
 const SIGNING_SECRET_NAME = "mcp-oauth-signing-key";
 const AUTHORIZATION_CODE_TTL_MS = 60_000;
 const MAX_CLIENT_NAME_LENGTH = 100;
-const MAX_REDIRECT_URIS = 5;
+const MAX_REDIRECT_URIS = 10;
 const MAX_REDIRECT_URI_LENGTH = 512;
+// The client_id rides in the authorize URL. Past the original five-URI limit, cap it to leave room
+// under Node's 16 KB header cap for an encoded redirect_uri and state.
+const MAX_UNBOUNDED_CLIENT_ID_REDIRECT_URIS = 5;
+const MAX_CLIENT_ID_LENGTH = 10_240;
 const DEFAULT_CLIENT_NAME = "MCP client";
 const LOOPBACK_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const CODE_CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -94,6 +98,7 @@ export const authorizationServerMetadata = (
   authorization_endpoint: `${urls.issuer}/oauth/mcp/authorize`,
   token_endpoint: `${urls.issuer}/oauth/mcp/token`,
   registration_endpoint: `${urls.issuer}/oauth/mcp/register`,
+  revocation_endpoint: `${urls.issuer}/oauth/mcp/revoke`,
   response_types_supported: ["code"],
   grant_types_supported: ["authorization_code"],
   code_challenge_methods_supported: ["S256"],
@@ -131,9 +136,11 @@ export const redirectMatches = (registered: string, presented: string): boolean 
 
 const sameResource = (urls: McpOAuthUrls, presented: string | undefined): boolean => {
   if (presented === undefined) return true;
+  // URL.hash misses empty fragments, which RFC 8707 §2 also forbids.
+  if (presented.includes("#")) return false;
   try {
     const url = new URL(presented);
-    return url.hash === "" && `${url.origin}${url.pathname.replace(/\/+$/u, "")}` === urls.resource;
+    return `${url.origin}${url.pathname.replace(/\/+$/u, "")}` === urls.resource;
   } catch {
     return false;
   }
@@ -191,6 +198,7 @@ interface PendingCode {
   readonly codeChallenge: string;
   readonly resource: string;
   readonly access: AuthMcpClientAccess;
+  readonly approvedAtRevocationCount: number;
   readonly expiresAtMs: number;
 }
 
@@ -346,11 +354,21 @@ const make = Effect.gen(function* () {
         return yield* new AuthMcpRegistrationError({
           error: "invalid_client_metadata",
           error_description:
-            "Linked environments is off on that machine. Turn it on in its Settings → Labs.",
+            'Linked environments is off on that machine. Turn it on in its Settings → Labs, or without a desktop, set "linkedEnvironmentsEnabled": true in userdata/settings.json in its T3 home (~/.t3 by default).',
+        });
+      }
+      const clientId = yield* signClientId(name, redirectUris, peerLink);
+      if (
+        redirectUris.length > MAX_UNBOUNDED_CLIENT_ID_REDIRECT_URIS &&
+        clientId.length > MAX_CLIENT_ID_LENGTH
+      ) {
+        return yield* new AuthMcpRegistrationError({
+          error: "invalid_redirect_uri",
+          error_description: "Redirect URIs are too long to fit in an authorization request.",
         });
       }
       return {
-        clientId: yield* signClientId(name, redirectUris, peerLink),
+        clientId,
         name,
         redirectUris,
         peerLink,
@@ -429,6 +447,7 @@ const make = Effect.gen(function* () {
   const mintCode = Effect.fn("McpOAuth.mintCode")(function* (
     authorization: AuthorizationRequest,
     access: AuthMcpClientAccess,
+    approvedAtRevocationCount: number,
   ) {
     const now = yield* Clock.currentTimeMillis;
     const code = Buffer.from(yield* random.randomBytes(32)).toString("base64url");
@@ -442,6 +461,7 @@ const make = Effect.gen(function* () {
         codeChallenge: authorization.codeChallenge,
         resource: authorization.resource,
         access,
+        approvedAtRevocationCount,
         expiresAtMs: now + AUTHORIZATION_CODE_TTL_MS,
       });
       return next;
@@ -451,6 +471,9 @@ const make = Effect.gen(function* () {
 
   const approve: McpOAuth["Service"]["approve"] = Effect.fn("McpOAuth.approve")(function* (input) {
     const { decision } = input;
+    // Read before the approver is checked: "revoke all others" then ends this sign-in whether
+    // it lands before the check or after the code is handed out.
+    const approvedAtRevocationCount = yield* environmentAuth.otherSessionRevocationCount;
     // A linked environment works with threads; a body-only link would only carry the peer link's other powers.
     if (input.authorization.client.peerLink && decision.access === "body-only") {
       return yield* new McpOAuthPageError({
@@ -465,19 +488,21 @@ const make = Effect.gen(function* () {
           description: "Linking needs a plain pairing code, not an app approval code.",
         });
       }
-      access = yield* environmentAuth.consumeMcpApprovalCode(decision.code, decision.access).pipe(
-        Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (cause) =>
-          Effect.logError("MCP approval code check failed.", { cause }).pipe(
-            Effect.andThen(
-              Effect.fail(
-                new McpOAuthPageError({
-                  description: "The code could not be checked. Try again.",
-                }),
+      access = yield* environmentAuth
+        .consumeMcpApprovalCode(decision.code, decision.access, input.authorization.client.peerLink)
+        .pipe(
+          Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (cause) =>
+            Effect.logError("MCP approval code check failed.", { cause }).pipe(
+              Effect.andThen(
+                Effect.fail(
+                  new McpOAuthPageError({
+                    description: "The code could not be checked. Try again.",
+                  }),
+                ),
               ),
             ),
           ),
-        ),
-      );
+        );
     } else {
       const session = yield* approvingSession(input.request, input.authorization);
       if (
@@ -490,7 +515,7 @@ const make = Effect.gen(function* () {
         });
       }
     }
-    const code = yield* mintCode(input.authorization, access);
+    const code = yield* mintCode(input.authorization, access, approvedAtRevocationCount);
     yield* Effect.logInfo("Approved an MCP client sign-in.", {
       client: input.authorization.client.name,
       access,
@@ -555,14 +580,17 @@ const make = Effect.gen(function* () {
           access: pending.access,
           peerLink: pending.peerLink,
           client: deriveAuthClientMetadata({ request }),
+          approvedAtRevocationCount: pending.approvedAtRevocationCount,
         })
         .pipe(
           Effect.catch((cause) =>
-            Effect.logError("Could not issue an MCP client session.", { cause }).pipe(
-              Effect.andThen(
-                Effect.fail(fail("invalid_grant", "The session could not be issued.")),
-              ),
-            ),
+            cause._tag === "ServerAuthInvalidCredentialError"
+              ? Effect.fail(fail("invalid_grant", "The authorization code is invalid or expired."))
+              : Effect.logError("Could not issue an MCP client session.", { cause }).pipe(
+                  Effect.andThen(
+                    Effect.fail(fail("invalid_grant", "The session could not be issued.")),
+                  ),
+                ),
           ),
         );
       return {
@@ -620,6 +648,7 @@ export const layerMcpClientAuthenticator = Layer.effect(
                     label: client.label,
                     access: client.access,
                     linked: client.peerLink,
+                    linkExpiresAt: client.linkExpiresAt,
                     ...(client.peerLink ? {} : { hostedAppUrl }),
                   },
                   capabilities: new Set<McpInvocationContext.McpCapability>([

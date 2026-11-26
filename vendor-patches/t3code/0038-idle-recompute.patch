@@ -2,10 +2,10 @@ Tessaya: lists that re-render on every streamed update reuse what has not change
 keybindings config, and saved pull-request summaries per thread link (B-041).
 
 diff --git a/apps/web/src/keybindings.test.ts b/apps/web/src/keybindings.test.ts
-index 3b596f838fa0db79eed8ae0f3e7c4f6a5413ce1b..282dfd89d0a4469e044f6f3bb195d99218830d75 100644
+index 728797735e74176f9d68914ca5dfa7aa46ba7c15..2e630073cb5a0291ed5b668194e842b3b884d3ee 100644
 --- a/apps/web/src/keybindings.test.ts
 +++ b/apps/web/src/keybindings.test.ts
-@@ -312,6 +312,19 @@ describe("shortcutLabelForCommand", () => {
+@@ -313,6 +313,19 @@ describe("shortcutLabelForCommand", () => {
      assert.strictEqual(shortcutLabelForCommand(bindings, "thread.jump.7", "MacIntel"), "⇧⌘1");
    });
  
@@ -26,11 +26,11 @@ index 3b596f838fa0db79eed8ae0f3e7c4f6a5413ce1b..282dfd89d0a4469e044f6f3bb195d992
      const bindings = compile([
        { shortcut: modShortcut("d"), command: "diff.toggle" },
 diff --git a/apps/web/src/keybindings.ts b/apps/web/src/keybindings.ts
-index 849183b7a1a69f4a3e7bb6910d3dfd914046582a..c1d802a12c1a051aa95717a469835c4fcf72366a 100644
+index f1d45c07d9c4489540af7612603c13c2b132e81b..c82bf9a9284f03ee8ea4259e9fe7e8df0875f6f9 100644
 --- a/apps/web/src/keybindings.ts
 +++ b/apps/web/src/keybindings.ts
-@@ -249,12 +249,29 @@ export function formatShortcutLabel(
-   return parts.join("+");
+@@ -277,12 +277,29 @@ export function formatShortcutLabel(
+   return isMacPlatform(platform) ? parts.join("") : parts.join("+");
  }
  
 +// Default-context labels per keybindings config: list renders ask for the same labels on every streamed update.
@@ -60,10 +60,10 @@ index 849183b7a1a69f4a3e7bb6910d3dfd914046582a..c1d802a12c1a051aa95717a469835c4f
      typeof options === "string"
        ? ({ platform: options } satisfies ResolvedShortcutLabelOptions)
 diff --git a/apps/web/src/state/pullRequests.ts b/apps/web/src/state/pullRequests.ts
-index 13d71301e203504cd33aa2f3be247847fa5d854d..aaedb54df7c5c666218458ade44eae0447e0fa7a 100644
+index 0b2446deab9f56804cba49f3cccf2c947cb31ba0..c184522722e5a40f1ca815d96cca0a0322b3049b 100644
 --- a/apps/web/src/state/pullRequests.ts
 +++ b/apps/web/src/state/pullRequests.ts
-@@ -465,11 +465,24 @@ function savedPullRequestKey(
+@@ -547,11 +547,24 @@ function savedPullRequestKey(
      : `${environmentId}:${threadPullRequestKeyOf({ ...reference, host: reference.host })}`;
  }
  

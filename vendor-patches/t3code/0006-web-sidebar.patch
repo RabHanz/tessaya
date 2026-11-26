@@ -47,7 +47,7 @@ index 7e1ae602f979db00d082c795aee4973f39cbd30f..401bd01c2aab6ea28fd39fcdf0621e16
      const actions: string[] = [];
      return Effect.gen(function* () {
 diff --git a/apps/web/index.html b/apps/web/index.html
-index 1a8bc02e19c9df28efecf541427a03ef657e7fd4..91f3eca7b57e720c603214b8531a786ed66113eb 100644
+index 7f8be6fa934c7776090420a590fcf618f0b73421..9d2c2156459598c9745083a4acab21c6f5760c6b 100644
 --- a/apps/web/index.html
 +++ b/apps/web/index.html
 @@ -8,6 +8,7 @@
@@ -58,7 +58,7 @@ index 1a8bc02e19c9df28efecf541427a03ef657e7fd4..91f3eca7b57e720c603214b8531a786e
      <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
      <link rel="manifest" href="/manifest.webmanifest" />
      <script>
-@@ -675,14 +676,12 @@
+@@ -690,13 +691,12 @@
        if (desktopDisplayName) document.title = desktopDisplayName;
      </script>
      <!-- vite.config.ts stamps the web build's channel into this title. -->
@@ -70,11 +70,10 @@ index 1a8bc02e19c9df28efecf541427a03ef657e7fd4..91f3eca7b57e720c603214b8531a786e
        <div id="boot-shell">
 -        <div id="boot-shell-card" aria-label="T3 Code splash screen">
 -          <img id="boot-shell-logo" src="/apple-touch-icon.png" alt="T3 Code" />
--        </div>
-+        <div id="boot-shell-card" aria-label="Tessaya is starting"></div>
++        <div id="boot-shell-card" aria-label="Tessaya is starting">
+           <p id="boot-shell-progress" role="status" aria-live="polite"></p>
+         </div>
        </div>
-     </div>
-     <script type="module" src="/src/bootstrap.ts"></script>
 diff --git a/apps/web/public/apple-touch-icon.png b/apps/web/public/apple-touch-icon.png
 index 3eed25ea6b7850fc2594ac509e91c29f1710f708..a74f1e70bf6f95920aa59d46c5516d5cafff5f0b 100644
 GIT binary patch
@@ -8060,19 +8059,19 @@ index 26d1c2e0d38a0557683973879497501223f522cd..2a7208e5faad59af41064b59fdc46ff2
    ]
  }
 diff --git a/apps/web/src/components/chat/ChatHeader.tsx b/apps/web/src/components/chat/ChatHeader.tsx
-index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..e4c3f7a7c6ff965235366bcf0d2778e0f6c2708e 100644
+index 0b11a6c7f1242acb77be369e19f8d10074d4a5cb..f223b1b828995048a31ce502c49d66302eeefa49 100644
 --- a/apps/web/src/components/chat/ChatHeader.tsx
 +++ b/apps/web/src/components/chat/ChatHeader.tsx
-@@ -20,6 +20,8 @@ import {
+@@ -22,6 +22,8 @@ import {
    type MouseEvent as ReactMouseEvent,
  } from "react";
  import { isTrailingDoubleClick } from "../Sidebar.logic";
 +import { TessayaLiveStatus } from "./TessayaLiveStatus";
 +import { useDisplayThreadTitle } from "./TessayaThreadTitle";
  import { Badge } from "../ui/badge";
- import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+ import { MiddleTruncate } from "../ui/middle-truncate";
  import { toastManager } from "../ui/toast";
-@@ -71,7 +73,7 @@ function resolveRenameCommit(input: {
+@@ -74,7 +76,7 @@ function resolveRenameCommit(input: {
  export const ChatHeader = memo(function ChatHeader({
    activeThreadEnvironmentId,
    activeThreadId,
@@ -8081,19 +8080,19 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..e4c3f7a7c6ff965235366bcf0d2778e0
    activeThreadLinkOrigin,
    isServerThread,
    activeProject,
-@@ -82,6 +84,11 @@ export const ChatHeader = memo(function ChatHeader({
-   onOpenProjectSettings,
+@@ -86,6 +88,11 @@ export const ChatHeader = memo(function ChatHeader({
    onFindInThread,
  }: ChatHeaderProps) {
+   const gt = useGT();
 +  const activeThreadTitle = useDisplayThreadTitle(
 +    activeThreadEnvironmentId,
 +    activeThreadId,
 +    storedThreadTitle,
 +  );
-   const activeProjectName = activeProject?.isScratch ? "No project" : activeProject?.title;
+   const activeProjectName = activeProject?.isScratch ? gt("No project") : activeProject?.title;
    const activeProjectCwd = activeProject?.workspaceRoot ?? null;
    const interfaceFont = useClientSettings((settings) => settings.fontFamilySans);
-@@ -167,7 +174,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -171,7 +178,7 @@ export const ChatHeader = memo(function ChatHeader({
      setRenaming({
        environmentId: activeThreadEnvironmentId,
        threadId: activeThreadId,
@@ -8102,7 +8101,7 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..e4c3f7a7c6ff965235366bcf0d2778e0
      });
    };
    const commitRename = (title: string) => {
-@@ -175,7 +182,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -179,7 +186,7 @@ export const ChatHeader = memo(function ChatHeader({
      if (!readEnvironmentScope(activeThreadEnvironmentId, AuthOrchestrationOperateScope)) return;
      const resolution = resolveRenameCommit({
        title,
@@ -8110,8 +8109,8 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..e4c3f7a7c6ff965235366bcf0d2778e0
 +      originalTitle: renamingTitle ?? storedThreadTitle,
      });
      if (resolution.action === "reject-empty") {
-       toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
-@@ -248,8 +255,8 @@ export const ChatHeader = memo(function ChatHeader({
+       toastManager.add({ type: "warning", title: gt("Thread title cannot be empty") });
+@@ -254,8 +261,8 @@ export const ChatHeader = memo(function ChatHeader({
      <div
        ref={breadcrumbContainerRef}
        className={cn(
@@ -8122,16 +8121,15 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..e4c3f7a7c6ff965235366bcf0d2778e0
        )}
        onContextMenu={handleHeaderContextMenu}
      >
-@@ -272,7 +279,7 @@ export const ChatHeader = memo(function ChatHeader({
-                   }
-                 >
-                   <ProjectFavicon project={activeProject} className="size-3.5" />
--                  <WorkspaceBreadcrumbText className="max-w-40">
-+                  <WorkspaceBreadcrumbText className="max-w-40 @max-md/thread-header:hidden">
-                     {activeProjectName}
-                   </WorkspaceBreadcrumbText>
-                 </TooltipTrigger>
-@@ -393,6 +400,7 @@ export const ChatHeader = memo(function ChatHeader({
+@@ -286,6 +293,7 @@ export const ChatHeader = memo(function ChatHeader({
+                 <ProjectFavicon project={activeProject} className="size-3.5" />
+                 <MiddleTruncate
+                   data-slot="workspace-breadcrumb-text"
++                  className="@max-md/thread-header:hidden"
+                   value={activeProjectName ?? ""}
+                   showTitle={false}
+                   variant="cap-aligned"
+@@ -409,6 +417,7 @@ export const ChatHeader = memo(function ChatHeader({
            ) : null}
          </WorkspaceBreadcrumbItem>
        </WorkspaceBreadcrumb>
@@ -8140,27 +8138,28 @@ index e80e8e0fdfdc34c25f5e434cfef769526b9a0b0a..e4c3f7a7c6ff965235366bcf0d2778e0
      </div>
    );
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..564a2f00e650774cbe14c58191240d5b445a35b1 100644
+index 15efbbeae0a9d05b934fef07a4d2b87b414283d9..53ceb47a1f37df81c553bca06a2045b91fcd29be 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
 +++ b/apps/web/src/components/chat/ModelPickerSidebar.tsx
-@@ -1,8 +1,12 @@
+@@ -1,9 +1,13 @@
  import { Toolbar } from "@base-ui/react/toolbar";
  import { type ProviderInstanceId } from "@t3tools/contracts";
 -import { memo, useLayoutEffect, useRef, useState } from "react";
 +import { distinctInstanceInitials } from "@t3tools/client-runtime/state/provider-instance-display";
 +import { LIVE_INSTANCE } from "@t3tools/tessaya-shared/liveThread";
 +import { Fragment, memo, useLayoutEffect, useRef, useState } from "react";
+ import { msg, T, useMessages } from "gt-react";
  import { StarIcon } from "lucide-react";
  import { ProviderInstanceIcon } from "./ProviderInstanceIcon";
 +import { instanceRoom, RailLimitMark } from "./TessayaPickerAccount";
 +import { useNowMinute } from "../../hooks/useNowMinute";
  import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
  import { cn } from "~/lib/utils";
- import {
-@@ -39,10 +43,18 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
-   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
+ import type { MessageResolver } from "../../i18n/messages";
+@@ -58,10 +62,18 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
    getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
  }) {
+   const m = useMessages();
 +  // The Terminal session instance is its own group above the providers: it drives a terminal, not a model.
 +  const liveEntries = props.instanceEntries.filter((e) => e.instanceId === LIVE_INSTANCE);
 +  const instanceEntries = [
@@ -8176,7 +8175,7 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..564a2f00e650774cbe14c58191240d5b
    const [hoveredInstanceId, setHoveredInstanceId] = useState<ProviderInstanceId | null>(null);
    const sidebarContentRef = useRef<HTMLDivElement>(null);
    const [selectedIndicatorTop, setSelectedIndicatorTop] = useState<number | null>(null);
-@@ -123,7 +135,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -142,7 +154,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
              </>
            ) : null}
  
@@ -8185,7 +8184,7 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..564a2f00e650774cbe14c58191240d5b
              const isUnavailable = !isProviderInstancePickerReady(entry);
              const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
              const unavailableSelectionIsReachable =
-@@ -139,6 +151,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -158,6 +170,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                : isContextDisabled
                  ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
                  : entry.displayName;
@@ -8193,7 +8192,7 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..564a2f00e650774cbe14c58191240d5b
  
              const button = (
                <Toolbar.Button
-@@ -169,6 +182,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -188,6 +201,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                    acpRegistryAgentId={entry.acpRegistryAgentId}
                    acpRegistryIconUrl={entry.acpRegistryIconUrl}
                    showBadge={showInstanceBadge}
@@ -8201,7 +8200,7 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..564a2f00e650774cbe14c58191240d5b
                    className="size-6 z-30"
                    iconClassName="size-5"
                    indicatorBackground={
-@@ -180,6 +194,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -199,6 +213,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                    }
                    {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                  />
@@ -8209,7 +8208,7 @@ index c07b1f33c5fa91ba1a72b04b5ac0d16fad4a7e88..564a2f00e650774cbe14c58191240d5b
                </Toolbar.Button>
              );
  
-@@ -190,22 +205,24 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
+@@ -209,22 +224,24 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
              );
  
              return (
@@ -8275,10 +8274,10 @@ index e7e3253d2c4fe11234153583d50508a6bccfcd2b..a1b6ff017967310d49236cec21902bee
        ) : null}
      </span>
 diff --git a/apps/web/src/components/sidebar/SidebarThreadRow.tsx b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-index 89ab26f51b9a05b91681d943c0bc756e8f76816e..3164c6177970edc82002e3bddafef623901901c8 100644
+index 0be1b2cb3a127fe1a4ee5fb244e85c5018d154e3..5a8952bc284d44bc93fab9945007054c037cb825 100644
 --- a/apps/web/src/components/sidebar/SidebarThreadRow.tsx
 +++ b/apps/web/src/components/sidebar/SidebarThreadRow.tsx
-@@ -113,6 +113,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
+@@ -129,6 +129,8 @@ import { ThreadSearchMatchExcerpt } from "../ThreadSearchMatch";
  import { makeWorkspaceFileDropHandlers } from "../chat/workspaceFileDrop";
  import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
  import { getTriggerDisplayModelName } from "../chat/providerIconUtils";
@@ -8287,16 +8286,16 @@ index 89ab26f51b9a05b91681d943c0bc756e8f76816e..3164c6177970edc82002e3bddafef623
  import { shouldShowInstanceBadge, type ProviderInstanceEntry } from "../../providerInstances";
  import { useThreadRunningTerminalIds } from "../../state/terminalSessions";
  import { InlineButton } from "../ui/button";
-@@ -544,6 +546,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
+@@ -606,6 +608,8 @@ function TopStatusIcon(props: { icon: keyof typeof TOP_STATUS_ICONS; className:
  
  type SidebarThreadRowProps = {
    thread: SidebarThreadSummary;
 +  /** Tessaya: a live session running now (P5), decided once for the whole list. */
 +  batonLive?: boolean;
    // "folder" is a one-line row inside a boring sidebar project folder;
-   // "folder-multiline" adds the card's branch and PR line under it.
+   // "folder-multiline" adds the card's environment and PR line under it.
    variant: "card" | "slim" | "folder" | "folder-multiline";
-@@ -1066,7 +1070,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+@@ -1141,7 +1145,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
        )}
        dir={textDirection(thread.title)}
      >
@@ -8306,30 +8305,30 @@ index 89ab26f51b9a05b91681d943c0bc756e8f76816e..3164c6177970edc82002e3bddafef623
 +        threadId={thread.id}
 +        title={thread.title}
 +      />
-     </span>
-   );
-   const accessibleTitle = isRenaming ? null : <span className="sr-only">{thread.title}</span>;
-@@ -1197,6 +1205,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+       {isRegeneratingTitle ? (
+         <ActivityShimmerOverlay className="truncate">{thread.title}</ActivityShimmerOverlay>
+       ) : null}
+@@ -1318,6 +1326,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
          aria-hidden
          className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
        >
 +        <TessayaLiveBadge live={props.batonLive === true} />
-         {remoteMachineIcon}
          <SidebarProviderStack
            thread={thread}
-@@ -1207,6 +1216,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
+           providerEntryByInstanceId={props.providerEntryByInstanceId}
+@@ -1327,6 +1336,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
    );
    const titleLineIcons = metaLineEmpty ? (
      <span aria-hidden className="inline-flex shrink-0 items-center gap-1">
 +      <TessayaLiveBadge live={props.batonLive === true} />
-       {remoteMachineIcon}
        <SidebarProviderStack
          thread={thread}
+         providerEntryByInstanceId={props.providerEntryByInstanceId}
 diff --git a/apps/web/src/routes/__root.tsx b/apps/web/src/routes/__root.tsx
-index a59604a63f42677944af7d30518af23e207d170f..95741e9117716e8c7d59ade46a92ccda738b71e5 100644
+index 4ddab939ab7d3cb6fc20ac314a3bc367ec34f989..6da58b6e30ad8a2130daccf6b7b2c05a582152a1 100644
 --- a/apps/web/src/routes/__root.tsx
 +++ b/apps/web/src/routes/__root.tsx
-@@ -27,6 +27,9 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
+@@ -29,6 +29,9 @@ import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDi
  import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
  import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
  import { SnapShotCoordinator } from "../components/desktop/SnapShotCoordinator";
@@ -8339,7 +8338,7 @@ index a59604a63f42677944af7d30518af23e207d170f..95741e9117716e8c7d59ade46a92ccda
  import { DesktopAppActivationCoordinator } from "../components/desktop/DesktopAppActivationCoordinator";
  import { DesktopWebLinkCoordinator } from "../components/desktop/DesktopWebLinkCoordinator";
  import { RunningThreadKeepAlive } from "../components/desktop/RunningThreadKeepAlive";
-@@ -149,6 +152,8 @@ function RootRouteBranch() {
+@@ -163,6 +166,8 @@ function RootRouteBranch() {
    // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
    const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
    if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
@@ -8348,7 +8347,7 @@ index a59604a63f42677944af7d30518af23e207d170f..95741e9117716e8c7d59ade46a92ccda
    const hostedPromptLinkLanding = useHostedPromptLinkLanding(
      authGateState.status === "hosted-static",
    );
-@@ -173,6 +178,8 @@ function RootRouteBranch() {
+@@ -187,6 +192,8 @@ function RootRouteBranch() {
    if (authGateState.status !== "authenticated" && authGateState.status !== "hosted-static") {
      return <Outlet />;
    }
@@ -8357,7 +8356,7 @@ index a59604a63f42677944af7d30518af23e207d170f..95741e9117716e8c7d59ade46a92ccda
  
    // Settings can reopen /welcome mid-session, so it mounts everything the app does except the
    // first-run gate and the event router, whose first navigation would leave the page.
-@@ -186,7 +193,8 @@ function RootRouteBranch() {
+@@ -202,7 +209,8 @@ function RootRouteBranch() {
        <RelayClientInstallDialog />
        <ConnectOnboardingDialog />
        <SshPasswordPromptDialog />
@@ -8366,9 +8365,9 @@ index a59604a63f42677944af7d30518af23e207d170f..95741e9117716e8c7d59ade46a92ccda
 +      {isMainWindow() && primaryEnvironmentAuthenticated ? <LaptopRouteHost /> : null}
        <ReopenClosedViewShortcut />
        <ConfirmDialogHost />
-       <CustomSnoozeDialogHost />
+       <WorktreeLayoutApprovalDialogHost />
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
-index 4ac36acedf761847ea5db4db237120aaa0da9939..6000541e431ca46a1dbcb5774da2c9511c1f2583 100644
+index 161e6113c03bd9082383963155720bfab05b4de5..5674623b42d73acd3fc102e326013a2c3eca2cfd 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 +++ b/packages/client-runtime/src/state/providerInstanceDisplay.test.ts
 @@ -2,6 +2,7 @@ import { ProviderDriverKind } from "@t3tools/contracts";
@@ -8379,7 +8378,7 @@ index 4ac36acedf761847ea5db4db237120aaa0da9939..6000541e431ca46a1dbcb5774da2c951
    normalizeProviderAccentColor,
    providerAccentForegroundColor,
    providerInstanceInitials,
-@@ -83,3 +84,25 @@ describe("shouldShowInstanceBadge", () => {
+@@ -88,3 +89,25 @@ describe("shouldShowInstanceBadge", () => {
      expect(shouldShowInstanceBadge(disabled, [disabled])).toBe(false);
    });
  });
@@ -8406,10 +8405,10 @@ index 4ac36acedf761847ea5db4db237120aaa0da9939..6000541e431ca46a1dbcb5774da2c951
 +  });
 +});
 diff --git a/packages/client-runtime/src/state/providerInstanceDisplay.ts b/packages/client-runtime/src/state/providerInstanceDisplay.ts
-index ad69b7275342b1afd577641f8a5f4f0a513bee54..56ed8fe6f21515d4247a39b5aab1368962f0a6a5 100644
+index ba090beb3fd369c508c6894310ebdb32b237172e..4b1e3ed31c66146d9eeb3547abf48c114c7ac30a 100644
 --- a/packages/client-runtime/src/state/providerInstanceDisplay.ts
 +++ b/packages/client-runtime/src/state/providerInstanceDisplay.ts
-@@ -43,6 +43,28 @@ export function providerInstanceInitials(label: string): string {
+@@ -46,6 +46,28 @@ export function providerInstanceInitials(label: string): string {
      .join("");
  }
  

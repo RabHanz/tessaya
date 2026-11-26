@@ -3,10 +3,10 @@ Tessaya: one usage record. Text generation, cloud speech-to-text and their tests
 never counts them twice.
 
 diff --git a/apps/server/src/orchestration-v2/testkit/fixtures/index.ts b/apps/server/src/orchestration-v2/testkit/fixtures/index.ts
-index ce6d739b1cdd3cfab45cc602dabda21f9878f67d..8e64410fc5d919e8081581d83726bc77f1e778eb 100644
+index f7e880bd2bfd17a6906cb26fa4b1be6e703209a9..791d7b4f30963fc833f37f8b49d4d5144268aa1f 100644
 --- a/apps/server/src/orchestration-v2/testkit/fixtures/index.ts
 +++ b/apps/server/src/orchestration-v2/testkit/fixtures/index.ts
-@@ -93,6 +93,8 @@ import { providerThreadResumeInput } from "./provider_thread_resume/input.ts";
+@@ -98,6 +98,8 @@ import { providerThreadResumeInput } from "./provider_thread_resume/input.ts";
  import { assertPiProviderThreadResumeOutput } from "./provider_thread_resume/pi_output.ts";
  import { assertMultiTurnClaudeOutput } from "./multi_turn/claude_output.ts";
  import { assertMultiTurnOutput } from "./multi_turn/codex_output.ts";
@@ -15,7 +15,7 @@ index ce6d739b1cdd3cfab45cc602dabda21f9878f67d..8e64410fc5d919e8081581d83726bc77
  import { assertPiMultiTurnOutput } from "./multi_turn/pi_output.ts";
  import { multiTurnInput } from "./multi_turn/input.ts";
  import { openCodeChildApprovalInput } from "./opencode_child_approval/input.ts";
-@@ -1475,13 +1477,13 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
+@@ -1540,13 +1542,13 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
          driver: ProviderDriverKind.make("grok"),
          transcriptFile: new URL("./multi_turn/grok_transcript.ndjson", import.meta.url),
          modelSelection: GROK_MODEL_SELECTION,
@@ -76,7 +76,7 @@ index 35727d4a468bda13bea73e349f5b692dc45121c0..1936e70ad29e536771d0334b40cd0d31
 +  );
  }
 diff --git a/apps/server/src/speech/CloudSpeech.test.ts b/apps/server/src/speech/CloudSpeech.test.ts
-index 112c7a88d9b3b26edf4ec5ba97b7b91857346724..c021831b68dd95d8064b37fef4a7085cf8837e73 100644
+index 1ada861d6d85236a55cda95f57cdeaff83991ae4..4ad3cc420a223c5e2f197cd8081c0911655caa2d 100644
 --- a/apps/server/src/speech/CloudSpeech.test.ts
 +++ b/apps/server/src/speech/CloudSpeech.test.ts
 @@ -8,21 +8,33 @@ import * as Redacted from "effect/Redacted";
@@ -114,7 +114,7 @@ index 112c7a88d9b3b26edf4ec5ba97b7b91857346724..c021831b68dd95d8064b37fef4a7085c
            Layer.provide(FetchHttpClient.layer),
            Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
            Layer.provide(
-@@ -53,6 +65,16 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
+@@ -56,6 +68,16 @@ it.effect.each(["openai", "xai"] as const)("sends only to %s using its own saved
      yield* Effect.flip(transcribe(new Uint8Array(3)));
      expect(upstream).not.toHaveBeenCalled();
      expect(yield* transcribe()).toBe("hello");
@@ -131,7 +131,7 @@ index 112c7a88d9b3b26edf4ec5ba97b7b91857346724..c021831b68dd95d8064b37fef4a7085c
      const [url, init] = upstream.mock.calls[0]!;
      expect(String(url)).toBe(
        {
-@@ -105,7 +127,7 @@ it.effect("uploads to OpenRouter only for a listed exact model, as zero-retentio
+@@ -112,7 +134,7 @@ it.effect("uploads to OpenRouter only for a listed exact model, as zero-retentio
      );
      const service = yield* CloudSpeech.CloudSpeech.pipe(
        Effect.provide(
@@ -140,7 +140,7 @@ index 112c7a88d9b3b26edf4ec5ba97b7b91857346724..c021831b68dd95d8064b37fef4a7085c
            Layer.provide(FetchHttpClient.layer),
            Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
            Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
-@@ -163,7 +185,7 @@ it.effect("removing a key while a catalog read is pending prevents the upload",
+@@ -170,7 +192,7 @@ it.effect("removing a key while a catalog read is pending prevents the upload",
    Effect.gen(function* () {
      const service = yield* CloudSpeech.CloudSpeech.pipe(
        Effect.provide(
@@ -150,12 +150,12 @@ index 112c7a88d9b3b26edf4ec5ba97b7b91857346724..c021831b68dd95d8064b37fef4a7085c
            Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
            Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
 diff --git a/apps/server/src/speech/CloudSpeech.ts b/apps/server/src/speech/CloudSpeech.ts
-index 3b7eab6b5242b107a78c5a69763ac6ecedb7a2df..c1c66fe317ed810449a373e12d1562d021ff1657 100644
+index 31702c80a87eef3e1e3a1d49db7539eaf1684513..96ccc1426939af69cea0e3700f5ebe3bf5dacc19 100644
 --- a/apps/server/src/speech/CloudSpeech.ts
 +++ b/apps/server/src/speech/CloudSpeech.ts
 @@ -25,7 +25,8 @@ import * as ServerSettings from "../serverSettings.ts";
  import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
- import { applySpeechAliases } from "./customWords.ts";
+ import { applySpeechAliases, speechRecognitionWords } from "./customWords.ts";
  import { removeSpeechFillerWords } from "./fillerWords.ts";
 -import { decodeSpeechPcm, SpeechInvalidAudioError } from "./SpeechService.ts";
 +import { decodeSpeechPcm, SAMPLE_RATE, SpeechInvalidAudioError } from "./SpeechService.ts";
@@ -163,7 +163,7 @@ index 3b7eab6b5242b107a78c5a69763ac6ecedb7a2df..c1c66fe317ed810449a373e12d1562d0
  
  const endpoints = {
    openai: { url: "https://api.openai.com/v1/audio/transcriptions", model: "gpt-transcribe" },
-@@ -120,139 +121,152 @@ export class CloudSpeech extends Context.Service<
+@@ -123,139 +124,152 @@ export class CloudSpeech extends Context.Service<
    }
  >()("t3/speech/CloudSpeech") {}
  
@@ -446,10 +446,10 @@ index 3b7eab6b5242b107a78c5a69763ac6ecedb7a2df..c1c66fe317ed810449a373e12d1562d0
 +
 +export const layer = Layer.effect(CloudSpeech, make).pipe(Layer.provide(BrainUsage.layer));
 diff --git a/apps/server/src/speech/SpeechService.ts b/apps/server/src/speech/SpeechService.ts
-index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c3246bfce 100644
+index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1b263b223 100644
 --- a/apps/server/src/speech/SpeechService.ts
 +++ b/apps/server/src/speech/SpeechService.ts
-@@ -7,6 +7,8 @@ import {
+@@ -8,6 +8,8 @@ import {
    type SpeechTranscriptionOptions,
  } from "@t3tools/contracts";
  import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -458,7 +458,7 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
  import * as Cause from "effect/Cause";
  import * as Clock from "effect/Clock";
  import * as Context from "effect/Context";
-@@ -37,7 +39,7 @@ import { SILERO_VAD } from "./silero.ts";
+@@ -42,7 +44,7 @@ import { SILERO_VAD } from "./silero.ts";
  import { isSpeechPlatformSupported } from "./platform.ts";
  import * as SpeechModelStore from "./SpeechModelStore.ts";
  
@@ -467,7 +467,7 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
  const MAX_SPEECH_DURATION_SECONDS = 5 * 60;
  export const MAX_SPEECH_BYTES =
    SAMPLE_RATE * Float32Array.BYTES_PER_ELEMENT * MAX_SPEECH_DURATION_SECONDS;
-@@ -129,6 +131,13 @@ export type SpeechStream = {
+@@ -134,6 +136,13 @@ export type SpeechStream = {
    readonly finish: Effect.Effect<string, SpeechError>;
  };
  
@@ -481,7 +481,7 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
  export class SpeechService extends Context.Service<
    SpeechService,
    {
-@@ -148,6 +157,8 @@ export class SpeechService extends Context.Service<
+@@ -155,6 +164,8 @@ export class SpeechService extends Context.Service<
      readonly startStream: (
        options: SpeechTranscriptionOptions,
      ) => Effect.Effect<SpeechStream, SpeechError, Scope.Scope>;
@@ -490,7 +490,7 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
      readonly updateAcceleration: (
        acceleration: SpeechAcceleration,
      ) => Effect.Effect<EnvironmentSpeechStatus, SpeechError>;
-@@ -174,6 +185,19 @@ const make = Effect.gen(function* () {
+@@ -181,6 +192,19 @@ const make = Effect.gen(function* () {
    const scope = yield* Effect.scope;
    const clock = yield* Clock.Clock;
    const now = () => clock.currentTimeMillisUnsafe();
@@ -510,7 +510,7 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
    const libc = platform === "linux" ? yield* HostProcess.LinuxLibc : undefined;
    const unsupportedReason = isSpeechPlatformSupported(platform, architecture, libc)
      ? null
-@@ -676,10 +700,13 @@ const make = Effect.gen(function* () {
+@@ -687,10 +711,13 @@ const make = Effect.gen(function* () {
                vocabularyFor(inference).length > 0 ? [] : customWords,
                dictionary,
              );
@@ -528,7 +528,7 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
              );
            }).pipe(
              Effect.ensuring(
-@@ -872,10 +899,13 @@ const make = Effect.gen(function* () {
+@@ -884,10 +911,13 @@ const make = Effect.gen(function* () {
            throw cause;
          }
          finished = true;
@@ -546,7 +546,7 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
          );
        }),
      };
-@@ -886,6 +916,7 @@ const make = Effect.gen(function* () {
+@@ -898,6 +928,7 @@ const make = Effect.gen(function* () {
      models: readModels,
      prepareModel,
      transcribe,
@@ -555,10 +555,10 @@ index b4ae198b9447d66be7e95462c90d9ca14cc8f6e0..ebfbe4cf2338a58e218939bbd41b8b3c
        const session = yield* Scope.fork(yield* Effect.scope);
        return yield* openStream(options).pipe(
 diff --git a/apps/server/src/textGeneration/AntigravityTextGeneration.ts b/apps/server/src/textGeneration/AntigravityTextGeneration.ts
-index b7e7cfaeb40e8efc3aaa302ea66645740af51bae..a9a6b8eb42eb1535ba627bc0de00d0e2c32eac54 100644
+index 364a97f3bd53d9a95f60bc39b5958505851352cb..c0dfc20ea5d20ad8d921200d58f28888639d8df0 100644
 --- a/apps/server/src/textGeneration/AntigravityTextGeneration.ts
 +++ b/apps/server/src/textGeneration/AntigravityTextGeneration.ts
-@@ -268,6 +268,9 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
+@@ -301,6 +301,9 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
                  },
                ],
              });
@@ -569,7 +569,7 @@ index b7e7cfaeb40e8efc3aaa302ea66645740af51bae..a9a6b8eb42eb1535ba627bc0de00d0e2
                return yield* Deferred.await(rejected);
              }
 diff --git a/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts b/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts
-index a7041d5d249e5ee10b81cc242882a67ca6465cd6..d44bd36dad701676f7156dea8c5a87088be57ac7 100644
+index 92cc86b89605456ef5cf7b1f85762a8a4200ec67..7742a1b19515dffbdd51cc4dff7b5252a6373f9c 100644
 --- a/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts
 +++ b/apps/server/src/textGeneration/ClaudeTextGeneration.test.ts
 @@ -20,6 +20,7 @@ import {
@@ -580,7 +580,7 @@ index a7041d5d249e5ee10b81cc242882a67ca6465cd6..d44bd36dad701676f7156dea8c5a8708
  import { makeClaudeTextGeneration } from "./ClaudeTextGeneration.ts";
  import { writeFakeCli } from "@t3tools/provider-testing/fakeCli";
  const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
-@@ -184,24 +185,42 @@ it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
+@@ -288,24 +289,42 @@ it.layer(layerClaudeTextGenerationTest)("ClaudeTextGeneration", (it) => {
        ),
    );
  
@@ -595,7 +595,7 @@ index a7041d5d249e5ee10b81cc242882a67ca6465cd6..d44bd36dad701676f7156dea8c5a8708
 +          structured_output: { title: "Reconnect failures" },
 +          usage: { input_tokens: 9, cache_read_input_tokens: 40, output_tokens: 6 },
 +        }),
-         stdinMustContain: "Additional instructions:\nUse two to four words.",
+         stdinMustContain: "Title instructions from the user:\nUse two to four words.",
        },
        (textGeneration) =>
 -        textGeneration.generateThreadTitle({
@@ -635,21 +635,21 @@ index a7041d5d249e5ee10b81cc242882a67ca6465cd6..d44bd36dad701676f7156dea8c5a8708
 +    );
 +  });
  
-   it.effect("runs Claude text generation with the configured CLAUDE_CONFIG_DIR", () =>
-     Effect.gen(function* () {
+   it.effect("sends image attachments to Claude, not only their metadata", () =>
+     withFakeClaudeEnv(
 diff --git a/apps/server/src/textGeneration/ClaudeTextGeneration.ts b/apps/server/src/textGeneration/ClaudeTextGeneration.ts
-index 34e7415b3c9f4edd11c3cf029f2a841deb2bca0e..10901b1ceba6a2e8a176ae036da6b4626af78b9a 100644
+index 0d1c5eb54f38e0a33995e957e118cd9b7d84f2c2..f665ecacaf73e3e370d8d491064816461474edb0 100644
 --- a/apps/server/src/textGeneration/ClaudeTextGeneration.ts
 +++ b/apps/server/src/textGeneration/ClaudeTextGeneration.ts
-@@ -32,6 +32,7 @@ import {
-   hasClaudeManagedMcpConfig,
-   makeClaudeEnvironment,
- } from "../provider/Drivers/ClaudeHome.ts";
+@@ -40,6 +40,7 @@ import { readClaudeUserSettings } from "../provider/Drivers/ClaudeSkills.ts";
+ import { readClaudeLaunchArgSettings } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
+ import { resolveAttachmentPath } from "../attachmentStore.ts";
+ import * as ServerConfig from "../config.ts";
 +import { cliTokens } from "../tessaya/BrainUsage.ts";
  
  const CLAUDE_TIMEOUT_MS = 180_000;
  /** `--tools` takes bare names; patterns go in the allow list. */
-@@ -328,6 +329,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
+@@ -473,6 +474,13 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
      const envelope = isClaudeOutputEnvelope(output)
        ? output
        : output.findLast((message) => message.type === "result");
@@ -664,10 +664,10 @@ index 34e7415b3c9f4edd11c3cf029f2a841deb2bca0e..10901b1ceba6a2e8a176ae036da6b462
      const decodeOutput = Schema.decodeEffect(outputSchemaJson);
      return yield* decodeOutput(envelope?.structured_output).pipe(
 diff --git a/apps/server/src/textGeneration/CodexTextGeneration.test.ts b/apps/server/src/textGeneration/CodexTextGeneration.test.ts
-index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3895a1255 100644
+index 11c4c2c3513066b42968da51903a44c72ea716de..c71730005b20ea39f5ef209e98594a567750e899 100644
 --- a/apps/server/src/textGeneration/CodexTextGeneration.test.ts
 +++ b/apps/server/src/textGeneration/CodexTextGeneration.test.ts
-@@ -5,6 +5,7 @@ import {
+@@ -6,6 +6,7 @@ import {
    type ServerProvider,
  } from "@t3tools/contracts";
  import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
@@ -675,7 +675,7 @@ index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3
  import * as ProviderInstallationGate from "../provider/ProviderInstallationGate.ts";
  import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
  import * as ServerSettings from "../serverSettings.ts";
-@@ -23,9 +24,10 @@ import * as Scope from "effect/Scope";
+@@ -24,9 +25,10 @@ import * as Scope from "effect/Scope";
  import { createModelSelection } from "@t3tools/shared/model";
  import { expect } from "vite-plus/test";
  
@@ -687,7 +687,7 @@ index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3
  import { makeProcessProbe, processProbeSource } from "../testUtils/processProbe.ts";
  import * as TextGeneration from "./TextGeneration.ts";
  import * as TextGenerators from "./TextGenerators.ts";
-@@ -190,6 +192,7 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
+@@ -196,6 +198,7 @@ function makeFakeCodexBinary(dir: string, input: FakeCodexInput) {
          "}",
          'if (check.stderr !== null) process.stderr.write(check.stderr + "\\n");',
          'if (outputPath !== null) NodeFS.writeFileSync(outputPath, check.output + "\\n");',
@@ -695,7 +695,7 @@ index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3
          "process.exitCode = check.exitCode;",
          "",
        ].join("\n"),
-@@ -317,8 +320,9 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
+@@ -323,8 +326,9 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
        ),
    );
  
@@ -707,7 +707,7 @@ index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3
        {
          output: JSON.stringify({ title: "Live title" }),
          models: ["gpt-6-astra"],
-@@ -326,16 +330,29 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
+@@ -332,16 +336,29 @@ it.layer(layerCodexTextGenerationTest)("CodexTextGeneration", (it) => {
          forbidArg: 'service_tier="priority"',
        },
        (textGeneration) =>
@@ -747,7 +747,7 @@ index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3
  
    it.effect("sends a configured custom model the managed snapshot leaves out", () =>
      withFakeCodexEnv(
-@@ -853,3 +870,86 @@ it.effect(
+@@ -934,3 +951,86 @@ it.effect(
        );
      }),
  );
@@ -835,10 +835,10 @@ index e6e43d606e27fac25ee89d0faedf923b8b0bc81c..99deeee37f3f8e44fbd9aba5f06806f3
 +  }),
 +);
 diff --git a/apps/server/src/textGeneration/CodexTextGeneration.ts b/apps/server/src/textGeneration/CodexTextGeneration.ts
-index 49c60166111baff98b5160f9f963ea41a8d3d963..2357ad1dc3c4b41d151f411c9883de20196de718 100644
+index d1db00f7690f865b97f6d19343c3c8eacd3f594e..42cd98d2eac18a561138346b0cf207634d37b53b 100644
 --- a/apps/server/src/textGeneration/CodexTextGeneration.ts
 +++ b/apps/server/src/textGeneration/CodexTextGeneration.ts
-@@ -61,6 +61,23 @@ const codexMcpServerOffFlags = (names: ReadonlyArray<string>) =>
+@@ -65,6 +65,23 @@ const codexMcpServerOffFlags = (names: ReadonlyArray<string>) =>
      .filter((name) => !name.includes(".") && !name.includes("="))
      .flatMap((name) => ["--config", `mcp_servers.${name}.enabled=false`]);
  const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
@@ -862,7 +862,7 @@ index 49c60166111baff98b5160f9f963ea41a8d3d963..2357ad1dc3c4b41d151f411c9883de20
  export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(function* (
    codexConfig: CodexSettings,
    environment?: NodeJS.ProcessEnv,
-@@ -319,6 +336,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
+@@ -323,6 +340,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
            // After launch args, so a launch arg's enabled=true cannot turn a server back on.
            ...codexMcpServerOffFlags(enabledMcpServers),
            "--ephemeral",
@@ -870,7 +870,7 @@ index 49c60166111baff98b5160f9f963ea41a8d3d963..2357ad1dc3c4b41d151f411c9883de20
            "--skip-git-repo-check",
            "-s",
            "read-only",
-@@ -379,6 +397,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
+@@ -388,6 +406,7 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
                : `Codex CLI command failed with code ${exitCode}.`,
          });
        }
@@ -879,7 +879,7 @@ index 49c60166111baff98b5160f9f963ea41a8d3d963..2357ad1dc3c4b41d151f411c9883de20
  
      const cleanup = Effect.all([removeTempFileDir(schemaPath), removeTempFileDir(outputPath)], {
 diff --git a/apps/server/src/textGeneration/TextGeneration.ts b/apps/server/src/textGeneration/TextGeneration.ts
-index 818afb4fae553213aac44a85e098304e6567b3bf..05b06fd3cecd0b749553020fa48197f06efc131b 100644
+index 0436c552a6b7b7d5269a419f2acb3db1388683e2..ee5a25c392b5796ccb6e5ba983b280a9b26fd4aa 100644
 --- a/apps/server/src/textGeneration/TextGeneration.ts
 +++ b/apps/server/src/textGeneration/TextGeneration.ts
 @@ -8,6 +8,8 @@ import {
@@ -955,7 +955,7 @@ index 818afb4fae553213aac44a85e098304e6567b3bf..05b06fd3cecd0b749553020fa48197f0
          selection,
        );
      }
-@@ -155,7 +196,7 @@ export const make = Effect.gen(function* () {
+@@ -169,7 +210,7 @@ export const make = Effect.gen(function* () {
      return yield* installationGate.execute(
        selection.instanceId,
        resolveInstance(registry, operation, selection.instanceId).pipe(
@@ -1037,20 +1037,20 @@ index ef7860c84dbc9a01757b58ae918962c0c7f3c258..b55fa7b45b9d277558d2b86eca0f1603
          if (message.stop_reason === "max_tokens") {
            return Effect.fail(
 diff --git a/apps/server/src/usage/UsageService.test.ts b/apps/server/src/usage/UsageService.test.ts
-index 81f3d1ec289aa156e0aed3bc079936a9148b3347..e6856d796614e3146128dbeb83761727e8f86434 100644
+index 850b74984de7b14c220638a734726c900c04b0fc..d34c45639494737d65b785f9d263356ee133176b 100644
 --- a/apps/server/src/usage/UsageService.test.ts
 +++ b/apps/server/src/usage/UsageService.test.ts
-@@ -51,6 +51,9 @@ import * as AntigravityUsage from "../provider/Drivers/AntigravityUsage.ts";
- import * as ProviderHostLive from "../provider/ProviderHostLive.ts";
+@@ -53,6 +53,9 @@ import * as ProviderHostLive from "../provider/ProviderHostLive.ts";
  import { totalTokens, type UsageRecord } from "@t3tools/provider-core/server/usage";
  import * as UsageService from "./UsageService.ts";
+ import { DESKTOP_HOST_SCOPE_ENV, physicalSourceIdOf } from "./usageTranscriptReader.ts";
 +import * as BrainUsage from "../tessaya/BrainUsage.ts";
 +import * as TessayaDatabase from "../tessaya/TessayaDatabase.ts";
 +import * as TessayaRecordService from "../tessaya/TessayaRecordService.ts";
  import * as MuseSdk from "../../../../packages/provider-muse/src/server/sdk.ts";
  import { MuseUsageHome } from "@t3tools/provider-muse/server";
  import { makeScanCacheWriter, SCAN_CACHE_FILE_NAME } from "./usageScanCache.ts";
-@@ -2032,6 +2035,72 @@ describe("UsageService", () => {
+@@ -2353,6 +2356,72 @@ describe("UsageService", () => {
        }),
    );
  
@@ -1124,7 +1124,7 @@ index 81f3d1ec289aa156e0aed3bc079936a9148b3347..e6856d796614e3146128dbeb83761727
      Effect.gen(function* () {
        const { settings, home } = yield* setup;
 diff --git a/apps/server/src/usage/UsageService.ts b/apps/server/src/usage/UsageService.ts
-index a55532913c3c614039105937b56e05d68c6ca90b..ffccbafd11e5b0fe85e25f46079209396e1b7814 100644
+index 3ff200426665150fa150e11202fb8ed94fa034e2..321ddc7fe80c9033cfccd2032297351d3841e54f 100644
 --- a/apps/server/src/usage/UsageService.ts
 +++ b/apps/server/src/usage/UsageService.ts
 @@ -39,6 +39,7 @@ import type {
@@ -1132,18 +1132,18 @@ index a55532913c3c614039105937b56e05d68c6ca90b..ffccbafd11e5b0fe85e25f4607920939
    UsageRecord,
  } from "@t3tools/provider-core/server/usage";
 +import { BrainUsage } from "../tessaya/BrainUsage.ts";
- import { canonicalModelFilter, resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
- import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
  import {
-@@ -160,6 +161,7 @@ export const make = Effect.gen(function* () {
-   const hostEnvironment = yield* HostProcess.Environment;
+   canonicalModelFilter,
+   resolveModelAliases,
+@@ -196,6 +197,7 @@ export const make = Effect.gen(function* () {
+     });
    const hostname = yield* HostProcess.Hostname;
    const readerContext = yield* Effect.context<BuiltInUsageReadersEnv>();
 +  const ledger = yield* Effect.serviceOption(BrainUsage);
  
    const fileCache: ScanCache = new Map();
    // Reads from concurrent windows can still hold the original record after it is corrected.
-@@ -1046,6 +1048,19 @@ export const make = Effect.gen(function* () {
+@@ -1163,6 +1165,19 @@ export const make = Effect.gen(function* () {
        });
      }
  
@@ -1160,14 +1160,14 @@ index a55532913c3c614039105937b56e05d68c6ca90b..ffccbafd11e5b0fe85e25f4607920939
 +      );
 +    }
 +
-     const pruned = pruneScanCache(fileCache, retentionCutoffMs);
-     if (pruned > 0) {
-       cacheDirty = true;
+     yield* settingsService
+       .withSettingsSnapshot((currentSettings) =>
+         Effect.sync(() => {
 diff --git a/apps/server/src/usage/usageTranscriptReader.test.ts b/apps/server/src/usage/usageTranscriptReader.test.ts
-index f4cb72ec1e25caba563d0646233924e12994938f..d24ab2aa5c5f6e3ddfd1cd9a2acf6379ba4e4905 100644
+index 1896991a9b8351ef6c9783c05409faf52d4ad893..409f4e2849ed6286847012ff7cd889b3ea46b3fb 100644
 --- a/apps/server/src/usage/usageTranscriptReader.test.ts
 +++ b/apps/server/src/usage/usageTranscriptReader.test.ts
-@@ -89,6 +89,10 @@ describe("compressed transcripts", () => {
+@@ -91,6 +91,10 @@ describe("compressed transcripts", () => {
      await NodeFSP.writeFile(NodePath.join(nested, "unrelated.zst"), "ignored");
      await NodeFSP.writeFile(NodePath.join(nested, "partial.jsonl.zst.tmp"), "ignored");
      await NodeFSP.utimes(old, 1, 1);
@@ -1179,10 +1179,10 @@ index f4cb72ec1e25caba563d0646233924e12994938f..d24ab2aa5c5f6e3ddfd1cd9a2acf6379
      const listed = await listTranscriptFiles(dir, Date.parse("2026-01-01T00:00:00Z"));
      assert.deepStrictEqual(
 diff --git a/apps/server/src/usage/usageTranscriptReader.ts b/apps/server/src/usage/usageTranscriptReader.ts
-index a4b10a4df2045b1ddac9bff431ae38e5b28f8929..f9e4c296be94031ba865214b7b444f2e382796d6 100644
+index 263f6701a47c0050f8efe6e83bd7523513ad5e23..cc3298560672ce425c64298a8f673ae1b164de50 100644
 --- a/apps/server/src/usage/usageTranscriptReader.ts
 +++ b/apps/server/src/usage/usageTranscriptReader.ts
-@@ -12,6 +12,7 @@ import type {
+@@ -13,6 +13,7 @@ import type {
    TranscriptUsageFormat,
    UsageRecord,
  } from "@t3tools/provider-core/server/usage";
@@ -1190,7 +1190,7 @@ index a4b10a4df2045b1ddac9bff431ae38e5b28f8929..f9e4c296be94031ba865214b7b444f2e
  import * as Option from "effect/Option";
  import * as Schema from "effect/Schema";
  
-@@ -105,7 +106,7 @@ export async function listTranscriptFiles(
+@@ -106,7 +107,7 @@ export async function listTranscriptFiles(
      const found = await Promise.all(
        entries.map((entry) => {
          const child = NodePath.join(dir, entry.name);
@@ -1219,7 +1219,7 @@ index 5154b948b0ad40e937f8d861bd05c9bb6b0b4058..c9257de615aa9e0f3041b1ba133f5b83
      Schema.Struct({ stopReason: AcpSchemaV1.StopReason }),
      AcpSchema.PromptResponse,
 diff --git a/packages/provider-core/src/server/textGenerationOperations.ts b/packages/provider-core/src/server/textGenerationOperations.ts
-index 60204a2d82c18f6e495443a3c0d9db4a1b3c2d8e..f6b49d3d2e9911a32194d6b95aeef401c01f9b6d 100644
+index 5e7bd0caab0d452ecfd0b3508240b261d47eb83e..c107b5e0eb20951ae629450ab497c968320f5813 100644
 --- a/packages/provider-core/src/server/textGenerationOperations.ts
 +++ b/packages/provider-core/src/server/textGenerationOperations.ts
 @@ -1,3 +1,4 @@
@@ -1227,7 +1227,7 @@ index 60204a2d82c18f6e495443a3c0d9db4a1b3c2d8e..f6b49d3d2e9911a32194d6b95aeef401
  import * as Effect from "effect/Effect";
  import * as Schema from "effect/Schema";
  
-@@ -53,6 +54,58 @@ export const withoutInvestigation =
+@@ -59,6 +60,58 @@ export const withoutInvestigation =
        ? Effect.fail(investigationUnsupported(request.operation, provider))
        : run(request);
  
@@ -1287,35 +1287,35 @@ index 60204a2d82c18f6e495443a3c0d9db4a1b3c2d8e..f6b49d3d2e9911a32194d6b95aeef401
    request: Pick<Request<S>, "operation" | "outputSchema">,
    provider: string,
 diff --git a/packages/provider-fx/src/server/adapter.ts b/packages/provider-fx/src/server/adapter.ts
-index b48293f4fb98650989602949c6d6ad7c8a205440..dee09fbd3800f3402834b7c858dede1cf7e3c3c9 100644
+index d4a94e1bf16d608a1b2944d457f83784d88b033d..c0edd4c589afe63b52098fd5790242f2625fa532 100644
 --- a/packages/provider-fx/src/server/adapter.ts
 +++ b/packages/provider-fx/src/server/adapter.ts
-@@ -188,6 +188,8 @@ function makeFxAcpAdapterFlavor(options: FxAdapterV2Options): AcpAdapterV2Flavor
-     sessionModeForPolicy: fxSessionModeForPolicy,
+@@ -228,6 +228,8 @@ function makeFxAcpAdapterFlavor(options: FxAdapterV2Options): AcpAdapterV2Flavor
      permissionDisposition: fxPermissionDisposition,
      extractSubagentUpdate: extractFxSubagentUpdate,
+     isCancelledToolCall: fxToolCallWasCancelled,
 +    // Recorded fx turns report each prompt's own counters (turn 2 output does not include turn 1).
 +    reportsPerTurnPromptUsage: true,
      ...(options.assertComplete === undefined ? {} : { assertComplete: options.assertComplete }),
    };
  }
 diff --git a/packages/provider-grok/src/server/adapter.ts b/packages/provider-grok/src/server/adapter.ts
-index 7340ad213bed14e1c371aee98ebdfc926fff3929..ef42b2c019111d9dfdd5a397ef9b00f9b805e267 100644
+index 662170848a1ac7effaed561d58593f46f081a36d..116439e8cc2233d80a462662d1dab1aff19aa662 100644
 --- a/packages/provider-grok/src/server/adapter.ts
 +++ b/packages/provider-grok/src/server/adapter.ts
-@@ -328,6 +328,7 @@ export function makeGrokAcpAdapterFlavor(
-     // Grok accepts image blocks despite advertising promptCapabilities.image:false.
-     supportsImagePrompts: true,
+@@ -382,6 +382,7 @@ export function makeGrokAcpAdapterFlavor(
      supportsCompaction: true,
+     steering: grokSteering,
+     extractContextUsage: extractGrokContextUsage,
 +    reportsPerTurnPromptUsage: true,
      // Grok expands only a leading `/name`, while the `$` picker inserts `$name` from the
      // `grok inspect` catalog. Ask that catalog again so other `$` text is left alone.
      rewriteUserText: (text, turnInput) => {
 diff --git a/packages/provider-grok/src/server/textGeneration.ts b/packages/provider-grok/src/server/textGeneration.ts
-index 61a6b2d482f531a4868348e99e538066d6999fd6..11375a2c3a3c674f70a0b47305ed89bc8b63cb9e 100644
+index a5307709c3fbf145f14ad5a0a645d492615fcae2..4e735103c8270962e2f17241f7b2533ea46d32ef 100644
 --- a/packages/provider-grok/src/server/textGeneration.ts
 +++ b/packages/provider-grok/src/server/textGeneration.ts
-@@ -79,9 +79,13 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
+@@ -85,9 +85,13 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
                cause,
              }),
          });
@@ -1331,7 +1331,7 @@ index 61a6b2d482f531a4868348e99e538066d6999fd6..11375a2c3a3c674f70a0b47305ed89bc
          Effect.timeoutOption(GROK_TIMEOUT_MS),
          Effect.flatMap(
 diff --git a/packages/provider-grok/src/server/xaiAcpExtension.ts b/packages/provider-grok/src/server/xaiAcpExtension.ts
-index 7181d1927923c92bd22280852e1bd5d2cf8230ef..78bb990e2498e14a551e4a62b794c0cc3f3b2921 100644
+index cb74c645e12eaf3af7bdae516c7b2f508603b30f..bcab90feeb2a8432021a7d8f585621aba7f08aa0 100644
 --- a/packages/provider-grok/src/server/xaiAcpExtension.ts
 +++ b/packages/provider-grok/src/server/xaiAcpExtension.ts
 @@ -3,6 +3,7 @@ import * as Cause from "effect/Cause";
@@ -1366,7 +1366,7 @@ index 7181d1927923c92bd22280852e1bd5d2cf8230ef..78bb990e2498e14a551e4a62b794c0cc
    };
  }
  
-@@ -1286,6 +1290,33 @@ function promptIdFromResponse(response: EffectAcpSchema.PromptResponse): string
+@@ -1288,6 +1292,33 @@ function promptIdFromResponse(response: EffectAcpSchema.PromptResponse): string
    return typeof promptId === "string" && promptId.length > 0 ? promptId : undefined;
  }
  
@@ -1400,7 +1400,7 @@ index 7181d1927923c92bd22280852e1bd5d2cf8230ef..78bb990e2498e14a551e4a62b794c0cc
  function normalizeXAiStopReason(value: string | undefined): EffectAcpSchema.StopReason {
    switch (value) {
      case "cancelled":
-@@ -1313,6 +1344,9 @@ function promptResponseFromXAi(
+@@ -1315,6 +1346,9 @@ function promptResponseFromXAi(
    if (notification.agentResult !== undefined) {
      meta.agentResult = notification.agentResult as Schema.Json;
    }
@@ -1410,7 +1410,7 @@ index 7181d1927923c92bd22280852e1bd5d2cf8230ef..78bb990e2498e14a551e4a62b794c0cc
    return {
      stopReason,
      _meta: meta,
-@@ -1582,6 +1616,7 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
+@@ -1584,6 +1618,7 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
            ),
            Deferred.await(fallback.deferred),
          ).pipe(
@@ -1419,10 +1419,10 @@ index 7181d1927923c92bd22280852e1bd5d2cf8230ef..78bb990e2498e14a551e4a62b794c0cc
              rememberCompletedXAiPromptId(completedXAiPromptIdsRef, response, fallback.promptId),
            ),
 diff --git a/packages/provider-opencode/src/server/textGeneration.ts b/packages/provider-opencode/src/server/textGeneration.ts
-index bbb02d36e6323e1fa9e3764e6724a3989a5d025b..66071f3cbaa9f1b08598ad4f3209f9cd72c80e3b 100644
+index 05b0d0d2c4a236921dbced8aecdd56e65f0f7827..58e595d469aa64ab896c711f4433fb2af6128e51 100644
 --- a/packages/provider-opencode/src/server/textGeneration.ts
 +++ b/packages/provider-opencode/src/server/textGeneration.ts
-@@ -300,6 +300,17 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
+@@ -315,6 +315,17 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
              cause: promptError,
            });
          }
@@ -1441,10 +1441,10 @@ index bbb02d36e6323e1fa9e3764e6724a3989a5d025b..66071f3cbaa9f1b08598ad4f3209f9cd
          const rawText = getOpenCodeTextResponse(responseParts);
          if (rawText.length === 0) {
 diff --git a/packages/provider-opencode/src/server/v2/textGeneration.ts b/packages/provider-opencode/src/server/v2/textGeneration.ts
-index 64c8293771954bd879c53ded7a465cb839e95e01..e68fdf572258d188b06ed00898ced7cccb45ec15 100644
+index c7664c630508e99462684c054379aa7efad0e756..619ede29a6bd966389d9500403ba06d1cbc3fc03 100644
 --- a/packages/provider-opencode/src/server/v2/textGeneration.ts
 +++ b/packages/provider-opencode/src/server/v2/textGeneration.ts
-@@ -76,6 +76,19 @@ const runOnServer = Effect.fn("Opencode2TextGeneration.runOnServer")(function* (
+@@ -75,6 +75,19 @@ const runOnServer = Effect.fn("Opencode2TextGeneration.runOnServer")(function* (
          case "session.text.ended":
            texts.set(`${event.data.assistantMessageID}:${event.data.ordinal}`, event.data.text);
            return Effect.void;
@@ -1465,10 +1465,10 @@ index 64c8293771954bd879c53ded7a465cb839e95e01..e68fdf572258d188b06ed00898ced7cc
            return client.permission
              .reply({
 diff --git a/packages/provider-pi/src/server/adapter.ts b/packages/provider-pi/src/server/adapter.ts
-index 2882a709a684732bb1ee2d9367fa857dbccfda6d..631080784f50d91617b6aea1cfe9b6a6d2755d30 100644
+index 7d117bcdfaa922c698a981ced23e158741f8073d..a2cf9174562e8a3437aa63d5f3e0f6e77a69bab5 100644
 --- a/packages/provider-pi/src/server/adapter.ts
 +++ b/packages/provider-pi/src/server/adapter.ts
-@@ -23,6 +23,7 @@ import {
+@@ -25,6 +25,7 @@ import {
    type ProviderInstanceId,
    type MessageId,
    type OrchestrationV2ProviderTurnTokenUsage,
@@ -1476,7 +1476,7 @@ index 2882a709a684732bb1ee2d9367fa857dbccfda6d..631080784f50d91617b6aea1cfe9b6a6
  } from "@t3tools/contracts";
  import { PiSettings } from "../settings.ts";
  import * as Cause from "effect/Cause";
-@@ -380,6 +381,15 @@ interface ActivePiTurn {
+@@ -398,6 +399,15 @@ interface ActivePiTurn {
    stopTreeRefs?: PiTurnTreeRefs | null;
    /** The provider/model Pi reported on its latest assistant message. */
    reportedModel?: string;
@@ -1492,8 +1492,8 @@ index 2882a709a684732bb1ee2d9367fa857dbccfda6d..631080784f50d91617b6aea1cfe9b6a6
  }
  
  interface PiTurnTreeRefs {
-@@ -885,6 +895,26 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
-         };
+@@ -1054,6 +1064,26 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+         return { usedTokens, maxTokens, ...messageUsage, updatedAt: DateTime.formatIso(updatedAt) };
        };
  
 +      const piTurnTokenUsage = (turn: ActivePiTurn, complete: boolean): TurnTokenUsage => {
@@ -1516,10 +1516,10 @@ index 2882a709a684732bb1ee2d9367fa857dbccfda6d..631080784f50d91617b6aea1cfe9b6a6
 +        };
 +      };
 +
-       const readTokenUsage = (fallbackUsedTokens: number | null, updatedAt: DateTime.Utc) =>
+       const readTokenUsage = (turn: ActivePiTurn, updatedAt: DateTime.Utc) =>
          request({ type: "get_session_stats" }, 2_000).pipe(
-           Effect.map((stats) => tokenUsageFromStats(stats, fallbackUsedTokens, updatedAt)),
-@@ -1291,6 +1321,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+           Effect.map((stats) =>
+@@ -1522,6 +1552,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
            },
          });
          if (toolName === "subagent") {
@@ -1527,15 +1527,15 @@ index 2882a709a684732bb1ee2d9367fa857dbccfda6d..631080784f50d91617b6aea1cfe9b6a6
            yield* emitSubagentTasks(turn, toolCallId, resultRecord, completed);
          }
        });
-@@ -1768,6 +1799,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
-               : { nativeTurnRef: treeRefs.nativeTurnRef }),
+@@ -2139,6 +2170,7 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+               : { nativeThreadRef: state.providerThread.nativeThreadRef }),
              status: interrupted ? "interrupted" : failure !== null ? "failed" : "completed",
              completedAt,
 +            turnTokenUsage: piTurnTokenUsage(turn, !interrupted && failure === null),
              ...(tokenUsage === undefined ? {} : { tokenUsage }),
              ...(turn.reportedModel === undefined ? {} : { model: turn.reportedModel }),
            },
-@@ -2029,6 +2061,24 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
+@@ -2423,6 +2455,24 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
              if (reportedProvider && reportedModelId) {
                turn.reportedModel = `${reportedProvider}/${reportedModelId}`;
              }
@@ -1560,20 +1560,20 @@ index 2882a709a684732bb1ee2d9367fa857dbccfda6d..631080784f50d91617b6aea1cfe9b6a6
              if (recordString(message, "stopReason") === "error" && turn.failure === null) {
                turn.failure = makeProviderFailure({
                  message: recordString(message, "errorMessage") ?? "Pi reported a model error.",
-@@ -2914,6 +2964,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
-                 compactCommand !== null || (payload?.message.trimStart().startsWith("/") ?? false),
+@@ -3586,6 +3636,8 @@ export const makePiAdapterV2 = Effect.fn("makePiAdapterV2")(function* (
                latestCompactionAfterTokens: null,
                lastLiveUsedTokens: null,
+               lastMessageUsage: undefined,
 +              usage: null,
 +              sawSubagent: false,
                settleProbeGeneration: 0,
                settleWhenIdle: false,
-               sawCompaction: false,
+               compactionCancelled: false,
 diff --git a/packages/provider-pi/src/server/textGeneration.ts b/packages/provider-pi/src/server/textGeneration.ts
-index 8b75b3c3c0bad01fe2cd03a6129fc50a7e5eed33..01dfb738b7911fe057528f515c38feb6926d4011 100644
+index be5df8249e5b0a942adeccf9e274ab1abd3dcc62..22c7cd5a6e924dcf57b1e449b7ca0065225204cf 100644
 --- a/packages/provider-pi/src/server/textGeneration.ts
 +++ b/packages/provider-pi/src/server/textGeneration.ts
-@@ -105,6 +105,19 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function*
+@@ -145,6 +145,19 @@ export const makePiTextGeneration = Effect.fn("makePiTextGeneration")(function*
                piRecordString(message, "stopReason") === "error"
                  ? piTurnErrorDetail(piRecordString(message, "errorMessage"))
                  : undefined;

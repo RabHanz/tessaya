@@ -1,8 +1,8 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index b2ad65cf053741a30cda0333ad86ace107ab7ad6..00f0be9616faa9cb4194b4b7dd24bdc9512ba4d9 100644
+index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2e006ad16 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
-@@ -92,6 +92,19 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
+@@ -102,6 +102,19 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
  import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
  import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
  import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
@@ -21,99 +21,114 @@ index b2ad65cf053741a30cda0333ad86ace107ab7ad6..00f0be9616faa9cb4194b4b7dd24bdc9
 +import { SettingsPresenceRouteScreen } from "./features/settings/SettingsPresenceRouteScreen";
  import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
  import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
- import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
-@@ -208,6 +221,71 @@ const SETTINGS_SCREENS = {
+ import {
+@@ -217,6 +230,19 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
+   ConnectOnboarding: msg("Set up {product}", { product: "T3 Connect" }),
+   Connections: msg("Environments"),
+   ConnectionsNew: msg("Add Environment"),
++  SettingsHome: msg("Home"),
++  SettingsHardware: msg("Tessels"),
++  SettingsTeam: msg("Team"),
++  SettingsPersonas: msg("Personas"),
++  SettingsForgotten: msg("Recently forgotten"),
++  SettingsUpcoming: msg("Coming up"),
++  SettingsCast: msg("Cast"),
++  SettingsPulse: msg("Pulse"),
++  SettingsHealth: msg("Health"),
++  SettingsBrainUsage: msg("Brain usage"),
++  SettingsActivity: msg("Activity"),
++  SettingsMood: msg("Her mood"),
++  SettingsPresence: msg("Presence"),
+ };
+ 
+ // Thread settings keep the Duo's vertical bar so cancel, search, filter and confirm sit in the
+@@ -290,6 +316,71 @@ const SETTINGS_SCREENS = {
      linking: "settings/provider-accounts",
-     options: settingsPage("Providers"),
+     options: settingsPage(),
    }),
 +  SettingsHome: createNativeStackScreen({
 +    screen: SettingsHomeRouteScreen,
 +    linking: "settings/home",
-+    options: settingsPage("Home"),
++    options: settingsPage(),
 +  }),
 +  SettingsHardware: createNativeStackScreen({
 +    screen: SettingsHardwareRouteScreen,
 +    linking: "settings/hardware",
-+    options: settingsPage("Tessels"),
++    options: settingsPage(),
 +  }),
 +  SettingsTeam: createNativeStackScreen({
 +    screen: SettingsTeamRouteScreen,
 +    linking: "settings/team",
-+    options: settingsPage("Team"),
++    options: settingsPage(),
 +  }),
 +  SettingsPersonas: createNativeStackScreen({
 +    screen: SettingsPersonasRouteScreen,
 +    linking: "settings/personas",
-+    options: settingsPage("Personas"),
++    options: settingsPage(),
 +  }),
 +  SettingsForgotten: createNativeStackScreen({
 +    screen: SettingsForgottenRouteScreen,
 +    linking: "settings/forgotten",
-+    options: settingsPage("Recently forgotten"),
++    options: settingsPage(),
 +  }),
 +  SettingsUpcoming: createNativeStackScreen({
 +    screen: SettingsUpcomingRouteScreen,
 +    linking: "settings/upcoming",
-+    options: settingsPage("Coming up"),
++    options: settingsPage(),
 +  }),
 +  SettingsCast: createNativeStackScreen({
 +    screen: SettingsCastRouteScreen,
 +    linking: "settings/cast",
-+    options: settingsPage("Cast"),
++    options: settingsPage(),
 +  }),
 +  SettingsPulse: createNativeStackScreen({
 +    screen: SettingsPulseRouteScreen,
 +    linking: "settings/pulse",
-+    options: settingsPage("Pulse"),
++    options: settingsPage(),
 +  }),
 +  SettingsHealth: createNativeStackScreen({
 +    screen: SettingsHealthRouteScreen,
 +    linking: "settings/health",
-+    options: settingsPage("Health"),
++    options: settingsPage(),
 +  }),
 +  SettingsBrainUsage: createNativeStackScreen({
 +    screen: SettingsBrainUsageRouteScreen,
 +    linking: "settings/brain-usage",
-+    options: settingsPage("Brain usage"),
++    options: settingsPage(),
 +  }),
 +  SettingsActivity: createNativeStackScreen({
 +    screen: SettingsActivityRouteScreen,
 +    linking: "settings/activity",
-+    options: settingsPage("Activity"),
++    options: settingsPage(),
 +  }),
 +  SettingsMood: createNativeStackScreen({
 +    screen: SettingsMoodRouteScreen,
 +    linking: "settings/mood",
-+    options: settingsPage("Her mood"),
++    options: settingsPage(),
 +  }),
 +  SettingsPresence: createNativeStackScreen({
 +    screen: SettingsPresenceRouteScreen,
 +    linking: "settings/presence",
-+    options: settingsPage("Presence"),
++    options: settingsPage(),
 +  }),
    SettingsEnvironmentMaintenance: createNativeStackScreen({
      screen: SettingsEnvironmentMaintenanceRouteScreen,
      linking: "settings/maintenance",
-@@ -732,7 +810,13 @@ const RootStackConfig = createWorkspaceStackNavigator({
+@@ -865,7 +956,8 @@ const RootStackConfig = createWorkspaceStackNavigator({
      ConnectionsNew: createNativeStackScreen({
        screen: ConnectionsNewRouteScreen,
        linking: "connections/new",
--      options: sheetRoute({ title: "Add Environment", detent: 0.55, maxDetent: 0.7 }),
+-      options: sheetRoute({ detent: 0.55, maxDetent: 0.7 }),
 +      // Android's formSheet opened it collapsed behind the nav bar, so pairing could not finish (20 Nov): a card, as Environments.
-+      options: sheetRoute({
-+        title: "Add Environment",
-+        detent: 0.55,
-+        maxDetent: 0.7,
-+        android: "card",
-+      }),
++      options: sheetRoute({ detent: 0.55, maxDetent: 0.7, android: "card" }),
      }),
      NotFound: createNativeStackScreen({
        screen: NotFoundScreen,
 diff --git a/apps/mobile/src/components/ui/AppSymbol.android.tsx b/apps/mobile/src/components/ui/AppSymbol.android.tsx
-index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87799fc11f 100644
+index 5333af3ea577abda416b1a386bdd77b393e6066a..50d96919343e4be74495dbf7f8ad10599fab9f6b 100644
 --- a/apps/mobile/src/components/ui/AppSymbol.android.tsx
 +++ b/apps/mobile/src/components/ui/AppSymbol.android.tsx
-@@ -29,6 +29,7 @@ import IconBrain from "@tabler/icons-react-native/IconBrain";
+@@ -30,6 +30,7 @@ import IconBrain from "@tabler/icons-react-native/IconBrain";
  import IconCamera from "@tabler/icons-react-native/IconCamera";
  import IconCar from "@tabler/icons-react-native/IconCar";
  import IconChartBar from "@tabler/icons-react-native/IconChartBar";
@@ -121,7 +136,7 @@ index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87
  import IconCheck from "@tabler/icons-react-native/IconCheck";
  import IconCloud from "@tabler/icons-react-native/IconCloud";
  import IconChevronDown from "@tabler/icons-react-native/IconChevronDown";
-@@ -178,6 +179,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
+@@ -182,6 +183,7 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
    camera: IconCamera,
    car: IconCar,
    "chart.bar.xaxis": IconChartBar,
@@ -130,7 +145,7 @@ index 7aaeac554417aacedd4b16af4ca610469096d188..0aae5f8476e22b891bf25ca08bcf5a87
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c267884336 100644
+index 2a0edba8a3cead7921dfad513829a6573ae60952..d57a52c5b412b80abd851c1612b910bb2c124dcd 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 @@ -17,7 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
@@ -151,16 +166,16 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c2
  import { SettingsScreen } from "./components/SettingsScreen";
  import type { SettingsPageTarget } from "./components/settings-page-targets";
  import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
-@@ -96,7 +98,7 @@ function TranslatedSettingsListScreen(props: {
+@@ -81,7 +83,7 @@ export function SettingsListScreen(props: {
      <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
        <View className="flex-1 bg-screen">
          <SettingsScreen
 -          title={gt("Settings")}
-+          title="More"
++          title={gt("More")}
            workspaceRoot={props.sidebar}
            menus={[environmentMenu]}
            search={
-@@ -191,13 +193,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
+@@ -177,13 +179,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
    const bottomSafeArea = useNativeColumnLayoutMetrics()?.safeArea.bottom ?? insets.bottom;
    const workspace = useWorkspaceTabs();
    const query = workspace?.state.tabs.settings.query ?? "";
@@ -176,8 +191,8 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c2
 +      ...indexSections.slice(3),
      ],
      query,
-   );
-@@ -258,6 +260,9 @@ function useSettingsIndexSections(): SettingsListSection[] {
+     m,
+@@ -245,6 +247,9 @@ function useSettingsIndexSections(): SettingsListSection[] {
            members: scopedProjectMembers,
          })
        : (selectedProject?.label ?? gt("Unavailable project"));
@@ -187,7 +202,7 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c2
    const page = (
      target: SettingsPageTarget,
      icon: SettingsListRow["icon"],
-@@ -266,36 +271,40 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -253,31 +258,40 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
@@ -195,24 +210,19 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c2
 +  // More, in three groups (phone redesign v2): her, his work, this phone. Personas and the house have their own tabs.
    return [
      {
-+      title: "Her",
++      title: gt("Her"),
        rows: [
 -        page("SettingsOrganization", "gearshape", gt("General")),
 -        page("SettingsAppearance", "paintbrush", gt("Appearance")),
--        page("SettingsLanguage", "globe", gt("Language"), {
--          value: SUPPORTED_LOCALES.includes(language)
--            ? nativeLanguageName(language)
--            : gt("System default"),
--        }),
 -        page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
 -        ...(navigationCustomizationAvailable()
 -          ? [page("SettingsNavigation", "line.3.horizontal", gt("Navigation tabs"))]
 -          : []),
 -        page("SettingsKeyboard", "keyboard", gt("Keyboard")),
 -        page("SettingsVoice", "mic", gt("Voice")),
-+        serverPage("SettingsUpcoming", "timer", "Coming up"),
-+        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
-+        serverPage("SettingsMood", "face.smiling", "Her mood"),
++        serverPage("SettingsUpcoming", "timer", gt("Coming up")),
++        serverPage("SettingsForgotten", "arrow.uturn.backward", gt("Recently forgotten")),
++        serverPage("SettingsMood", "face.smiling", gt("Her mood")),
 +        // only where his server has a private layer; it opens over everything, after Face ID or his PIN
 +        ...(layerKnown === false || layerKnown === null
 +          ? []
@@ -220,23 +230,23 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c2
 +              {
 +                id: "private",
 +                icon: "eye.slash" as const,
-+                label: "Private",
-+                value: "Locked",
++                label: gt("Private"),
++                value: gt("Locked"),
 +                onPress: () => setPrivateShown(true),
 +              },
 +            ]),
-+        serverPage("SettingsPulse", "bolt.circle", "Pulse"),
-+        serverPage("SettingsTeam", "person.2", "Team"),
-+        serverPage("SettingsCast", "person.crop.circle", "Cast"),
++        serverPage("SettingsPulse", "bolt.circle", gt("Pulse")),
++        serverPage("SettingsTeam", "person.2", gt("Team")),
++        serverPage("SettingsCast", "person.crop.circle", gt("Cast")),
        ],
      },
      {
 -      title: gt("Agents"),
-+      title: "Your work",
++      title: gt("Your work"),
        rows: [
 +        ...overflowRows,
-+        serverPage("SettingsActivity", "clock", "Activity"),
-+        serverPage("SettingsBrainUsage", "chart.bar.xaxis", "Brain usage"),
++        serverPage("SettingsActivity", "clock", gt("Activity")),
++        serverPage("SettingsBrainUsage", "chart.bar.xaxis", gt("Brain usage")),
          serverPage("SettingsProviderAccounts", "person.crop.circle", gt("Providers")),
          serverPage("SettingsThreads", "text.bubble", gt("Threads")),
          page("SettingsScheduledTasks", "clock", gt("Scheduled tasks")),
@@ -248,28 +258,30 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c2
          page(
            "SettingsProjectOverview",
            "folder",
-@@ -310,6 +319,48 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -292,6 +306,45 @@ function useSettingsIndexSections(): SettingsListSection[] {
          serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
        ],
      },
 +    {
-+      title: "This phone",
++      title: gt("This phone"),
 +      rows: [
 +        {
 +          id: "sleeve",
 +          icon: "iphone",
-+          label: "Mode",
-+          value: sleeve.sleeve ? "Sleeve: only her" : "Full",
++          label: gt("Mode"),
++          value: sleeve.sleeve ? gt("Sleeve: only her") : gt("Full"),
 +          onPress: () =>
 +            Alert.alert(
-+              sleeve.sleeve ? "Give this phone back?" : "Make this phone her Sleeve?",
++              sleeve.sleeve ? gt("Give this phone back?") : gt("Make this phone her Sleeve?"),
 +              sleeve.sleeve
-+                ? "It shows everything again: your work, her personas and every setting."
-+                : "It shows only her, full screen. Hold the dot at the top, then Face ID or your PIN, to reach settings. You can also say “make this phone her sleeve” or “give me my phone back” on any device.",
++                ? gt("It shows everything again: your work, her personas and every setting.")
++                : gt(
++                    "It shows only her, full screen. Hold the dot at the top, then Face ID or your PIN, to reach settings. You can also say “make this phone her sleeve” or “give me my phone back” on any device.",
++                  ),
 +              [
-+                { text: "Cancel", style: "cancel" },
++                { text: gt("Cancel"), style: "cancel" },
 +                {
-+                  text: sleeve.sleeve ? "Give it back" : "Make it her Sleeve",
++                  text: sleeve.sleeve ? gt("Give it back") : gt("Make it her Sleeve"),
 +                  onPress: () => {
 +                    // a new Sleeve covers the app at once, locked, as it will after every restart
 +                    if (!sleeve.sleeve) setSleeveUnlocked(false);
@@ -281,11 +293,6 @@ index 50ad81383addc75250b37025d1bfb43ce05a9da5..6406b36e62054ec6a5d82b91bf19f7c2
 +        },
 +        page("SettingsVoice", "mic", "Voice and microphone"),
 +        page("SettingsAppearance", "paintbrush", gt("Appearance")),
-+        page("SettingsLanguage", "globe", gt("Language"), {
-+          value: SUPPORTED_LOCALES.includes(language)
-+            ? nativeLanguageName(language)
-+            : gt("System default"),
-+        }),
 +        page("SettingsOrganization", "gearshape", gt("General")),
 +        page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
 +        ...(navigationCustomizationAvailable()

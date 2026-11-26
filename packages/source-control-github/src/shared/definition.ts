@@ -7,6 +7,7 @@ import {
   isChangeRequestInProjectRepository,
   isChangeRequestOnProjectHost,
   parseChangeRequestPath,
+  parseIssuePath,
   parseCommitPath,
   repositoryUrlFromPagePath,
   projectChangeRequestHost,
@@ -104,6 +105,10 @@ export const definition = defineSourceControl({
     // A redacted or mangled URL must not become a repository GitHub cannot address.
     return link && isRepositoryPath(link.repository) ? link : null;
   },
+  // `/issues/` is too generic a path to believe from a host that is not GitHub's, unless a known
+  // project's host vouches for it as a GitHub Enterprise Server.
+  parseIssueUrl: (url, known) =>
+    known || isGitHubHost(url.hostname) ? parseIssuePath(url, ISSUE_PATH) : null,
   repositoryUrlFromPage: (url) =>
     isGitHubHost(url.hostname) ? repositoryUrlFromPagePath(url, REPOSITORY_PAGE_PATH) : null,
   // GitHub writes every bare reference through `/issues/`, including pull requests.

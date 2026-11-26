@@ -31,10 +31,16 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
       NodePath.join(root, "src/tessayaGuest.tsx"),
       "export const startup = null;",
     );
+    // Tessaya's boot error names the app; the real branding module pulls in workspace packages.
+    await NodeFSP.writeFile(
+      NodePath.join(root, "src/branding.ts"),
+      'export const APP_BASE_NAME = "Tessaya";',
+    );
     for (const file of [
       "index.html",
       "src/bootstrap.ts",
       "src/lib/bootError.ts",
+      "src/lib/chunkReloadGuard.ts",
       "src/tessayaGuestFlag.ts",
     ]) {
       await NodeFSP.copyFile(new URL(`../${file}`, import.meta.url), NodePath.join(root, file));
@@ -104,6 +110,7 @@ export const startup = Promise.resolve().then(() => globalThis.onStarted(Shared(
       `import assert from "node:assert/strict";
 const started = Promise.withResolvers();
 globalThis.window = globalThis;
+globalThis.addEventListener = () => {};
 globalThis.document = {
   createElement: () => ({ relList: { supports: () => true } }),
   getElementById: () => null,

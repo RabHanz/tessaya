@@ -111,6 +111,10 @@ bash scripts/tessaya/toolchain-install.sh > /dev/null
 # shellcheck source=toolchain.sh
 source scripts/tessaya/toolchain.sh
 nice -n 10 pnpm install --lockfile-only --silent
+# The i18n catalogs are REGENERATED too: Tessaya's patched copy changes their keys.
+echo "==> Regenerating the i18n catalogs"
+nice -n 10 pnpm install --frozen-lockfile --silent > /dev/null
+for app in apps/web apps/mobile; do (cd "$app" && nice -n 10 pnpm exec vp run i18n:generate > /dev/null); done
 git add -A
 
 tree="$(git write-tree)"

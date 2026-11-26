@@ -2,160 +2,11 @@ Upstream tests quarantined while they fail on upstream's own code at the pin (#4
 Drop a hunk once the next import shows the test passing.
 
 diff --git a/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts b/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
-index 85634480715484a9c7acc69f906c5698af0752d9..d628b59abb2d7a4d1bf1d3496a4227602cd373d7 100644
+index 94788c7fbfc433af9837f3744f32113960d9d571..143bbc37b29acfa3083e192fd2f72acce4eeeb77 100644
 --- a/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionRecovery.test.ts
-@@ -1239,85 +1239,89 @@ it.effect("reads the run that owns a background roster, not a queued or resumed
-   }).pipe(Effect.provide(layerTest)),
- );
- 
--it.effect("wakes the run whose subagent lost its shell, past a wake cut before it started", () =>
--  Effect.gen(function* () {
--    const projections = yield* ProjectionStore.ProjectionStoreV2;
--    const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
--    const sql = yield* SqlClient.SqlClient;
--    const now = yield* DateTime.now;
--    const threadId = yield* createThread("subagent-shell");
--    const providerThreadId = ProviderThreadId.make(`provider-thread:${threadId}`);
--    const providerSessionId = ProviderSessionId.make(`session:${threadId}`);
--    yield* projections.apply({
--      id: EventId.make(`event:${threadId}:session`),
--      type: "provider-session.attached",
--      threadId,
--      driver,
--      providerInstanceId,
--      occurredAt: now,
--      payload: {
--        id: providerSessionId,
-+// quarantine: #496 fails on upstream's own code at the pin
-+it.effect.skip(
-+  "wakes the run whose subagent lost its shell, past a wake cut before it started",
-+  () =>
-+    Effect.gen(function* () {
-+      const projections = yield* ProjectionStore.ProjectionStoreV2;
-+      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
-+      const sql = yield* SqlClient.SqlClient;
-+      const now = yield* DateTime.now;
-+      const threadId = yield* createThread("subagent-shell");
-+      const providerThreadId = ProviderThreadId.make(`provider-thread:${threadId}`);
-+      const providerSessionId = ProviderSessionId.make(`session:${threadId}`);
-+      yield* projections.apply({
-+        id: EventId.make(`event:${threadId}:session`),
-+        type: "provider-session.attached",
-+        threadId,
-         driver,
-         providerInstanceId,
--        status: "ready",
--        cwd: "/workspace",
--        model: modelSelection.model,
--        capabilities: CodexProviderCapabilitiesV2,
--        createdAt: now,
--        updatedAt: now,
--        lastError: null,
--      },
--    });
--    const settledRun = yield* createRun(threadId, "completed", { providerThreadId });
--    yield* createRun(threadId, "starting", {
--      ordinal: 2,
--      providerThreadId,
--      startedAt: null,
--      completedAt: null,
--    });
--    yield* projections.apply({
--      id: EventId.make(`event:${threadId}:roster`),
--      type: "provider-thread.updated",
--      threadId,
--      driver,
--      providerInstanceId,
--      occurredAt: now,
--      payload: {
--        id: providerThreadId,
--        appThreadId: threadId,
--        ownerNodeId: null,
-+        occurredAt: now,
-+        payload: {
-+          id: providerSessionId,
-+          driver,
-+          providerInstanceId,
-+          status: "ready",
-+          cwd: "/workspace",
-+          model: modelSelection.model,
-+          capabilities: CodexProviderCapabilitiesV2,
-+          createdAt: now,
-+          updatedAt: now,
-+          lastError: null,
-+        },
-+      });
-+      const settledRun = yield* createRun(threadId, "completed", { providerThreadId });
-+      yield* createRun(threadId, "starting", {
-+        ordinal: 2,
-+        providerThreadId,
-+        startedAt: null,
-+        completedAt: null,
-+      });
-+      yield* projections.apply({
-+        id: EventId.make(`event:${threadId}:roster`),
-+        type: "provider-thread.updated",
-+        threadId,
-         driver,
-         providerInstanceId,
--        providerSessionId,
--        nativeThreadRef: { driver, nativeId: "native-thread", strength: "strong" },
--        nativeConversationHeadRef: null,
--        status: "idle",
--        firstRunOrdinal: 1,
--        lastRunOrdinal: 2,
--        handoffIds: [],
--        forkedFrom: null,
--        createdAt: now,
--        updatedAt: now,
--        pendingBackgroundTasks: [
--          { taskId: "shell", description: "sleep 150", kind: "command", parentTaskId: "agent" },
--        ],
--      },
--    });
-+        occurredAt: now,
-+        payload: {
-+          id: providerThreadId,
-+          appThreadId: threadId,
-+          ownerNodeId: null,
-+          driver,
-+          providerInstanceId,
-+          providerSessionId,
-+          nativeThreadRef: { driver, nativeId: "native-thread", strength: "strong" },
-+          nativeConversationHeadRef: null,
-+          status: "idle",
-+          firstRunOrdinal: 1,
-+          lastRunOrdinal: 2,
-+          handoffIds: [],
-+          forkedFrom: null,
-+          createdAt: now,
-+          updatedAt: now,
-+          pendingBackgroundTasks: [
-+            { taskId: "shell", description: "sleep 150", kind: "command", parentTaskId: "agent" },
-+          ],
-+        },
-+      });
- 
--    yield* recovery.reconcile("startup");
-+      yield* recovery.reconcile("startup");
- 
--    const effects = yield* sql<{ readonly effect_id: string }>`
-+      const effects = yield* sql<{ readonly effect_id: string }>`
-       SELECT effect_id FROM orchestration_v2_effect_outbox WHERE thread_id = ${threadId}
-     `;
--    assert.deepEqual(effects, [{ effect_id: `effect:restart-continuation:${settledRun}` }]);
--    const projection = yield* projections.getThreadProjection(threadId);
--    assert.deepEqual(projection.runs[0]?.restartCancelledBackgroundWork, [
--      { kind: "subagent", label: "sleep 150 (subagent agent)", id: "agent" },
--    ]);
--  }).pipe(Effect.provide(layerRecoveryTest)),
-+      assert.deepEqual(effects, [{ effect_id: `effect:restart-continuation:${settledRun}` }]);
-+      const projection = yield* projections.getThreadProjection(threadId);
-+      assert.deepEqual(projection.runs[0]?.restartCancelledBackgroundWork, [
-+        { kind: "subagent", label: "sleep 150 (subagent agent)", id: "agent" },
-+      ]);
-+    }).pipe(Effect.provide(layerRecoveryTest)),
+@@ -1357,7 +1357,8 @@ it.effect.each([
+   }).pipe(Effect.provide(layerRecoveryTest)),
  );
  
 -it.effect("wakes a settled run whose native subagent ran on its own provider thread", () =>
@@ -165,10 +16,10 @@ index 85634480715484a9c7acc69f906c5698af0752d9..d628b59abb2d7a4d1bf1d3496a422760
      const projections = yield* ProjectionStore.ProjectionStoreV2;
      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index c7cc43ee5ddea58ea3615e7bea296fd8dacd92eb..f646564e34724875bffd3dddb1e9d1b6af23e46e 100644
+index 539bd8dd31200f95196655bf3dbce26b4b8f6399..20a4b42f49a8d86833f9ed5a7eb455b72691df68 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-@@ -8441,6 +8441,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+@@ -10678,6 +10678,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
            text: key,
            attachments: [],
            modelSelection: selection,
@@ -177,18 +28,17 @@ index c7cc43ee5ddea58ea3615e7bea296fd8dacd92eb..f646564e34724875bffd3dddb1e9d1b6
            dispatchMode: { type: key === "active" ? "start_immediately" : "queue_after_active" },
            createdBy: "user",
            creationSource: "web",
-@@ -8920,7 +8922,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
-     }),
-   );
- 
--  it.effect.each([false, true])(
-+  // quarantine: #496 the unstopped (false) row fails on upstream's own code at the pin
-+  it.effect.each([true])(
-     "restarts a continuation that failed before its prompt, unless stopped (%s)",
-     (stopped) =>
-       Effect.gen(function* () {
-@@ -9554,6 +9557,74 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
-       assert.isFalse(yield* effectWorker.runOnce());
+@@ -12031,6 +12033,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+           attachments: [],
+           modelSelection: selection,
+           dispatchMode: { type },
++          // Tessaya moves a started thread to another provider only on a pick (0014).
++          ...(selection === modelSelection ? { providerChangeApproved: true } : {}),
+         });
+       }
+       const before = yield* orchestrator.getThreadProjection(threadId);
+@@ -12421,6 +12425,75 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
+       );
      }),
    );
 +
@@ -253,20 +103,21 @@ index c7cc43ee5ddea58ea3615e7bea296fd8dacd92eb..f646564e34724875bffd3dddb1e9d1b6
 +          [claudeInstanceId, false],
 +        ],
 +      );
++      // A manual continuation stores no text; the turn start prompts the new provider with the resume line.
 +      assert.equal(
 +        after.messages.find((message) => message.id === after.runs[1]?.userMessageId)?.text,
-+        "Continue where you left off.",
++        "",
 +      );
 +    }),
 +  );
  });
  
- it.layer(layerTest)("snooze queued runs", (it) => {
+ it.layer(layerSharedApplicationDataPlaneTest)("run output after a stop", (it) => {
 diff --git a/apps/server/src/provider/AntigravityInstallation.test.ts b/apps/server/src/provider/AntigravityInstallation.test.ts
-index dcd3e400300930e8f49d07f113270b0d5f890a30..edfbd762ac0fd9e3d6228a47975c874157ecf533 100644
+index 5dcd840991f836712212003379ec2df861976c6e..13409f7f8e6ee35cdeadb613c6d93a207ae2499c 100644
 --- a/apps/server/src/provider/AntigravityInstallation.test.ts
 +++ b/apps/server/src/provider/AntigravityInstallation.test.ts
-@@ -664,8 +664,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Antigravity inst
+@@ -639,8 +639,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("Antigravity inst
        }),
    );
  

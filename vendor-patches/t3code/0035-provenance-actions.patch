@@ -3,18 +3,18 @@ action log. McpHttpServer wraps each tool in `traced`; RpcInstrumentation expose
 per-socket `rpcActionLayer` can add the record around the same metrics and span.
 
 diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
-index eaf54214ba07bf862ba6336c921562c2742dee88..f38c0cc822eb5ec7a332760bdef3baa4c9565138 100644
+index 92b8468b14edd3f6b7762128a38f426341e74c4e..6ccb3fc78eef148931d9269b0918d32284eae34c 100644
 --- a/apps/server/src/mcp/McpHttpServer.ts
 +++ b/apps/server/src/mcp/McpHttpServer.ts
-@@ -49,6 +49,7 @@ import * as McpToolAccess from "./McpToolAccess.ts";
- import * as McpToolExposure from "./McpToolExposure.ts";
+@@ -63,6 +63,7 @@ import { compactT3McpToolOutput } from "@t3tools/shared/toolOutput";
+ import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
  import { MCP_TOOL_EXPOSURE_HEADER } from "@t3tools/provider-core/server/mcpSession";
  import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 +import { traced } from "../provenance/ActionLog.ts";
  import { PreviewControlsToolkit } from "./toolkits/previewControls/tools.ts";
  import * as PreviewControlsHandlers from "./toolkits/previewControls/handlers.ts";
- import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
-@@ -1130,7 +1131,27 @@ const withToolSpans = Effect.fn("McpHttpServer.withToolSpans")(function* <A, E,
+ import * as FeedbackHandlers from "./toolkits/feedback/handlers.ts";
+@@ -1307,7 +1308,27 @@ const withToolSpans = Effect.fn("McpHttpServer.withToolSpans")(function* <A, E,
                  "mcp.tool.name": name,
                },
              },
@@ -43,7 +43,7 @@ index eaf54214ba07bf862ba6336c921562c2742dee88..f38c0cc822eb5ec7a332760bdef3baa4
            ),
        });
      }),
-@@ -1300,6 +1321,27 @@ export const layerInProcessMcpServer = McpServer.middleware<{
+@@ -1533,6 +1554,27 @@ export const layerInProcessMcpServer = McpServer.middleware<{
    { global: true },
  ).pipe(Layer.provideMerge(McpServer.McpServer.layer));
  
@@ -71,9 +71,9 @@ index eaf54214ba07bf862ba6336c921562c2742dee88..f38c0cc822eb5ec7a332760bdef3baa4
  export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE, RR>) =>
    McpServer.layerHttp({
      name: "T3 Code",
-@@ -1308,7 +1350,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
-     // The first protocol is the fallback for clients that offer an unknown version.
-     protocols: [McpProtocol.v2025_06_18, McpProtocol.v2026_07_28],
+@@ -1540,7 +1582,7 @@ export const layerMcpTransport = <RA, RE, RR>(registrations: Layer.Layer<RA, RE,
+     path: MCP_HTTP_PATH,
+     protocols: mcpProtocols,
      allowSessionTermination: true,
 -    registrations,
 +    registrations: Layer.merge(registrations, layerBodyOnlyClients),
@@ -81,17 +81,10 @@ index eaf54214ba07bf862ba6336c921562c2742dee88..f38c0cc822eb5ec7a332760bdef3baa4
  
  /** Every tool the T3 MCP server advertises. AgentContextBudget.test.ts measures this set. */
 diff --git a/apps/server/src/observability/RpcInstrumentation.ts b/apps/server/src/observability/RpcInstrumentation.ts
-index 3f120a39f1870431678b22fc146e9a0be60c1bbf..cd97bd27a15e9cc7c1e076d03dd0f448d0a71b3a 100644
+index 33e53f64001c1e84f2b19241cdd0d6475553db08..afa5644cf423f6c9ba679b75e6b529f6bdb9ea98 100644
 --- a/apps/server/src/observability/RpcInstrumentation.ts
 +++ b/apps/server/src/observability/RpcInstrumentation.ts
-@@ -1,6 +1,5 @@
- import { ORCHESTRATION_V2_WS_METHODS, WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
- import * as Effect from "effect/Effect";
--import * as Layer from "effect/Layer";
- import * as References from "effect/References";
- import type * as RpcGroup from "effect/rpc/RpcGroup";
- import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
-@@ -250,8 +249,7 @@ export class RpcInstrumentation extends RpcMiddleware.Service<RpcInstrumentation
+@@ -292,8 +292,7 @@ export class RpcInstrumentation extends RpcMiddleware.Service<RpcInstrumentation
    "t3/server/RpcInstrumentation",
  ) {}
  
@@ -101,9 +94,13 @@ index 3f120a39f1870431678b22fc146e9a0be60c1bbf..cd97bd27a15e9cc7c1e076d03dd0f448
    const measured = effect.pipe(
      withMetrics({ counter: rpcRequestsTotal, timer: rpcRequestDuration, attributes: { method } }),
    );
-@@ -268,4 +266,4 @@ export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect
-       },
-     }),
+@@ -322,4 +321,8 @@ export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect
+       ),
+     ),
    );
 -});
 +};
++
++export const rpcInstrumentationLayer = Layer.succeed(RpcInstrumentation)((effect, { rpc }) =>
++  instrumentRpc(effect, rpc._tag),
++);

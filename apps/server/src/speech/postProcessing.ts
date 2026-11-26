@@ -8,8 +8,10 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import { resolveSpeechPostProcessingModelSelection } from "@t3tools/shared/serverSettings";
 
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { buildTranscriptionPostProcessingPrompt } from "../textGeneration/TranscriptionPostProcessing.ts";
@@ -34,16 +36,19 @@ const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettings.ServerSettingsService;
   const fileSystem = yield* FileSystem.FileSystem;
   const textGeneration = yield* TextGeneration.TextGeneration;
-  const cleanupApi = yield* DictationCleanupApi;
+  const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+  // Optional so a layer without the key route (upstream's own tests) still cleans up on the plan.
+  const cleanupApi = yield* Effect.serviceOption(DictationCleanupApi);
   return SpeechPostProcessing.of({
     process: Effect.fn("SpeechPostProcessing.process")(
       function* (input) {
         if (input.transcript.trim().length === 0) return { text: input.transcript };
         const settings = yield* settingsService.getSettings;
+        const providers = yield* providerRegistry.getProviders;
         const { mode, customInstructions } = input.options.speechPostProcessingPrompt;
         // Providers run in a working directory; cleanup must not read a checkout.
         const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-voice-cleanup-" });
-        const modelSelection = resolveSpeechPostProcessingModelSelection(settings);
+        const modelSelection = resolveSpeechPostProcessingModelSelection(settings, providers);
         const generate = (prompt: string, selection: ModelSelection) =>
           textGeneration
             .generateTranscriptionPostProcessing({ cwd, prompt, modelSelection: selection })
@@ -93,18 +98,20 @@ const make = Effect.gen(function* () {
                 generate(`${system}\n\n${message}`, onPlan(modelSelection)).pipe(
                   Effect.filterOrFail((answer) => answer.length > 0),
                   Effect.catch(() =>
-                    cleanupApi
-                      .cleanup({
-                        system,
-                        message: rewriteMessage(text, mode, context),
-                        maxTokens: 64 + Math.ceil(text.length / 2),
-                        refused,
-                      })
-                      .pipe(
-                        Effect.flatMap((r) =>
-                          r.configured ? Effect.succeed(r.text) : Effect.fail("no key"),
-                        ),
-                      ),
+                    Option.isNone(cleanupApi)
+                      ? Effect.fail("no key")
+                      : cleanupApi.value
+                          .cleanup({
+                            system,
+                            message: rewriteMessage(text, mode, context),
+                            maxTokens: 64 + Math.ceil(text.length / 2),
+                            refused,
+                          })
+                          .pipe(
+                            Effect.flatMap((r) =>
+                              r.configured ? Effect.succeed(r.text) : Effect.fail("no key"),
+                            ),
+                          ),
                   ),
                 ),
               );

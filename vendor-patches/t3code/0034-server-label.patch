@@ -1,5 +1,5 @@
 diff --git a/apps/server/src/environment/ServerEnvironmentLabel.test.ts b/apps/server/src/environment/ServerEnvironmentLabel.test.ts
-index 7e0cf0a99607e5804b8c5cc145df623b96778b4e..a5af398e45badf587665db8d22ea26c8f3644957 100644
+index 6cf235d67814b8ee1708019d52fafcbe7b821c39..1d5b42010c25490ed7c9e785bd3ff126c33ad2ea 100644
 --- a/apps/server/src/environment/ServerEnvironmentLabel.test.ts
 +++ b/apps/server/src/environment/ServerEnvironmentLabel.test.ts
 @@ -1,5 +1,6 @@
@@ -9,8 +9,8 @@ index 7e0cf0a99607e5804b8c5cc145df623b96778b4e..a5af398e45badf587665db8d22ea26c8
  import * as Effect from "effect/Effect";
  import * as Fiber from "effect/Fiber";
  import * as FileSystem from "effect/FileSystem";
-@@ -50,3 +51,22 @@ it.effect("falls back to the hostname when hostnamectl never answers", () =>
-     assert.equal(yield* Fiber.join(label), "devbox");
+@@ -101,3 +102,22 @@ it.effect("qualifies the inherited Windows hostname only inside WSL", () =>
+     }
    }),
  );
 +
@@ -33,19 +33,13 @@ index 7e0cf0a99607e5804b8c5cc145df623b96778b4e..a5af398e45badf587665db8d22ea26c8
 +  }),
 +);
 diff --git a/apps/server/src/environment/ServerEnvironmentLabel.ts b/apps/server/src/environment/ServerEnvironmentLabel.ts
-index fc59928cc5bc68a5b7a31e8defaa6dc255a2a221..166c7b7ee537c141af9f42ba73a6a87aefc22fc1 100644
+index f23321058172f308b2a6ac646c775dbcf6ae5d77..8bc9577bedc94ece0cf5102d01488424d7da50f0 100644
 --- a/apps/server/src/environment/ServerEnvironmentLabel.ts
 +++ b/apps/server/src/environment/ServerEnvironmentLabel.ts
-@@ -1,4 +1,5 @@
- import * as HostProcess from "@t3tools/shared/HostProcess";
-+import * as Config from "effect/Config";
- import * as Effect from "effect/Effect";
- import * as FileSystem from "effect/FileSystem";
- import * as Option from "effect/Option";
-@@ -184,6 +185,14 @@ const resolveFriendlyHostLabel = Effect.fn("resolveFriendlyHostLabel")(function*
- export const resolveServerEnvironmentLabel = Effect.fn("resolveServerEnvironmentLabel")(function* (
-   input: ResolveServerEnvironmentLabelInput,
- ) {
+@@ -206,6 +206,13 @@ export const resolveServerEnvironmentLabel = Effect.fn("resolveServerEnvironment
+   if (Option.isSome(override)) {
+     return override.value;
+   }
 +  // Tessaya: the server's own name, before the machine's (which other products on the box share).
 +  const ownLabel = normalizeLabel(
 +    yield* Config.String("TESSAYA_SERVER_LABEL").pipe(Config.withDefault("")),
@@ -53,7 +47,6 @@ index fc59928cc5bc68a5b7a31e8defaa6dc255a2a221..166c7b7ee537c141af9f42ba73a6a87a
 +  if (ownLabel) {
 +    return ownLabel;
 +  }
-+
+ 
    const friendlyHostLabel = yield* resolveFriendlyHostLabel();
    if (friendlyHostLabel) {
-     return friendlyHostLabel;

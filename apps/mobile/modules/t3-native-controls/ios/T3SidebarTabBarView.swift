@@ -40,7 +40,7 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
   private let composeButton = UIButton(type: .system)
   private lazy var tabBarTrailing = tabBar.trailingAnchor.constraint(equalTo: trailingAnchor)
   private var itemsByTab: [String: UITabBarItem] = [:]
-  var tabs = ["threads", "pullRequests", "usage", "settings"] {
+  var tabs = ["threads", "pullRequests", "issues", "usage", "settings"] {
     didSet { if tabs != oldValue { updateItems() } }
   }
   var selectedTab = "threads" { didSet { updateSelection() } }
@@ -56,6 +56,9 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
       composeButton.isHidden = !showsCompose
       tabBarTrailing.constant = showsCompose ? (compact ? -64 : -76) : 0
       setNeedsLayout()
+      // JS moves this view's edge by the same amount, so the bar keeps its frame and won't lay
+      // itself out; compose is placed only from that layout.
+      tabBar.setNeedsLayout()
     }
   }
   var appearance = "light" {
@@ -109,14 +112,17 @@ final class T3SidebarTabBarView: ExpoView, UITabBarDelegate {
     // Tessaya's tabs (D-038): Talk, Chats, Personas, Devices, then More.
     let labels = [
       "talk": "Talk", "threads": "Chats", "personas": "Personas", "devices": "Devices",
-      "pullRequests": "PRs", "usage": "Usage", "settings": "More",
+      "pullRequests": "PRs", "issues": "Issues", "workflows": "Workflows",
+      "usage": "Usage", "settings": "More",
     ]
+    let issueIcon = UIImage(named: "issue", in: iconBundle, compatibleWith: nil)?.withRenderingMode(.alwaysTemplate)
     let symbols = [
       "talk": "mic", "threads": "text.bubble", "personas": "person.2", "devices": "iphone",
+      "workflows": "point.3.connected.trianglepath.dotted",
       "usage": "chart.bar.xaxis", "settings": "ellipsis.circle",
     ]
     for (tab, label) in labels {
-      let icon = tab == "pullRequests" ? pullRequestIcon : UIImage(systemName: symbols[tab] ?? "circle")
+      let icon = tab == "pullRequests" ? pullRequestIcon : tab == "issues" ? issueIcon : UIImage(systemName: symbols[tab] ?? "circle")
       let item = UITabBarItem(title: nil, image: tabIcon(icon), tag: 0)
       item.accessibilityLabel = label
       item.accessibilityIdentifier = "workspace-tab-\(tab)"

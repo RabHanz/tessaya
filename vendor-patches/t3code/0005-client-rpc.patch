@@ -3,15 +3,18 @@ Subject: client-runtime: Baton's RPC group on the client protocol
 The fabric.* group rides the same socket, and its work-session stream is a subscription tag.
 
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index ee70400ca47a548493f4d002e2db2ef1d4a6e498..7c4bd519c9c58565154a535a9287cab2b2389c78 100644
+index d86da6082dc2961126f9be672f0fb32d9034b053..75ced83e3bd9ba63215518ea4523bccc7b433512 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
-@@ -1,3 +1,4 @@
+@@ -6,6 +6,7 @@ import {
+   translatableMessage,
+   withI18nMessage,
+ } from "../errors/translatable.ts";
 +import { BATON_WS_METHODS } from "@t3tools/tessaya-contracts";
  import {
    EnvironmentAuthorizationError,
    clientRpcRequiredScopes,
-@@ -67,6 +68,8 @@ export type EnvironmentSubscriptionRpcTag =
+@@ -80,6 +81,8 @@ export type EnvironmentSubscriptionRpcTag =
    | typeof WS_METHODS.subscribeDiscoveredLocalServers
    | typeof WS_METHODS.subscribeDeviceState
    | typeof WS_METHODS.subscribeResourceTelemetry
@@ -37,10 +40,10 @@ index e8aea66d3d897d19cbc5a8a5dbb79c5642602eeb..68fa2d3b012d29ba2e4a4d6eb0322e7d
  export type WsRpcProtocolClient =
    RpcClientFactory extends Effect.Effect<infer Client, any, any> ? Client : never;
 diff --git a/packages/client-runtime/src/state/threadRequests.test.ts b/packages/client-runtime/src/state/threadRequests.test.ts
-index f6eb4e1f76cb1d2217ec12c244acc6e1c7a3d304..ce36148b3f6240ab9b4e75cbdcfd2cf18caf8693 100644
+index 22902579909fd48b357cc8b7b9dea65a7d69135a..29804c196c91d7296c79867c57579429deed12be 100644
 --- a/packages/client-runtime/src/state/threadRequests.test.ts
 +++ b/packages/client-runtime/src/state/threadRequests.test.ts
-@@ -329,6 +329,13 @@ describe("pending v2 questions", () => {
+@@ -388,6 +388,13 @@ describe("pending v2 questions", () => {
      ]);
    });
  
@@ -55,10 +58,10 @@ index f6eb4e1f76cb1d2217ec12c244acc6e1c7a3d304..ce36148b3f6240ab9b4e75cbdcfd2cf1
      const live = {
        ...projection,
 diff --git a/packages/client-runtime/src/state/threadRequests.ts b/packages/client-runtime/src/state/threadRequests.ts
-index 99fd12ba5b360365f0c65acc17ac7e2895d08975..43fc91ff61a9b3bf99c4cf00a731b3bfd9a56f6c 100644
+index 82cae06eb879de3d10b7a4534b3fe44941a73df0..58bdf00d2280ac3798bbe6780a7015781ab84a65 100644
 --- a/packages/client-runtime/src/state/threadRequests.ts
 +++ b/packages/client-runtime/src/state/threadRequests.ts
-@@ -233,6 +233,19 @@ export function makeThreadRequestsResolvedAnnouncer(
+@@ -491,6 +491,21 @@ export function makeThreadRequestsResolvedAnnouncer(
    };
  }
  
@@ -69,7 +72,9 @@ index 99fd12ba5b360365f0c65acc17ac7e2895d08975..43fc91ff61a9b3bf99c4cf00a731b3bf
 +  multiSelect: false,
 +  options: [
 +    {
++      // oxlint-disable-next-line t3code/no-untranslated-copy -- sits beside provider-authored options; the label is the answer value sent back
 +      label: "I'll answer it in the terminal",
++      // oxlint-disable-next-line t3code/no-untranslated-copy -- rendered raw beside provider-authored option text
 +      description: "Open the pane in Herdr and answer it there.",
 +    },
 +  ],
@@ -78,7 +83,7 @@ index 99fd12ba5b360365f0c65acc17ac7e2895d08975..43fc91ff61a9b3bf99c4cf00a731b3bf
  export function derivePendingThreadRequests(
    projection: Pick<ThreadStructure, "runtimeRequests" | "turnItems">,
  ): PendingThreadRequests {
-@@ -247,7 +260,19 @@ export function derivePendingThreadRequests(
+@@ -505,7 +520,19 @@ export function derivePendingThreadRequests(
          (candidate) =>
            candidate.type === "user_input_request" && candidate.requestId === request.id,
        );

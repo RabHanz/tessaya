@@ -4,19 +4,19 @@ One call in DesktopApp after the IPC handlers, one call at the end of preload.ts
 apps/desktop/src/baton/. Baton's bridge is window.batonDesktopBridge, beside upstream's.
 
 diff --git a/apps/desktop/src/app/DesktopApp.ts b/apps/desktop/src/app/DesktopApp.ts
-index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..233133474610a2a80ecad72c40f3f260b1726773 100644
+index e5d95fbaee295f7597cc3947a73feee65dc564df..10c622edfda692ec83b45d64363b22732f9f11e4 100644
 --- a/apps/desktop/src/app/DesktopApp.ts
 +++ b/apps/desktop/src/app/DesktopApp.ts
-@@ -40,6 +40,8 @@ import * as DesktopSnapShot from "../snapShot/DesktopSnapShot.ts";
- import * as DesktopWslBackend from "../wsl/DesktopWslBackend.ts";
- import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts";
+@@ -45,6 +45,8 @@ import * as DesktopRendererHistory from "../telemetry/DesktopRendererHistory.ts"
  import * as HostProcess from "@t3tools/shared/HostProcess";
+ import { msg } from "gt-i18n";
+ import { m } from "../i18n/messages.ts";
 +import { startTessayaDesktop } from "../tessaya/startTessayaDesktop.ts";
 +import { mainHeldAtLaunch, takeMainHold } from "../tessaya/launchWindows.ts";
  
  const DEFAULT_DESKTOP_BACKEND_PORT = 3773;
  const MAX_TCP_PORT = 65_535;
-@@ -187,6 +189,10 @@ const bootstrap = Effect.gen(function* () {
+@@ -216,6 +218,10 @@ const startLocalBackend = Effect.gen(function* () {
      clerkFrontendApiHostname: DesktopClerk.desktopClerkFrontendApiHostname,
    });
    yield* installDesktopIpcHandlers();
@@ -27,25 +27,25 @@ index 7ebeaa74a021dc9bae97178cefb8f2e64e9918ae..233133474610a2a80ecad72c40f3f260
    yield* logBootstrapInfo("bootstrap ipc handlers registered");
    // Before any window: the preload merges these items before the app reads storage.
    yield* (yield* DesktopLegacyLocalStorage.DesktopLegacyLocalStorage).load(
-@@ -209,7 +215,7 @@ const bootstrap = Effect.gen(function* () {
- 
+@@ -338,7 +344,7 @@ const bootstrap = Effect.fn("desktop.bootstrap")(function* (backendStarted: bool
    if (!settings.localEnvironmentEnabled) {
-     yield* logBootstrapInfo("bootstrap skipping local environment (disabled in settings)");
+     // The backend config refreshes the launcher when the local environment runs; an update may move the app.
+     yield* DesktopCliShim.install;
 -    if (!(yield* Ref.get(state.quitting))) {
 +    if (!(yield* Ref.get(state.quitting)) && !takeMainHold()) {
        yield* desktopWindow.createMainIfBackendReady;
      }
-     return;
-@@ -287,7 +293,8 @@ const bootstrap = Effect.gen(function* () {
-       !environment.isDevelopment &&
-       !settings.wslOnly &&
-       Option.isSome(config) &&
--      Option.isNone(config.value.preflightFailure)
-+      Option.isNone(config.value.preflightFailure) &&
-+      !mainHeldAtLaunch()
-     ) {
-       yield* desktopWindow.ensureMain;
-     }
+     // `t3 <dir>` still reaches the renderer, which opens it on this machine's connected service.
+@@ -351,7 +357,8 @@ const bootstrap = Effect.fn("desktop.bootstrap")(function* (backendStarted: bool
+   if (
+     !environment.isDevelopment &&
+     Option.isSome(config) &&
+-    Option.isNone(config.value.preflightFailure)
++    Option.isNone(config.value.preflightFailure) &&
++    !mainHeldAtLaunch()
+   ) {
+     yield* desktopWindow.ensureMain;
+   }
 diff --git a/apps/desktop/src/app/DesktopLifecycle.ts b/apps/desktop/src/app/DesktopLifecycle.ts
 index 9568e72dde310e0cdecdbb3196a1b4878ec998a7..b95945935871cab75ee4b036e59a1ede039abbba 100644
 --- a/apps/desktop/src/app/DesktopLifecycle.ts
@@ -72,10 +72,10 @@ index 9568e72dde310e0cdecdbb3196a1b4878ec998a7..b95945935871cab75ee4b036e59a1ede
            }
          }).pipe(Effect.withSpan("desktop.lifecycle.windowAllClosed")),
 diff --git a/apps/desktop/src/backend/DesktopBackendConfiguration.ts b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-index e7b8405f8124df01ba5888dd68a033a1bf36f5fe..2df5313bb5a16a7e96c43581a6bdbff48e75ef83 100644
+index 5c9ea2f78c490e80a74af4f91b9b026ab6006e41..cf6fdc4e5e9b0a3c9fa793fa1d8b4a4884124d87 100644
 --- a/apps/desktop/src/backend/DesktopBackendConfiguration.ts
 +++ b/apps/desktop/src/backend/DesktopBackendConfiguration.ts
-@@ -539,6 +539,27 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
+@@ -579,6 +579,27 @@ const resolvePrimaryStartConfig = Effect.fn("desktop.backendConfiguration.resolv
          ...backendChildEnvPatch(),
          ELECTRON_RUN_AS_NODE: "1",
          T3CODE_DESKTOP_SHELL_DISCOVERY_PENDING: "1",
@@ -101,13 +101,13 @@ index e7b8405f8124df01ba5888dd68a033a1bf36f5fe..2df5313bb5a16a7e96c43581a6bdbff4
 +            }
 +          : {}),
          T3CODE_CLI_PATH: Option.getOrUndefined(input.cliPath),
+         [DESKTOP_HOST_SCOPE_ENV]: input.hostScope,
        },
-       extendEnv: true,
 diff --git a/apps/desktop/src/backend/DesktopBackendManager.test.ts b/apps/desktop/src/backend/DesktopBackendManager.test.ts
-index 8a8389082ce89028af4fe60610c96c66ed173c14..7a14bf97e9eef6dcce03e4fbb68e82a30368a589 100644
+index ea263cd0144f73192dea1e05ce0f78174090ffb0..c9d0e33774a75243e0ade00d621b53972e94ae98 100644
 --- a/apps/desktop/src/backend/DesktopBackendManager.test.ts
 +++ b/apps/desktop/src/backend/DesktopBackendManager.test.ts
-@@ -734,6 +734,57 @@ describe("DesktopBackendManager", () => {
+@@ -995,6 +995,57 @@ describe("DesktopBackendManager", () => {
      }).pipe(Effect.provide(TestClock.layer())),
    );
  
@@ -166,10 +166,10 @@ index 8a8389082ce89028af4fe60610c96c66ed173c14..7a14bf97e9eef6dcce03e4fbb68e82a3
      Effect.gen(function* () {
        const spawned = yield* Deferred.make<void>();
 diff --git a/apps/desktop/src/backend/DesktopBackendManager.ts b/apps/desktop/src/backend/DesktopBackendManager.ts
-index 89ebc9e862ecf4d6224cc6c26d25bcd2ee3692b7..65f8cf5c8e2fc7146c372c0dff1de493df973783 100644
+index 91bdd2b33e13b0ce42c7744a23cc45c580ada09d..174faaa2ca0875938d89ba5405cf44502f9eaeb6 100644
 --- a/apps/desktop/src/backend/DesktopBackendManager.ts
 +++ b/apps/desktop/src/backend/DesktopBackendManager.ts
-@@ -32,6 +32,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
+@@ -37,6 +37,7 @@ import * as DesktopObservability from "../app/DesktopObservability.ts";
  import * as DesktopTelemetryPublisher from "../telemetry/DesktopTelemetryPublisher.ts";
  import * as DesktopBrowserHost from "../preview/DesktopBrowserHost.ts";
  import * as DesktopWslEnvironment from "../wsl/DesktopWslEnvironment.ts";
@@ -177,7 +177,7 @@ index 89ebc9e862ecf4d6224cc6c26d25bcd2ee3692b7..65f8cf5c8e2fc7146c372c0dff1de493
  
  const INITIAL_RESTART_DELAY = Duration.millis(500);
  const MAX_RESTART_DELAY = Duration.seconds(10);
-@@ -587,7 +588,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
+@@ -666,7 +667,19 @@ export const runBackendProcess = Effect.fn("runBackendProcess")(function* (
      ),
    );
  
@@ -199,7 +199,7 @@ index 89ebc9e862ecf4d6224cc6c26d25bcd2ee3692b7..65f8cf5c8e2fc7146c372c0dff1de493
    const exit = yield* handle.exitCode.pipe(
      Effect.withSpan("desktop.backendProcess.awaitExit"),
 diff --git a/apps/desktop/src/electron/ElectronWindow.test.ts b/apps/desktop/src/electron/ElectronWindow.test.ts
-index 9eb41ed4e240237cbb916230f1a91f6edc42f76d..9a0672d7a954c9844ad26d3fba25fd65b200353e 100644
+index eac944722e73be051e66f8da85d78fb82a052357..038fd90f3d8b247eb34140890f75191723d76240 100644
 --- a/apps/desktop/src/electron/ElectronWindow.test.ts
 +++ b/apps/desktop/src/electron/ElectronWindow.test.ts
 @@ -65,6 +65,7 @@ vi.mock("electron", () => ({
@@ -210,7 +210,7 @@ index 9eb41ed4e240237cbb916230f1a91f6edc42f76d..9a0672d7a954c9844ad26d3fba25fd65
  
  const layerTestFor = (platform: NodeJS.Platform) =>
    ElectronWindow.layer.pipe(Layer.provide(Layer.succeed(HostProcess.Platform, platform)));
-@@ -179,6 +180,18 @@ describe("ElectronWindow", () => {
+@@ -207,6 +208,18 @@ describe("ElectronWindow", () => {
      }).pipe(Effect.provide(layerTest)),
    );
  
@@ -230,7 +230,7 @@ index 9eb41ed4e240237cbb916230f1a91f6edc42f76d..9a0672d7a954c9844ad26d3fba25fd65
      Effect.gen(function* () {
        const electronWindow = yield* ElectronWindow.ElectronWindow;
 diff --git a/apps/desktop/src/electron/ElectronWindow.ts b/apps/desktop/src/electron/ElectronWindow.ts
-index 15a117a52b050a82d8834978f3e7077b0c5025ec..f8c34c6ff2eb8a93176fc8170a6a70863d77c66a 100644
+index b5f89969e66c71efabab65405c63e0378d60d393..1f9e5468540001810e7a64ffd2360f5f032cd742 100644
 --- a/apps/desktop/src/electron/ElectronWindow.ts
 +++ b/apps/desktop/src/electron/ElectronWindow.ts
 @@ -20,6 +20,7 @@ import {
@@ -241,7 +241,7 @@ index 15a117a52b050a82d8834978f3e7077b0c5025ec..f8c34c6ff2eb8a93176fc8170a6a7086
  
  function windowsForegroundFocusTarget(window: Electron.BrowserWindow) {
    return {
-@@ -186,7 +187,7 @@ export const make = Effect.gen(function* () {
+@@ -190,7 +191,7 @@ export const make = Effect.gen(function* () {
      }
  
      const first = Option.fromNullishOr(
@@ -497,7 +497,7 @@ index 69d4f70c15a0ec16cf0596313a8044b799aa1aaf..0ce9fdf0d39e7214870ffce5d9329944
        );
      }),
 diff --git a/apps/desktop/src/preload.ts b/apps/desktop/src/preload.ts
-index 6414743ac3b2f32c3902593646b017a1bd8822e0..896d17d4e55e9990346fff0e5ec75e72fcf6129e 100644
+index ab472baabe623f8da2eb9637e291092b4aceba32..58d9a058de1ad9d72e1412911f2b46b7a033ea2c 100644
 --- a/apps/desktop/src/preload.ts
 +++ b/apps/desktop/src/preload.ts
 @@ -13,6 +13,7 @@ import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
@@ -520,7 +520,7 @@ index 6414743ac3b2f32c3902593646b017a1bd8822e0..896d17d4e55e9990346fff0e5ec75e72
  try {
    primaryPasteEnabled =
      ipcRenderer.sendSync(IpcChannels.GET_PRIMARY_PASTE_ENABLED_CHANNEL) !== false;
-@@ -145,16 +151,22 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -150,16 +156,22 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      return Array.isArray(result) ? result.filter((tag) => typeof tag === "string") : [];
    },
    getLocalEnvironmentBootstraps: () => {
@@ -548,7 +548,7 @@ index 6414743ac3b2f32c3902593646b017a1bd8822e0..896d17d4e55e9990346fff0e5ec75e72
    setLocalEnvironmentEnabled: (enabled) =>
      ipcRenderer.invoke(IpcChannels.SET_LOCAL_ENVIRONMENT_ENABLED_CHANNEL, enabled),
    getHostEnvironmentId: () => ipcRenderer.invoke(IpcChannels.GET_HOST_ENVIRONMENT_ID_CHANNEL),
-@@ -520,3 +532,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
+@@ -573,3 +585,5 @@ contextBridge.exposeInMainWorld("desktopBridge", {
      },
    },
  } satisfies DesktopBridge);
@@ -738,10 +738,10 @@ index 542e3f13c08dc6a5df34de1737130db0b7313c16..bfc84d21276db4636bfe44fab332c3d3
        warm();
        active.add(workerProcess);
 diff --git a/apps/desktop/src/window/DesktopWindow.test.ts b/apps/desktop/src/window/DesktopWindow.test.ts
-index 497b315ef5225b7e3c0cdad7a5ea9ca7ddd02034..bcb9a7aea2db032c5705ee10e547a7ebffd9701c 100644
+index 6da2c7b72d8f971c5f93f6f2593f2ce679c8c237..8546e0ea585358fcca1954783c6440a459346393 100644
 --- a/apps/desktop/src/window/DesktopWindow.test.ts
 +++ b/apps/desktop/src/window/DesktopWindow.test.ts
-@@ -17,6 +17,7 @@ import { vi } from "vite-plus/test";
+@@ -18,6 +18,7 @@ import { vi } from "vite-plus/test";
  
  vi.mock("electron", async (importOriginal) => ({
    ...(await importOriginal<typeof import("electron")>()),
@@ -749,7 +749,7 @@ index 497b315ef5225b7e3c0cdad7a5ea9ca7ddd02034..bcb9a7aea2db032c5705ee10e547a7eb
    session: {
      fromPartition: vi.fn(() => ({
        getUserAgent: vi.fn(() => "Mozilla/5.0 Electron/41.5.0 t3code/1.2.3"),
-@@ -487,6 +488,12 @@ describe("DesktopWindow", () => {
+@@ -519,6 +520,12 @@ describe("DesktopWindow", () => {
        DesktopWindow.resolveInitialMainWindowBounds(persistedBounds, [displays[0]!]),
        DesktopAppSettings.DEFAULT_MAIN_WINDOW_SIZE,
      );
@@ -762,7 +762,7 @@ index 497b315ef5225b7e3c0cdad7a5ea9ca7ddd02034..bcb9a7aea2db032c5705ee10e547a7eb
    });
  
    it("restores a window saved 1px past a display edge, and nothing further out", () => {
-@@ -500,11 +507,12 @@ describe("DesktopWindow", () => {
+@@ -532,11 +539,12 @@ describe("DesktopWindow", () => {
        DesktopWindow.resolveInitialMainWindowBounds(snappedBounds, displays),
        snappedBounds,
      );
@@ -780,20 +780,20 @@ index 497b315ef5225b7e3c0cdad7a5ea9ca7ddd02034..bcb9a7aea2db032c5705ee10e547a7eb
        assert.deepEqual(
          DesktopWindow.resolveInitialMainWindowBounds(bounds, displays),
 diff --git a/apps/desktop/src/window/DesktopWindow.ts b/apps/desktop/src/window/DesktopWindow.ts
-index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631f844a29c 100644
+index 0b635528a3cbe6ebf707ce9bf32ed6f95ecb20e6..c58e2d5c7c090ad8eb0ef6d8c4cf4830e930dfb4 100644
 --- a/apps/desktop/src/window/DesktopWindow.ts
 +++ b/apps/desktop/src/window/DesktopWindow.ts
-@@ -13,6 +13,9 @@ import * as Electron from "electron";
- import { type DesktopSnapShotEvent, DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts";
+@@ -20,6 +20,9 @@ import {
  
  import * as DesktopAssets from "../app/DesktopAssets.ts";
+ import * as DesktopClerk from "../app/DesktopClerk.ts";
 +import { installDetachedWindows } from "../tessaya/detachedWindows.ts";
 +import { setOverlaySafely, syncsWithT3Appearance } from "../tessaya/lastAppWindow.ts";
 +import { takeMainHold } from "../tessaya/launchWindows.ts";
  import * as DesktopEnvironment from "../app/DesktopEnvironment.ts";
  import * as DesktopPrimaryPaste from "../app/DesktopPrimaryPaste.ts";
  import { makeComponentLogger } from "../app/DesktopObservability.ts";
-@@ -167,8 +170,8 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
+@@ -176,8 +179,8 @@ function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
  
  type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
  
@@ -804,7 +804,7 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
  
  function windowFitsWithinDisplay(
    windowBounds: DesktopAppSettings.DesktopWindowBounds,
-@@ -347,14 +350,14 @@ function syncWindowAppearance(
+@@ -363,14 +366,14 @@ function syncWindowAppearance(
    platform: NodeJS.Platform,
  ): Effect.Effect<void> {
    return Effect.sync(() => {
@@ -815,13 +815,13 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
  
      window.setBackgroundColor(getInitialWindowBackgroundColor(shouldUseDarkColors));
      const { titleBarOverlay } = getWindowTitleBarOptions(shouldUseDarkColors, platform);
-     if (typeof titleBarOverlay === "object") {
+     if (hasTitleBarOverlay && typeof titleBarOverlay === "object") {
 -      window.setTitleBarOverlay(titleBarOverlay);
 +      setOverlaySafely(window, titleBarOverlay);
      }
    });
  }
-@@ -473,6 +476,18 @@ export const make = Effect.gen(function* () {
+@@ -489,6 +492,18 @@ export const make = Effect.gen(function* () {
        yield* logWindowWarning("saved main window bounds could not be restored; using defaults");
      }
      if (yield* Ref.get(desktopState.quitting)) return Option.none();
@@ -840,7 +840,7 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
      const window = yield* electronWindow.create({
        ...initialBounds,
        minWidth: DesktopAppSettings.MIN_MAIN_WINDOW_SIZE.width,
-@@ -484,18 +499,7 @@ export const make = Effect.gen(function* () {
+@@ -500,18 +515,7 @@ export const make = Effect.gen(function* () {
        ...iconOption,
        title: environment.displayName,
        ...getWindowTitleBarOptions(shouldUseDarkColors, environment.platform),
@@ -860,7 +860,7 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
      });
      if (yield* Ref.get(desktopState.quitting)) {
        yield* electronWindow.destroyAll;
-@@ -617,32 +621,6 @@ export const make = Effect.gen(function* () {
+@@ -633,34 +637,6 @@ export const make = Effect.gen(function* () {
        yield* electronWindow.destroyAll;
        return Option.none();
      }
@@ -872,10 +872,12 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
 -        event.preventDefault();
 -        return;
 -      }
+-      // The guest always runs the app's own preload, whatever the element asked for.
+-      webPreferences.preload = environment.previewPickPreloadPath;
 -      webPreferences.sandbox = true;
 -      webPreferences.nodeIntegration = false;
 -      webPreferences.nodeIntegrationInSubFrames = false;
--      webPreferences.contextIsolation = false;
+-      webPreferences.contextIsolation = true;
 -      webPreferences.disableHtmlFullscreenWindowResize = true;
 -      if (previewPasskeys.bridgeEnabled) {
 -        webPreferences.additionalArguments = [
@@ -893,31 +895,15 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
  
      const contextMenuContents = new WeakSet<Electron.WebContents>();
      const installContextMenu = (
-@@ -733,33 +711,71 @@ export const make = Effect.gen(function* () {
-         installContextMenu(popup, popup.webContents);
+@@ -780,40 +756,81 @@ export const make = Effect.gen(function* () {
+         installContextMenu(popup, popup.webContents, isBrowserContents);
        });
      };
 -    installContextMenu(window, window.webContents);
 -    window.webContents.on("did-attach-webview", (_event, contents) => {
--      installContextMenu(window, contents);
+-      installContextMenu(window, contents, true);
 -      void runPromise(previewManager.prepareWebview(contents));
 -    });
--
--    window.webContents.setWindowOpenHandler(({ url }) => {
--      if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
--        void runPromise(electronShell.openExternal(url));
--      }
--      return { action: "deny" };
--    });
--    window.webContents.on("will-navigate", (event, url) => {
--      if (
--        isSameOriginRendererNavigation({
--          applicationUrl,
--          navigationUrl: url,
--        })
--      ) {
--        return;
--      }
 +    // Baton (0007-desktop.patch): detached thread windows get this same policy (D96).
 +    const guardWindow = (owner: Electron.BrowserWindow) => {
 +      const contents = owner.webContents;
@@ -930,10 +916,12 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
 +          event.preventDefault();
 +          return;
 +        }
++        // The guest always runs the app's own preload, whatever the element asked for.
++        webPreferences.preload = environment.previewPickPreloadPath;
 +        webPreferences.sandbox = true;
 +        webPreferences.nodeIntegration = false;
 +        webPreferences.nodeIntegrationInSubFrames = false;
-+        webPreferences.contextIsolation = false;
++        webPreferences.contextIsolation = true;
 +        webPreferences.disableHtmlFullscreenWindowResize = true;
 +        if (previewPasskeys.bridgeEnabled) {
 +          webPreferences.additionalArguments = [
@@ -949,17 +937,47 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
 +        }
 +      });
 +      contents.on("did-attach-webview", (_event, guest) => {
-+        installContextMenu(owner, guest);
++        installContextMenu(owner, guest, true);
 +        void runPromise(previewManager.prepareWebview(guest));
 +      });
+ 
+-    // Popups from every frame in this window arrive here without a caller, so only web links
+-    // pass. The app opens editors and other applications over IPC.
+-    window.webContents.setWindowOpenHandler(({ url }) => {
+-      if (Option.isSome(ElectronShell.parseWebExternalUrl(url))) {
+-        void runPromise(electronShell.openExternal(url));
+-      }
+-      return { action: "deny" };
+-    });
+-    // Chromium asks this before handing a navigation to an OS protocol handler, and grants it
+-    // when nothing answers. External links are opened through ElectronShell only.
+-    window.webContents.session.setPermissionRequestHandler((_contents, permission, callback) =>
+-      callback(permission !== "openExternal"),
+-    );
+-    window.webContents.on("will-navigate", (event, url) => {
+-      if (
+-        isSameOriginRendererNavigation({
+-          applicationUrl,
+-          navigationUrl: url,
+-        })
+-      ) {
+-        return;
+-      }
++      // Popups from every frame in this window arrive here without a caller, so only web links
++      // pass. The app opens editors and other applications over IPC.
 +      contents.setWindowOpenHandler(({ url }) => {
 +        const detached = allowDetachedWindow(url);
 +        if (detached !== null) return detached;
-+        if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
++        if (Option.isSome(ElectronShell.parseWebExternalUrl(url))) {
 +          void runPromise(electronShell.openExternal(url));
 +        }
 +        return { action: "deny" };
 +      });
++      // Chromium asks this before handing a navigation to an OS protocol handler, and grants it
++      // when nothing answers. External links are opened through ElectronShell only.
++      contents.session.setPermissionRequestHandler((_contents, permission, callback) =>
++        callback(permission !== "openExternal"),
++      );
 +      contents.on("will-navigate", (event, url) => {
 +        if (
 +          isSameOriginRendererNavigation({
@@ -991,7 +1009,7 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
  
      const quitShortcutHandler = makeQuitShortcutHandler({
        platform: environment.platform,
-@@ -1136,6 +1152,7 @@ export const make = Effect.gen(function* () {
+@@ -1240,6 +1257,7 @@ export const make = Effect.gen(function* () {
      }),
      activate: Effect.gen(function* () {
        if (yield* Ref.get(desktopState.quitting)) return;
@@ -999,7 +1017,7 @@ index 43404e2d6cfb9bda7356fabd00c13a68c7ec32d0..a33dda630399a431d92b03aa56a7e631
        const existingWindow = yield* currentMainWindow;
        if (Option.isSome(existingWindow)) {
          yield* revealMain(existingWindow.value);
-@@ -1161,7 +1178,8 @@ export const make = Effect.gen(function* () {
+@@ -1265,7 +1283,8 @@ export const make = Effect.gen(function* () {
        backendHasStarted = true;
        yield* Ref.set(backendReadyRef, true);
        yield* logWindowInfo("backend ready", { source: "http", url: httpBaseUrl.href });

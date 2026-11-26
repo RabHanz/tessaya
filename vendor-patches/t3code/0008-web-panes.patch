@@ -4,18 +4,26 @@ The route view renders panes/BatonPanes around its ChatView; unfocused panes sta
 focus and shortcuts through BackgroundThreadContext. The rest is in components/panes.
 
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc01310241c65 100644
+index bca4f3563d60ce8306db10cd48925e892fee5bed..502279d5fb4b633e5b43fa8af89f267be9beb54a 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -37,6 +37,7 @@ import { ThreadFind, ThreadFindCanvas } from "./chat/ThreadFindProvider";
- import { closeThreadFind, openThreadFind, useThreadFindOpen } from "./chat/threadFindStore";
- import { THREAD_FIND_BAR_RESERVED_HEIGHT } from "./chat/ThreadFindBar";
- import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
+@@ -1,6 +1,6 @@
+ import { m } from "../i18n/messages";
+ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
+-import { useGT, useMessages } from "gt-react";
++import { msg, useGT, useMessages } from "gt-react";
+ import { ChildThreadApprovals } from "./chat/ChildThreadApprovals";
+ import {
+   draftRuntimeModeLimitsInstance,
+@@ -50,6 +50,7 @@ import {
+   resolveDraftHeroState,
+   resolveThreadErrorBanner,
+ } from "./ChatView.logic";
 +import { useLiveLimitBanner } from "./chat/TessayaLiveModel";
- import { isThreadEnvironmentLocked, resolveDraftHeroState } from "./ChatView.logic";
  import { useQueuedRunEdit } from "./chat/useQueuedRunEdit";
  import { recallCheckoutIsRepo, rememberCheckoutIsRepo } from "./ChatView.logic";
-@@ -158,6 +159,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
+ import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
+@@ -181,6 +182,7 @@ import { buildThreadRouteParams } from "../threadRoutes";
  import { useTheme } from "../hooks/useTheme";
  import { copyThreadReference } from "../lib/copyThreadReference";
  import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
@@ -23,7 +31,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
  import { useMediaQuery } from "../hooks/useMediaQuery";
  import { FileMetadataThreadProvider } from "../hooks/FileMetadataThreadProvider";
  import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../rightPanelLayout";
-@@ -267,7 +269,13 @@ import {
+@@ -303,7 +305,13 @@ import {
    useThreadHistory,
    useQuietThreadShell,
    useThreadCheckpointSummaries,
@@ -37,16 +45,28 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
  import { useEnvironmentShellHasSnapshot } from "../state/shell";
  import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
  import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
-@@ -353,7 +361,7 @@ import {
-   shouldRefocusComposerOnWindowFocus,
+@@ -394,7 +402,11 @@ import {
+   hasCompactableConversation,
  } from "./ChatView.logic";
  import { useLocalStorage } from "~/hooks/useLocalStorage";
 -import { useComposerHandleContext } from "../composerHandleContext";
-+import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
++import {
++  ComposerHandleContext,
++  type ComposerHandleRef,
++  useComposerHandleContext,
++} from "../composerHandleContext";
  import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/attachments";
  import { appAtomRegistry } from "../rpc/atomRegistry";
  import { assetEnvironment } from "../state/assets";
-@@ -404,6 +412,8 @@ type ChatViewProps =
+@@ -426,6 +438,7 @@ import {
+ } from "./ChatView.logic";
+ 
+ const EMPTY_PROVIDERS: ServerProvider[] = [];
++const NO_COMPOSER: ComposerHandleRef = { current: null };
+ const ACTIVE_RUN_STATUSES: ReadonlySet<string> = new Set([
+   "preparing",
+   "queued",
+@@ -452,6 +465,8 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -55,7 +75,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
        forceExpandedMobileComposer?: boolean;
        /** A side chat in its parent's right panel; the parent keeps the keyboard and workspace UI. */
        embedded?: SideChatParentPanel;
-@@ -415,6 +425,7 @@ type ChatViewProps =
+@@ -463,6 +478,7 @@ type ChatViewProps =
        threadId: ThreadId;
        onDiffPanelOpen?: () => void;
        reserveTitleBarControlInset?: boolean;
@@ -63,7 +83,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
        forceExpandedMobileComposer?: boolean;
        embedded?: never;
        routeKind: "draft";
-@@ -432,6 +443,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -482,6 +498,7 @@ export default function ChatView(props: ChatViewProps) {
      routeKind,
      onDiffPanelOpen,
      reserveTitleBarControlInset = true,
@@ -71,7 +91,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
      forceExpandedMobileComposer = false,
      embedded: parentPanel,
    } = props;
-@@ -474,6 +486,13 @@ export default function ChatView(props: ChatViewProps) {
+@@ -525,6 +542,13 @@ export default function ChatView(props: ChatViewProps) {
      label: "load earlier thread history",
      reportFailure: false,
    });
@@ -85,7 +105,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
    const { environments } = useEnvironments();
    const providersByEnvironment = useEnvironmentProviders();
    const primaryEnvironment = usePrimaryEnvironment();
-@@ -509,7 +528,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -560,7 +584,10 @@ export default function ChatView(props: ChatViewProps) {
          });
    const promptRef = useRef("");
    const localComposerRef = useRef<ChatComposerHandle | null>(null);
@@ -97,7 +117,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
    const queuedRunEdit = useQueuedRunEdit({
      environmentId,
      routeThreadRef,
-@@ -1341,6 +1363,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1451,6 +1478,10 @@ export default function ChatView(props: ChatViewProps) {
      ],
      lockedProvider,
      lockedInstanceId: activeRuntime?.providerInstanceId ?? activeThreadModelInstanceId,
@@ -108,44 +128,27 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
    });
    const selectedProvider = selectedProviderEntry?.driverKind ?? requestedDriverKind;
    const activeProviderInstanceId = selectedProviderEntry?.instanceId ?? null;
-@@ -1651,10 +1677,17 @@ export default function ChatView(props: ChatViewProps) {
-     data: useAtomValue(gitStatusAtom ? chatGitStatusAtom(gitStatusAtom) : NO_CHAT_GIT_STATUS_ATOM),
-     refresh: useEnvironmentQueryRefresh(gitStatusAtom).refresh,
-   };
-+  const refreshLocalGitStatus = useAtomCommand(vcsEnvironment.refreshLocalStatus, {
-+    reportFailure: false,
-+  });
-   useWorkspaceMutationRefresh({
-     enabled: gitStatusCwd !== null,
-     mutationId: workspaceMutationId,
--    refresh: gitStatusQuery.refresh,
-+    // Resubscribing would resend the whole status, and its activity reports, on every tool call.
-+    refresh: () => {
-+      if (gitStatusCwd === null) return;
-+      void refreshLocalGitStatus({ environmentId, input: { cwd: gitStatusCwd, localOnly: true } });
-+    },
-     resourceKey: `git-status:${activeThreadKey ?? ""}:${gitStatusCwd ?? ""}`,
-   });
-   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-@@ -1834,7 +1867,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -1984,8 +2015,9 @@ export default function ChatView(props: ChatViewProps) {
+     sendInFlightRef,
    });
  
-   const focusComposer = () => {
--    composerRef.current?.focusAtEnd();
-+    if (!backgroundThread) composerRef.current?.focusAtEnd();
-   };
-   const focusComposerStable = useStableCallback(focusComposer);
++  // A background pane never takes focus from the one in front.
+   const { focusComposer: focusComposerStable, scheduleComposerFocus: scheduleComposerFocusStable } =
+-    useComposerFocus(composerRef);
++    useComposerFocus(backgroundThread ? NO_COMPOSER : composerRef);
    const canInterruptRunningThread =
-@@ -2573,6 +2606,7 @@ export default function ChatView(props: ChatViewProps) {
-     });
+     canOperateThread && deriveCanInterruptRunningThread(activeThread !== undefined, activeRuntime);
+   const onInterrupt = async () => {
+@@ -2754,6 +2786,7 @@ export default function ChatView(props: ChatViewProps) {
+     );
      return item ? [item] : [];
    });
 +  const liveLimitBanner = useLiveLimitBanner(routeThreadRef);
-   const limitRecoveryBanner =
+   const limitRecoveryBanner = useUsageLimitRecoveryBannerItem(
      limitRecoveryRun !== null && activeThreadShell !== null
-       ? usageLimitRecoveryBannerItem({
-@@ -2640,7 +2674,9 @@ export default function ChatView(props: ChatViewProps) {
-             }),
+       ? {
+@@ -2826,7 +2859,9 @@ export default function ChatView(props: ChatViewProps) {
+             ),
            ]
          : [];
 -    const limitRecoveryItems = limitRecoveryBanner === null ? [] : [limitRecoveryBanner];
@@ -155,7 +158,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
      const extensionStatusBanner = extensionStatusBannerItem(
        deriveProviderExtensionStatuses(serverProjection),
      );
-@@ -2750,6 +2786,53 @@ export default function ChatView(props: ChatViewProps) {
+@@ -2956,6 +2991,55 @@ export default function ChatView(props: ChatViewProps) {
        "thread.copyReference": ({ event }) => {
          if (!event.repeat) copyActiveThreadReference();
        },
@@ -165,6 +168,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
 +          project: activeProject ?? undefined,
 +          providers: providersByEnvironment.get(environmentId) ?? [],
 +          threadModelSelection: serverThread?.modelSelection ?? null,
++          threadStarted: threadHasStarted(activeThread),
 +          withContext: false,
 +        });
 +        if (link === null) return false;
@@ -181,8 +185,9 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
 +        }).catch((error: unknown) => {
 +          toastManager.add({
 +            type: "error",
-+            title: "Unable to restart the agent session",
-+            description: error instanceof Error ? error.message : "An unexpected error occurred.",
++            title: m(msg("Unable to restart the agent session")),
++            description:
++              error instanceof Error ? error.message : m(msg("An unexpected error occurred.")),
 +          });
 +        });
 +      },
@@ -209,34 +214,36 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
        "chat.find": () => {
          if (!isServerThread || serverConfig?.threadFind !== true || activeThreadKey === null)
            return false;
-@@ -2787,14 +2870,19 @@ export default function ChatView(props: ChatViewProps) {
-   // A focused desktop browser page forwards these chords as menu actions.
-   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle the right panel
+@@ -2998,11 +3082,14 @@ export default function ChatView(props: ChatViewProps) {
+   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle or close the right panel
    useEffect(() => {
--    if (embedded) return;
+     if (embedded || backgroundThread) return;
 -    return window.desktopBridge?.onMenuAction((action) => {
 -      if (action === "rightPanel.toggle") toggleRightPanelStable();
 -      else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
+-      else if (action === "rightPanel.close") closeActiveRightPanelSurfaceStable();
 -    });
--  }, [embedded, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
-+    if (embedded || backgroundThread) return;
-+    const disposeToggle = registerMenuAction("rightPanel.toggle", toggleRightPanelStable);
-+    const disposeMaximize = registerMenuAction(
-+      "rightPanel.toggleMaximized",
-+      toggleRightPanelMaximizedStable,
-+    );
++    const disposers = [
++      registerMenuAction("rightPanel.toggle", toggleRightPanelStable),
++      registerMenuAction("rightPanel.toggleMaximized", toggleRightPanelMaximizedStable),
++      registerMenuAction("rightPanel.close", closeActiveRightPanelSurfaceStable),
++    ];
 +    return () => {
-+      disposeToggle();
-+      disposeMaximize();
++      for (const dispose of disposers) dispose();
 +    };
-+  }, [embedded, backgroundThread, toggleRightPanelStable, toggleRightPanelMaximizedStable]);
+   }, [
+     embedded,
+     backgroundThread,
+@@ -3011,7 +3098,7 @@ export default function ChatView(props: ChatViewProps) {
+     closeActiveRightPanelSurfaceStable,
+   ]);
  
 -  usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
 +  usePasteToFocusComposer(embedded || backgroundThread ? null : activeThreadId, composerRef);
    // A delegated task is a remote thread's subagent.
    const isSubagentThread =
      activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
-@@ -3289,8 +3377,10 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3524,8 +3611,10 @@ export default function ChatView(props: ChatViewProps) {
      />
    );
    const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
@@ -248,7 +255,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
        showMaximizeControl={!shouldUsePlanSidebarSheet}
        rightPanelOpen={rightPanelOpen}
        animationsActive={panelAnimationsActive}
-@@ -3318,7 +3408,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3553,7 +3642,9 @@ export default function ChatView(props: ChatViewProps) {
            state={deviceState}
          />
        )}
@@ -259,7 +266,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
        <div
          className={cn(
            "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-@@ -3345,13 +3437,12 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3586,13 +3677,12 @@ export default function ChatView(props: ChatViewProps) {
                COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
              )}
            >
@@ -274,7 +281,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
              {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
              <ChatHeader
                activeThreadEnvironmentId={activeThread.environmentId}
-@@ -3369,6 +3460,9 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3610,6 +3700,9 @@ export default function ChatView(props: ChatViewProps) {
                  : {})}
                {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
              />
@@ -284,7 +291,7 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
            </header>
          )}
  
-@@ -3696,6 +3790,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -3946,6 +4039,7 @@ export default function ChatView(props: ChatViewProps) {
                                  runtimeMode={runtimeMode}
                                  defaultRuntimeMode={defaultRuntimeMode}
                                  lockedProvider={modelPickerLockedProvider}
@@ -292,9 +299,9 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
                                  providerStatuses={providerStatuses as ServerProvider[]}
                                  providerCatalogKnown={serverConfig !== null}
                                  activeProjectDefaultModelSelection={
-@@ -4049,7 +4144,7 @@ export default function ChatView(props: ChatViewProps) {
-       cwd={activeWorkspaceRoot}
+@@ -4323,7 +4417,7 @@ export default function ChatView(props: ChatViewProps) {
        checkpoints={serverProjection?.checkpoints}
+       checkpointScopes={serverProjection?.checkpointScopes}
      >
 -      {content}
 +      <ComposerHandleContext value={composerRef}>{content}</ComposerHandleContext>
@@ -302,10 +309,10 @@ index 4a964ad24dbd8e5873eeec41c8b4ef05e142707c..3b60d574e33fccd2ad2da29ab1fcc013
    );
  }
 diff --git a/apps/web/src/components/Sidebar.tsx b/apps/web/src/components/Sidebar.tsx
-index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef0f7949ac 100644
+index 5d9e0310afd53005c0cea77293ba67c90ec86ad9..f3b22f2391d37f244e48607a8efd7c3723bf32d4 100644
 --- a/apps/web/src/components/Sidebar.tsx
 +++ b/apps/web/src/components/Sidebar.tsx
-@@ -1,6 +1,21 @@
+@@ -4,6 +4,21 @@ import { m } from "../i18n/messages";
  import { attachSidebarTree } from "../lib/sidebarTree";
  import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
  import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection";
@@ -327,7 +334,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
  import {
    dropThreadContext,
    endThreadContextDrag,
-@@ -415,6 +430,7 @@ function routeThreadOnly(
+@@ -430,6 +445,7 @@ function routeThreadOnly(
  
  // Separate hooks cache maps independently of later Sidebar hooks and preserve dnd-kit inputs.
  function useSidebarThreads(input: {
@@ -335,7 +342,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
    readonly projectScopeKey: string | null;
    readonly scopedProjectKeys: ReadonlySet<string> | null;
    readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
-@@ -429,6 +445,7 @@ function useSidebarThreads(input: {
+@@ -445,6 +461,7 @@ function useSidebarThreads(input: {
    readonly keepEmptyFolders: (group: SidebarProjectSnapshot) => boolean;
  }) {
    const {
@@ -343,7 +350,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
      projectScopeKey,
      scopedProjectKeys,
      serverConfigs,
-@@ -478,8 +495,9 @@ function useSidebarThreads(input: {
+@@ -496,8 +513,9 @@ function useSidebarThreads(input: {
    const settledVisibleCount =
      settledTail.scopeKey === projectScopeKey ? settledTail.count : SETTLED_TAIL_INITIAL_COUNT;
  
@@ -354,7 +361,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
      scopedProjectKeys,
      delegatedUnderParent,
      serverConfigs,
-@@ -494,7 +512,7 @@ function useSidebarThreads(input: {
+@@ -512,7 +530,7 @@ function useSidebarThreads(input: {
      partition;
    // Older settled threads load in pages; the shelf lists them only as far as they are loaded.
    const olderSettledShelf = useOlderSettledShelf({
@@ -363,7 +370,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
      expanded: settledShelfExpanded,
      visibleCount: settledVisibleCount,
    });
-@@ -1315,6 +1333,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1332,6 +1350,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      },
    );
  
@@ -372,7 +379,7 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
    const {
      workingShelfEnabled,
      pinnedThreads,
-@@ -1352,6 +1372,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -1369,6 +1389,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
      pinnedKeysById,
      activeKeysById,
    } = useSidebarThreads({
@@ -380,10 +387,10 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
      projectScopeKey,
      scopedProjectKeys,
      serverConfigs,
-@@ -1585,6 +1606,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-     const isMac = isMacPlatform(navigator.platform);
-     const isModClick = isMac ? event.metaKey : event.ctrlKey;
-     const threadKey = scopedThreadKey(threadRef);
+@@ -1621,6 +1642,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+       routeRowThreadKey !== null && orderedThreadKeysRef.current.includes(routeRowThreadKey)
+         ? routeRowThreadKey
+         : null;
 +    if (event.altKey) {
 +      event.preventDefault();
 +      openThreadInSplit(routeTarget, { kind: "server", threadRef });
@@ -391,21 +398,17 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
 +    }
      if (isModClick) {
        event.preventDefault();
-       toggleThreadSelection(threadKey);
-@@ -2644,7 +2670,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+       toggleThreadSelection(threadKey, openThreadKey);
+@@ -2719,7 +2745,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
              ),
            ) ?? null;
          const clicked = await settlePromise(() =>
 -          api.contextMenu.show(
-+          showWithSplitItem(
-+            api,
-+            routeTarget,
-+            threadRef,
-+          )(
++          showWithSplitItem(api, routeTarget, threadRef)(
              buildThreadActionMenuItems({
                canOperate: readEnvironmentScope(
                  threadRef.environmentId,
-@@ -2683,6 +2713,16 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+@@ -2762,6 +2788,19 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            ),
          );
          if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -415,14 +418,17 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
 +        }
 +        if (clicked.value === BATON_DETACH_MENU_ITEM) {
 +          if (!openDetachedWindow({ kind: "server", threadRef })) {
-+            toastManager.add({ type: "error", title: "The browser blocked the new window" });
++            toastManager.add({
++              type: "error",
++              title: m(msg("The browser blocked the new window")),
++            });
 +          }
 +          return;
 +        }
-         if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
-         if (clicked.value?.startsWith("snooze:")) {
-           const preset =
-@@ -3211,6 +3251,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+         if (
+           threadActionRequiresOperate(clicked.value) &&
+           !checkThreadOperations([thread], isThreadTriageAction(clicked.value))
+@@ -3343,6 +3382,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
            </SidebarGroup>
          }
        >
@@ -433,8 +439,8 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
          <SidebarGroup className="flex-1" role="presentation">
            {isSearchingThreads ? (
              threadSearchResults.length > 0 ? (
-@@ -3313,6 +3357,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-                     Add project
+@@ -3445,6 +3488,8 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                     <T>Add project</T>
                    </button>
                  </>
 +              ) : tessayaLiveOnly ? (
@@ -442,46 +448,52 @@ index a94b9e9497c6bd7d10be69c132bb57fb568d8a75..235644df0c040ddaa23e74247e9060ef
                ) : scopedProjectGroups.length > 0 ? (
                  <>
                    <span>
-@@ -3397,6 +3443,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
-                               optimisticDrop !== null
-                             }
-                             thread={thread}
-+                            batonLive={isRunningLive(batonRunningLive, thread)}
-                             variant={rowVariant}
-                             navigationParent={
-                               folderRow ??
+@@ -3529,6 +3574,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
+                             optimisticDrop !== null
+                           }
+                           thread={thread}
++                          batonLive={isRunningLive(batonRunningLive, thread)}
+                           variant={rowVariant}
+                           navigationParent={
+                             folderRow ??
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
-index a7b7da0a6b53b67eba0cd0363be218501dc80f72..767a8d8b7a29b2d2200c5a76933a024506592b68 100644
+index f9a1aca77daa64f833182dfa48fd9697d7daf1d9..39571aff5cf12918436dd75b43993dc51beb7a2a 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
 +++ b/apps/web/src/components/ThreadRouteView.tsx
-@@ -8,7 +8,7 @@ import { Navigate, useNavigate } from "@tanstack/react-router";
+@@ -9,7 +9,8 @@ import { T } from "gt-react";
  import { useEffect, useState } from "react";
  
  import ChatView from "./ChatView";
--import { BackgroundThreadContext } from "./chat/backgroundThread";
+-import { BackgroundThreadContext, HiddenThreadContext } from "./chat/backgroundThread";
++import { HiddenThreadContext } from "./chat/backgroundThread";
 +import { TessayaPanes } from "./panes/TessayaPanes";
+ import { Button } from "./ui/button";
+ import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "./ui/empty";
  import { SidebarInset } from "./ui/sidebar";
- import { useComposerDraftStore } from "../composerDraftStore";
- import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-@@ -229,7 +229,12 @@ export function ThreadRouteView({
+@@ -239,9 +240,15 @@ export function ThreadRouteView({
        className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
        inert={background}
      >
--      <BackgroundThreadContext value={background}>{view}</BackgroundThreadContext>
-+      <TessayaPanes
-+        route={target}
-+        background={background}
-+        pending={renderState === "loading"}
-+        view={view}
-+      />
+-      <BackgroundThreadContext value={background}>
+-        <HiddenThreadContext value={background}>{view}</HiddenThreadContext>
+-      </BackgroundThreadContext>
++      {/* TessayaPanes gives each pane its own BackgroundThreadContext. */}
++      <HiddenThreadContext value={background}>
++        <TessayaPanes
++          route={target}
++          background={background}
++          pending={renderState === "loading"}
++          view={view}
++        />
++      </HiddenThreadContext>
        {background ? null : redirect}
      </SidebarInset>
    );
 diff --git a/apps/web/src/components/chat/PanelLayoutControls.tsx b/apps/web/src/components/chat/PanelLayoutControls.tsx
-index 4db623bcbb07d8d70f8c2f4668ce86e56b15e739..312e296b3833491d0495ee22a1af3397e10176fa 100644
+index 85a1b9f4b7cca0edf112722e5a7890625cab4fca..66c2adbdedde7948f2d40ef1a8674a83f0d6c73c 100644
 --- a/apps/web/src/components/chat/PanelLayoutControls.tsx
 +++ b/apps/web/src/components/chat/PanelLayoutControls.tsx
-@@ -186,8 +186,13 @@ export function ThreadPanelHeaderControl(props: PanelLayoutControlsProps) {
+@@ -195,8 +195,13 @@ export function ThreadPanelHeaderControl(props: PanelLayoutControlsProps) {
    );
  }
  
@@ -496,9 +508,9 @@ index 4db623bcbb07d8d70f8c2f4668ce86e56b15e739..312e296b3833491d0495ee22a1af3397
    readonly showMaximizeControl: boolean;
    readonly rightPanelOpen: boolean;
    readonly animationsActive: boolean;
-@@ -199,7 +204,11 @@ export function WorkspaceTitlebarControls(props: {
-   return (
+@@ -231,7 +236,11 @@ export function WorkspaceTitlebarControls(props: {
      <div
+       ref={controlsRef}
        className={cn(
 -        "pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
 +        "pointer-events-none flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
@@ -510,10 +522,10 @@ index 4db623bcbb07d8d70f8c2f4668ce86e56b15e739..312e296b3833491d0495ee22a1af3397
        )}
        data-workspace-titlebar-controls
 diff --git a/apps/web/src/routes/_chat.index.tsx b/apps/web/src/routes/_chat.index.tsx
-index b511be0fa9255d329937ee997809af7c3b687b06..24811cdb2cece1c9bc6968c120ea32c9c62ad6bc 100644
+index 2e6ee53809310212a7700e1de84cd11dcbeeec18..9f03599e8d94e2de3576b5cdb2dd117a1a3ae050 100644
 --- a/apps/web/src/routes/_chat.index.tsx
 +++ b/apps/web/src/routes/_chat.index.tsx
-@@ -12,6 +12,8 @@ import { HostedEmptyState } from "../components/HostedEmptyState";
+@@ -13,6 +13,8 @@ import { HostedEmptyState } from "../components/HostedEmptyState";
  import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
  import { SidebarInset } from "../components/ui/sidebar";
  import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
@@ -522,7 +534,7 @@ index b511be0fa9255d329937ee997809af7c3b687b06..24811cdb2cece1c9bc6968c120ea32c9
  import { useNewThreadHandler } from "../hooks/useHandleNewThread";
  import {
    readProject,
-@@ -24,11 +26,13 @@ import { useEnvironments } from "../state/environments";
+@@ -25,11 +27,13 @@ import { useEnvironments } from "../state/environments";
  function ChatIndexRouteView() {
    const { authGateState } = Route.useRouteContext();
    const { environments, isReady } = useEnvironments();

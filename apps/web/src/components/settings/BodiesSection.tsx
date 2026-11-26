@@ -9,7 +9,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 
 type Reply = { readonly ok: boolean; readonly value?: unknown; readonly error?: string } | null;
 type Call = (
@@ -85,6 +85,7 @@ function BodyRow(props: {
 }
 
 export function BodiesSection(props: { readonly call: Call }) {
+  const searchableSetting = useSearchableSetting();
   const [view, setView] = useState<VesselBodiesView | null>(null);
   const [host, setHost] = useState("");
   const [note, setNote] = useState("");

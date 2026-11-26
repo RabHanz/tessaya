@@ -24,7 +24,7 @@ import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 interface HomeView {
@@ -53,6 +53,7 @@ export function HomeSettingsPanel() {
 }
 
 function HomeSections({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const searchableSetting = useSearchableSetting();
   const quiet = { reportFailure: false } as const;
   const homeCall = useAtomCommand(tessayaWorkSessions.homeCall, quiet);
   // One method; the kind sets its scope on the server (act is operate, answer is the approval scope).

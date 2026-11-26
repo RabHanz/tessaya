@@ -1,5 +1,10 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ContextMenuItem, LocalApi, ScopedThreadRef } from "@t3tools/contracts";
+import type {
+  ContextMenuItem,
+  ContextMenuSource,
+  LocalApi,
+  ScopedThreadRef,
+} from "@t3tools/contracts";
 
 import type { ThreadRouteTarget } from "../../threadRoutes";
 import { paneTargetKey } from "./tessayaPaneLayout";
@@ -16,6 +21,7 @@ export function showWithSplitItem(
   return <T extends string>(
     items: readonly ContextMenuItem<T>[],
     position?: { x: number; y: number },
+    source?: ContextMenuSource,
   ) => {
     const onScreen = route === null || paneTargetKey(route) === scopedThreadKey(threadRef);
     return api.contextMenu.show<T | typeof BATON_SPLIT_MENU_ITEM | typeof BATON_DETACH_MENU_ITEM>(
@@ -25,6 +31,7 @@ export function showWithSplitItem(
         ...items,
       ],
       position,
+      source,
     );
   };
 }
