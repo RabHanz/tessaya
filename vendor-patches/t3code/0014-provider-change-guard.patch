@@ -121,10 +121,10 @@ index 278b9eb67599bcae9f32364fae092e732c12d4fd..8623b77b20532ba0b015a2a3331a7859
      canSwitchThreadProvider,
      runtimeMode,
 diff --git a/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts b/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
-index 2b97201512fcc47490d0b241d807e241b6c27564..ca169b5b3774ced71ef2ec86e8fce1bb9c454f39 100644
+index 0c0cfc465b3d0f9bfd5851fa0ff90e3650fd70c3..bd33422a6bb3c5812407608276aec9c86e5bfbcd 100644
 --- a/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
 +++ b/apps/server/src/orchestration-v2/SteeringCompletion.integration.test.ts
-@@ -1259,6 +1259,7 @@ it.effect(
+@@ -1262,6 +1262,7 @@ it.effect(
                text: id,
                attachments: [],
                modelSelection: selection,
@@ -132,7 +132,7 @@ index 2b97201512fcc47490d0b241d807e241b6c27564..ca169b5b3774ced71ef2ec86e8fce1bb
                dispatchMode: { type: "steer_active", targetRunId: started[0]!.runId },
                createdBy: "user",
                creationSource: "web",
-@@ -3191,6 +3192,7 @@ const scheduledDeliveryAfterClaudeSwitch = (name: string, text: string) =>
+@@ -3289,6 +3290,7 @@ const scheduledDeliveryAfterClaudeSwitch = (name: string, text: string) =>
          commandId: CommandId.make("select-claude"),
          threadId,
          modelSelection: claudeSelection,

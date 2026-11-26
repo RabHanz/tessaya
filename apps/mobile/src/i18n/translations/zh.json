@@ -1325,6 +1325,7 @@
   "bb34eaf6ddc55a72": "此账户没有订阅限制。",
   "42a2622893a6bced": "无法读取限额。",
   "4897e228d3185c96": "没有报告限额。",
+  "161135f0aea4d1ca": "{source}：没有 Codex、Claude 或 Grok 账户。已跳过：{providers}。",
   "e27d2cb964df5dd5": "{source}：未报告任何账户。",
   "1b503134018285f4": "{days} 天 {hours} 小时",
   "164c674cf062933a": "{label} · 剩余 {count} 个 · {expires} 后过期",

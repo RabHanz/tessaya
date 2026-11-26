@@ -1325,6 +1325,7 @@
   "bb34eaf6ddc55a72": "Esta conta não tem limites de assinatura.",
   "42a2622893a6bced": "Não foi possível ler os limites.",
   "4897e228d3185c96": "Nenhum limite informado.",
+  "161135f0aea4d1ca": "{source}: nenhuma conta do Codex, Claude ou Grok. Ignorados: {providers}.",
   "e27d2cb964df5dd5": "{source}: nenhuma conta informada.",
   "1b503134018285f4": "{days}d {hours}h",
   "164c674cf062933a": "{label} · {count} restantes · expira em {expires}",

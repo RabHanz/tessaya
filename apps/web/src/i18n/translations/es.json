@@ -1325,6 +1325,7 @@
   "bb34eaf6ddc55a72": "Esta cuenta no tiene límites de suscripción.",
   "42a2622893a6bced": "No se pudieron leer los límites.",
   "4897e228d3185c96": "No se informaron límites.",
+  "161135f0aea4d1ca": "{source}: no hay cuentas de Codex, Claude ni Grok. Se omitieron: {providers}.",
   "e27d2cb964df5dd5": "{source}: no se informaron cuentas.",
   "1b503134018285f4": "{days} d {hours} h",
   "164c674cf062933a": "{label} · quedan {count} · caduca en {expires}",
@@ -1764,28 +1765,28 @@
   "dbce00d60f9f5e09": "La solicitud falló.",
   "33e75f56788514b7": "Diagrama Mermaid",
   "6175dd43131634a3": "Usar plantilla",
-  "319e1fe42cefb567": "Close browser while the agent is using it?",
-  "fd23be9321ece596": "The agent is actively controlling this browser. Closing it may interrupt the current browser action.",
-  "b9b8b0c03b4e48f0": "{count, plural, one {Close {count} browsers while the agent is using them?} other {Close {count} browsers while the agent is using them?}}",
-  "cd506d22b84d22d3": "The agent is actively controlling these browsers. Closing them may interrupt the current browser actions.",
-  "e9b3ef6d3da72e69": "Install Antigravity in provider settings before sending.",
-  "6ae10d33cdb855d8": "Sign in to Antigravity in provider settings before sending.",
-  "af000ba6205913d3": "Choose an Antigravity model before sending.",
-  "258cd8157d6edbea": "Refresh Antigravity models in provider settings before sending.",
-  "942a831ce4a4171e": "That Antigravity model is no longer available. Choose another model.",
-  "b4c2c30643ea00bb": "The environment returned an invalid attachment URL.",
-  "8477c16ec31f6477": "This message has an attachment that cannot be restored.",
-  "b64793806a0a34cc": "Could not restore attachment: {name}",
-  "234136732961387e": "{count, plural, =1 {Expired terminal context won't be sent} other {Expired terminal contexts won't be sent}}",
-  "15d397024f5ae47b": "{count, plural, =1 {Remove it or re-add it to include terminal output.} other {Remove them or re-add them to include terminal output.}}",
-  "b0e8f0739695c32d": "{count, plural, =1 {Expired terminal context omitted from message} other {Expired terminal contexts omitted from message}}",
-  "ecd9fe7bb1a86076": "{count, plural, =1 {Re-add it if you want that terminal output included.} other {Re-add them if you want that terminal output included.}}",
-  "048e123b9264806f": "Start a new chat to switch providers",
-  "b72c54b322c21710": "This thread does not support switching providers after it has started.",
-  "6c564f3a631a0ee7": "The thread has changed. Select a message to rewind again.",
-  "167b99c44a181473": "Timed out waiting for the thread to rewind.",
-  "cd82f739455a9406": "{reason} Start a new thread to use this model.",
-  "e447e12ceb134557": "Review: {label}",
+  "319e1fe42cefb567": "¿Cerrar el navegador mientras el agente lo está usando?",
+  "fd23be9321ece596": "El agente está controlando este navegador. Cerrarlo puede interrumpir la acción actual del navegador.",
+  "b9b8b0c03b4e48f0": "{count, plural, one {¿Cerrar {count} navegador mientras el agente lo está usando?} other {¿Cerrar {count} navegadores mientras el agente los está usando?}}",
+  "cd506d22b84d22d3": "El agente está controlando estos navegadores. Cerrarlos puede interrumpir las acciones actuales de los navegadores.",
+  "e9b3ef6d3da72e69": "Instala Antigravity en los ajustes del proveedor antes de enviar.",
+  "6ae10d33cdb855d8": "Inicia sesión en Antigravity en los ajustes del proveedor antes de enviar.",
+  "af000ba6205913d3": "Elige un modelo de Antigravity antes de enviar.",
+  "258cd8157d6edbea": "Actualiza los modelos de Antigravity en los ajustes del proveedor antes de enviar.",
+  "942a831ce4a4171e": "Ese modelo de Antigravity ya no está disponible. Elige otro modelo.",
+  "b4c2c30643ea00bb": "El entorno devolvió una URL de adjunto no válida.",
+  "8477c16ec31f6477": "Este mensaje tiene un adjunto que no se puede restaurar.",
+  "b64793806a0a34cc": "No se pudo restaurar el adjunto: {name}",
+  "234136732961387e": "{count, plural, =1 {No se enviará el contexto de terminal caducado} other {No se enviarán los contextos de terminal caducados}}",
+  "15d397024f5ae47b": "{count, plural, =1 {Quítalo o vuelve a añadirlo para incluir la salida de la terminal.} other {Quítalos o vuelve a añadirlos para incluir la salida de la terminal.}}",
+  "b0e8f0739695c32d": "{count, plural, =1 {Contexto de terminal caducado omitido del mensaje} other {Contextos de terminal caducados omitidos del mensaje}}",
+  "ecd9fe7bb1a86076": "{count, plural, =1 {Vuelve a añadirlo si quieres incluir esa salida de la terminal.} other {Vuelve a añadirlos si quieres incluir esa salida de la terminal.}}",
+  "048e123b9264806f": "Inicia un chat nuevo para cambiar de proveedor",
+  "b72c54b322c21710": "Este hilo no permite cambiar de proveedor una vez iniciado.",
+  "6c564f3a631a0ee7": "El hilo ha cambiado. Selecciona un mensaje para volver atrás de nuevo.",
+  "167b99c44a181473": "Se agotó el tiempo de espera para volver atrás en el hilo.",
+  "cd82f739455a9406": "{reason} Inicia un hilo nuevo para usar este modelo.",
+  "e447e12ceb134557": "Revisión: {label}",
   "d47210578c5fcf9e": "Unable to restart the agent session",
   "4d5ecbb9f076fe6e": "Se produjo un error inesperado.",
   "f967fe7fc56614f5": "El cuadro de mensaje no está listo",
@@ -3276,7 +3277,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "en el ordenador que abrió esta página"]
+      "c": [
+        " ",
+        "en el ordenador que abrió esta página"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3288,7 +3292,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· quien lo ejecute obtiene este acceso"]
+      "c": [
+        " ",
+        "· quien lo ejecute obtiene este acceso"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "Aprueba solo un inicio de sesión que acabes de iniciar.",
@@ -7628,8 +7635,8 @@
     },
     "."
   ],
-  "432e85a50e2e7964": [
-    "Muestra la cuota de cada cuenta que agrupa el hub, junto a los proveedores en",
+  "28988b067c83383c": [
+    "Muestra la cuota de cada cuenta de Codex, Claude y Grok que agrupa el hub, junto a los proveedores en",
     " ",
     {
       "i": 1,
@@ -9750,6 +9757,7 @@
   "3dd6eb5644a6ed8b": "Número de procesos",
   "85f0adb1de45cbc1": "{processStarts} inicios · {processExits} salidas",
   "0f0ae2813abd70e4": "Rendimiento de lectura",
+  "dc52330df5cc4586": "{bytes} observados",
   "d032b2addb6f00dc": "Rendimiento de escritura",
   "910a0c5f01321f81": "Límite de velocidad de la CPU",
   "0360d3113c5a74f7": "Estado térmico {thermalState}",
@@ -9772,6 +9780,7 @@
   "7b2e770a310d3271": "Proceso principal de Electron",
   "953cb034cd2e65ae": "Tiempo de recopilación",
   "75f59f3b8b292536": "Escaneo de procesos",
+  "cb9f65e224af203d": "{retained}/{scanned} guardados",
   "30d77fc0bc57f102": "Inaccesible",
   "69c367f8a75a477d": "Sidecar",
   "543ff5a7f825adc3": "Reinicios",
@@ -10169,6 +10178,7 @@
   "7f11b5e6dfa0bc56": "Personalizado",
   "aea25315995268e1": "Hereda",
   "c8d6af8aaa94a464": "Predeterminado",
+  "652e3aad21933d17": "{summary} · {count, plural, one {{count} anulación de proyecto} other {{count} anulaciones de proyecto}}",
   "0a39976ec0fb3e49": "{overrideSummary}. Mostrar de dónde viene este valor",
   "99af2d06aa2b6d12": "Restablecerlo",
   "7e9fca5fb426044a": "Restablecer todo",

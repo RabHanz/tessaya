@@ -40,7 +40,7 @@ index fea2b1258c8423d339e95727de520e957c770801..893650175a22c3b6f76a605f7f83591b
          {...searchableSetting("providers")}
          variant="plain"
 diff --git a/apps/web/src/components/settings/settingsSearch.test.ts b/apps/web/src/components/settings/settingsSearch.test.ts
-index 3249b6762423440d5fb22feca52d5e2ef92aef61..e434e5129fad113be9233bb8b53737877c30717b 100644
+index d8a04cc149bd115b6b192edb34d86cb568e0e3fa..2bb76c3db596829883eca7b788eabeae29643de8 100644
 --- a/apps/web/src/components/settings/settingsSearch.test.ts
 +++ b/apps/web/src/components/settings/settingsSearch.test.ts
 @@ -1,3 +1,4 @@
@@ -56,7 +56,7 @@ index 3249b6762423440d5fb22feca52d5e2ef92aef61..e434e5129fad113be9233bb8b5373787
    SETTINGS_SEARCH_ITEMS,
    sourceControlHostSearchItems,
    sourceControlHostSettingsSearchId,
-@@ -250,6 +252,42 @@ describe("searchSettings", () => {
+@@ -273,6 +275,42 @@ describe("searchSettings", () => {
      }
    });
  
@@ -100,7 +100,7 @@ index 3249b6762423440d5fb22feca52d5e2ef92aef61..e434e5129fad113be9233bb8b5373787
      const ids = SETTINGS_SEARCH_ITEMS.map((item) => item.id);
      expect(new Set(ids).size).toBe(ids.length);
 diff --git a/apps/web/src/components/settings/settingsSearch.ts b/apps/web/src/components/settings/settingsSearch.ts
-index a7629c16be088242f4afecfefa452c9ca31e37f6..b735f8f62d3106a354ca5a35c3b0051db240cd1c 100644
+index 22d005761fcca82628b919df157b2cba911cf640..8126165c15b5585721c0b6b4829e903eefd06a0c 100644
 --- a/apps/web/src/components/settings/settingsSearch.ts
 +++ b/apps/web/src/components/settings/settingsSearch.ts
 @@ -1,3 +1,4 @@

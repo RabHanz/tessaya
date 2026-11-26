@@ -1325,6 +1325,7 @@
   "bb34eaf6ddc55a72": "이 계정에는 구독 한도가 없습니다.",
   "42a2622893a6bced": "한도를 읽을 수 없습니다.",
   "4897e228d3185c96": "보고된 한도가 없습니다.",
+  "161135f0aea4d1ca": "{source}: Codex, Claude, Grok 계정이 없습니다. 건너뜀: {providers}.",
   "e27d2cb964df5dd5": "{source}: 보고된 계정이 없습니다.",
   "1b503134018285f4": "{days}일 {hours}시간",
   "164c674cf062933a": "{label} · {count}개 남음 · {expires} 후 만료",
@@ -1763,28 +1764,28 @@
   "dbce00d60f9f5e09": "요청에 실패했습니다.",
   "33e75f56788514b7": "Mermaid 다이어그램",
   "6175dd43131634a3": "템플릿 사용",
-  "319e1fe42cefb567": "Close browser while the agent is using it?",
-  "fd23be9321ece596": "The agent is actively controlling this browser. Closing it may interrupt the current browser action.",
-  "b9b8b0c03b4e48f0": "{count, plural, one {Close {count} browsers while the agent is using them?} other {Close {count} browsers while the agent is using them?}}",
-  "cd506d22b84d22d3": "The agent is actively controlling these browsers. Closing them may interrupt the current browser actions.",
-  "e9b3ef6d3da72e69": "Install Antigravity in provider settings before sending.",
-  "6ae10d33cdb855d8": "Sign in to Antigravity in provider settings before sending.",
-  "af000ba6205913d3": "Choose an Antigravity model before sending.",
-  "258cd8157d6edbea": "Refresh Antigravity models in provider settings before sending.",
-  "942a831ce4a4171e": "That Antigravity model is no longer available. Choose another model.",
-  "b4c2c30643ea00bb": "The environment returned an invalid attachment URL.",
-  "8477c16ec31f6477": "This message has an attachment that cannot be restored.",
-  "b64793806a0a34cc": "Could not restore attachment: {name}",
-  "234136732961387e": "{count, plural, =1 {Expired terminal context won't be sent} other {Expired terminal contexts won't be sent}}",
-  "15d397024f5ae47b": "{count, plural, =1 {Remove it or re-add it to include terminal output.} other {Remove them or re-add them to include terminal output.}}",
-  "b0e8f0739695c32d": "{count, plural, =1 {Expired terminal context omitted from message} other {Expired terminal contexts omitted from message}}",
-  "ecd9fe7bb1a86076": "{count, plural, =1 {Re-add it if you want that terminal output included.} other {Re-add them if you want that terminal output included.}}",
-  "048e123b9264806f": "Start a new chat to switch providers",
-  "b72c54b322c21710": "This thread does not support switching providers after it has started.",
-  "6c564f3a631a0ee7": "The thread has changed. Select a message to rewind again.",
-  "167b99c44a181473": "Timed out waiting for the thread to rewind.",
-  "cd82f739455a9406": "{reason} Start a new thread to use this model.",
-  "e447e12ceb134557": "Review: {label}",
+  "319e1fe42cefb567": "에이전트가 사용 중인 브라우저를 닫을까요?",
+  "fd23be9321ece596": "에이전트가 이 브라우저를 제어하고 있습니다. 닫으면 현재 브라우저 작업이 중단될 수 있습니다.",
+  "b9b8b0c03b4e48f0": "{count, plural, other {에이전트가 사용 중인 브라우저 {count}개를 닫을까요?}}",
+  "cd506d22b84d22d3": "에이전트가 이 브라우저들을 제어하고 있습니다. 닫으면 현재 브라우저 작업이 중단될 수 있습니다.",
+  "e9b3ef6d3da72e69": "보내기 전에 제공자 설정에서 Antigravity를 설치하세요.",
+  "6ae10d33cdb855d8": "보내기 전에 제공자 설정에서 Antigravity에 로그인하세요.",
+  "af000ba6205913d3": "보내기 전에 Antigravity 모델을 선택하세요.",
+  "258cd8157d6edbea": "보내기 전에 제공자 설정에서 Antigravity 모델을 새로 고치세요.",
+  "942a831ce4a4171e": "해당 Antigravity 모델은 더 이상 사용할 수 없습니다. 다른 모델을 선택하세요.",
+  "b4c2c30643ea00bb": "환경에서 잘못된 첨부 파일 URL을 반환했습니다.",
+  "8477c16ec31f6477": "이 메시지에는 복원할 수 없는 첨부 파일이 있습니다.",
+  "b64793806a0a34cc": "첨부 파일을 복원할 수 없습니다: {name}",
+  "234136732961387e": "{count, plural, =1 {만료된 터미널 컨텍스트는 전송되지 않습니다} other {만료된 터미널 컨텍스트는 전송되지 않습니다}}",
+  "15d397024f5ae47b": "{count, plural, =1 {터미널 출력을 포함하려면 제거하거나 다시 추가하세요.} other {터미널 출력을 포함하려면 제거하거나 다시 추가하세요.}}",
+  "b0e8f0739695c32d": "{count, plural, =1 {만료된 터미널 컨텍스트가 메시지에서 제외됨} other {만료된 터미널 컨텍스트가 메시지에서 제외됨}}",
+  "ecd9fe7bb1a86076": "{count, plural, =1 {해당 터미널 출력을 포함하려면 다시 추가하세요.} other {해당 터미널 출력을 포함하려면 다시 추가하세요.}}",
+  "048e123b9264806f": "제공자를 전환하려면 새 채팅을 시작하세요",
+  "b72c54b322c21710": "이 스레드는 시작된 후 제공자 전환을 지원하지 않습니다.",
+  "6c564f3a631a0ee7": "스레드가 변경되었습니다. 되감을 메시지를 다시 선택하세요.",
+  "167b99c44a181473": "스레드 되감기를 기다리다 시간이 초과되었습니다.",
+  "cd82f739455a9406": "{reason} 이 모델을 사용하려면 새 스레드를 시작하세요.",
+  "e447e12ceb134557": "검토: {label}",
   "d47210578c5fcf9e": "Unable to restart the agent session",
   "4d5ecbb9f076fe6e": "예기치 않은 오류가 발생했습니다.",
   "f967fe7fc56614f5": "입력창이 준비되지 않았습니다",
@@ -3275,7 +3276,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "(이 페이지를 연 컴퓨터)"]
+      "c": [
+        " ",
+        "(이 페이지를 연 컴퓨터)"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3287,7 +3291,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· 실행하는 사람이 이 액세스 권한을 얻습니다"]
+      "c": [
+        " ",
+        "· 실행하는 사람이 이 액세스 권한을 얻습니다"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "방금 시작한 로그인만 승인하세요.",
@@ -7596,13 +7603,13 @@
     },
     "의 엔드포인트에서 할당량을 읽습니다."
   ],
-  "432e85a50e2e7964": [
+  "28988b067c83383c": [
     {
       "i": 1,
       "k": "_gt_value_1",
       "v": "v"
     },
-    "의 제공자 옆에 허브가 관리하는 모든 계정의 할당량을 표시합니다. 키는 해당 서버에 보관됩니다."
+    "의 제공자 옆에 허브가 관리하는 모든 Codex, Claude, Grok 계정의 할당량을 표시합니다. 키는 해당 서버에 보관됩니다."
   ],
   "2324770ba91371ac": "엔드포인트 URL",
   "556a695b117565ac": "허브 URL",
@@ -9709,6 +9716,7 @@
   "3dd6eb5644a6ed8b": "프로세스 수",
   "85f0adb1de45cbc1": "시작 {processStarts}회 · 종료 {processExits}회",
   "0f0ae2813abd70e4": "읽기 처리량",
+  "dc52330df5cc4586": "관측됨 {bytes}",
   "d032b2addb6f00dc": "쓰기 처리량",
   "910a0c5f01321f81": "CPU 속도 제한",
   "0360d3113c5a74f7": "열 상태 {thermalState}",
@@ -9731,6 +9739,7 @@
   "7b2e770a310d3271": "Electron 메인 프로세스",
   "953cb034cd2e65ae": "수집 시간",
   "75f59f3b8b292536": "프로세스 스캔",
+  "cb9f65e224af203d": "{retained}/{scanned}개 보관",
   "30d77fc0bc57f102": "액세스 불가",
   "69c367f8a75a477d": "사이드카",
   "543ff5a7f825adc3": "다시 시작 횟수",
@@ -10125,6 +10134,7 @@
   "7f11b5e6dfa0bc56": "사용자 지정",
   "aea25315995268e1": "상속됨",
   "c8d6af8aaa94a464": "기본값",
+  "652e3aad21933d17": "{summary} · {count, plural, other {프로젝트 재정의 {count}개}}",
   "0a39976ec0fb3e49": "{overrideSummary}. 이 값의 출처 표시",
   "99af2d06aa2b6d12": "재설정",
   "7e9fca5fb426044a": "모두 재설정",

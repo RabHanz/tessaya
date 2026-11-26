@@ -1325,6 +1325,7 @@
   "bb34eaf6ddc55a72": "Det här kontot har inga prenumerationsgränser.",
   "42a2622893a6bced": "Kunde inte läsa gränser.",
   "4897e228d3185c96": "Inga gränser rapporterades.",
+  "161135f0aea4d1ca": "{source}: inga Codex-, Claude- eller Grok-konton. Hoppade över {providers}.",
   "e27d2cb964df5dd5": "{source}: inga konton rapporterades.",
   "1b503134018285f4": "{days} d {hours} h",
   "164c674cf062933a": "{label} · {count} kvar · går ut om {expires}",
@@ -1764,28 +1765,28 @@
   "dbce00d60f9f5e09": "Begäran misslyckades.",
   "33e75f56788514b7": "Mermaid-diagram",
   "6175dd43131634a3": "Använd mall",
-  "319e1fe42cefb567": "Close browser while the agent is using it?",
-  "fd23be9321ece596": "The agent is actively controlling this browser. Closing it may interrupt the current browser action.",
-  "b9b8b0c03b4e48f0": "{count, plural, one {Close {count} browsers while the agent is using them?} other {Close {count} browsers while the agent is using them?}}",
-  "cd506d22b84d22d3": "The agent is actively controlling these browsers. Closing them may interrupt the current browser actions.",
-  "e9b3ef6d3da72e69": "Install Antigravity in provider settings before sending.",
-  "6ae10d33cdb855d8": "Sign in to Antigravity in provider settings before sending.",
-  "af000ba6205913d3": "Choose an Antigravity model before sending.",
-  "258cd8157d6edbea": "Refresh Antigravity models in provider settings before sending.",
-  "942a831ce4a4171e": "That Antigravity model is no longer available. Choose another model.",
-  "b4c2c30643ea00bb": "The environment returned an invalid attachment URL.",
-  "8477c16ec31f6477": "This message has an attachment that cannot be restored.",
-  "b64793806a0a34cc": "Could not restore attachment: {name}",
-  "234136732961387e": "{count, plural, =1 {Expired terminal context won't be sent} other {Expired terminal contexts won't be sent}}",
-  "15d397024f5ae47b": "{count, plural, =1 {Remove it or re-add it to include terminal output.} other {Remove them or re-add them to include terminal output.}}",
-  "b0e8f0739695c32d": "{count, plural, =1 {Expired terminal context omitted from message} other {Expired terminal contexts omitted from message}}",
-  "ecd9fe7bb1a86076": "{count, plural, =1 {Re-add it if you want that terminal output included.} other {Re-add them if you want that terminal output included.}}",
-  "048e123b9264806f": "Start a new chat to switch providers",
-  "b72c54b322c21710": "This thread does not support switching providers after it has started.",
-  "6c564f3a631a0ee7": "The thread has changed. Select a message to rewind again.",
-  "167b99c44a181473": "Timed out waiting for the thread to rewind.",
-  "cd82f739455a9406": "{reason} Start a new thread to use this model.",
-  "e447e12ceb134557": "Review: {label}",
+  "319e1fe42cefb567": "Stänga webbläsaren medan agenten använder den?",
+  "fd23be9321ece596": "Agenten styr aktivt den här webbläsaren. Om du stänger den kan den pågående webbläsaråtgärden avbrytas.",
+  "b9b8b0c03b4e48f0": "{count, plural, one {Stänga {count} webbläsare medan agenten använder den?} other {Stänga {count} webbläsare medan agenten använder dem?}}",
+  "cd506d22b84d22d3": "Agenten styr aktivt de här webbläsarna. Om du stänger dem kan de pågående webbläsaråtgärderna avbrytas.",
+  "e9b3ef6d3da72e69": "Installera Antigravity i leverantörsinställningarna innan du skickar.",
+  "6ae10d33cdb855d8": "Logga in på Antigravity i leverantörsinställningarna innan du skickar.",
+  "af000ba6205913d3": "Välj en Antigravity-modell innan du skickar.",
+  "258cd8157d6edbea": "Uppdatera Antigravity-modellerna i leverantörsinställningarna innan du skickar.",
+  "942a831ce4a4171e": "Den Antigravity-modellen är inte längre tillgänglig. Välj en annan modell.",
+  "b4c2c30643ea00bb": "Miljön returnerade en ogiltig URL för bilagan.",
+  "8477c16ec31f6477": "Det här meddelandet har en bilaga som inte kan återställas.",
+  "b64793806a0a34cc": "Kunde inte återställa bilagan: {name}",
+  "234136732961387e": "{count, plural, =1 {Utgången terminalkontext skickas inte} other {Utgångna terminalkontexter skickas inte}}",
+  "15d397024f5ae47b": "{count, plural, =1 {Ta bort den eller lägg till den igen för att ta med terminalutdata.} other {Ta bort dem eller lägg till dem igen för att ta med terminalutdata.}}",
+  "b0e8f0739695c32d": "{count, plural, =1 {Utgången terminalkontext utelämnades från meddelandet} other {Utgångna terminalkontexter utelämnades från meddelandet}}",
+  "ecd9fe7bb1a86076": "{count, plural, =1 {Lägg till den igen om du vill ta med terminalutdatan.} other {Lägg till dem igen om du vill ta med terminalutdatan.}}",
+  "048e123b9264806f": "Starta en ny chatt för att byta leverantör",
+  "b72c54b322c21710": "Den här tråden stöder inte byte av leverantör efter att den har startat.",
+  "6c564f3a631a0ee7": "Tråden har ändrats. Välj ett meddelande för att spola tillbaka igen.",
+  "167b99c44a181473": "Tidsgränsen nåddes i väntan på att tråden skulle spolas tillbaka.",
+  "cd82f739455a9406": "{reason} Starta en ny tråd för att använda den här modellen.",
+  "e447e12ceb134557": "Granskning: {label}",
   "d47210578c5fcf9e": "Unable to restart the agent session",
   "4d5ecbb9f076fe6e": "Ett oväntat fel uppstod.",
   "f967fe7fc56614f5": "Inmatningsfältet är inte redo",
@@ -3276,7 +3277,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "på datorn som öppnade den här sidan"]
+      "c": [
+        " ",
+        "på datorn som öppnade den här sidan"
+      ]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3288,7 +3292,10 @@
     {
       "t": "span",
       "i": 2,
-      "c": [" ", "· den som kör den får den här åtkomsten"]
+      "c": [
+        " ",
+        "· den som kör den får den här åtkomsten"
+      ]
     }
   ],
   "c54cc9c75db9dc58": "Godkänn bara en inloggning som du själv precis har startat.",
@@ -7634,8 +7641,8 @@
     },
     "."
   ],
-  "432e85a50e2e7964": [
-    "Visa kvoten för alla konton som hubben samlar, bredvid leverantörerna på",
+  "28988b067c83383c": [
+    "Visa kvoten för alla Codex-, Claude- och Grok-konton som hubben samlar, bredvid leverantörerna på",
     " ",
     {
       "i": 1,
@@ -9758,6 +9765,7 @@
   "3dd6eb5644a6ed8b": "Antal processer",
   "85f0adb1de45cbc1": "{processStarts} starter · {processExits} avslut",
   "0f0ae2813abd70e4": "Läsgenomströmning",
+  "dc52330df5cc4586": "{bytes} observerade",
   "d032b2addb6f00dc": "Skrivgenomströmning",
   "910a0c5f01321f81": "CPU-hastighetsgräns",
   "0360d3113c5a74f7": "Termiskt tillstånd: {thermalState}",
@@ -9780,6 +9788,7 @@
   "7b2e770a310d3271": "Electrons huvudprocess",
   "953cb034cd2e65ae": "Insamlingstid",
   "75f59f3b8b292536": "Processgenomsökning",
+  "cb9f65e224af203d": "{retained}/{scanned} sparade",
   "30d77fc0bc57f102": "Ej åtkomlig",
   "69c367f8a75a477d": "Sidecar",
   "543ff5a7f825adc3": "Omstarter",
@@ -10179,6 +10188,7 @@
   "7f11b5e6dfa0bc56": "Anpassad",
   "aea25315995268e1": "Ärver",
   "c8d6af8aaa94a464": "Standard",
+  "652e3aad21933d17": "{summary} · {count, plural, one {{count} projektåsidosättning} other {{count} projektåsidosättningar}}",
   "0a39976ec0fb3e49": "{overrideSummary}. Visa var värdet kommer ifrån",
   "99af2d06aa2b6d12": "Återställ",
   "7e9fca5fb426044a": "Återställ alla",

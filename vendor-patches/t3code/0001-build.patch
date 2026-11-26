@@ -17,7 +17,7 @@ index 1637f475fbbd0718954fe0f6981e71bb616b6bbd..67ffeca1059fde23fc660f3b851ed5ac
 +# An internal build stages an owner-only persona layer here; it is never committed.
 +apps/desktop/persona-layers/
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 92a67f29471e23b1adeb764060f7874df2efd15f..59663f2ee3809daf9a323db7262ead8499ab5d34 100644
+index 0a3285108ce9be0140efc2e6f3e8345886d49dc9..c17ec3e5606018af437330269e9880ac7e76bbae 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
 @@ -21,6 +21,9 @@
@@ -39,10 +39,10 @@ index 92a67f29471e23b1adeb764060f7874df2efd15f..59663f2ee3809daf9a323db7262ead84
      "react-grab": "^0.1.32",
      "tldts": "catalog:"
 diff --git a/apps/desktop/resources/installer.nsh b/apps/desktop/resources/installer.nsh
-index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78afba301d2 100644
+index bff93bf0597d354d31f28c8476cb0d20a506c0ec..23c2c5a88c3b758de95f81de16275bf2db428379 100644
 --- a/apps/desktop/resources/installer.nsh
 +++ b/apps/desktop/resources/installer.nsh
-@@ -31,6 +31,17 @@
+@@ -35,6 +35,17 @@
  !macroend
  
  !macro customInstall
@@ -135,7 +135,7 @@ index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..594ca86ca573c196757b2ac521836e44
      "react-native-pdf-jsi": "6.1.0",
      "react-native-reanimated": "4.8.0",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 033a4e5dd726ab0014d36030f366d45d4458da8e..98ab91f76d8fb53af54bee32c4699ad12d93387a 100644
+index f65218b7e14a9a8d5a6e30ba8492ec0720b01e33..d7b7d868d38333f1f15c89a93e0e6166e7f8593d 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -62,11 +62,15 @@
@@ -192,7 +192,7 @@ index 2bec8830d86c51b2fff6883b2e8d232741fa8800..a34dcdac4c95ad76f272610ad2f7e91a
          __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
          __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),
 diff --git a/apps/web/package.json b/apps/web/package.json
-index b659755c899bd98db4c6d532d5c9ff902abb8932..80332c295b1e3a6cac136bc954cd928e8e99cec0 100644
+index 026088ed04176e70edd64a247e513bf24112ca59..d37938edcb04bdad879ec008393b357dde4fc563 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
 @@ -35,12 +35,16 @@
