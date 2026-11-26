@@ -66,7 +66,18 @@ export function parseReviewScreen(lines) {
       ask = i;
       break;
     }
-  if (ask < 0) return null;
+  if (ask < 0) {
+    // Newer Claude Code drops that line: the Submit answers option follows the answers directly.
+    const submit = lines.findLastIndex(
+      (l, i) => i >= lines.length - 40 && /^Submit answers$/.test(NUMBERED.exec(l)?.[4] ?? ""),
+    );
+    if (
+      submit < 1 ||
+      !lines.slice(Math.max(0, submit - 60), submit).some((l) => /Review your answers/.test(l))
+    )
+      return null;
+    ask = submit - 1;
+  }
   const options = [];
   for (let i = ask + 1; i < lines.length && i <= ask + 8; i += 1) {
     const m = NUMBERED.exec(lines[i]);
@@ -78,7 +89,7 @@ export function parseReviewScreen(lines) {
   }
   if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
   let top = ask - 1;
-  while (top >= 0 && ask - top < 40 && !/Review your answers/.test(lines[top])) top -= 1;
+  while (top >= 0 && ask - top < 60 && !/Review your answers/.test(lines[top])) top -= 1;
   const answers = [];
   for (let i = Math.max(0, top); i < ask; i += 1) {
     const q = /^[\s│┃]*●\s*(.*)$/.exec(lines[i]);
