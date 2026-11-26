@@ -531,7 +531,7 @@ function DeviceControls({
   const updateSettings = useUpdateEnvironmentSettings(environmentId);
   const [area, setArea] = useState(areas?.[id] ?? "");
   const saveArea = () => {
-    const { [id]: _was, ...rest } = areas ?? {};
+    const rest = Object.fromEntries(Object.entries(areas ?? {}).filter(([key]) => key !== id));
     const next = area.trim();
     updateSettings({ tessayaVesselAreas: next === "" ? rest : { ...rest, [id]: next } });
   };

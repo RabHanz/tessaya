@@ -2060,6 +2060,7 @@ describe("MessagesTimeline attachments", () => {
     );
   });
 
+  // Tessaya (0009): an image that will not load is one quiet line, never an empty frame.
   it("keeps an unavailable viewed image inside the 10rem work-log strip", async () => {
     stubbedAsset.failed = true;
     onTestFinished(() => {
@@ -2088,9 +2089,7 @@ describe("MessagesTimeline attachments", () => {
       </TimelineRowCtx>,
     );
     const frame = await vi.waitFor(() => {
-      const element = screen.container.querySelector<HTMLElement>(
-        '[data-image-gallery] [role="alert"]',
-      );
+      const element = screen.container.querySelector<HTMLElement>("[data-image-gallery] > *");
       expect(element).toBeTruthy();
       return element!;
     });
@@ -2101,7 +2100,7 @@ describe("MessagesTimeline attachments", () => {
     });
     expect(size.height).toBeLessThanOrEqual(161);
     expect(size.width).toBeLessThanOrEqual(285);
-    expect(Math.abs(size.width / size.height - 16 / 9)).toBeLessThan(0.02);
+    expect(screen.container.querySelector('[data-image-gallery] [role="alert"]')).toBeNull();
   });
 
   it("holds a loading frame for an image a running Read is opening, then shows the image", async () => {

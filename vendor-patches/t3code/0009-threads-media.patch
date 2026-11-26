@@ -824,6 +824,38 @@ index d05bbdcf325570f29e2770b35ab3f46e9f37a56d..372133d5aee8aa69a80b2732d2f8d999
        );
        expect(live?.groupId).toBe("work-group:work-entry-0");
        const details = rows.filter((row) => row.kind === "work");
+diff --git a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
+index 5ebe6aaae180c6c84aa59b69410a12b40cb1afc8..61c6fcaf46cf4f6da931874784562e8171dd9123 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
++++ b/apps/web/src/components/chat/MessagesTimeline.browser.test.tsx
+@@ -2060,6 +2060,7 @@ describe("MessagesTimeline attachments", () => {
+     );
+   });
+ 
++  // Tessaya (0009): an image that will not load is one quiet line, never an empty frame.
+   it("keeps an unavailable viewed image inside the 10rem work-log strip", async () => {
+     stubbedAsset.failed = true;
+     onTestFinished(() => {
+@@ -2088,9 +2089,7 @@ describe("MessagesTimeline attachments", () => {
+       </TimelineRowCtx>,
+     );
+     const frame = await vi.waitFor(() => {
+-      const element = screen.container.querySelector<HTMLElement>(
+-        '[data-image-gallery] [role="alert"]',
+-      );
++      const element = screen.container.querySelector<HTMLElement>("[data-image-gallery] > *");
+       expect(element).toBeTruthy();
+       return element!;
+     });
+@@ -2101,7 +2100,7 @@ describe("MessagesTimeline attachments", () => {
+     });
+     expect(size.height).toBeLessThanOrEqual(161);
+     expect(size.width).toBeLessThanOrEqual(285);
+-    expect(Math.abs(size.width / size.height - 16 / 9)).toBeLessThan(0.02);
++    expect(screen.container.querySelector('[data-image-gallery] [role="alert"]')).toBeNull();
+   });
+ 
+   it("holds a loading frame for an image a running Read is opening, then shows the image", async () => {
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 index fc7a5e07e3a747f650c93dd27c83a59d565d3c1b..17cba188040f4b34c118b19564633a2cdd07afca 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
