@@ -239,6 +239,7 @@ export function answerKeys(prompt, answer) {
   const wanted = String(answer ?? "").trim();
   // A choice is the answer's first line: T3 appends a pasted picture's note below it.
   const chosen = wanted.split("\n")[0].trim();
+  if (prompt.multiSelect === true) return multiSelectKeys(prompt, chosen);
   const byLabel = prompt.options.find((o) => o.label.toLowerCase() === chosen.toLowerCase());
   const byNumber = /^\d+$/.test(chosen)
     ? prompt.options.find((o) => o.index === Number(chosen) - 1)
@@ -252,6 +253,45 @@ export function answerKeys(prompt, answer) {
   return option === undefined
     ? { keys: arrows, text: wanted }
     : { keys: [...arrows, "enter"], text: null };
+}
+
+/**
+ * A multi-select answer is every ticked label (T3 joins them with ", ") or number: Enter flips each box whose state
+ * differs, then Enter on Submit. Unticked labels are cleared, so the pane ends with exactly what he picked.
+ */
+function multiSelectKeys(prompt, chosen) {
+  if (prompt.submitIndex === null || prompt.submitIndex === undefined) return null;
+  const said = `, ${chosen.toLowerCase()}, `;
+  const numbers = new Set(
+    chosen
+      .split(/\s*,\s*/)
+      .filter((part) => /^\d+$/.test(part))
+      .map(Number),
+  );
+  const want = prompt.options.filter(
+    (o) => said.includes(`, ${o.label.toLowerCase()}, `) || numbers.has(o.index + 1),
+  );
+  if (want.length === 0) return null;
+  const keys = [];
+  let at = prompt.selected;
+  const moveTo = (target) => {
+    const delta = target - at;
+    for (let i = 0; i < Math.abs(delta); i += 1) keys.push(delta > 0 ? "down" : "up");
+    at = target;
+  };
+  for (const option of prompt.options) {
+    if (want.includes(option) === (option.checked === true)) continue;
+    moveTo(option.index);
+    keys.push("enter");
+  }
+  // An empty "Type something" left ticked would send a blank answer with the picks.
+  if (prompt.customChecked === true && prompt.customIndex !== null) {
+    moveTo(prompt.customIndex);
+    keys.push("enter");
+  }
+  moveTo(prompt.submitIndex);
+  keys.push("enter");
+  return { keys, text: null };
 }
 
 /** What T3 sends back for an answered question: "<question>\n<answer>". */

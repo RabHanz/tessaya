@@ -588,10 +588,10 @@ export const make = Effect.gen(function* () {
 
   const runtimeRequestStatus: TessayaEngineShape["runtimeRequestStatus"] = (threadId, requestId) =>
     orchestrator.getThreadRecords(threadId, ["runtimeRequests"]).pipe(
-      Effect.map(
-        (records) =>
-          records.runtimeRequests.find((request) => request.id === requestId)?.status ?? null,
-      ),
+      Effect.map((records) => {
+        const request = records.runtimeRequests.find((candidate) => candidate.id === requestId);
+        return request === undefined ? null : runtimeRequestOutcome(request);
+      }),
       Effect.catchCause(() => Effect.succeed(null)),
     );
 
@@ -928,3 +928,11 @@ export const layerStatic = (input: {
     deleteThread: () => Effect.succeed(true),
     createProject: () => Effect.succeed(null),
   });
+
+/** A request's status, with a dismissed card ("resolved" with a cancel or decline decision) read as cancelled. */
+export const runtimeRequestOutcome = (
+  request: Pick<OrchestrationV2RuntimeRequest, "status" | "decision">,
+): OrchestrationV2RuntimeRequest["status"] =>
+  request.status === "resolved" && (request.decision === "cancel" || request.decision === "decline")
+    ? "cancelled"
+    : request.status;
