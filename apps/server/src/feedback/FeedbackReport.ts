@@ -174,6 +174,11 @@ export const T3_CLI_COMMANDS: ReadonlyArray<string> = [
   "t3 workflow store list",
   "t3 workflow store set",
   "t3 workflow store delete",
+  // Tessaya's own commands.
+  "t3 memory",
+  "t3 memory unlearn",
+  "t3 whats-new",
+  "t3 whats-new record",
   "t3 up",
   "t3 status",
   "t3 service",

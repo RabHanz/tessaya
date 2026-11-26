@@ -145,7 +145,7 @@ index aaa6152e219fcaba9a8acff055eb3939408b78b1..f01d99ece1a9ba1e453a800bd06ee4b0
      Effect.orElseSucceed(() => undefined),
    );
 diff --git a/apps/server/src/speech/http.test.ts b/apps/server/src/speech/http.test.ts
-index c6d5405cfa82cdfa056c6112d4f61459a8305f87..537c977c725316720ca31685520ec9837bb81b11 100644
+index c6d5405cfa82cdfa056c6112d4f61459a8305f87..e93aeda8ac0c5d537e02cd963ab7f69440814f87 100644
 --- a/apps/server/src/speech/http.test.ts
 +++ b/apps/server/src/speech/http.test.ts
 @@ -31,6 +31,7 @@ import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
@@ -227,6 +227,16 @@ index c6d5405cfa82cdfa056c6112d4f61459a8305f87..537c977c725316720ca31685520ec983
          models: () => Effect.succeed({ models: [] }),
          downloadModel: () => Effect.fail(error),
          linkModels: () => Effect.fail(error),
+@@ -438,7 +468,8 @@ effectIt.effect("tells the client why transcript cleanup failed", () =>
+           body: JSON.stringify({
+             options: {
+               speechCustomWords: [],
+-              speechPostProcessingPrompt: { mode: "default", customInstructions: "" },
++              // 0021-one-dictation-cleanup: the default clean-up falls back to local text; a custom prompt still fails.
++              speechPostProcessingPrompt: { mode: "custom", customInstructions: "Tidy it." },
+             },
+             transcript: "um so hello world",
+             draft: { text: "", selection: { start: 0, end: 0 } },
 diff --git a/apps/server/src/speech/http.ts b/apps/server/src/speech/http.ts
 index f73640044be898a69db8673880d037ab2bc619a9..aa0ec17cef2ebe5eed660aacd8e0547d14a93018 100644
 --- a/apps/server/src/speech/http.ts
@@ -283,6 +293,20 @@ index f73640044be898a69db8673880d037ab2bc619a9..aa0ec17cef2ebe5eed660aacd8e0547d
        .handle(
          "cloudModels",
          Effect.fn("environment.voice.cloudModels")(function* (args) {
+diff --git a/apps/server/src/speech/postProcessing.test.ts b/apps/server/src/speech/postProcessing.test.ts
+index 3dd64c9b1bcc7059c1fcd3af462a701babbae979..35bf5d42afb7b279ec4a51408632737022a2d496 100644
+--- a/apps/server/src/speech/postProcessing.test.ts
++++ b/apps/server/src/speech/postProcessing.test.ts
+@@ -68,7 +68,8 @@ it.effect("cleanup pinned to a provider that cannot generate text uses the text
+           speechCustomWords: [],
+           speechPostProcessingPrompt: { mode: "default", customInstructions: "" },
+         },
+-        transcript: "um hello world",
++        // Long enough that Tessaya's clean-up asks the model rather than tidying it locally.
++        transcript: "um so we should run the whole thing on kegle tonight and check it",
+         draft: { text: "", selection: { start: 0, end: 0 } },
+       } as never);
+     }).pipe(Effect.provide(layer));
 diff --git a/apps/server/src/speech/postProcessing.ts b/apps/server/src/speech/postProcessing.ts
 index 92f4af17696c34788e0b042971cad6389ce2fe4e..eeb742c9c0b84eac0d3eb1d220dd808e93a49f5a 100644
 --- a/apps/server/src/speech/postProcessing.ts

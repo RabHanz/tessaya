@@ -24,8 +24,12 @@ describe("every action reaches the log", () => {
   it("every MCP tool is registered through the wrapper that records it", () => {
     const mcp = src("mcp/McpHttpServer.ts");
     // The only two registration paths, both through withToolSpans, which records each call as tool.call.
-    expect(mcp).toMatch(/withToolAnalytics\(\s*withToolSpans\(\s*withAdvertisedSchemas/);
-    expect(mcp).toContain("Layer.effectDiscard(withToolAnalytics(withToolSpans(register)))");
+    expect(mcp).toMatch(
+      /withToolAnalytics\(\s*withToolResultCapture\(\s*withToolSpans\(\s*withClientInput\(\s*withAdvertisedSchemas/,
+    );
+    expect(mcp).toContain(
+      "Layer.effectDiscard(withToolAnalytics(withToolResultCapture(withToolSpans(register))))",
+    );
     expect(mcp).toMatch(/kind: "tool\.call"/);
     // No toolkit registers anywhere else.
     for (const file of NodeFS.readdirSync(NodePath.join(import.meta.dirname, ".."), {

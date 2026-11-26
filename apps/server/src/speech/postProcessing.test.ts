@@ -68,7 +68,8 @@ it.effect("cleanup pinned to a provider that cannot generate text uses the text 
           speechCustomWords: [],
           speechPostProcessingPrompt: { mode: "default", customInstructions: "" },
         },
-        transcript: "um hello world",
+        // Long enough that Tessaya's clean-up asks the model rather than tidying it locally.
+        transcript: "um so we should run the whole thing on kegle tonight and check it",
         draft: { text: "", selection: { start: 0, end: 0 } },
       } as never);
     }).pipe(Effect.provide(layer));

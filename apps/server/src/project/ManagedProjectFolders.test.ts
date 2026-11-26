@@ -185,6 +185,8 @@ it.effect("offers the Scratch folder once a Git check that timed out is asked ag
     ({ baseDir }) =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
+        // 0002-server-hooks skips git when no .git is above; an empty one makes the probe ask git.
+        yield* (yield* FileSystem.FileSystem).makeDirectory(path.join(baseDir, ".git"));
         const scratch = yield* ManagedProjectFolders.ManagedProjectFolders;
         assert.isTrue(Option.isNone(yield* scratch.scratchRoot));
         assert.equal(yield* requireRoot, path.resolve(baseDir, "scratch"));

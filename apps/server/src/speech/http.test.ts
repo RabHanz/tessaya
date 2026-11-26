@@ -468,7 +468,8 @@ effectIt.effect("tells the client why transcript cleanup failed", () =>
           body: JSON.stringify({
             options: {
               speechCustomWords: [],
-              speechPostProcessingPrompt: { mode: "default", customInstructions: "" },
+              // 0021-one-dictation-cleanup: the default clean-up falls back to local text; a custom prompt still fails.
+              speechPostProcessingPrompt: { mode: "custom", customInstructions: "Tidy it." },
             },
             transcript: "um so hello world",
             draft: { text: "", selection: { start: 0, end: 0 } },

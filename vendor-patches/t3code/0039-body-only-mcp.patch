@@ -152,6 +152,17 @@ index 17ef4f233f82156170558e1e0e88d4992c14a3b8..af52b5ddb756c423d308e74a18b7663d
      return yield* new OrchestratorMcpFailure({
        code: "runtime_mode_escalation_denied",
        message: `Linked environment "${label}" was linked with ${access} access, so work there cannot run in ${requested}. Omit runtimeMode to run it at a mode up to ${access}, or link it again with broader access.`,
+diff --git a/apps/server/src/provider/agentContextBudget.json b/apps/server/src/provider/agentContextBudget.json
+index 129e0ce294babe43f1e502ac91dc10f0d409425c..f89e868efcbca8ec59e1b6cebefd0d22940e88a2 100644
+--- a/apps/server/src/provider/agentContextBudget.json
++++ b/apps/server/src/provider/agentContextBudget.json
+@@ -1,5 +1,5 @@
+ {
+   "claudeSystemAppendBytes": 6245,
+   "codexAdditionalContextBytes": 7814,
+-  "mcpToolListJsonBytes": 62140
++  "mcpToolListJsonBytes": 62152
+ }
 diff --git a/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts b/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts
 index a7a0a05602d4cd70b8c9fada0b7d440eb7c4fee2..eb3a1258b246a10a6618889d0a68329299a8e7b2 100644
 --- a/apps/web/src/components/auth/ConnectAgentSurface.logic.test.ts

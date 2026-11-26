@@ -31,6 +31,11 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
       NodePath.join(root, "src/tessayaGuest.tsx"),
       "export const startup = null;",
     );
+    // Tessaya's boot error names the app; the real branding module pulls in workspace packages.
+    await NodeFSP.writeFile(
+      NodePath.join(root, "src/branding.ts"),
+      'export const APP_BASE_NAME = "Tessaya";',
+    );
     for (const file of [
       "index.html",
       "src/bootstrap.ts",

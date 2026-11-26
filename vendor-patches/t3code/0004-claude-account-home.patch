@@ -403,7 +403,7 @@ index ff8682ba1e97b928cd335a65ca6c881d5f96fc2d..7c48ddd39f3922ee9a64d45184c6cada
        path,
        random,
 diff --git a/apps/server/src/provider/Drivers/ClaudeHome.test.ts b/apps/server/src/provider/Drivers/ClaudeHome.test.ts
-index 5cdc3e2906d3b3552469cfaf8b91477e392fa1de..e3e85ab8ff7f6f45f647865db948cda8a7c76e3e 100644
+index 5cdc3e2906d3b3552469cfaf8b91477e392fa1de..2e677d9aaa7ae3bb6018540f93b5a2d68087196c 100644
 --- a/apps/server/src/provider/Drivers/ClaudeHome.test.ts
 +++ b/apps/server/src/provider/Drivers/ClaudeHome.test.ts
 @@ -24,7 +24,10 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
@@ -418,6 +418,18 @@ index 5cdc3e2906d3b3552469cfaf8b91477e392fa1de..e3e85ab8ff7f6f45f647865db948cda8
          expect(yield* makeClaudeCapabilitiesCacheKey({ binaryPath: "claude", homePath })).toBe(
            `claude\0${resolved}\0`,
          );
+@@ -61,9 +64,10 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
+ 
+         const direct = yield* makeClaudeContinuationGroupKey({ homePath: target });
+         expect(yield* makeClaudeContinuationGroupKey({ homePath: link })).toBe(direct);
++        // Tessaya (0004): a set home is an account overlay keyed to the shared ~/.claude; an inherited one is not.
+         expect(
+           yield* makeClaudeContinuationGroupKey({ homePath: "" }, { CLAUDE_CONFIG_DIR: link }),
+-        ).toBe(direct);
++        ).toBe(`claude:home:${target}`);
+         // The spawned process keeps the literal path, because Claude keys its login by that path.
+         expect((yield* makeClaudeEnvironment({ homePath: link })).CLAUDE_CONFIG_DIR).toBe(link);
+       }).pipe(Effect.scoped),
 diff --git a/apps/server/src/provider/Drivers/ClaudeHome.ts b/apps/server/src/provider/Drivers/ClaudeHome.ts
 index d5931a9f0f9682a01fb8e285302e09166d27b661..4c182695bc4183a3e4554ebd930e11f8f01c0be4 100644
 --- a/apps/server/src/provider/Drivers/ClaudeHome.ts

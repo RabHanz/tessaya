@@ -64,9 +64,10 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
 
         const direct = yield* makeClaudeContinuationGroupKey({ homePath: target });
         expect(yield* makeClaudeContinuationGroupKey({ homePath: link })).toBe(direct);
+        // Tessaya (0004): a set home is an account overlay keyed to the shared ~/.claude; an inherited one is not.
         expect(
           yield* makeClaudeContinuationGroupKey({ homePath: "" }, { CLAUDE_CONFIG_DIR: link }),
-        ).toBe(direct);
+        ).toBe(`claude:home:${target}`);
         // The spawned process keeps the literal path, because Claude keys its login by that path.
         expect((yield* makeClaudeEnvironment({ homePath: link })).CLAUDE_CONFIG_DIR).toBe(link);
       }).pipe(Effect.scoped),

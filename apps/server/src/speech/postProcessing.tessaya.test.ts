@@ -4,6 +4,7 @@ import {
   type EnvironmentSpeechPostProcessingRequest,
   type ModelSelection,
   ProviderInstanceId,
+  type ServerProvider,
   TextGenerationError,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -61,7 +62,17 @@ const run = (
                 return Effect.succeed({ configured: true, text: ANSWER, ms: 1 });
               },
             }),
-            Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+            Layer.mock(ProviderRegistry.ProviderRegistry)({
+              getProviders: Effect.succeed([
+                {
+                  instanceId: HAIKU.instanceId,
+                  driver: "claudeAgent",
+                  enabled: true,
+                  installed: true,
+                  supportsTextGeneration: true,
+                },
+              ] as unknown as ReadonlyArray<ServerProvider>),
+            }),
             NodeServices.layer,
           ),
         ),

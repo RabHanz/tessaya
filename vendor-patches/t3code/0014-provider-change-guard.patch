@@ -141,7 +141,7 @@ index 2b97201512fcc47490d0b241d807e241b6c27564..ca169b5b3774ced71ef2ec86e8fce1bb
        return { threadId, queuedRun };
      });
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
-index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d5954037c 100644
+index c48826f703f7ff9e7808707b57cee86f36806376..40acde8f66bb23226e8c420cb527087326e7ce95 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
 @@ -32,6 +32,7 @@ import * as Effect from "effect/Effect";
@@ -208,7 +208,15 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
            });
          const wait = (ordinal: number) =>
            orchestrator.streamStoredEvents.pipe(
-@@ -1908,6 +1926,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -1595,6 +1613,7 @@ describe("orchestration v2 provider switching", () => {
+           Effect.gen(function* () {
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               commandId: CommandId.make(`imported-native:${ordinal}`),
+               threadId,
+               messageId: MessageId.make(`imported-native:${ordinal}`),
+@@ -1908,6 +1927,7 @@ describe("orchestration v2 provider switching", () => {
            const runToCompletion = Effect.fn("runToCompletion")(function* (ordinal: number) {
              yield* orchestrator.dispatch({
                type: "message.dispatch",
@@ -216,7 +224,15 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
                commandId: CommandId.make(`resume-fallback:${ordinal}`),
                threadId,
                messageId: MessageId.make(`resume-fallback:${ordinal}`),
-@@ -2408,6 +2427,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2063,6 +2083,7 @@ describe("orchestration v2 provider switching", () => {
+             dispatchRequest: (ordinal, selection) =>
+               orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(`unverified-replacement:${ordinal}`),
+                 threadId,
+                 messageId: MessageId.make(`unverified-replacement:${ordinal}`),
+@@ -2408,6 +2429,7 @@ describe("orchestration v2 provider switching", () => {
              }
              yield* orchestrator.dispatch({
                type: "message.dispatch",
@@ -224,7 +240,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
                commandId: CommandId.make(`handoff-order:${ordinal}`),
                threadId,
                messageId: MessageId.make(`handoff-order:${ordinal}`),
-@@ -2861,6 +2881,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -2861,6 +2883,7 @@ describe("orchestration v2 provider switching", () => {
          const run = Effect.fn("run")(function* (ordinal: number) {
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -232,7 +248,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              commandId: CommandId.make(`refused-start:${ordinal}`),
              threadId,
              messageId: MessageId.make(`refused-start:${ordinal}`),
-@@ -3025,6 +3046,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3025,6 +3048,7 @@ describe("orchestration v2 provider switching", () => {
          ) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -240,7 +256,15 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              commandId: CommandId.make(`command:handoff:${key}`),
              threadId,
              messageId: MessageId.make(`message:handoff:${key}`),
-@@ -3430,6 +3452,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3299,6 +3323,7 @@ describe("orchestration v2 provider switching", () => {
+             const dispatch = (key: string, text: string, modelSelection: ModelSelection) =>
+               orchestrator.dispatch({
+                 type: "message.dispatch",
++                providerChangeApproved: true,
+                 commandId: CommandId.make(`command:slash-handoff:${key}`),
+                 threadId,
+                 messageId: MessageId.make(`message:slash-handoff:${key}`),
+@@ -3430,6 +3455,7 @@ describe("orchestration v2 provider switching", () => {
            });
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -248,7 +272,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-capability:first:${key}`),
-@@ -3444,6 +3467,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3444,6 +3470,7 @@ describe("orchestration v2 provider switching", () => {
            yield* worker.drain();
            const queue = orchestrator.dispatch({
              type: "message.dispatch",
@@ -256,7 +280,23 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-capability:claude:${key}`),
-@@ -3814,6 +3838,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -3601,6 +3628,7 @@ describe("orchestration v2 provider switching", () => {
+       const orchestrator = yield* Orchestrator.OrchestratorV2;
+       return yield* orchestrator.dispatch({
+         type: "message.dispatch",
++        providerChangeApproved: true,
+         createdBy: "user",
+         creationSource: "web",
+         commandId: CommandId.make(`command:steer-provider-switch:${key}:codex`),
+@@ -3707,6 +3735,7 @@ describe("orchestration v2 provider switching", () => {
+         // An explicit steer without a delivery intent, as thread tools send it.
+         yield* orchestrator.dispatch({
+           type: "message.dispatch",
++          providerChangeApproved: true,
+           createdBy: "user",
+           creationSource: "web",
+           commandId: CommandId.make("command:steer-provider-switch:goal:codex"),
+@@ -3814,6 +3843,7 @@ describe("orchestration v2 provider switching", () => {
          ) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -264,7 +304,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-steer-provider-switch:${key}`),
-@@ -4008,6 +4033,14 @@ describe("orchestration v2 provider switching", () => {
+@@ -4008,6 +4038,14 @@ describe("orchestration v2 provider switching", () => {
            responseByRunOrdinal: { 2: "Alternate account complete" },
            capturedTurns,
          }),
@@ -279,7 +319,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
        ];
        const layerRegistry = Layer.succeed(
          ProviderAdapterRegistry.ProviderAdapterRegistryV2,
-@@ -4016,7 +4049,9 @@ describe("orchestration v2 provider switching", () => {
+@@ -4016,7 +4054,9 @@ describe("orchestration v2 provider switching", () => {
              const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
              return adapter === undefined
                ? Effect.fail(
@@ -290,7 +330,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
                  )
                : Effect.succeed(adapter);
            },
-@@ -4025,7 +4060,9 @@ describe("orchestration v2 provider switching", () => {
+@@ -4025,7 +4065,9 @@ describe("orchestration v2 provider switching", () => {
              const adapter = adapters.find((candidate) => candidate.instanceId === instanceId);
              return adapter === undefined
                ? Effect.fail(
@@ -301,7 +341,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
                  )
                : Effect.succeed({
                    driver: CODEX_DRIVER,
-@@ -4071,6 +4108,50 @@ describe("orchestration v2 provider switching", () => {
+@@ -4071,6 +4113,50 @@ describe("orchestration v2 provider switching", () => {
            dispatchMode: { type: "start_immediately" },
          });
          yield* Deferred.await(started);
@@ -352,7 +392,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
          yield* orchestrator.dispatch({
            type: "message.dispatch",
            createdBy: "user",
-@@ -4197,6 +4278,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -4197,6 +4283,7 @@ describe("orchestration v2 provider switching", () => {
          const dispatch = (ordinal: number, modelSelection: ModelSelection) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -360,7 +400,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:queued-provider-switch:${ordinal}`),
-@@ -4399,242 +4481,332 @@ describe("orchestration v2 provider switching", () => {
+@@ -4399,242 +4486,332 @@ describe("orchestration v2 provider switching", () => {
    it.live.each([
      [
        "detaches the previous instance's session when a send hands off to another instance",
@@ -892,7 +932,23 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
  
    // regression: #16000 thread setting changes must not end a Claude session's background work
    it.live.each([
-@@ -4958,6 +5130,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -4776,6 +4953,7 @@ describe("orchestration v2 provider switching", () => {
+           const send = (ordinal: number, modelSelection: ModelSelection) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:retained-session-background:${ordinal}`),
+@@ -4790,6 +4968,7 @@ describe("orchestration v2 provider switching", () => {
+             orchestrator.dispatch({
+               type: "thread.model-selection.set",
+               commandId: CommandId.make(`command:retained-session-background:select:${attempt}`),
++              providerChangeApproved: true,
+               threadId,
+               modelSelection: GROK_MODEL_SELECTION,
+             });
+@@ -4958,6 +5137,7 @@ describe("orchestration v2 provider switching", () => {
            ) =>
              orchestrator.dispatch({
                type: "message.dispatch",
@@ -900,7 +956,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
                createdBy: "user",
                creationSource: "web",
                commandId: CommandId.make(`command:fresh-context:${key}:${name}`),
-@@ -5533,6 +5706,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5533,6 +5713,7 @@ describe("orchestration v2 provider switching", () => {
          ) =>
            orchestrator.dispatch({
              type: "message.dispatch",
@@ -908,7 +964,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make(`command:fresh-context-reserved:${name}`),
-@@ -5700,6 +5874,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5700,6 +5881,7 @@ describe("orchestration v2 provider switching", () => {
            const dispatch = (text: string, modelSelection: ModelSelection) =>
              orchestrator.dispatch({
                type: "message.dispatch",
@@ -916,7 +972,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
                commandId: CommandId.make(text),
                messageId: MessageId.make(text),
                threadId,
-@@ -5895,6 +6070,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5895,6 +6077,7 @@ describe("orchestration v2 provider switching", () => {
          });
          yield* orchestrator.dispatch({
            type: "message.dispatch",
@@ -924,7 +980,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
            createdBy: "user",
            creationSource: "web",
            commandId: CommandId.make("command:queued-handoff-rejection:first"),
-@@ -5946,6 +6122,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5946,6 +6129,7 @@ describe("orchestration v2 provider switching", () => {
          });
          yield* orchestrator.dispatch({
            type: "message.dispatch",
@@ -932,7 +988,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
            createdBy: "user",
            creationSource: "web",
            commandId: CommandId.make("command:queued-handoff-rejection:claude"),
-@@ -5958,6 +6135,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -5958,6 +6142,7 @@ describe("orchestration v2 provider switching", () => {
          });
          yield* orchestrator.dispatch({
            type: "message.dispatch",
@@ -940,7 +996,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
            createdBy: "user",
            creationSource: "web",
            commandId: CommandId.make("command:queued-handoff-rejection:later"),
-@@ -6280,6 +6458,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -6280,6 +6465,7 @@ describe("orchestration v2 provider switching", () => {
  
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -948,7 +1004,7 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:provider-switch:legacy-import:failed"),
-@@ -6297,6 +6476,7 @@ describe("orchestration v2 provider switching", () => {
+@@ -6297,6 +6483,7 @@ describe("orchestration v2 provider switching", () => {
            }
            yield* orchestrator.dispatch({
              type: "message.dispatch",
@@ -956,6 +1012,30 @@ index c48826f703f7ff9e7808707b57cee86f36806376..92550d4b548f3a4c903290e371a5086d
              createdBy: "user",
              creationSource: "web",
              commandId: CommandId.make("command:provider-switch:legacy-import:recovery"),
+@@ -6435,6 +6622,7 @@ describe("orchestration v2 provider switching", () => {
+           const send = (threadId: ThreadId, name: string, modelSelection: ModelSelection) =>
+             orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:fork-switch-history:${key}:${name}`),
+@@ -6620,6 +6808,7 @@ describe("orchestration v2 provider switching", () => {
+             step += 1;
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:dropped-handoff:${variant}:msg-${step}`),
+@@ -6864,6 +7053,7 @@ describe("orchestration v2 provider switching", () => {
+             step += 1;
+             yield* orchestrator.dispatch({
+               type: "message.dispatch",
++              providerChangeApproved: true,
+               createdBy: "user",
+               creationSource: "web",
+               commandId: CommandId.make(`command:carried-handoff-cut:msg-${step}`),
 diff --git a/apps/web/src/components/ChatView.logic.test.ts b/apps/web/src/components/ChatView.logic.test.ts
 index a79fed15935d0f57f5c273650076d42104058203..f6046f3661ec36bf6a74da7542ccce113c60c7f3 100644
 --- a/apps/web/src/components/ChatView.logic.test.ts

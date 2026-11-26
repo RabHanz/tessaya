@@ -1613,6 +1613,7 @@ describe("orchestration v2 provider switching", () => {
           Effect.gen(function* () {
             yield* orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               commandId: CommandId.make(`imported-native:${ordinal}`),
               threadId,
               messageId: MessageId.make(`imported-native:${ordinal}`),
@@ -2082,6 +2083,7 @@ describe("orchestration v2 provider switching", () => {
             dispatchRequest: (ordinal, selection) =>
               orchestrator.dispatch({
                 type: "message.dispatch",
+                providerChangeApproved: true,
                 commandId: CommandId.make(`unverified-replacement:${ordinal}`),
                 threadId,
                 messageId: MessageId.make(`unverified-replacement:${ordinal}`),
@@ -3321,6 +3323,7 @@ describe("orchestration v2 provider switching", () => {
             const dispatch = (key: string, text: string, modelSelection: ModelSelection) =>
               orchestrator.dispatch({
                 type: "message.dispatch",
+                providerChangeApproved: true,
                 commandId: CommandId.make(`command:slash-handoff:${key}`),
                 threadId,
                 messageId: MessageId.make(`message:slash-handoff:${key}`),
@@ -3625,6 +3628,7 @@ describe("orchestration v2 provider switching", () => {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
       return yield* orchestrator.dispatch({
         type: "message.dispatch",
+        providerChangeApproved: true,
         createdBy: "user",
         creationSource: "web",
         commandId: CommandId.make(`command:steer-provider-switch:${key}:codex`),
@@ -3731,6 +3735,7 @@ describe("orchestration v2 provider switching", () => {
         // An explicit steer without a delivery intent, as thread tools send it.
         yield* orchestrator.dispatch({
           type: "message.dispatch",
+          providerChangeApproved: true,
           createdBy: "user",
           creationSource: "web",
           commandId: CommandId.make("command:steer-provider-switch:goal:codex"),
@@ -4948,6 +4953,7 @@ describe("orchestration v2 provider switching", () => {
           const send = (ordinal: number, modelSelection: ModelSelection) =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:retained-session-background:${ordinal}`),
@@ -4962,6 +4968,7 @@ describe("orchestration v2 provider switching", () => {
             orchestrator.dispatch({
               type: "thread.model-selection.set",
               commandId: CommandId.make(`command:retained-session-background:select:${attempt}`),
+              providerChangeApproved: true,
               threadId,
               modelSelection: GROK_MODEL_SELECTION,
             });
@@ -6615,6 +6622,7 @@ describe("orchestration v2 provider switching", () => {
           const send = (threadId: ThreadId, name: string, modelSelection: ModelSelection) =>
             orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:fork-switch-history:${key}:${name}`),
@@ -6800,6 +6808,7 @@ describe("orchestration v2 provider switching", () => {
             step += 1;
             yield* orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:dropped-handoff:${variant}:msg-${step}`),
@@ -7044,6 +7053,7 @@ describe("orchestration v2 provider switching", () => {
             step += 1;
             yield* orchestrator.dispatch({
               type: "message.dispatch",
+              providerChangeApproved: true,
               createdBy: "user",
               creationSource: "web",
               commandId: CommandId.make(`command:carried-handoff-cut:msg-${step}`),

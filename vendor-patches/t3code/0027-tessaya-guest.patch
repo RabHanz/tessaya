@@ -24,10 +24,10 @@ index fe07e58b028726304bcb0ff89942ff63b6ce9d5a..07130a1a51510586b41ddd8459a3d2fd
 +  },
 +);
 diff --git a/apps/web/src/bundledDev.test.ts b/apps/web/src/bundledDev.test.ts
-index 5517910d754db6b7bc05905f7343feb5bbfc3be3..c4837bae2f6cd4e33fbedac687db7a878fbd84dc 100644
+index 5517910d754db6b7bc05905f7343feb5bbfc3be3..9c9cfed88018ac0420c1ed3e33fd6a0bc1484941 100644
 --- a/apps/web/src/bundledDev.test.ts
 +++ b/apps/web/src/bundledDev.test.ts
-@@ -26,11 +26,17 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
+@@ -26,11 +26,22 @@ it("initializes React refresh before a shared UI chunk runs in bundled dev", asy
    try {
      await NodeFSP.mkdir(NodePath.join(root, "src/lib"), { recursive: true });
      await NodeFSP.writeFile(NodePath.join(root, "package.json"), '{"type":"module"}');
@@ -35,6 +35,11 @@ index 5517910d754db6b7bc05905f7343feb5bbfc3be3..c4837bae2f6cd4e33fbedac687db7a87
 +    await NodeFSP.writeFile(
 +      NodePath.join(root, "src/tessayaGuest.tsx"),
 +      "export const startup = null;",
++    );
++    // Tessaya's boot error names the app; the real branding module pulls in workspace packages.
++    await NodeFSP.writeFile(
++      NodePath.join(root, "src/branding.ts"),
++      'export const APP_BASE_NAME = "Tessaya";',
 +    );
      for (const file of [
        "index.html",
