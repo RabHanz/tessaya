@@ -1575,3 +1575,37 @@ NodeTest.test("sessionsDirs includes tessaya-claude's per-conversation dirs", ()
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });
+
+NodeTest.test("a multi-select question ticks exactly the chosen boxes, then presses Submit", () => {
+  const screen = fixture("pane-multiselect.txt");
+  const prompt = parsePanePrompt(screen);
+  NodeAssert.equal(prompt.multiSelect, true);
+  NodeAssert.deepEqual(
+    prompt.options.map((o) => [o.label, o.checked]),
+    [
+      ["Apple", false],
+      ["Banana", false],
+      ["Cherry", false],
+    ],
+  );
+  NodeAssert.equal(prompt.submitIndex, 4);
+  // T3 joins a multi-select answer with ", "; these keys ticked Apple and Cherry in a real Claude Code pane.
+  NodeAssert.deepEqual(answerKeys(prompt, "Apple, Cherry"), {
+    keys: ["enter", "down", "down", "enter", "down", "down", "enter"],
+    text: null,
+  });
+  // Already ticked boxes he left out are cleared; the cursor on Submit still reads as the same question.
+  const ticked = parsePanePrompt(
+    screen
+      .replace("❯ 1. [ ] Apple", "  1. [✔] Apple")
+      .replace("  2. [ ] Banana", "  2. [✔] Banana")
+      .replace("     Submit", "   ❯ Submit"),
+  );
+  NodeAssert.equal(ticked.key, prompt.key);
+  NodeAssert.equal(ticked.selected, 4);
+  NodeAssert.deepEqual(answerKeys(ticked, "Banana"), {
+    keys: ["up", "up", "up", "up", "enter", "down", "down", "down", "down", "enter"],
+    text: null,
+  });
+  NodeAssert.equal(answerKeys(prompt, "Durian"), null, "nothing pressed for an unknown pick");
+});

@@ -38,6 +38,8 @@ const SOLID = /^\s*[─━]{8,}\s*$/;
 const NUMBERED = /^(\s*)(❯\s*)?(\d+)\.\s+(.+?)\s*$/;
 const CUSTOM = /^(?:type something|other)\.?$/i;
 const DROPPED = /^chat about this$/i;
+const CHECKBOX = /^\[([ ✔✓xX×])\]\s+/;
+const SUBMIT = /^\s*(❯\s*)?Submit\s*$/;
 // A raw capture keeps its colour codes.
 const ANSI = /\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*\u0007/g;
 const clean = (text) =>
@@ -378,13 +380,34 @@ function parseScreen(screen) {
     }
     first = top;
   }
+  // A multi-select question ticks its options ("1. [✔] Label") and ends them with an unnumbered Submit row.
+  const boxed = options.filter((o) => CHECKBOX.test(o.label));
+  const multiSelect = boxed.length >= 2;
+  let submitIndex = null;
+  if (multiSelect) {
+    for (const o of boxed) {
+      o.checked = CHECKBOX.exec(o.label)[1].trim() !== "";
+      o.label = o.label.replace(CHECKBOX, "");
+    }
+    const from = boxed.at(-1).line + 1;
+    const below = lines.slice(from, footer).findIndex((l) => SUBMIT.test(l));
+    if (below >= 0) {
+      submitIndex = boxed.length;
+      if (/❯/.test(lines[from + below]))
+        options.push({ number: 0, label: "Submit", selected: true, line: -1, submitRow: true });
+    }
+  }
   if (options.length < 2 || options.filter((o) => o.selected).length !== 1) return null;
+  const selectedIndex = options.at(-1).submitRow
+    ? submitIndex
+    : options.findIndex((o) => o.selected);
+  if (options.at(-1).submitRow) options.pop();
   // Lines under an option, before the next one, describe it.
   for (let k = 0; k < options.length; k += 1) {
     const end = k + 1 < options.length ? options[k + 1].line : footer;
     const text = lines
       .slice(options[k].line + 1, end)
-      .filter((l) => !RULE.test(l))
+      .filter((l) => !RULE.test(l) && !SUBMIT.test(l))
       .map(clean)
       .filter((l) => l.length > 0)
       .join(" ");
@@ -484,8 +507,9 @@ function parseScreen(screen) {
     header,
     ...(tabs === null ? {} : { tabs }),
     context: context.join(" · ").slice(0, 600),
-    options: shown,
-    selected: options.findIndex((o) => o.selected),
+    options: multiSelect ? shown.map((o, k) => ({ ...o, checked: visible[k].checked })) : shown,
+    ...(multiSelect ? { multiSelect: true, submitIndex } : {}),
+    selected: selectedIndex,
     customIndex: custom === undefined ? null : custom.number - 1,
     key: steadyKey([question, ...options.map((o) => o.label)].join("\u0000")),
   };

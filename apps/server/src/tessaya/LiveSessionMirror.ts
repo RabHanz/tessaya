@@ -222,6 +222,7 @@ interface PanePrompt {
   readonly context: string;
   readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
   readonly customIndex: number | null;
+  readonly multiSelect?: boolean;
   readonly key: string;
   /** A permission dialog's own words, behind its plain question. */
   readonly details?: string;
@@ -363,6 +364,7 @@ export const askQuestion = (found: PanePrompt, overview: string) => ({
     description: option.description.length > 0 ? option.description : option.label,
   })),
   ...(found.customIndex === null ? {} : { allowCustomAnswer: true }),
+  ...(found.multiSelect === true ? { multiSelect: true } : {}),
   ...(found.details === undefined ? {} : { details: found.details }),
 });
 
