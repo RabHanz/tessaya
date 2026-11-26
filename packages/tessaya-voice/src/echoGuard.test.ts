@@ -24,7 +24,8 @@ describe("the echo guard", () => {
     expect(run.readyAtS!).toBeLessThan(4);
   });
 
-  it("hears a loud interruption over the echo, quickly", () => {
+  // oxlint-disable-next-line t3code/no-test-timeout-or-unreasoned-skip -- CPU-bound 16 s audio simulation, not a hidden wait.
+  it("hears a loud interruption over the echo, quickly", { timeout: 30_000 }, () => {
     const run = runEcho({
       tts: speechLike(16, 7, 110),
       seed: 3,
