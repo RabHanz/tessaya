@@ -1614,3 +1614,21 @@ NodeTest.test("a multi-select question ticks exactly the chosen boxes, then pres
     text: null,
   });
 });
+
+NodeTest.test(
+  "the newer review screen, with no 'Ready to submit' line, is read as the review",
+  () => {
+    const prompt = parsePanePrompt(fixture("pane-review-new.txt"));
+    NodeAssert.equal(
+      prompt.review,
+      true,
+      "so the bridge submits it and the mirror shows no second card",
+    );
+    NodeAssert.deepEqual(
+      prompt.options.map((o) => o.label),
+      ["Submit answers", "Cancel", "Go back"],
+    );
+    NodeAssert.match(prompt.context, /Which fruits .* → Apple, Cherry$/);
+    NodeAssert.deepEqual(answerKeys(prompt, "Submit answers"), { keys: ["enter"], text: null });
+  },
+);

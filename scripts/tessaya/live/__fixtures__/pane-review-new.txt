@@ -1,0 +1,17 @@
+────────────────────────────────────────────────────────────────────────────────
+←  ☒ Fruit  ✔ Submit  →
+
+Review your answers
+
+ │ ● Which fruits do you want in the basket today? Pick any number of them, and say
+ │   if anything is missing.
+   → Apple, Cherry
+
+❯ 1. Submit answers
+  2. Cancel
+
+
+
+
+
+─────────────────────────────────────────────────────────────────────── basket ─
