@@ -150,8 +150,16 @@ layer("BatonMemoryService", (it) => {
             vessel: "kitchen",
             since: "2000-01-01T00:00:00.000Z",
           }),
+          // Learnt from the conversation, not asked to keep: only the short window places it.
+          yield* memory.resolveUnsure({
+            person: "owner",
+            how: "verified-turn",
+            vessel: "desk-1",
+            since: "2999-01-01T00:00:00.000Z",
+            askedSince: "2000-01-01T00:00:00.000Z",
+          }),
         ];
-        assert.deepStrictEqual(none, [[], [], []]);
+        assert.deepStrictEqual(none, [[], [], [], []]);
         const byId = <A extends { readonly id: string }>(all: ReadonlyArray<A>) =>
           all.find((i) => i.id === held.id);
         assert.isDefined(byId(yield* memory.list({ includeProposed: true })));

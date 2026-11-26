@@ -507,9 +507,11 @@ describe("the speaker identity", () => {
     const ownTurn = holdVoice(start.hold, turn("owner", 0.6, 4_000, v(0.6, 0.8, 0)), 5_000);
     expect(ownTurn.identity.same).toBeCloseTo(0.6);
     expect(start.identity.same).toBeUndefined();
-    // Neither like him nor clearly not (0.3): not his, and his session waits.
+    // Neither like him nor clearly not (0.3): his session's verdict carries it, without moving the session on, and
+    // too unsure to teach his room profile.
     const unsure = holdVoice(reply.hold, turn("guest", 0.2, 1_800, v(0.3, 0.954, 0)), 20_000);
-    expect(unsure.identity.kind).toBe("guest");
+    expect(unsure.identity).toMatchObject({ kind: "owner", verified: true, session: true });
+    expect(teaches(unsure.identity)).toBeNull();
     expect(unsure.hold.verifiedAt).toBe(10_000);
     // Another voice (0.1 to his pieces) ends it, so nothing of his reaches the turns after it.
     const other = holdVoice(unsure.hold, turn("guest", 0.2, 1_800, v(0.1, 0.995, 0)), 30_000);
@@ -524,6 +526,36 @@ describe("the speaker identity", () => {
     );
     const played = replayChecked(turn("guest", 0.2, 1_800, v(1, 0, 0)), 2, REPLAY_CUT);
     expect(holdVoice(start.hold, played, 10_000).identity.kind).toBe("guest");
+  });
+
+  it("holds one verdict through his session's low turns, and ends it only on a clearly other voice (26 Nov)", () => {
+    // Tumble, 26 Nov 20:13-20:14 (GMT+5): verified, then his own turns at 0.29, 0.49, 0.41 and 0.38; one at 0.29 over
+    // 2 s ended his session, so the lamp asks after it were held as someone else's.
+    const turn = (kind: SpeakerIdentity["kind"], score: number, ms: number): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      kind,
+      personId: kind === "owner" ? "owner" : null,
+      confidence: kind === "unverified" ? null : score,
+      verified: kind === "owner" && score >= 0.53,
+      own: { score, ms },
+    });
+    let hold = holdVoice(NO_HOLD, turn("owner", 0.599, 3_000), 0).hold;
+    const seen = [
+      turn("guest", 0.292, 2_400),
+      turn("unverified", 0.493, 600),
+      turn("owner", 0.407, 2_400),
+      turn("unverified", 0.376, 1_400),
+      turn("guest", 0.23, 1_600),
+    ].map((identity, i) => {
+      const out = holdVoice(hold, identity, (i + 1) * 15_000);
+      hold = out.hold;
+      return `${out.identity.kind}:${String(out.identity.verified)}`;
+    });
+    expect(seen).toEqual(Array(5).fill("owner:true"));
+    // A clearly other voice ends it, and the turn after it is judged on its own again.
+    const other = holdVoice(hold, turn("guest", 0.12, 2_000), 100_000);
+    expect(other.hold).toEqual(NO_HOLD);
+    expect(holdVoice(other.hold, turn("guest", 0.3, 2_000), 110_000).identity.kind).toBe("guest");
   });
 
   it("teaches the room profile only from turns it is sure of, never a replay, a guest or a short turn", () => {

@@ -30,7 +30,7 @@ import {
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
 import type { ActOutcome } from "../../apps/server/src/tessaya/TessayaBrain.ts";
-import { hereLine, voiceLine } from "../../apps/server/src/tessaya/TessayaTurn.ts";
+import { handOffLine, hereLine, voiceLine } from "../../apps/server/src/tessaya/TessayaTurn.ts";
 import { TurnOrigin } from "../../apps/server/src/tessaya/TurnOrigin.ts";
 import { offlineWhy } from "../../apps/server/src/home/DeviceRegistry.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
@@ -425,6 +425,8 @@ const hereOf = new WeakMap<House, NonNullable<RoomCase["here"]>>();
 
 /** What every device_set answers in a case where the change never reached the Tessel. */
 const setFailsOf = new WeakMap<House, string>();
+/** The persona answering the case: a hand-off to it is answered as TessayaTurn.handOff answers its own. */
+const speakingOf = new WeakMap<House, string>();
 
 /** Each case's R1 starts at the firmware's 0 dB. */
 const volumes = new WeakMap<House, number>();
@@ -582,9 +584,11 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       const to = (args as { to?: unknown }).to;
       return {
         line:
-          typeof to === "string"
-            ? `${to} has this conversation now: say so in a few words.`
-            : "Handed back: say so in a few words.",
+          typeof to === "string" && to.toLowerCase() === speakingOf.get(house)?.toLowerCase()
+            ? handOffLine(DEFAULT_OS_PACK.personas.find((p) => p.lead)?.name ?? "Tessaya")
+            : typeof to === "string"
+              ? `${to} has this conversation now: say so in a few words.`
+              : "Handed back: say so in a few words.",
       };
     }
     // As TessayaSessionInsight answers, for his "deploy check" (CI) and "parity sync" (merged) sessions.
@@ -824,6 +828,8 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   if (c.health !== undefined) healthOf.set(house, c.health);
   if (c.here !== undefined) hereOf.set(house, c.here);
   if (c.deviceSetFails !== undefined) setFailsOf.set(house, c.deviceSetFails);
+  const speaking = DEFAULT_OS_PACK.personas.find((p) => p.id === c.persona)?.name;
+  if (speaking !== undefined) speakingOf.set(house, speaking);
   const calls: Array<string> = [];
   const replies: Array<string> = [];
   const lamp: Array<"on" | "off"> = [];

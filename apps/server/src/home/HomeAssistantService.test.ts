@@ -751,12 +751,23 @@ it.effect(
         )
         .pipe(Effect.provideService(TurnOrigin, { kind: "device", id: "r1", label: "R1" }));
       assert.strictEqual(told.status, "done");
-      yield* TestClock.adjust("7 seconds");
+      yield* TestClock.adjust("34 seconds");
       const miss = yield* PubSub.take(misses);
       assert.include(miss.what, "Stuck light is still off");
       assert.deepStrictEqual(miss.vessel, { kind: "device", id: "r1" });
       assert.strictEqual(house.calls.filter((c) => c === "light.turn_on").length, 2);
       assert.strictEqual((yield* home.actions(5)).find((r) => r.id === told.id)?.status, "failed");
+      // 26 Nov 21:00: his pump read off 6 s after "on" and came on later; a slow device is no miss.
+      house.put("light.slow", { s: "off", a: { friendly_name: "Slow light" } });
+      const slow = yield* home.call(
+        { domain: "light", service: "turn_on", target: { entity_id: "light.slow" }, why: "x" },
+        assistant,
+      );
+      assert.strictEqual(slow.status, "done");
+      yield* TestClock.adjust("12 seconds");
+      house.put("light.slow", { s: "on", a: { friendly_name: "Slow light" } });
+      yield* TestClock.adjust("30 seconds");
+      assert.strictEqual(yield* PubSub.remaining(misses), 0);
 
       house.put("light.desk_lamp", { s: "off", a: { friendly_name: "Lamp" } });
       house.put("light.bedside_lamp", { s: "on", a: { friendly_name: "Lamp" } });
@@ -1100,6 +1111,7 @@ it.effect(
           name: member,
         }),
     } as never);
+    // "unplaced": a voice Voice ID could not place on the Tessel (his own unsure turns, 26 Nov 20:13-20:14).
     const as = (member: string | null) => (service: "turn_on" | "turn_off") =>
       Effect.gen(function* () {
         const home = yield* HomeAssistantService.HomeAssistantService;
@@ -1110,7 +1122,23 @@ it.effect(
       }).pipe(
         Effect.provideService(
           TurnOrigin,
-          member === null ? null : { kind: "device", id: "r1", label: "R1", member, assurance: 2 },
+          member === null
+            ? null
+            : member === "unplaced"
+              ? {
+                  kind: "device",
+                  id: "r1",
+                  label: "R1",
+                  member: null,
+                  assurance: 0,
+                  speaker: {
+                    kind: "unverified",
+                    personId: null,
+                    verified: false,
+                    inherited: false,
+                  },
+                }
+              : { kind: "device", id: "r1", label: "R1", member, assurance: 2 },
         ),
       );
     return Effect.gen(function* () {
@@ -1131,6 +1159,13 @@ it.effect(
       // Past the window it is an ordinary ask.
       yield* TestClock.adjust("2 minutes");
       assert.strictEqual((yield* as("kid")("turn_on")).status, "done");
+      // A voice not placed is nobody yet: never held up as another person's, nor told it overrode someone.
+      yield* TestClock.adjust("2 minutes");
+      assert.strictEqual((yield* as(null)("turn_off")).status, "done");
+      const unsure = yield* as("unplaced")("turn_on");
+      assert.strictEqual(unsure.status, "done");
+      assert.notInclude(unsure.line, "had set");
+      assert.notInclude((yield* as(null)("turn_off")).line, "over theirs");
     }).pipe(Effect.provide(Layer.merge(layer, household)));
   },
 );

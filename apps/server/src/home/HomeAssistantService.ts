@@ -403,6 +403,8 @@ const iso = (ms: number) => new Date(ms).toISOString();
 /** On a find's first result when it is surely the one he named. */
 export const SURE_MATCH = "the one he means: act on it with home_do, no second home_find";
 const SETTLE_MS = 3_000;
+/** The look after the second send: his pump's relay read off 6 s after the call and on by 24 s (26 Nov 21:00). */
+const LATE_SETTLE_MS = 30_000;
 /** How far a fan's own speed step may land from the percentage asked (1-6 speed fans step by 16-33). */
 const FAN_STEP_SLACK = 17;
 const SETTLE_STEP_MS = 250;
@@ -1208,12 +1210,13 @@ const make = Effect.gen(function* () {
   const lagged = Effect.fnUntraced(function* (
     request: HomeCallRequest,
     named: ReadonlyArray<string>,
+    settleMs = SETTLE_MS,
   ) {
     const want = expectedAfter(request);
     if (want === null) return [];
     const watched = named.filter((e) => e.startsWith(`${request.domain}.`) && states.has(e));
     const lagging = () => watched.filter((e) => !want(states.get(e)!));
-    for (let waited = 0; lagging().length > 0 && waited < SETTLE_MS; waited += SETTLE_STEP_MS)
+    for (let waited = 0; lagging().length > 0 && waited < settleMs; waited += SETTLE_STEP_MS)
       yield* Effect.sleep(SETTLE_STEP_MS);
     return lagging();
   });
@@ -1225,7 +1228,10 @@ const make = Effect.gen(function* () {
   const askerOf = Effect.fn("HomeAssistant.askerOf")(function* () {
     const origin = yield* TurnOrigin;
     const member = origin === null ? OWNER_MEMBER_ID : (origin.member ?? null);
-    if (member === OWNER_MEMBER_ID) return { member, role: "owner" as const, name: "the owner" };
+    if (member === OWNER_MEMBER_ID)
+      return { member, role: "owner" as const, name: "the owner", unplaced: false };
+    // A voice not placed is nobody yet, not another person: his own unsure turns read as "someone else" (26 Nov).
+    const unplaced = member === null && origin?.speaker?.kind === "unverified";
     const household = yield* Effect.serviceOption(TessayaHousehold);
     const grants =
       member === null || Option.isNone(household)
@@ -1235,6 +1241,7 @@ const make = Effect.gen(function* () {
       member,
       role: grants?.role ?? ("guest" as const),
       name: grants?.name ?? "someone she does not know",
+      unplaced,
     };
   });
 
@@ -1300,6 +1307,7 @@ const make = Effect.gen(function* () {
       const told = toldAbout.get(tellKey);
       const verdictFor = arbitrate(nameOf(e), recentActs.get(e), {
         member: asker.member,
+        unplaced: asker.unplaced,
         role: asker.role,
         intent,
         at: now,
@@ -1351,7 +1359,7 @@ const make = Effect.gen(function* () {
           let lagging = yield* lagged(request, named);
           if (lagging.length > 0) {
             yield* send;
-            lagging = yield* lagged(request, named);
+            lagging = yield* lagged(request, named, LATE_SETTLE_MS);
           }
           if (lagging.length === 0) return;
           const what = lagging
@@ -1374,7 +1382,13 @@ const make = Effect.gen(function* () {
     });
     if (by.dryRun !== true && (result.status === "done" || result.status === "asked"))
       for (const e of named)
-        recentActs.set(e, { member: asker.member, name: asker.name, intent, at: now });
+        recentActs.set(e, {
+          member: asker.member,
+          unplaced: asker.unplaced,
+          name: asker.name,
+          intent,
+          at: now,
+        });
     return note === null ? result : { ...result, line: `${result.line} ${note}` };
   });
 

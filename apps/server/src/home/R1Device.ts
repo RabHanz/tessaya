@@ -564,19 +564,28 @@ export const switchedPersona = (voice: unknown): boolean =>
  */
 const pronounsOf = (p: Persona) =>
   p.pronouns === undefined ? "" : `said of you: ${p.pronouns.split("/")[0]}; `;
+/** He asks to talk to someone ("let me talk to Freya", "put Sebastian on"), not only says a name to her. */
+const asksToTalkTo = (heard: string) =>
+  /\b(?:talk|speak|chat)(?:ing)? (?:to|with)\b|\bswitch (?:me )?(?:over )?to\b|\bput\b.*\bon\b|\bget me\b|\bpass me\b/i.test(
+    heard,
+  );
 const personaLine = (
   persona: Persona | null,
   switched: boolean,
   lead?: Persona,
+  heard = "",
 ): ReadonlyArray<string> =>
   persona === null
     ? lead === undefined
       ? []
       : [`You are ${lead.name} (${pronounsOf(lead)}${lead.role}), in the first person.`]
     : [
-        switched
-          ? `He just called ${persona.name} by name: answer as ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not as Tessaya. The name alone is no hand-off: say nothing about who answers.`
-          : `You are ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not Tessaya.`,
+        !switched
+          ? `You are ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not Tessaya.`
+          : asksToTalkTo(heard)
+            ? // 26 Nov 00:42 GMT+5: "Let me talk to Freya / Sebastian" each got "I'm listening", as if nothing changed.
+              `He just asked to talk to ${persona.name}, and you are ${persona.name} (${pronounsOf(persona)}${persona.role}), speaking now in the first person, not Tessaya. Greet him as yourself, in a few words only you would say, so he hears you have come; never only "I'm listening", never your own name, never of yourself as "he" or "she".`
+            : `He just called ${persona.name} by name: answer as ${persona.name} (${pronounsOf(persona)}${persona.role}), in the first person, not as Tessaya. The name alone is no hand-off: say nothing about who answers.`,
       ];
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -633,7 +642,7 @@ const R1_RULES = [
 
 /** @public The acts form's turn as data (the subscription route); the room eval drives it too. */
 export const r1Data = (input: R1Context) => [
-  ...personaLine(input.persona, input.switched, input.lead).map(
+  ...personaLine(input.persona, input.switched, input.lead, input.heard).map(
     (l) => `${l} The acts and rules are the same.`,
   ),
   ...(input.self === undefined || input.self === "" ? [] : [input.self]),
@@ -687,7 +696,7 @@ export const ROOM_SYSTEM = [
 const ROOM_HISTORY = 16;
 export const roomData = (input: R1Context) =>
   [
-    ...personaLine(input.persona, input.switched, input.lead),
+    ...personaLine(input.persona, input.switched, input.lead, input.heard),
     ...(input.self === undefined || input.self === "" ? [] : [input.self]),
     ...(input.feeling === undefined || input.feeling === "" ? [] : [input.feeling]),
     ...(input.tone === undefined || input.tone === null ? [] : [toneLine(input.tone)]),

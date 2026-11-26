@@ -11,6 +11,8 @@ export const ARBITRATION_MS = 90_000;
 /** The last act on one entity: who asked, what they wanted, when. */
 export interface RecentAct {
   readonly member: string | null;
+  /** A voice Voice ID could not place: likely him in his own session, so never "someone else" (26 Nov). */
+  readonly unplaced?: boolean;
   readonly name: string;
   readonly intent: string;
   readonly at: number;
@@ -18,6 +20,7 @@ export interface RecentAct {
 
 export interface Asker {
   readonly member: string | null;
+  readonly unplaced?: boolean;
   readonly role: MemberRole;
   readonly intent: string;
   readonly at: number;
@@ -43,6 +46,8 @@ export const arbitrate = (
     recent === undefined ||
     asker.at - recent.at > ARBITRATION_MS ||
     recent.intent === asker.intent ||
+    recent.unplaced === true ||
+    asker.unplaced === true ||
     (recent.member !== null && recent.member === asker.member)
   )
     return { go: true, note: null };
