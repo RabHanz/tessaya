@@ -16,7 +16,7 @@ index 94788c7fbfc433af9837f3744f32113960d9d571..143bbc37b29acfa3083e192fd2f72acc
      const projections = yield* ProjectionStore.ProjectionStoreV2;
      const recovery = yield* ProviderRuntimeRecovery.ProviderRuntimeRecoveryService;
 diff --git a/apps/server/src/orchestration-v2/runtimeLayer.test.ts b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
-index 539bd8dd31200f95196655bf3dbce26b4b8f6399..62f20c8dc3cf0e5b4281f23cb3ef638e692c8340 100644
+index 539bd8dd31200f95196655bf3dbce26b4b8f6399..20a4b42f49a8d86833f9ed5a7eb455b72691df68 100644
 --- a/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 +++ b/apps/server/src/orchestration-v2/runtimeLayer.test.ts
 @@ -10678,6 +10678,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
@@ -28,7 +28,16 @@ index 539bd8dd31200f95196655bf3dbce26b4b8f6399..62f20c8dc3cf0e5b4281f23cb3ef638e
            dispatchMode: { type: key === "active" ? "start_immediately" : "queue_after_active" },
            createdBy: "user",
            creationSource: "web",
-@@ -12421,6 +12423,74 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
+@@ -12031,6 +12033,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
+           attachments: [],
+           modelSelection: selection,
+           dispatchMode: { type },
++          // Tessaya moves a started thread to another provider only on a pick (0014).
++          ...(selection === modelSelection ? { providerChangeApproved: true } : {}),
+         });
+       }
+       const before = yield* orchestrator.getThreadProjection(threadId);
+@@ -12421,6 +12425,75 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
        );
      }),
    );
@@ -94,9 +103,10 @@ index 539bd8dd31200f95196655bf3dbce26b4b8f6399..62f20c8dc3cf0e5b4281f23cb3ef638e
 +          [claudeInstanceId, false],
 +        ],
 +      );
++      // A manual continuation stores no text; the turn start prompts the new provider with the resume line.
 +      assert.equal(
 +        after.messages.find((message) => message.id === after.runs[1]?.userMessageId)?.text,
-+        "Continue where you left off.",
++        "",
 +      );
 +    }),
 +  );

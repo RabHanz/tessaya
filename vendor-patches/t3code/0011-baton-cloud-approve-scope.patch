@@ -376,7 +376,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd41
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..2f3964497f2e55efddd45df5a5c9fcba52585893 100644
+index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02caa03fe5ed 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
 @@ -1,4 +1,5 @@
@@ -431,7 +431,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..2f3964497f2e55efddd45df5a5c9fcba
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
    AuthSettingsWriteScope,
-@@ -67,16 +105,79 @@ export const AuthEnvironmentScope = Schema.Literals([
+@@ -67,16 +105,80 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthRelayReadScope,
    AuthRelayWriteScope,
    AuthRelayConfigureScope,
@@ -463,17 +463,18 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..2f3964497f2e55efddd45df5a5c9fcba
 +const fromRenamed = <S extends string>(scope: S | RenamedSpelling): S =>
 +  (SCOPE_OF_RENAMED.get(scope) ?? scope) as S;
 +export type AuthEnvironmentScope = typeof AuthEnvironmentScopeName.Type;
-+export const AuthEnvironmentScope = Schema.Literals([
-+  ...AuthEnvironmentScopeName.literals,
-+  ...RENAMED_SPELLINGS,
-+]).pipe(
-+  Schema.decodeTo(
-+    AuthEnvironmentScopeName,
-+    SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
-+      decode: fromRenamed,
-+      encode: (scope) => scope,
-+    }),
++// `literals` as upstream's plain Literals schema has it: the current names, without the old spellings.
++export const AuthEnvironmentScope = Object.assign(
++  Schema.Literals([...AuthEnvironmentScopeName.literals, ...RENAMED_SPELLINGS]).pipe(
++    Schema.decodeTo(
++      AuthEnvironmentScopeName,
++      SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
++        decode: fromRenamed,
++        encode: (scope) => scope,
++      }),
++    ),
 +  ),
++  { literals: AuthEnvironmentScopeName.literals },
 +);
  export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
  export type AuthEnvironmentScopes = typeof AuthEnvironmentScopes.Type;
@@ -515,7 +516,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..2f3964497f2e55efddd45df5a5c9fcba
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
  
  const legacyScopes = new Set<AuthEnvironmentScope>([
-@@ -112,13 +213,25 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -112,13 +214,25 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
@@ -545,7 +546,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..2f3964497f2e55efddd45df5a5c9fcba
      requiredPermission,
    };
  }
-@@ -273,21 +386,39 @@ export const AuthMcpClientAccess = Schema.Literals([
+@@ -273,21 +387,39 @@ export const AuthMcpClientAccess = Schema.Literals([
    "auto-accept-edits",
    "auto",
    "full-access",
@@ -593,7 +594,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..2f3964497f2e55efddd45df5a5c9fcba
  
  /** The random part of a one-time pairing code: this many characters from this alphabet. */
  export const PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-@@ -299,6 +430,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
+@@ -299,6 +431,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
    "auto-accept-edits": "EDITS",
    auto: "AUTO",
    "full-access": "FULL",

@@ -1962,7 +1962,7 @@ index 0f492c6c04db390d1469ab988ef244d836b32068..2f8ac71a258177870c006ecbe20f5bd6
    return AgentSessionScanner.of({ scan, recentThreads });
  });
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 491669209f7bf5e4e149f378720a9ab2bb11c64b..88d2adfcdf6b047ce866bad90388348655e13fd6 100644
+index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371aae5a63a 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -8,6 +8,7 @@ import * as WorkspacePreviewRevisions from "./assets/WorkspacePreviewRevisions.t
@@ -2018,6 +2018,17 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..88d2adfcdf6b047ce866bad903883486
    Layer.provideMerge(layerOrchestrationApplication),
    // One hub, which the feeders above and the workflow store inside the runtime publish to.
    Layer.provideMerge(MilestoneHub.layer),
+@@ -797,8 +814,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+   Layer.provideMerge(EnvironmentTheme.layer),
+   Layer.provideMerge(layerServerSettings),
+   Layer.provideMerge(layerSourceControlProviderRegistry),
+-  Layer.provideMerge(layerGit),
+-  Layer.provideMerge(layerVcs),
++  // One step, as pipe takes at most 20.
++  Layer.provideMerge(layerGit.pipe(Layer.provideMerge(layerVcs))),
+   Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
+   Layer.provideMerge(layerPersistence),
+   Layer.provideMerge(Layer.mergeAll(Keybindings.layer, UsageLimitSources.layer)),
 @@ -924,11 +941,19 @@ const layerMakeRoutes = Layer.mergeAll(
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,

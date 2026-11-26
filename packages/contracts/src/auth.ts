@@ -132,17 +132,18 @@ type RenamedSpelling = (typeof RENAMED_SPELLINGS)[number];
 const fromRenamed = <S extends string>(scope: S | RenamedSpelling): S =>
   (SCOPE_OF_RENAMED.get(scope) ?? scope) as S;
 export type AuthEnvironmentScope = typeof AuthEnvironmentScopeName.Type;
-export const AuthEnvironmentScope = Schema.Literals([
-  ...AuthEnvironmentScopeName.literals,
-  ...RENAMED_SPELLINGS,
-]).pipe(
-  Schema.decodeTo(
-    AuthEnvironmentScopeName,
-    SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
-      decode: fromRenamed,
-      encode: (scope) => scope,
-    }),
+// `literals` as upstream's plain Literals schema has it: the current names, without the old spellings.
+export const AuthEnvironmentScope = Object.assign(
+  Schema.Literals([...AuthEnvironmentScopeName.literals, ...RENAMED_SPELLINGS]).pipe(
+    Schema.decodeTo(
+      AuthEnvironmentScopeName,
+      SchemaTransformation.transform<AuthEnvironmentScope, AuthEnvironmentScope | RenamedSpelling>({
+        decode: fromRenamed,
+        encode: (scope) => scope,
+      }),
+    ),
   ),
+  { literals: AuthEnvironmentScopeName.literals },
 );
 export const AuthEnvironmentScopes = Schema.Array(AuthEnvironmentScope);
 export type AuthEnvironmentScopes = typeof AuthEnvironmentScopes.Type;

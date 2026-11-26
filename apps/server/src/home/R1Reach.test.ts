@@ -229,6 +229,7 @@ it.effect("sends the R1 its list when it comes online, again only when the list 
               pid: 1,
               readyConnections: 1,
               hostname: "t-1.example.net",
+              origin: null,
               protocol: null,
             }),
           }),

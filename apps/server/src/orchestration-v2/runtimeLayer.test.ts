@@ -12033,6 +12033,8 @@ it.layer(layerTest)("OrchestrationV2LayerLive lifecycle", (it) => {
           attachments: [],
           modelSelection: selection,
           dispatchMode: { type },
+          // Tessaya moves a started thread to another provider only on a pick (0014).
+          ...(selection === modelSelection ? { providerChangeApproved: true } : {}),
         });
       }
       const before = yield* orchestrator.getThreadProjection(threadId);
@@ -12485,9 +12487,10 @@ it.layer(layerSharedApplicationDataPlaneTest)("pending provider interruption", (
           [claudeInstanceId, false],
         ],
       );
+      // A manual continuation stores no text; the turn start prompts the new provider with the resume line.
       assert.equal(
         after.messages.find((message) => message.id === after.runs[1]?.userMessageId)?.text,
-        "Continue where you left off.",
+        "",
       );
     }),
   );
