@@ -284,6 +284,11 @@ function multiSelectKeys(prompt, chosen) {
     moveTo(option.index);
     keys.push("enter");
   }
+  // An empty "Type something" left ticked would send a blank answer with the picks.
+  if (prompt.customChecked === true && prompt.customIndex !== null) {
+    moveTo(prompt.customIndex);
+    keys.push("enter");
+  }
   moveTo(prompt.submitIndex);
   keys.push("enter");
   return { keys, text: null };

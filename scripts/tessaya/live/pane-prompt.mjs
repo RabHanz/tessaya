@@ -508,7 +508,9 @@ function parseScreen(screen) {
     ...(tabs === null ? {} : { tabs }),
     context: context.join(" · ").slice(0, 600),
     options: multiSelect ? shown.map((o, k) => ({ ...o, checked: visible[k].checked })) : shown,
-    ...(multiSelect ? { multiSelect: true, submitIndex } : {}),
+    ...(multiSelect
+      ? { multiSelect: true, submitIndex, customChecked: custom?.checked === true }
+      : {}),
     selected: selectedIndex,
     customIndex: custom === undefined ? null : custom.number - 1,
     key: steadyKey([question, ...options.map((o) => o.label)].join("\u0000")),

@@ -1608,4 +1608,9 @@ NodeTest.test("a multi-select question ticks exactly the chosen boxes, then pres
     text: null,
   });
   NodeAssert.equal(answerKeys(prompt, "Durian"), null, "nothing pressed for an unknown pick");
+  const blank = parsePanePrompt(screen.replace("4. [ ] Type something", "4. [✔] Type something"));
+  NodeAssert.deepEqual(answerKeys(blank, "Apple"), {
+    keys: ["enter", "down", "down", "down", "enter", "down", "enter"],
+    text: null,
+  });
 });
