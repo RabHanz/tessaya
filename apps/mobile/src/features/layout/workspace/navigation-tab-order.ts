@@ -1,27 +1,50 @@
-// Tessaya first (D-038): Talk, Work (T3 sessions are her agents' jobs, M-124), Personas, Devices; T3's PRs and Usage follow, under More once the bar is full.
+import { msg } from "gt-react-native";
+
+// Tessaya first (D-038): Talk, Work (T3 sessions are her agents' jobs, M-124), Personas, Devices; T3's PRs, Issues and Usage follow, under More once the bar is full.
 export const NAVIGATION_TAB_ORDER = [
   "talk",
   "threads",
   "personas",
   "devices",
   "pullRequests",
+  "issues",
   "usage",
 ] as const;
-export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number];
+/** Built, but left out of the tab bar while workflows are a soft launch on web. */
+type UnlistedTab = "workflows";
+export type NavigationTab = (typeof NAVIGATION_TAB_ORDER)[number] | UnlistedTab;
+
+const SHARED_SLOT_TABS = ["pullRequests", "issues"] as const;
+export type SharedSlotTab = (typeof SHARED_SLOT_TABS)[number];
+
+export function isSharedSlotTab(value: unknown): value is SharedSlotTab {
+  return SHARED_SLOT_TABS.some((tab) => tab === value);
+}
+
+/**
+ * Pull requests and issues share one slot in the tab bar. The open one holds it, or else the one
+ * opened last; this returns the other, which the bar leaves out.
+ */
+export function sharedSlotAbsentee(selected: NavigationTab, last: unknown): SharedSlotTab {
+  const holder = isSharedSlotTab(selected) ? selected : last === "issues" ? last : "pullRequests";
+  return holder === "issues" ? "pullRequests" : "issues";
+}
 
 export function navigationCustomizationAvailable(
-  registeredSections: number = NAVIGATION_TAB_ORDER.length,
+  registeredSections: number = NAVIGATION_TAB_ORDER.length - 1,
 ) {
   return registeredSections > 4;
 }
 
 export const NAVIGATION_TAB_LABELS: Readonly<Record<NavigationTab, string>> = {
-  talk: "Talk",
-  personas: "Personas",
-  devices: "Devices",
-  threads: "Work",
-  pullRequests: "Pulls",
-  usage: "Usage",
+  talk: msg("Talk", { $context: "navigation tab, voice conversation with Tessaya" }),
+  personas: msg("Personas", { $context: "navigation tab, Tessaya's personas" }),
+  devices: msg("Devices", { $context: "navigation tab, Tessaya's devices" }),
+  threads: msg("Work", { $context: "navigation tab, list of agent work threads" }),
+  pullRequests: msg("Pulls", { $context: "navigation tab, pull requests" }),
+  issues: msg("Issues", { $context: "navigation tab, issues from an issue tracker" }),
+  workflows: msg("Workflows", { $context: "navigation tab, durable workflow runs" }),
+  usage: msg("Usage", { $context: "navigation tab, provider usage limits" }),
 };
 
 function isNavigationTab(value: unknown): value is NavigationTab {

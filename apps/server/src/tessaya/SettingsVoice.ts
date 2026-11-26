@@ -220,6 +220,14 @@ export const SERVER_SETTINGS_VOICE: {
   usagePriceOverrides: owner("usage prices"),
   usageModelAliases: owner("usage model aliases"),
   usageModelFilter: free("which models usage shows"),
+  agentFeedback: confirm("whether agents send T3 feedback"),
+  requireConnectDeviceApproval: owner("whether new T3 Connect devices wait for approval"),
+  enablePreviewTunnel: owner("letting clients reach this machine's local ports through previews"),
+  workflowsEnabled: confirm("running workflows"),
+  workflowSkippedRunsKept: free("how many skipped workflow runs are kept"),
+  defaultAppearance: free("the app's light or dark appearance"),
+  defaultAppearanceSetAt: owner("when the appearance was last chosen"),
+  usageHistoryRetentionDays: confirm("how long usage history is kept"),
 };
 
 export const DESKTOP_SETTINGS_VOICE: {

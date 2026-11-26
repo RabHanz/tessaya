@@ -1,1 +1,22 @@
 pnpm-lock.yaml
+# The i18n catalogs: `vp run i18n:generate` in apps/web and apps/mobile rewrites them from source (upstream-sync.sh runs it).
+apps/web/src/i18n/translations/de.json
+apps/web/src/i18n/translations/en.json
+apps/web/src/i18n/translations/es.json
+apps/web/src/i18n/translations/fr.json
+apps/web/src/i18n/translations/ja.json
+apps/web/src/i18n/translations/ko.json
+apps/web/src/i18n/translations/pt-BR.json
+apps/web/src/i18n/translations/ru.json
+apps/web/src/i18n/translations/sv.json
+apps/web/src/i18n/translations/zh.json
+apps/mobile/src/i18n/translations/de.json
+apps/mobile/src/i18n/translations/en.json
+apps/mobile/src/i18n/translations/es.json
+apps/mobile/src/i18n/translations/fr.json
+apps/mobile/src/i18n/translations/ja.json
+apps/mobile/src/i18n/translations/ko.json
+apps/mobile/src/i18n/translations/pt-BR.json
+apps/mobile/src/i18n/translations/ru.json
+apps/mobile/src/i18n/translations/sv.json
+apps/mobile/src/i18n/translations/zh.json

@@ -2,13 +2,13 @@ Tessaya: one spine. A fork-owned section at the end of AGENTS.md, after the upst
 service rather than building a second one, and name what was reused in the PR body.
 
 diff --git a/AGENTS.md b/AGENTS.md
-index e5941a175264c9c83789495b403cb2bc1b8422da..b7d3e98c29ab5c1a1e27232a4fde4e2779c435c7 100644
+index a257e1a84a4f0b6ff6f63307b5be35669eb0f800..6e77b6f3767dc2ad39b0bf01464c5dc67ed52c6c 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -212,3 +212,12 @@ Architecture and its constraints: `docs/internals/overview.md`. Glossary: `docs/
- ## Additional tips
- 
- - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+@@ -155,3 +155,12 @@ Read the matching doc before changing code in that area; code review enforces th
+ - No continuously repainting animations; they peg the GPU on high-refresh displays.
+ - Security matters, but do not over-index on dev-mode or maintainer-only features. Read [SECURITY.md](SECURITY.md) before auditing or triaging reports.
+ - If a rule here fights the task in front of you, say so loudly and get a human sign-off before breaking it.
 +
 +## Tessaya: one spine
 +

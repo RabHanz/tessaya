@@ -3,10 +3,10 @@ while the window is untouched for a minute or hidden, so a long turn does not re
 second (MA-017, B-041).
 
 diff --git a/apps/web/src/index.css b/apps/web/src/index.css
-index 0f9942e3295ee01cb0aef66d9913302b75ec9816..e07295c72945b95c769f9db911b6e843522ce8e5 100644
+index 7b7f83e80b2a701e7a3afa10f7b847a447967278..b52890d5f988002e16ab4ab970cc896b3bd0a485 100644
 --- a/apps/web/src/index.css
 +++ b/apps/web/src/index.css
-@@ -2640,3 +2640,8 @@ code {
+@@ -2714,3 +2714,8 @@ code {
  .messages-timeline-scroll:focus-visible {
    outline: none;
  }

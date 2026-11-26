@@ -1,8 +1,8 @@
 diff --git a/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
-index 717e71362a593a085cb8869b54b9a09c270ed9ff..baeb7d47fa17c240ee3181414af86f1292158231 100644
+index 3046a19e71074549b35680938f5548fe15a6e904..7bb9d0a107d07b83df48d61b8408b2f9b4d9755e 100644
 --- a/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsAppearanceRouteScreen.tsx
-@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
+@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
  
  import { SettingsScreen } from "./components/SettingsScreen";
  import { CodeAppearanceSection } from "./appearance/sections/CodeAppearanceSection";
@@ -10,7 +10,7 @@ index 717e71362a593a085cb8869b54b9a09c270ed9ff..baeb7d47fa17c240ee3181414af86f12
  import { TerminalAppearanceSection } from "./appearance/sections/TerminalAppearanceSection";
  import { TextAppearanceSection } from "./appearance/sections/TextAppearanceSection";
  import { ThemeAppearanceSection } from "./appearance/sections/ThemeAppearanceSection";
-@@ -30,6 +31,7 @@ export function SettingsAppearanceRouteScreen() {
+@@ -32,6 +33,7 @@ export function SettingsAppearanceRouteScreen() {
          <TerminalAppearanceSection />
          <CodeAppearanceSection />
          <ToolCallsAppearanceSection />
@@ -19,7 +19,7 @@ index 717e71362a593a085cb8869b54b9a09c270ed9ff..baeb7d47fa17c240ee3181414af86f12
      </SettingsScreen>
    );
 diff --git a/apps/web/src/speech/useDictationShortcut.ts b/apps/web/src/speech/useDictationShortcut.ts
-index 278a4baa6002645f765a1bbab9406b1cf3f6b705..76c11204acc6dd24fdd44edaa90665d088464744 100644
+index 72c0fb7bae7f44d0c10bc976b85d151b73aa22fe..8c77f0b61bd0ea2e9541e23f7ea09cc1a8ced349 100644
 --- a/apps/web/src/speech/useDictationShortcut.ts
 +++ b/apps/web/src/speech/useDictationShortcut.ts
 @@ -6,6 +6,7 @@ import { isCommandPaletteOpen } from "../commandPaletteBus";
@@ -30,15 +30,15 @@ index 278a4baa6002645f765a1bbab9406b1cf3f6b705..76c11204acc6dd24fdd44edaa90665d0
  
  const HOLD_THRESHOLD_MS = 300;
  
-@@ -112,6 +113,7 @@ export function useDictationShortcut(input: ShortcutInput) {
-       const press = pressed.current;
-       if (!press || (event && (event.code || event.key) !== press.code)) return;
+@@ -120,6 +121,7 @@ export function useDictationShortcut(input: ShortcutInput) {
+       if (event && (event.code || event.key) !== press.code && !press.modifiers.includes(event.key))
+         return;
        pressed.current = null;
 +      noteDictationKey(false);
        if (shouldFinishDictationOnRelease(press.mode, performance.now() - press.startedAt)) {
          void press.starting.then(() => {
            if (!disposed && generation.current === press.generation)
-@@ -170,6 +172,7 @@ export function useDictationShortcut(input: ShortcutInput) {
+@@ -179,6 +181,7 @@ export function useDictationShortcut(input: ShortcutInput) {
          mode,
          starting: speech.start(),
        };

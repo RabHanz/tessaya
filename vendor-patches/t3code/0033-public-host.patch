@@ -1,5 +1,5 @@
 diff --git a/apps/server/src/cli/pair.ts b/apps/server/src/cli/pair.ts
-index 622b47f91a65e51890d0fd13e419347c2539838f..d822371df8b2715a50de706038a86cbd2c7fe797 100644
+index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..f37cfa8591ba3306559f0a4d9f56c4bb822794b0 100644
 --- a/apps/server/src/cli/pair.ts
 +++ b/apps/server/src/cli/pair.ts
 @@ -32,6 +32,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } fr
@@ -10,7 +10,7 @@ index 622b47f91a65e51890d0fd13e419347c2539838f..d822371df8b2715a50de706038a86cbd
  import * as ManagedLimits from "../policy/managedLimits.ts";
  import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
  import { resolveBaseDir } from "../os-jank.ts";
-@@ -545,6 +546,7 @@ export const pairCommand = Command.make("pair", {
+@@ -564,6 +565,7 @@ export const pairCommand = Command.make("pair", {
        }
  
        const notes: Array<string> = [];
@@ -18,28 +18,28 @@ index 622b47f91a65e51890d0fd13e419347c2539838f..d822371df8b2715a50de706038a86cbd
        let pairingBaseUrl: string;
        if (flags.tailscale) {
          // Serve stays on after this command exits, so refuse before turning it on.
-@@ -561,6 +563,8 @@ export const pairCommand = Command.make("pair", {
+@@ -580,6 +582,8 @@ export const pairCommand = Command.make("pair", {
          });
          pairingBaseUrl = resolved.baseUrl;
          notes.push(...resolved.notes);
 +      } else if (publicUrl !== null) {
 +        pairingBaseUrl = publicUrl;
        } else {
-         pairingBaseUrl = resolveDirectPairingBaseUrl(target.state);
+         pairingBaseUrl = resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform);
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
 diff --git a/apps/server/src/environment/DirectEndpoints.test.ts b/apps/server/src/environment/DirectEndpoints.test.ts
-index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..c63e8f03d63164686ecdff5b77d2d960d4987939 100644
+index d6d2856635670f4be766722f3f20a49ac6a8878e..e6ccaa5bf169797018ca9fa0ac0689122ddf427d 100644
 --- a/apps/server/src/environment/DirectEndpoints.test.ts
 +++ b/apps/server/src/environment/DirectEndpoints.test.ts
-@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
+@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
  import { EnvironmentId } from "@t3tools/contracts";
  import { it as effectIt } from "@effect/vitest";
  import type * as NodeOS from "node:os";
 +import * as ConfigProvider from "effect/ConfigProvider";
  import * as Effect from "effect/Effect";
+ import * as FileSystem from "effect/FileSystem";
  import * as Deferred from "effect/Deferred";
- import * as Fiber from "effect/Fiber";
-@@ -273,14 +274,14 @@ const layerServeProbe = (status: number) =>
+@@ -351,14 +352,14 @@ const layerServeProbe = (status: number) =>
      HttpClient.make((request) => Effect.succeed(serveProbeResponse(request, status))),
    );
  
@@ -56,7 +56,7 @@ index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..c63e8f03d63164686ecdff5b77d2d960
        tailscaleServePort: 443,
      })),
    ).pipe(
-@@ -294,12 +295,22 @@ const layerServeConfig = (host = "127.0.0.1") =>
+@@ -372,16 +373,22 @@ const layerServeConfig = (host = "127.0.0.1") =>
      ),
    );
  
@@ -69,19 +69,19 @@ index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..c63e8f03d63164686ecdff5b77d2d960
      Effect.provide(
        DirectEndpoints.layer.pipe(
          Layer.provide(
--          Layer.mergeAll(layerServeConfig(), layerTailscaleUp, layerServeProbe(probeStatus)),
-+          Layer.mergeAll(
+           Layer.mergeAll(
+-            layerServeConfig(),
 +            layerServeConfig("127.0.0.1", options.serve ?? true),
-+            layerTailscaleUp,
-+            layerServeProbe(probeStatus),
+             layerTailscaleUp,
+             layerServeProbe(probeStatus),
+             NodeFileSystem.layer,
 +            ConfigProvider.layer(
 +              ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: options.publicHost ?? "" }),
 +            ),
-+          ),
+           ),
          ),
        ),
-     ),
-@@ -374,4 +385,23 @@ describe("DirectEndpoints Tailscale Serve", () => {
+@@ -458,4 +465,23 @@ describe("DirectEndpoints Tailscale Serve", () => {
        expect(yield* resolveWithServe(502)).toEqual([]);
      }),
    );
@@ -106,7 +106,7 @@ index 6548b2ccd8c0e409e1bee96ff0ee5e32db642ad2..c63e8f03d63164686ecdff5b77d2d960
 +  });
  });
 diff --git a/apps/server/src/environment/DirectEndpoints.ts b/apps/server/src/environment/DirectEndpoints.ts
-index 1f7d9f705620c19acb3c08743a47000ddb280981..727f6bfe3c76b5ef5de2916c30239a390860f0cd 100644
+index 8112cded968aa863fc63b8c87d913943be5858aa..7743bd7d447609407f6c1a9dd75edda6062f70a2 100644
 --- a/apps/server/src/environment/DirectEndpoints.ts
 +++ b/apps/server/src/environment/DirectEndpoints.ts
 @@ -4,6 +4,7 @@ import {
@@ -117,9 +117,9 @@ index 1f7d9f705620c19acb3c08743a47000ddb280981..727f6bfe3c76b5ef5de2916c30239a39
  import * as Context from "effect/Context";
  import * as Duration from "effect/Duration";
  import * as Effect from "effect/Effect";
-@@ -88,6 +89,17 @@ export function resolveBoundEndpoints(input: {
-     }));
- }
+@@ -141,6 +142,17 @@ export const readIsolatedLinuxBridges = Effect.fn("DirectEndpoints.readIsolatedL
+   },
+ );
  
 +/** Tessaya: this server's own name (a Tailscale Service now, a real domain later), advertised before the machine's. */
 +export const publicBaseUrl = (host: string): string | null => {
@@ -135,7 +135,7 @@ index 1f7d9f705620c19acb3c08743a47000ddb280981..727f6bfe3c76b5ef5de2916c30239a39
  /**
   * AWS, GCP, Azure, DigitalOcean, Hetzner, Linode, Vultr, and Oracle all serve
   * instance metadata at this address. A plain TCP connect skips HTTP proxies,
-@@ -130,7 +142,8 @@ export const make = Effect.gen(function* () {
+@@ -184,7 +196,8 @@ export const make = Effect.gen(function* () {
      : Effect.succeed(false);
    yield* Effect.forkDetach(onCloudVm);
  
@@ -143,9 +143,9 @@ index 1f7d9f705620c19acb3c08743a47000ddb280981..727f6bfe3c76b5ef5de2916c30239a39
 +  const publicUrl = yield* PublicBaseUrl;
 +  const servedEndpoint = yield* Ref.make<Option.Option<ServerDirectEndpoint>>(Option.none());
    const resolveAvailable = Effect.fn("DirectEndpoints.resolveAvailable")(function* () {
-     const endpoints = [
-       ...resolveBoundEndpoints({
-@@ -142,28 +155,43 @@ export const make = Effect.gen(function* () {
+     const interfaces = NodeOS.networkInterfaces();
+     const isolatedBridges =
+@@ -204,28 +217,43 @@ export const make = Effect.gen(function* () {
        }),
      ];
      const servedUrl = yield* Ref.get(servedEndpoint);

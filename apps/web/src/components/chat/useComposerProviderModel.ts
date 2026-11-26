@@ -3,10 +3,12 @@ import {
   deriveEffectiveComposerModelState,
   useComposerDraftModelState,
 } from "../../composerDraftStore";
+import { draftModelSelectionApplies } from "../../lib/chatThreadActions";
 import {
   type ModelSelection,
   type ProjectId,
   ProviderDriverKind,
+  type ProviderInstanceId,
   type ScopedThreadRef,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -35,6 +37,9 @@ export function useComposerProviderModel(
     readonly threadModelSelection: ModelSelection | null | undefined;
     readonly projectModelSelection: ModelSelection | null | undefined;
     readonly promptInjectionState: ReturnType<typeof getComposerPromptInjectionState>;
+    readonly threadStarted: boolean;
+    /** Tessaya: the draft's provider, pinned to a live thread's session. */
+    readonly draftProvider: ProviderInstanceId | null;
   },
 ) {
   const {
@@ -48,7 +53,9 @@ export function useComposerProviderModel(
     candidateInstanceIds,
     lockedProvider,
     lockedInstanceId,
+    threadStarted,
     handoffInstanceId,
+    draftProvider,
   } = input;
   const draftModelState = useComposerDraftModelState(threadRef);
   const providerInstanceEntries: ReadonlyArray<ProviderInstanceEntry> = providerInstanceEntriesFor(
@@ -58,7 +65,10 @@ export function useComposerProviderModel(
   );
   const selection = resolveComposerProviderSelection({
     entries: providerInstanceEntries,
-    candidateInstanceIds,
+    candidateInstanceIds: [
+      draftModelSelectionApplies(draftModelState, threadStarted) ? draftProvider : null,
+      ...candidateInstanceIds,
+    ],
     lockedProvider,
     lockedInstanceId,
     handoffInstanceId,
@@ -69,6 +79,7 @@ export function useComposerProviderModel(
     selection.selectedProviderEntry?.driverKind ?? selection.requestedDriverKind;
   const modelState = deriveEffectiveComposerModelState({
     draft: draftModelState,
+    threadStarted,
     providers: providerStatuses,
     selectedProvider,
     selectedInstanceId,

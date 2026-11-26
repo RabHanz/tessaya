@@ -1,7 +1,7 @@
 Durable JSON stores: fsync before rename, and the desktop connection catalog keeps a .bak and recovers from a corrupt file after a power cut.
 
 diff --git a/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts b/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts
-index 5dfde9103f152bcb038ec9eed64e700bf700ccad..170afeba7116a07ff3f41172f266c10b0e78f482 100644
+index b58b583fd6cd59d1bda806fc28081da32b347a9f..0b2969dc257f3b2ba1574ca539902bed21fc2847 100644
 --- a/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts
 +++ b/apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts
 @@ -12,6 +12,7 @@ import * as Option from "effect/Option";
@@ -97,10 +97,10 @@ index 5dfde9103f152bcb038ec9eed64e700bf700ccad..170afeba7116a07ff3f41172f266c10b
      ),
    );
 diff --git a/apps/desktop/src/app/DesktopConnectionCatalogStore.ts b/apps/desktop/src/app/DesktopConnectionCatalogStore.ts
-index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d9246ac3b 100644
+index 5db49e5f9504cac421f35e67e73f17b58d3b2a2c..87407d4695b26ceb54b92177af22d995e473d7a3 100644
 --- a/apps/desktop/src/app/DesktopConnectionCatalogStore.ts
 +++ b/apps/desktop/src/app/DesktopConnectionCatalogStore.ts
-@@ -11,10 +11,12 @@ import {
+@@ -11,11 +11,13 @@ import {
    type ConnectionCatalogDocument as RuntimeConnectionCatalogDocumentType,
  } from "@t3tools/client-runtime/platform";
  import type { PersistedSavedEnvironmentRecord } from "@t3tools/contracts";
@@ -109,11 +109,12 @@ index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d
  import * as Context from "effect/Context";
  import * as SecureRandom from "effect/crypto/SecureRandom";
  import * as Effect from "effect/Effect";
+ import * as Clock from "effect/Clock";
 +import * as DateTime from "effect/DateTime";
  import * as Base64 from "effect/encoding/Base64";
  import * as FileSystem from "effect/FileSystem";
  import * as Layer from "effect/Layer";
-@@ -22,6 +24,7 @@ import * as Option from "effect/Option";
+@@ -23,6 +25,7 @@ import * as Option from "effect/Option";
  import * as Path from "effect/Path";
  import * as Schema from "effect/Schema";
  
@@ -121,7 +122,7 @@ index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d
  import * as ElectronSafeStorage from "../electron/ElectronSafeStorage.ts";
  import * as DesktopSavedEnvironments from "../settings/DesktopSavedEnvironments.ts";
  import * as DesktopEnvironment from "./DesktopEnvironment.ts";
-@@ -216,6 +219,27 @@ const readDocument = (
+@@ -221,6 +224,27 @@ const readDocument = (
      ),
    );
  
@@ -149,7 +150,7 @@ index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d
  const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(function* (input: {
    readonly fileSystem: FileSystem.FileSystem;
    readonly path: Path.Path;
-@@ -246,7 +270,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
+@@ -251,7 +275,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
      ),
    );
    yield* Effect.gen(function* () {
@@ -158,7 +159,7 @@ index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d
        Effect.mapError(
          (cause) =>
            new DesktopConnectionCatalogStoreWriteError({
-@@ -256,6 +280,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
+@@ -261,6 +285,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
            }),
        ),
      );
@@ -166,7 +167,7 @@ index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d
      yield* input.fileSystem.rename(tempPath, input.catalogPath).pipe(
        Effect.mapError(
          (cause) =>
-@@ -266,6 +291,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
+@@ -271,6 +296,7 @@ const writeDocument = Effect.fn("desktop.connectionCatalogStore.writeDocument")(
            }),
        ),
      );
@@ -174,7 +175,7 @@ index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d
    }).pipe(
      Effect.ensuring(
        input.fileSystem.remove(tempPath, { force: true }).pipe(
-@@ -383,6 +409,7 @@ export const make = Effect.gen(function* () {
+@@ -388,6 +414,7 @@ export const make = Effect.gen(function* () {
    const safeStorage = yield* ElectronSafeStorage.ElectronSafeStorage;
    const random = yield* SecureRandom.SecureRandom;
    const savedEnvironments = yield* DesktopSavedEnvironments.DesktopSavedEnvironments;
@@ -182,7 +183,7 @@ index 3240df3636e38f4bc28e320ccab6739b623cbbb8..8509529aa9dbdaa88d5e19f6cd6bf66d
    const catalogPath = path.join(environment.stateDir, "connection-catalog.json");
    const encryptionAvailable = safeStorage.isEncryptionAvailable.pipe(
      Effect.mapError(
-@@ -461,9 +488,66 @@ export const make = Effect.gen(function* () {
+@@ -517,9 +544,66 @@ export const make = Effect.gen(function* () {
      return Option.some(encoded);
    });
  
@@ -308,7 +309,7 @@ index b840bb7a058e3d6237ae37b89eb93052a35e7236..34f4807838180e2b73f1a7ab362afe1b
  });
  
 diff --git a/apps/server/src/auth/ServerSecretStore.ts b/apps/server/src/auth/ServerSecretStore.ts
-index e950acb38a71dc5f47d08ca28426b6e9a90c2386..bc423eec5e48c3b43db98ea1a1c303ab053bf520 100644
+index 04d9d8b9cd35e35673f5a5b5d0a8bee04bf603f0..5b1b22782af419247267cdb2c6fccaea2c1e9d89 100644
 --- a/apps/server/src/auth/ServerSecretStore.ts
 +++ b/apps/server/src/auth/ServerSecretStore.ts
 @@ -1,3 +1,4 @@
@@ -316,7 +317,7 @@ index e950acb38a71dc5f47d08ca28426b6e9a90c2386..bc423eec5e48c3b43db98ea1a1c303ab
  import * as Context from "effect/Context";
  import * as SecureRandom from "effect/crypto/SecureRandom";
  import * as Effect from "effect/Effect";
-@@ -199,9 +200,10 @@ export const make = Effect.gen(function* () {
+@@ -229,9 +230,10 @@ export const make = Effect.gen(function* () {
        Effect.flatMap((uuid) => {
          const tempPath = `${secretPath}.${uuid}.tmp`;
          return Effect.gen(function* () {
@@ -328,30 +329,13 @@ index e950acb38a71dc5f47d08ca28426b6e9a90c2386..bc423eec5e48c3b43db98ea1a1c303ab
            yield* fileSystem.chmod(secretPath, 0o600);
          }).pipe(
            Effect.catch((cause) =>
-diff --git a/packages/shared/src/atomicWrite.test.ts b/packages/shared/src/atomicWrite.test.ts
-index 6aec907c049adafb0b4891a26a18983de79844c6..48dffad44cd64e0e03a9caa6e92589ab06d268fc 100644
---- a/packages/shared/src/atomicWrite.test.ts
-+++ b/packages/shared/src/atomicWrite.test.ts
-@@ -239,7 +239,11 @@ it.effect("succeeds when the write lands but its temp directory cannot be remove
-         ),
-       makeDirectory: () => Effect.void,
-       makeTempDirectory: () => Effect.succeed("/home/settings.json.abc123"),
--      writeFileString: () => Effect.void,
-+      open: () =>
-+        Effect.succeed({
-+          writeAll: () => Effect.void,
-+          sync: Effect.void,
-+        } as unknown as FileSystem.File),
-       rename: (_from, to) => Effect.sync(() => void renamed.push(to)),
-       remove: (path) =>
-         Effect.sync(() => void removed.push(path)).pipe(
 diff --git a/packages/shared/src/atomicWrite.ts b/packages/shared/src/atomicWrite.ts
-index 39904817fb67332b5c0bb56d391b1fe857f3182d..c0726263bf706befb29a66b3442392b9b25640cf 100644
+index 4767374b89958100572d96a5cd6e6aab3802d883..0c820c1935109e14903692d13ceaa37585df764a 100644
 --- a/packages/shared/src/atomicWrite.ts
 +++ b/packages/shared/src/atomicWrite.ts
-@@ -18,6 +18,28 @@ const LOCKED_RENAME_RETRIES = 20;
- const LOCKED_RENAME_RETRY_DELAY = "100 millis";
- const CHUNK_WRITE_LENGTH = 1 << 20;
+@@ -33,6 +33,28 @@ const isUnsupportedSync = (error: PlatformError.PlatformError) => {
+   return code === "EINVAL" || code === "ENOTSUP" || code === "ENOSYS";
+ };
  
 +const encoder = new TextEncoder();
 +
@@ -378,34 +362,11 @@ index 39904817fb67332b5c0bb56d391b1fe857f3182d..c0726263bf706befb29a66b3442392b9
  /** Resolves symlink targets before renaming so writes preserve the link. Iterable contents stream in bounded batches. */
  export const writeFileStringAtomically = (input: {
    readonly filePath: string;
-@@ -44,13 +66,12 @@ export const writeFileStringAtomically = (input: {
- 
-       const contents = input.contents;
-       if (typeof contents === "string") {
--        yield* fs.writeFileString(tempPath, contents);
-+        yield* writeFileSynced(fs, tempPath, contents);
-       } else {
-         // Closed before the rename, which Windows refuses for open files.
-         yield* Effect.scoped(
-           Effect.gen(function* () {
-             const file = yield* fs.open(tempPath, { flag: "w" });
--            const encoder = new TextEncoder();
-             let batch: string[] = [];
-             let batchLength = 0;
-             for (const chunk of contents) {
-@@ -62,10 +83,14 @@ export const writeFileStringAtomically = (input: {
-               batchLength = 0;
-             }
-             if (batchLength > 0) yield* file.writeAll(encoder.encode(batch.join("")));
-+            yield* file.sync;
-           }),
-         );
-       }
--      if (platform !== "win32") return yield* fs.rename(tempPath, targetPath);
-+      if (platform !== "win32") {
-+        yield* fs.rename(tempPath, targetPath);
-+        return yield* syncDirectory(fs, targetDirectory);
-+      }
- 
-       // Stop retrying if another save changes the target; read-only targets also return permanent EPERM.
-       const targetVersion = fs.stat(targetPath).pipe(
+@@ -63,7 +85,6 @@ export const writeFileStringAtomically = (input: {
+       yield* Effect.scoped(
+         Effect.gen(function* () {
+           const file = yield* fs.open(tempPath, { flag: "w" });
+-          const encoder = new TextEncoder();
+           const contents = input.contents;
+           if (typeof contents === "string") {
+             yield* file.writeAll(encoder.encode(contents));

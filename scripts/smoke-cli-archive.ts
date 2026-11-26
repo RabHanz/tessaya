@@ -102,6 +102,7 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
   for (const required of [
     executable,
     path.join(contentDir, "client/index.html"),
+    path.join(contentDir, "client/.vite/manifest.json"),
     ...(platform === "linux" ? [bundledLibatomic, `${bundledLibatomic}.LICENSE`] : []),
     // Memory recall by meaning (MEM-13): the model beside the executable, and onnxruntime's binding for this target.
     path.join(contentDir, "memory-model/model_quantized.onnx"),

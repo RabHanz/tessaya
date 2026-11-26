@@ -1,3 +1,4 @@
+import { msg } from "gt-react";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -19,6 +20,7 @@ import { buildSidebarProjectSnapshots } from "../../sidebarProjectGrouping";
 import { readProjects } from "../../state/entities";
 import { readPrimaryEnvironmentId } from "../../state/environments";
 import { toastManager } from "../ui/toast";
+import { m } from "~/i18n/messages";
 
 /**
  * Ends the thread's agent session so the next message starts a fresh one (new skills, plugins, MCP), then
@@ -50,8 +52,8 @@ export async function restartAgentSession(input: {
   }
   toastManager.add({
     type: "success",
-    title: "Agent session will restart",
-    description: "Your next message starts a fresh session.",
+    title: m(msg("Agent session will restart")),
+    description: m(msg("Your next message restarts the agent. This conversation is kept.")),
   });
   if (!project) return;
   const refreshed = await input.refreshProviders({

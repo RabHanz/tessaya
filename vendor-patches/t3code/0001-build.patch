@@ -17,10 +17,10 @@ index 1637f475fbbd0718954fe0f6981e71bb616b6bbd..67ffeca1059fde23fc660f3b851ed5ac
 +# An internal build stages an owner-only persona layer here; it is never committed.
 +apps/desktop/persona-layers/
 diff --git a/apps/desktop/package.json b/apps/desktop/package.json
-index 97554fd82320524ccf43a751a45e035823782d2d..dbb4ff743e380abbbdc80428ad648e625d20095b 100644
+index 92a67f29471e23b1adeb764060f7874df2efd15f..59663f2ee3809daf9a323db7262ead8499ab5d34 100644
 --- a/apps/desktop/package.json
 +++ b/apps/desktop/package.json
-@@ -20,6 +20,9 @@
+@@ -21,6 +21,9 @@
      "@t3tools/shared": "workspace:*",
      "@t3tools/ssh": "workspace:*",
      "@t3tools/tailscale": "workspace:*",
@@ -30,10 +30,10 @@ index 97554fd82320524ccf43a751a45e035823782d2d..dbb4ff743e380abbbdc80428ad648e62
      "dbus-next": "0.10.2",
      "effect": "catalog:",
      "electron": "44.10.1",
-@@ -27,6 +30,7 @@
-     "electron-updater": "6.8.9",
+@@ -29,6 +32,7 @@
      "electron-webauthn": "catalog:",
      "ffi-rs": "1.3.2",
+     "gt-i18n": "1.0.40",
 +    "onnxruntime-node": "1.30.0",
      "playwright-core": "1.64.1",
      "react-grab": "^0.1.32",
@@ -61,10 +61,10 @@ index 7f277fdcbf9c294049c9b981bd4de697ee3bc353..06c264c558f3b638ef723cc68a82f78a
      ${IfNot} ${FileExists} "$newStartMenuLink"
        !insertmacro createMenuDirectory
 diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
-index 455901299edc31b4c958e7c523eb3faf31563f44..522137a26d673e4cb2618894005c475f083b4e54 100644
+index 4866dd32d08f9c244ec848d6d4751162a89ff78c..d5aaa2bbe52fd33eba6669b8a86e2a7f6457d102 100644
 --- a/apps/desktop/vite.config.ts
 +++ b/apps/desktop/vite.config.ts
-@@ -159,6 +159,35 @@ export default defineConfig({
+@@ -181,6 +181,35 @@ export default defineConfig({
        outExtensions: () => ({ js: ".cjs" }),
        entry: ["src/mac-permission-preload.ts"],
      },
@@ -101,7 +101,7 @@ index 455901299edc31b4c958e7c523eb3faf31563f44..522137a26d673e4cb2618894005c475f
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index 1892b649061f8cc8413805bceea774e7eaf04298..b1888ef3d8c6f4b179030910932fb84465051e00 100644
+index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..594ca86ca573c196757b2ac521836e4475195031 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -79,6 +79,8 @@
@@ -114,11 +114,11 @@ index 1892b649061f8cc8413805bceea774e7eaf04298..b1888ef3d8c6f4b179030910932fb844
      "clsx": "^2.1.1",
      "diff": "8.0.3",
 @@ -88,6 +90,7 @@
-     "expo-asset": "~58.0.20",
-     "expo-audio": "58.0.11",
-     "expo-auth-session": "~58.0.17",
+     "expo-asset": "~58.0.21",
+     "expo-audio": "58.0.12",
+     "expo-auth-session": "~58.0.19",
 +    "expo-battery": "~58.0.4",
-     "expo-blur": "58.0.5",
+     "expo-blur": "58.0.6",
      "expo-build-properties": "~58.0.12",
      "expo-camera": "~58.0.14",
 @@ -126,10 +129,12 @@
@@ -126,22 +126,22 @@ index 1892b649061f8cc8413805bceea774e7eaf04298..b1888ef3d8c6f4b179030910932fb844
      "react-dom": "catalog:",
      "react-native": "0.88.1",
 +    "react-native-ble-plx": "3.5.1",
-     "react-native-enriched-markdown": "file:deps/react-native-enriched-markdown-1.2.0-t3.18-0dc7ed81.tgz",
+     "react-native-enriched-markdown": "file:deps/react-native-enriched-markdown-1.2.0-t3.19-3757a449.tgz",
      "react-native-gesture-handler": "~3.5.0",
      "react-native-image-viewing": "^0.2.2",
      "react-native-keyboard-controller": "1.23.0",
 +    "react-native-nfc-manager": "4.2.0",
      "react-native-nitro-modules": "0.37.2",
      "react-native-pdf-jsi": "6.1.0",
-     "react-native-reanimated": "4.7.1",
+     "react-native-reanimated": "4.8.0",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..d9c787d7b0667261d55c189a35b6c05a43e94470 100644
+index 033a4e5dd726ab0014d36030f366d45d4458da8e..98ab91f76d8fb53af54bee32c4699ad12d93387a 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
 @@ -62,11 +62,15 @@
-     "@t3tools/source-control-gitcafe": "workspace:*",
      "@t3tools/source-control-github": "workspace:*",
      "@t3tools/source-control-gitlab": "workspace:*",
+     "@t3tools/source-control-tanstack-source": "workspace:*",
 +    "@t3tools/tessaya-contracts": "workspace:*",
 +    "@t3tools/tessaya-shared": "workspace:*",
 +    "@t3tools/tessaya-voice": "workspace:*",
@@ -155,7 +155,7 @@ index d16b8d4e19f2fddb8d61da54f471e2645ac5e187..d9c787d7b0667261d55c189a35b6c05a
      "proper-lockfile": "4.1.2",
      "saxes": "6.0.0",
 diff --git a/apps/server/vite.config.ts b/apps/server/vite.config.ts
-index 3291aa304d39553ab8991a9fa8956eda13b17c73..236cfa62162ea817bb67e7ad937963f68e204980 100644
+index 2bec8830d86c51b2fff6883b2e8d232741fa8800..a34dcdac4c95ad76f272610ad2f7e91a44e69336 100644
 --- a/apps/server/vite.config.ts
 +++ b/apps/server/vite.config.ts
 @@ -1,4 +1,6 @@
@@ -165,10 +165,10 @@ index 3291aa304d39553ab8991a9fa8956eda13b17c73..236cfa62162ea817bb67e7ad937963f6
  // @effect-diagnostics-next-line nodeBuiltinImport:off -- tsdown needs the asset path when it reads this config.
  import * as NodePath from "node:path";
  import { defineConfig, mergeConfig } from "vite-plus";
-@@ -18,6 +20,14 @@ import {
- export { shouldBundleCliDependency };
- 
- const repoEnv = loadRepoEnv();
+@@ -25,6 +27,14 @@ const buildVersion =
+   process.env.APP_VERSION?.trim() ||
+   resolveTaggedSourceVersion(NodePath.join(import.meta.dirname, "../.."), packageJson.version);
+ const cliBuildChannel = /^[^-+]+-(?:nightly|preview)\./.test(buildVersion) ? "nightly" : "latest";
 +const buildCommit = (() => {
 +  if (process.env["GITHUB_SHA"]) return process.env["GITHUB_SHA"];
 +  try {
@@ -177,10 +177,10 @@ index 3291aa304d39553ab8991a9fa8956eda13b17c73..236cfa62162ea817bb67e7ad937963f6
 +    return "";
 +  }
 +})();
- const cliBuildChannel = /^[^-+]+-(?:nightly|preview)\./.test(packageJson.version)
-   ? "nightly"
-   : "latest";
-@@ -128,6 +138,10 @@ export default mergeConfig(
+ // Official release workflows set the telemetry channel; local builds and forks use "dev".
+ const TELEMETRY_CHANNELS = ["stable", "nightly", "preview", "dev"];
+ const telemetryChannel = process.env.T3CODE_TELEMETRY_CHANNEL?.trim() || "dev";
+@@ -150,6 +160,10 @@ export default mergeConfig(
          js: "#!/usr/bin/env node\n",
        },
        define: {
@@ -192,13 +192,13 @@ index 3291aa304d39553ab8991a9fa8956eda13b17c73..236cfa62162ea817bb67e7ad937963f6
          __T3CODE_TELEMETRY_CHANNEL__: JSON.stringify(telemetryChannel),
          __T3CODE_BUILD_RELAY_URL__: JSON.stringify(repoEnv.T3CODE_RELAY_URL?.trim() ?? ""),
 diff --git a/apps/web/package.json b/apps/web/package.json
-index fd3aca76ad247c3101889df922e29f104f8de909..213aabb48443270c3a9a02383b4ea21624987495 100644
+index b659755c899bd98db4c6d532d5c9ff902abb8932..80332c295b1e3a6cac136bc954cd928e8e99cec0 100644
 --- a/apps/web/package.json
 +++ b/apps/web/package.json
-@@ -34,12 +34,16 @@
-     "@noble/hashes": "catalog:",
+@@ -35,12 +35,16 @@
      "@pierre/diffs": "catalog:",
-     "@pierre/trees": "1.0.0-beta.6",
+     "@pierre/trees": "catalog:",
+     "@pierre/words": "file:deps/pierre-words-0.2.2-t3.4-7c04b7f1.tgz",
 +    "@pixiv/three-vrm": "3.5.5",
 +    "@pixiv/three-vrm-animation": "3.5.5",
      "@t3tools/client-runtime": "workspace:*",
@@ -212,16 +212,16 @@ index fd3aca76ad247c3101889df922e29f104f8de909..213aabb48443270c3a9a02383b4ea216
      "@tanstack/react-pacer": "^0.19.4",
      "@tanstack/react-router": "^1.160.2",
      "@tiptap/core": "^3.31.3",
-@@ -87,6 +91,8 @@
+@@ -83,6 +87,8 @@
      "saxes": "6.0.0",
      "sql.js": "1.15.0",
      "tailwind-merge": "^3.4.0",
 +    "three": "0.180.0",
 +    "three-mesh-bvh": "0.9.18",
      "tiff": "7.1.3",
-     "unified": "catalog:",
      "use-sync-external-store": "^1.6.0",
-@@ -106,6 +112,7 @@
+     "zustand": "^5.0.11"
+@@ -99,6 +105,7 @@
      "@types/react": "catalog:",
      "@types/react-dom": "catalog:",
      "@types/sql.js": "1.4.11",
@@ -230,20 +230,21 @@ index fd3aca76ad247c3101889df922e29f104f8de909..213aabb48443270c3a9a02383b4ea216
      "@vercel/config": "^0.3.0",
      "@vitejs/plugin-react": "^6.1.2",
 diff --git a/evals/README.md b/evals/README.md
-index 8cfb697373c318c91927adeb4f373d54a7e1922e..8ba2e6d6cab2ede64b3857bfbc9187b9647b6a63 100644
+index d2ecb73dd71be26d84597d338be69ba7385dc3b7..a690ee27d0eb478113cbc23e20bfdae10e852030 100644
 --- a/evals/README.md
 +++ b/evals/README.md
-@@ -4,13 +4,27 @@ An eval runs a real model against T3 Code's real text or code and scores what th
+@@ -4,14 +4,28 @@ An eval runs a real model against T3 Code's real text or code and scores what th
  
  Write or run an eval when a change affects what a model sees or does: agent instructions, MCP tool descriptions and schemas, tool results, generated titles, or the guidance an agent gets for a feature such as Device Manager.
  
--| Eval                            | Measures                                                                                             |
--| ------------------------------- | ---------------------------------------------------------------------------------------------------- |
--| [mcp-tool-use](mcp-tool-use/)   | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads. |
--| [thread-titles](thread-titles/) | Whether generated thread titles name the right subject.                                              |
--| [pr-content](pr-content/)       | Whether PR generation describes the diff when project instructions try to redirect it.               |
--| [voice-cleanup](voice-cleanup/) | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.             |
--| [test-signal](test-signal/)     | Whether a cheap model running the test-signal check flags low-signal tests.                          |
+-| Eval                                      | Measures                                                                                             |
+-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+-| [mcp-tool-use](mcp-tool-use/)             | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads. |
+-| [thread-titles](thread-titles/)           | Whether generated thread titles name the right subject.                                              |
+-| [pr-content](pr-content/)                 | Whether PR generation describes the diff when project instructions try to redirect it.               |
+-| [voice-cleanup](voice-cleanup/)           | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.             |
+-| [test-signal](test-signal/)               | Whether a cheap model running the test-signal check flags low-signal tests.                          |
+-| [workflow-authoring](workflow-authoring/) | Whether a model writes a working workflow file from the `t3-workflows` skill alone.                  |
 +| Eval                                              | Measures                                                                                                                        |
 +| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 +| [mcp-tool-use](mcp-tool-use/)                     | Whether agents use T3's MCP tools correctly, including device routing and recovery, in fake threads.                            |
@@ -251,6 +252,7 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..8ba2e6d6cab2ede64b3857bfbc9187b9
 +| [pr-content](pr-content/)                         | Whether PR generation describes the diff when project instructions try to redirect it.                                          |
 +| [voice-cleanup](voice-cleanup/)                   | Whether optional dictation cleanup edits only the spoken text and preserves its meaning.                                        |
 +| [test-signal](test-signal/)                       | Whether a cheap model running the test-signal check flags low-signal tests.                                                     |
++| [workflow-authoring](workflow-authoring/)         | Whether a model writes a working workflow file from the `t3-workflows` skill alone.                                             |
 +| [tessaya-assistant](tessaya-assistant/)           | Which tool Tessaya's one assistant reaches for first after a spoken sentence.                                                   |
 +| [tessaya-body-direction](tessaya-body-direction/) | Whether a direction to her body ("act like you just heard great news") becomes a whole, valid performance, seen against unseen. |
 +| [tessaya-outside](tessaya-outside/)               | How an agent signed in to `/mcp` from outside uses Tessaya's tools: reads, and asks before acting.                              |
@@ -269,13 +271,13 @@ index 8cfb697373c318c91927adeb4f373d54a7e1922e..8ba2e6d6cab2ede64b3857bfbc9187b9
  ## Run an eval
  
 diff --git a/evals/package.json b/evals/package.json
-index 0659f65475da775fd54525d9147c84a8b0ad4a3a..5c5430b41d41564ed92a78e45b0083ce7acf2f30 100644
+index 21f022a680466bb95e149436f070cafd284207e8..24813624d2ebb92a2950209b50756170636de809 100644
 --- a/evals/package.json
 +++ b/evals/package.json
-@@ -10,8 +10,27 @@
-     "pr-content": "node --env-file-if-exists=../.env pr-content/run.ts",
+@@ -12,8 +12,27 @@
      "voice-cleanup": "node --env-file-if-exists=../.env voice-cleanup/run.ts",
      "test-signal": "node --env-file-if-exists=../.env test-signal/run.ts",
+     "workflow-authoring": "node --env-file-if-exists=../.env workflow-authoring/run.ts",
 +    "tessaya-assistant": "node tessaya-assistant/run.ts",
 +    "tessaya-outside": "node tessaya-outside/run.ts",
      "typecheck": "effect-tsgo tsrs --noEmit",
@@ -302,10 +304,10 @@ index 0659f65475da775fd54525d9147c84a8b0ad4a3a..5c5430b41d41564ed92a78e45b0083ce
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153148cceaf 100644
+index dafe7ba4fd21e86dc9116f40431825aa0fc3ea06..62174728b121fc8d43d26bcf104d1ddfe3275f91 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
-@@ -41,6 +41,9 @@
+@@ -45,6 +45,9 @@
          "prepare-server-compile-cache.cjs",
          "smoke-desktop-app.ts",
          "verify-windows-desktop-artifact.ts",
@@ -315,9 +317,9 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
        ],
        "ignoreDependencies": ["esbuild"],
        // The `t3` npm package's files: copied into the package, never imported.
-@@ -54,22 +57,34 @@
-         "src/bin.ts!",
+@@ -59,36 +62,56 @@
          "src/claude-history-worker.ts!",
+         "src/process-launcher.ts!",
          "scripts/cli.ts",
 +        // Baton's proofs run by hand against a live server.
 +        "scripts/baton-*.ts",
@@ -349,9 +351,8 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
 +        // Memory recall's model runtime, resolved from disk for its worker thread (TessayaMemoryEmbedder.ts).
 +        "onnxruntime-node",
          "@t3tools/web",
-         "@napi-rs/keyring",
          "ffi-rs",
-@@ -77,13 +92,21 @@
+         "transcribe-cpp",
        ],
      },
      "apps/desktop": {
@@ -363,6 +364,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
 +        "src/tessaya/screen/smoke/*.ts",
 +        "src/tessaya/voice/speechLab.ts",
          "gnome-extension/extension.js!",
+         "src/backend/DesktopBackendRecoveryWorker.ts!",
          "src/electron/WindowsForegroundFocusWorker.ts!",
          "src/snapShot/GlobalShiftShortcutWorker.ts!",
          "src/snapShot/RegionSnapShotWorker.ts!",
@@ -373,7 +375,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
          "src/boot.ts!",
          "src/compileCache.ts!",
          "src/serverCompileCache.ts!",
-@@ -96,7 +119,8 @@
+@@ -101,7 +124,8 @@
        ],
        // The injected runtime resolves Playwright by string; release tooling runs
        // electron-builder from this workspace, outside its package scripts.
@@ -383,7 +385,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -105,13 +129,21 @@
+@@ -110,13 +134,21 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -406,7 +408,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -120,6 +152,7 @@
+@@ -125,6 +157,7 @@
          "scripts/generate-device-stream.mts",
          "src/features/devices/device-stream.browser.ts!",
          "src/features/browser/preview-stream.browser.ts!",
@@ -414,7 +416,7 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
        ],
        // Fonts are configured as asset paths; Expo autolinks the native packages.
        "ignoreDependencies": [
-@@ -157,6 +190,19 @@
+@@ -162,6 +195,19 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
@@ -435,17 +437,17 @@ index e3589f643c3259fac880e60fb4b13b9af3c95d39..c6728c04ec56c81d1586d37ab25c9153
        "includeEntryExports": true,
        "entry": ["test/fixtures/*.ts"],
 diff --git a/packages/client-runtime/package.json b/packages/client-runtime/package.json
-index d1e74151e53e3a0548407d9744ff97d6732068d7..6874892d03cb03d7efd5b2ca3b830293a7d4769f 100644
+index 38b1e6bf2b72c8f5cdd46246562ada3417b83443..aa748253691f4c0488607380a36d7f95d549ffa1 100644
 --- a/packages/client-runtime/package.json
 +++ b/packages/client-runtime/package.json
-@@ -588,6 +588,7 @@
+@@ -693,6 +693,7 @@
      "@t3tools/shared": "workspace:*",
      "@t3tools/source-control-core": "workspace:*",
      "@t3tools/source-control-definitions": "workspace:*",
 +    "@t3tools/tessaya-contracts": "workspace:*",
      "effect": "catalog:",
+     "gt-i18n": "1.0.40",
      "jszip": "3.10.1",
-     "three": "0.180.0",
 diff --git a/packages/shared/src/t3ProjectFile.ts b/packages/shared/src/t3ProjectFile.ts
 index 910e78420f46d1656291fd35d726c14381c46582..65144e632ca6ef44c4a15b2e3194b62c8eab6cf3 100644
 --- a/packages/shared/src/t3ProjectFile.ts
@@ -459,7 +461,7 @@ index 910e78420f46d1656291fd35d726c14381c46582..65144e632ca6ef44c4a15b2e3194b62c
    const document = Schema.toJsonSchemaDocument(T3ProjectFile, { onExcessProperty: "error" });
    const jsonSchema: Record<string, unknown> = {
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index c93a9b4ad7f4979e6d156ce366ec8e3623ae3916..03ca8ed86ebeedddf6ee1dfd094d5bc40433e12b 100644
+index eca09cf47a865dc17c3288180263f6f6192d728f..7c42e6610fc367675326893044d92f0aa8ab0bc6 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -21,6 +21,8 @@ allowBuilds:
@@ -470,15 +472,15 @@ index c93a9b4ad7f4979e6d156ce366ec8e3623ae3916..03ca8ed86ebeedddf6ee1dfd094d5bc4
 +  onnxruntime-node: false
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false
-   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.18-0dc7ed81.tgz": true
-@@ -236,6 +238,7 @@ patchedDependencies:
-   expo-video@58.0.13: patches/expo-video@58.0.13.patch
-   expo-network@58.0.4: patches/expo-network@58.0.4.patch
-   "@clerk/expo-native-components@0.4.4": patches/@clerk__expo-native-components@0.4.4.patch
-+  "@clerk/electron@0.1.10": patches/clerk-electron-webview-guest.patch
+   "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.19-3757a449.tgz": true
+@@ -244,6 +246,7 @@ patchedDependencies:
+   expo-video@58.0.14: patches/expo-video@58.0.14.patch
+   expo-network@58.0.5: patches/expo-network@58.0.5.patch
+   "@clerk/expo-native-components@0.4.8": patches/@clerk__expo-native-components@0.4.8.patch
++  "@clerk/electron@0.1.20": patches/clerk-electron-webview-guest.patch
    "@alchemy.run/test@2.0.0-beta.85": patches/@alchemy.run__test@2.0.0-beta.85.patch
-   "@effect/vitest@4.1.2": patches/@effect__vitest@4.1.2.patch
-   expo-sharing@58.0.22: patches/expo-sharing@58.0.22.patch
+   "@effect/vitest@4.1.5": patches/@effect__vitest@4.1.5.patch
+   expo-sharing@58.0.23: patches/expo-sharing@58.0.23.patch
 diff --git a/scripts/build-cli-archive.ts b/scripts/build-cli-archive.ts
 index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa02dfffc4 100644
 --- a/scripts/build-cli-archive.ts
@@ -535,7 +537,7 @@ index d55d8799f6c95a615324b914646b27d78ee755c3..75a20fc13d24c8d041cfa506e012d4aa
      repoRoot,
      stageDir: contentDir,
 diff --git a/scripts/build-desktop-artifact.test.ts b/scripts/build-desktop-artifact.test.ts
-index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c5fe84a1d 100644
+index 69520b75fb4e451c3ea766254eba9db8c96b2e9b..e2b9e633979a87ba5c7eda2e025b80c170c4a178 100644
 --- a/scripts/build-desktop-artifact.test.ts
 +++ b/scripts/build-desktop-artifact.test.ts
 @@ -3,7 +3,7 @@ import * as NodeCrypto from "node:crypto";
@@ -547,7 +549,7 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c
  import { assert, it } from "@effect/vitest";
  import * as ConfigProvider from "effect/ConfigProvider";
  import * as Deferred from "effect/Deferred";
-@@ -58,6 +58,12 @@ import {
+@@ -59,6 +59,12 @@ import {
    WindowsDesktopBuildPrerequisitesMissingError,
    WindowsPackagedPayloadValidationError,
    stageCursorSdkPlatformPackages,
@@ -560,7 +562,7 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c
    WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT,
    WINDOWS_SERVER_ASAR_IGNORE_GLOBS,
    WINDOWS_SERVER_ASAR_RESOURCE,
-@@ -160,6 +166,35 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
+@@ -163,6 +169,35 @@ const makeWindowsPayloadFixture = Effect.fn("test.makeWindowsPayloadFixture")(fu
    const stageDistDir = path.join(tempDir, "dist");
    const packagedAppDir = path.join(stageDistDir, "win-unpacked");
    const resourcesDir = path.join(packagedAppDir, "resources");
@@ -596,7 +598,7 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c
    yield* fs.makeDirectory(path.join(resourcesDir, "resource-monitor"), { recursive: true });
    yield* fs.copyFile(generatedAsarPath, path.join(resourcesDir, WINDOWS_SERVER_ASAR_RESOURCE));
    if (input.copyUnpackedNatives) {
-@@ -1363,6 +1398,105 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
+@@ -1395,6 +1430,105 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
          assert.deepStrictEqual(resourceMonitorError.missingFiles, [
            "resource-monitor/t3-resource-monitor.exe",
          ]);
@@ -702,7 +704,7 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c
        }),
      ),
    );
-@@ -1922,3 +2056,29 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
+@@ -2009,3 +2143,29 @@ it.effect.skipIf(!symlinksSupported)("preserves relative links when replacing di
      assert.equal(yield* fs.readFileString(path.join(output, app, "Current")), "rebuilt-app");
    }).pipe(Effect.provide(NodeServices.layer), Effect.scoped),
  );
@@ -733,7 +735,7 @@ index 84eb6cc8c6370f4f6389bb7b3ae2fdd8b1cb995c..0c68bca77aceb2a88dc372d1dcef982c
 +  );
 +});
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb8980466691 100644
+index b6bb677fb41b2c5bcc6d1527e970df8a3fdfe224..a5ea9f9265d4a42d476e61b63327a8e2b4eb5359 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -15,6 +15,7 @@ import {
@@ -744,7 +746,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  import { fromYaml } from "@t3tools/shared/schemaYaml";
  import * as HostProcess from "@t3tools/shared/HostProcess";
  import { clerkFrontendApiHostnameFromPublishableKey } from "@t3tools/shared/relayAuth";
-@@ -241,6 +242,15 @@ export class KeyringNativePackageMissingError extends Schema.TaggedError<Keyring
+@@ -242,6 +243,15 @@ export class KeyringNativePackageMissingError extends Schema.TaggedError<Keyring
    }
  }
  
@@ -760,7 +762,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  export class ClerkPasskeyNativePackageMissingError extends Schema.TaggedError<ClerkPasskeyNativePackageMissingError>()(
    "ClerkPasskeyNativePackageMissingError",
    {
-@@ -749,6 +759,11 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
+@@ -750,6 +760,11 @@ const WindowsPackagedPayloadValidationReason = Schema.Literals([
    "sidecar-invalid",
    "unpacked-native-missing",
    "resource-monitor-missing",
@@ -772,7 +774,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
    "wsl-runtime-missing",
    "wsl-runtime-invalid",
    "file-limit-exceeded",
-@@ -775,6 +790,21 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
+@@ -776,6 +791,21 @@ export class WindowsPackagedPayloadValidationError extends Schema.TaggedError<Wi
      if (this.reason === "resource-monitor-missing") {
        return "Windows packaged payload is missing the resource monitor executable.";
      }
@@ -794,7 +796,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
      if (this.reason === "wsl-runtime-missing") {
        return "Windows packaged payload is missing the WSL runtime archive or SHA-256 sidecar.";
      }
-@@ -994,6 +1024,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
+@@ -995,6 +1025,8 @@ export const DESKTOP_FILE_EXCLUSIONS = [
    "!**/*.d.cts",
    "!apps/desktop/resources/browser-secret",
    "!apps/desktop/resources/browser-secret/**/*",
@@ -802,8 +804,8 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
 +  "!apps/desktop/prod-resources/baton-voice/**/*",
    "!apps/desktop/prod-resources/browser-secret",
    "!apps/desktop/prod-resources/browser-secret/**/*",
-   "!apps/desktop/prod-resources/windows-server",
-@@ -1024,6 +1056,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
+   "!apps/desktop/prod-resources/apple-speech",
+@@ -1027,6 +1059,21 @@ export function resolveMacFileExclusions(arch?: typeof BuildArch.Type) {
    const unusedArch = arch === "arm64" ? "x64" : "arm64";
    return [...MAC_FILE_EXCLUSIONS, `!**/node_modules/**/prebuilds/darwin-${unusedArch}/**/*`];
  }
@@ -825,7 +827,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  // Large ASAR sidecars avoid NSIS extracting thousands of loose files during installs and updates.
  export const WINDOWS_SERVER_ASAR_RESOURCE = "server.asar";
  // Native modules and executables need real paths, so place them in ASAR's .unpacked sibling.
-@@ -1061,7 +1108,10 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
+@@ -1064,7 +1111,10 @@ export function resolveWindowsServerAsarIgnoreGlobs(arch: typeof BuildArch.Type)
    ];
  }
  
@@ -837,7 +839,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  export const WINDOWS_SERVER_RESOURCE_SOURCE_DIR = "apps/desktop/prod-resources/windows-server";
  export const WINDOWS_SERVER_EXTRA_RESOURCES = [
    {
-@@ -1090,6 +1140,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
+@@ -1093,6 +1143,8 @@ export const WSL_RUNTIME_EXTRA_RESOURCES = [
    WSL_RUNTIME_ARCHIVE_EXTRA_RESOURCE,
    WSL_RUNTIME_ARCHIVE_HASH_EXTRA_RESOURCE,
  ] as const;
@@ -846,7 +848,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  export const DESKTOP_EXTRA_RESOURCES = [
    {
      from: "apps/desktop/prod-resources/cursor-sdk",
-@@ -1099,6 +1151,35 @@ export const DESKTOP_EXTRA_RESOURCES = [
+@@ -1102,6 +1154,35 @@ export const DESKTOP_EXTRA_RESOURCES = [
      from: "apps/desktop/prod-resources/resource-monitor",
      to: "resource-monitor",
    },
@@ -882,7 +884,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  ] as const;
  export const LINUX_CAPTURE_EXTRA_RESOURCES = [
    {
-@@ -2347,6 +2428,200 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
+@@ -2362,6 +2443,200 @@ export const stageLinuxCaptureHelper = Effect.fn("stageLinuxCaptureHelper")(func
    }
  });
  
@@ -1083,7 +1085,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  export const stageResourceMonitor = Effect.fn("stageResourceMonitor")(function* (input: {
    readonly repoRoot: string;
    readonly stageResourcesDir: string;
-@@ -2792,6 +3067,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+@@ -2839,6 +3114,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
          : platform === "linux"
            ? LINUX_FILE_EXCLUSIONS
            : []),
@@ -1091,7 +1093,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
      ],
      directories: {
        buildResources: "apps/desktop/resources",
-@@ -3162,6 +3438,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
+@@ -3214,6 +3490,19 @@ export const stageWindowsServerSidecar = Effect.fn("stageWindowsServerSidecar")(
      }),
      { label: "vp install --prod (server sidecar)", verbose: input.verbose },
    );
@@ -1111,7 +1113,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
  
    yield* Effect.log("[desktop-artifact] Packing server.asar...");
    yield* fs.makeDirectory(path.dirname(input.asarPath), { recursive: true });
-@@ -3425,6 +3714,78 @@ export const validateWindowsPackagedPayload = Effect.fn(
+@@ -3477,6 +3766,78 @@ export const validateWindowsPackagedPayload = Effect.fn(
      });
    }
  
@@ -1190,7 +1192,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
    const wslArchivePath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_NAME);
    const wslArchiveHashPath = path.join(resourcesDir, WSL_RUNTIME_ARCHIVE_HASH_NAME);
    const [hasWslArchive, hasWslArchiveHash] = yield* Effect.all([
-@@ -3814,6 +4175,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3867,6 +4228,13 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
      arch: options.arch,
      verbose: options.verbose,
    });
@@ -1204,7 +1206,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
    if (options.platform === "linux") {
      for (const backend of ["kde", "hyprland"] as const)
        yield* stageLinuxCaptureHelper({
-@@ -3846,6 +4214,25 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
+@@ -3906,6 +4274,25 @@ const buildDesktopArtifactUnlocked = Effect.fn("buildDesktopArtifactUnlocked")(f
    // electron-builder is filtering out stageResourcesDir directory in the AppImage for production
    const stageProdResourcesDir = path.join(stageAppDir, "apps/desktop/prod-resources");
    yield* fs.copy(stageResourcesDir, stageProdResourcesDir);
@@ -1231,7 +1233,7 @@ index bf7add37828adad593b77de8f062963b479f6fc7..5c0964909a8576e81648ce292b8efb89
    const configuredMacPasskeySigning =
      options.platform === "mac" && options.signed
 diff --git a/scripts/check-changed.test.ts b/scripts/check-changed.test.ts
-index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec5616087d24 100644
+index 5874eef8de5159e88a263f2faef14f49d31f6a86..c24a27be2467d8c0befd82340e2ce66ff1c4f062 100644
 --- a/scripts/check-changed.test.ts
 +++ b/scripts/check-changed.test.ts
 @@ -19,6 +19,7 @@ import {
@@ -1240,9 +1242,9 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec56
    docReaderTests,
 +  sourceScanTests,
    gitLines,
+   ignoredCheckInputs,
    runSteps,
-   splitTests,
-@@ -48,6 +49,24 @@ describe("check:changed", () => {
+@@ -49,6 +50,24 @@ describe("check:changed", () => {
      assert.deepStrictEqual(decide(["docs/user/install.md"], packages, false).affected, []);
    });
  
@@ -1267,7 +1269,7 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec56
    it.effect(
      "keeps weighted steps within the budget, in order, and serial steps one at a time",
      () =>
-@@ -343,6 +362,7 @@ function launcherFixture() {
+@@ -385,6 +404,7 @@ function launcherFixture() {
    }
    write(".gitignore", "node_modules/\nrecords/\n");
    write("pnpm-workspace.yaml", "packages:\n  - packages/*\n");
@@ -1275,7 +1277,7 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec56
    write(
      "package.json",
      JSON.stringify({
-@@ -366,7 +386,7 @@ function launcherFixture() {
+@@ -408,7 +428,7 @@ function launcherFixture() {
      import fs from 'node:fs';
      import path from 'node:path';
      const args = process.argv.slice(2);
@@ -1284,7 +1286,7 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec56
      console.log('fixture stdout: ' + args[0]);
      console.error('fixture stderr: ' + args[0]);
      process.exit(args[0] === process.env.FAIL_STEP ? 23 : 0);
-@@ -419,7 +439,7 @@ function launcherFixture() {
+@@ -461,7 +481,7 @@ function launcherFixture() {
          env: { ...env, TEMP: NodeOS.tmpdir(), RECORDS: records, FAIL_STEP: failStep },
        });
      },
@@ -1293,7 +1295,7 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec56
        NodeFS.readdirSync(records).map((file) =>
          JSON.parse(NodeFS.readFileSync(NodePath.join(records, file), "utf8")),
        ),
-@@ -435,7 +455,7 @@ it("checks changed source paths through the Windows launcher", () => {
+@@ -477,7 +497,7 @@ it("checks changed source paths through the Windows launcher", () => {
    const result = project.run();
    expect(result.status, result.stdout + result.stderr).toBe(0);
    const calls = project.calls();
@@ -1302,7 +1304,7 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec56
      args: ["lint", "--no-error-on-unmatched-pattern", project.source],
      cwd: project.root,
    });
-@@ -479,6 +499,8 @@ it.each(["install", "lint"])("reports a failing %s step with its output", (step)
+@@ -521,6 +541,8 @@ it.each(["install", "lint"])("reports a failing %s step with its output", (step)
      "--ignore-scripts",
    ]);
    expect(install?.cwd).not.toBe(project.root);
@@ -1312,10 +1314,10 @@ index 173ff58099dacbdde18dd1914d79f719c1b67685..adf7afb96e5315f9ff98e1159986ec56
    expect(result.stdout + result.stderr).toContain(`fixture stderr: ${step}`);
    expect(result.stdout).toContain(step === "install" ? "FAIL  unused patches" : "FAIL  lint");
 diff --git a/scripts/check-changed.ts b/scripts/check-changed.ts
-index c556c9c91bb320139b026b58f927fc17dc92c005..20b78f7aea9e072e0d8c5664cf7aba4d386ea236 100644
+index d5881661f4cdc0d0a7f5d8002a5ac6b95eed0899..6345aaeaa84684c34ce96e64020226f4682adf29 100644
 --- a/scripts/check-changed.ts
 +++ b/scripts/check-changed.ts
-@@ -214,6 +214,23 @@ export const docReaderTests = (files: ReadonlyArray<string>) =>
+@@ -255,6 +255,23 @@ export const docReaderTests = (files: ReadonlyArray<string>) =>
      ? ["apps/server/src/cloud/ConnectReachability.test.ts"]
      : [];
  
@@ -1339,7 +1341,7 @@ index c556c9c91bb320139b026b58f927fc17dc92c005..20b78f7aea9e072e0d8c5664cf7aba4d
  const checkChanged = Effect.fn("checkChanged")(function* (input: {
    readonly ref: Option.Option<string>;
    readonly concurrency: Option.Option<number>;
-@@ -334,6 +351,7 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
+@@ -364,6 +381,7 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
      }
    }
    for (const test of docReaderTests(files)) tests.add(test);
@@ -1347,13 +1349,19 @@ index c556c9c91bb320139b026b58f927fc17dc92c005..20b78f7aea9e072e0d8c5664cf7aba4d
    // It reads files other than the ones beside it, so no changed file selects it.
    if (affected.includes("t3")) tests.add("apps/server/src/provider/AgentContextBudget.test.ts");
    const { vitestTests, nodeTests } = splitTests(tests);
-@@ -449,7 +467,8 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
+@@ -480,7 +498,14 @@ const checkChanged = Effect.fn("checkChanged")(function* (input: {
            if (yield* fs.exists(inRoot(manifest))) yield* copy(manifest);
          }
        }
--      for (const extra of ["apps/mobile/deps", "patches", ".pnpmfile.cjs"]) {
+-      for (const extra of ["apps/mobile/deps", "apps/web/deps", "patches", ".pnpmfile.cjs"]) {
 +      // the lockfile too: without it pnpm resolves afresh, and a new upstream release fails peers, not patches
-+      for (const extra of ["apps/mobile/deps", "patches", ".pnpmfile.cjs", "pnpm-lock.yaml"]) {
++      for (const extra of [
++        "apps/mobile/deps",
++        "apps/web/deps",
++        "patches",
++        ".pnpmfile.cjs",
++        "pnpm-lock.yaml",
++      ]) {
          if (yield* fs.exists(inRoot(extra))) yield* copy(extra);
        }
        const result = yield* vp(["install", "--lockfile-only", "--ignore-scripts"], temp);
@@ -1417,10 +1425,10 @@ index 68af7f32512c19565f9273101c05be347dc3362f..814ba45073f6bc53e296b9071c89cf26
  
  export function isDesktopRuntimeExternalDependency(id: string): boolean {
 diff --git a/scripts/prepare-server-compile-cache.cjs b/scripts/prepare-server-compile-cache.cjs
-index 0c5890cf2138343395e01b18a231ccd918f9b67f..e8b2a19d89522577d7de00ffd95c7dcade9f3ba2 100644
+index b09495862814946c7bcf96d67c3b42c42b8bd4f2..07053f1bc301ebaca3205cd0caf7517dd16d74b3 100644
 --- a/scripts/prepare-server-compile-cache.cjs
 +++ b/scripts/prepare-server-compile-cache.cjs
-@@ -57,7 +57,8 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) =>
+@@ -62,7 +62,8 @@ module.exports = async ({ appOutDir, electronPlatformName, arch, packager }) =>
        runner,
        `require(${JSON.stringify(helper)}).generatePreparedServerCache(${JSON.stringify(resources)}).then(()=>process.exit(0),e=>{console.error(e);process.exit(1)})`,
      );
@@ -1431,7 +1439,7 @@ index 0c5890cf2138343395e01b18a231ccd918f9b67f..e8b2a19d89522577d7de00ffd95c7dca
      fs.rmSync(state, { recursive: true, force: true });
    }
 diff --git a/scripts/smoke-cli-archive.ts b/scripts/smoke-cli-archive.ts
-index e11d63c308185e15ece150dd9b73afa592ea9de2..cbac5b0ba41671c90b29f36807d5217f8a737c0b 100644
+index 9a8f9e3b34991f2ae7889d048dcf637e7a49e008..28b0e13d3245bb1c93b5410f7cef1ea56f1bb688 100644
 --- a/scripts/smoke-cli-archive.ts
 +++ b/scripts/smoke-cli-archive.ts
 @@ -65,6 +65,7 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
@@ -1442,9 +1450,9 @@ index e11d63c308185e15ece150dd9b73afa592ea9de2..cbac5b0ba41671c90b29f36807d5217f
    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
    const scratch = yield* fs.makeTempDirectory({ prefix: "t3-cli-smoke-" });
    // Windows can briefly retain executable locks; cleanup retries but must not fail a successful smoke check.
-@@ -102,6 +103,10 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
-     executable,
+@@ -103,6 +104,10 @@ const smokeCliArchive = Effect.fn("smokeCliArchive")(function* (input: {
      path.join(contentDir, "client/index.html"),
+     path.join(contentDir, "client/.vite/manifest.json"),
      ...(platform === "linux" ? [bundledLibatomic, `${bundledLibatomic}.LICENSE`] : []),
 +    // Memory recall by meaning (MEM-13): the model beside the executable, and onnxruntime's binding for this target.
 +    path.join(contentDir, "memory-model/model_quantized.onnx"),
@@ -1466,10 +1474,10 @@ index 61307d2992e025a13693a423d81907bc2d645487..3552cff95908c0faefda81e458c9fb80
 +  "exclude": ["tessaya/**"]
  }
 diff --git a/third-party-licenses.config.json b/third-party-licenses.config.json
-index 66eed772bebbf701b6d5bff4a9418eb441d70be8..c07d348b5fc14ef7dc4122a0835b745baa5d9bdb 100644
+index 3f5ed2ff2c4de8646ee8914184d98d8d4847df3c..e801a5d9e0476098b3e7e165423545ffe1da851d 100644
 --- a/third-party-licenses.config.json
 +++ b/third-party-licenses.config.json
-@@ -229,6 +229,22 @@
+@@ -256,6 +256,22 @@
      }
    ],
    "packageOverrides": [

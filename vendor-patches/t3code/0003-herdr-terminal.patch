@@ -4,10 +4,10 @@ Two hooks: the spawn candidates gain `herdr --session <name>`, and closing a ter
 Herdr session. Not a PtyAdapter, because the adapter is not told which thread and terminal.
 
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index dd06f5f516959621b6d29da86cf93ef6e955adf1..c8618818d1515b4e197f59a57f843711a48a3065 100644
+index 744a288e83220007e617de23b5d0f7e1fb49d58a..519180fed0b2c920f252a01f06ab8bdc6316e431 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
-@@ -73,6 +73,7 @@ import * as ServerSettings from "../serverSettings.ts";
+@@ -84,6 +84,7 @@ import * as ServerSettings from "../serverSettings.ts";
  import { increment, terminalSessionsTotal } from "../observability/Metrics.ts";
  import { expandHomeVariable } from "@t3tools/provider-core/server/pathExpansion";
  import * as ProcessRunner from "../processRunner.ts";
@@ -15,21 +15,37 @@ index dd06f5f516959621b6d29da86cf93ef6e955adf1..c8618818d1515b4e197f59a57f843711
  import * as PortScanner from "../preview/PortScanner.ts";
  import * as NativeTelemetryClient from "../resourceTelemetry/NativeTelemetryClient.ts";
  import { terminalOutputStream } from "./OutputProtocol.ts";
-@@ -2556,7 +2557,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -3022,15 +3023,20 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
        increment(terminalSessionsTotal, { lifecycle: eventType }).pipe(
          Effect.andThen(
            Effect.gen(function* () {
--            const shellCandidates = resolveShellCandidates(shellResolver, platform, baseEnv);
+-            const shellCandidates = yield* resolveShellCandidates(
+-              shellResolver,
+-              platform,
+-              baseEnv,
+-              session.runtimeEnv?.T3CODE_TERMINAL_SHELL ?? baseEnv.T3CODE_TERMINAL_SHELL,
+-            ).pipe(
+-              Effect.provideService(FileSystem.FileSystem, fileSystem),
+-              withShellPreparationTimeout,
+-            );
 +            const shellCandidates = HerdrTerminal.terminalShellCandidates({
 +              runtime: baseEnv[HerdrTerminal.BATON_TERMINAL_RUNTIME_ENV],
 +              threadId: session.threadId,
 +              terminalId: session.terminalId,
-+              shells: resolveShellCandidates(shellResolver, platform, baseEnv),
++              shells: yield* resolveShellCandidates(
++                shellResolver,
++                platform,
++                baseEnv,
++                session.runtimeEnv?.T3CODE_TERMINAL_SHELL ?? baseEnv.T3CODE_TERMINAL_SHELL,
++              ).pipe(
++                Effect.provideService(FileSystem.FileSystem, fileSystem),
++                withShellPreparationTimeout,
++              ),
 +            });
              const terminalEnv = createTerminalSpawnEnv(
                baseEnv,
                session.runtimeEnv,
-@@ -2702,6 +2708,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
+@@ -3180,6 +3186,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
      if (Option.isSome(session)) {
        yield* stopProcess(session.value);
        yield* unregisterTerminal({ threadId, terminalId });

@@ -2,8 +2,24 @@ Web boot: a start that neither renders nor fails shows the boot error screen aft
 stage (app files or startup), instead of spinning on the starting screen. The web build is named
 Tessaya (tab title, boot screen); desktop keeps its injected branding.
 
+diff --git a/apps/web/src/bootstrap.test.ts b/apps/web/src/bootstrap.test.ts
+index 8421d5efe0fc8adb51a0db79fe2529cddf0ce02a..5a3910ce355bb8d71a4819a0533df9ae36b5fa28 100644
+--- a/apps/web/src/bootstrap.test.ts
++++ b/apps/web/src/bootstrap.test.ts
+@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vite-plus/test";
+ 
+ const mocks = vi.hoisted(() => ({ showBootError: vi.fn().mockName("showBootError") }));
+ 
+-vi.mock("./lib/bootError", () => ({ showBootError: mocks.showBootError }));
++vi.mock("./lib/bootError", async (importOriginal) => ({
++  ...(await importOriginal<typeof import("./lib/bootError")>()),
++  showBootError: mocks.showBootError,
++}));
+ 
+ // Mirrors Vite's build preload helper when main's CSS or JS chunk fails to load.
+ vi.mock("./main", () => {
 diff --git a/apps/web/src/branding.logic.ts b/apps/web/src/branding.logic.ts
-index f53103d904ad0545fbd377ff9aab31a873554c72..4c3f076ebd34bc4f4d3e15ec3c7bb89bb6bc3cfb 100644
+index 3071a6c0956ee665b9b9ff0416f965c9731caed1..ce7467aaf610c28e08fd632689ceae27922a020e 100644
 --- a/apps/web/src/branding.logic.ts
 +++ b/apps/web/src/branding.logic.ts
 @@ -1,5 +1,8 @@
@@ -36,7 +52,7 @@ index bf5b76f0dd1b7a4dd698ea943eaa0cc0520c2b82..75e671b24598801c5623c19aad69926f
    injectedDesktopAppBranding?.stageLabel ??
    resolveWebAppStageLabel({
 diff --git a/apps/web/src/lib/bootError.test.ts b/apps/web/src/lib/bootError.test.ts
-index e04e8bef2cfb48cf3da2fcd928389388de8d028b..11c3e53e7521a205650c8b08a28dc8153803dc84 100644
+index 60d655cccadc0e9bbe61fcfca9aaa26423de2f65..75709d4a878131f421150185f678bb53cc3e107d 100644
 --- a/apps/web/src/lib/bootError.test.ts
 +++ b/apps/web/src/lib/bootError.test.ts
 @@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vite-plus/test";
@@ -51,7 +67,7 @@ index e04e8bef2cfb48cf3da2fcd928389388de8d028b..11c3e53e7521a205650c8b08a28dc815
  } from "./bootError";
  
  const desktopWith = (getState: () => Promise<DesktopCliCommandState>) =>
-@@ -131,3 +133,44 @@ describe("updateActionFor", () => {
+@@ -134,3 +136,44 @@ describe("updateActionFor", () => {
      expect(updateActionFor(undefined)).toBeNull();
    });
  });
@@ -97,7 +113,7 @@ index e04e8bef2cfb48cf3da2fcd928389388de8d028b..11c3e53e7521a205650c8b08a28dc815
 +  });
 +});
 diff --git a/apps/web/src/lib/bootError.ts b/apps/web/src/lib/bootError.ts
-index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a3727c6d2c5 100644
+index d2852e2d70efb48f88fb15ecefa8915ea93a99d6..5c28330e94cc85fe0d8b901c54b00a615cbceee1 100644
 --- a/apps/web/src/lib/bootError.ts
 +++ b/apps/web/src/lib/bootError.ts
 @@ -1,5 +1,7 @@
@@ -158,7 +174,7 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
  function safeString(value: unknown) {
    try {
      return String(value);
-@@ -255,7 +293,7 @@ function mountUpdateButton(
+@@ -258,7 +296,7 @@ function mountUpdateButton(
  }
  
  export function showBootError(error: unknown) {
@@ -167,7 +183,7 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
    const bootShell = document.getElementById("boot-shell");
    if (!bootShell) return;
  
-@@ -273,12 +311,21 @@ export function showBootError(error: unknown) {
+@@ -276,12 +314,21 @@ export function showBootError(error: unknown) {
      announcement = setTimeout(() => (status.textContent = text), 100);
    };
  
@@ -191,7 +207,7 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
      }),
    ]);
    message.setAttribute("role", "alert");
-@@ -344,7 +391,7 @@ export function showBootError(error: unknown) {
+@@ -352,7 +399,7 @@ export function showBootError(error: unknown) {
  
    const issue = new URL(ISSUE_URL);
    issue.searchParams.set("template", "bug_report.yml");
@@ -200,7 +216,7 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
    issue.searchParams.set("area", "apps/web");
    issue.searchParams.set("version", `${environment.version} (${environment.channel})`);
    issue.searchParams.set("environment", `${environment.surface}, ${environment.platform}`);
-@@ -360,14 +407,13 @@ export function showBootError(error: unknown) {
+@@ -368,14 +415,13 @@ export function showBootError(error: unknown) {
              nightly ? `${DOWNLOAD_URL}?channel=nightly` : DOWNLOAD_URL,
              nightly
                ? "Download and reinstall the latest nightly build"
@@ -218,10 +234,10 @@ index 3e0b05a0164fe061229a46862822a9fc60160d22..93620761bc415b82e5608e2b72b46a37
        element("div", { id: "boot-error-command" }, [command, copyCommand]),
      ]),
 diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
-index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c0a93e9dd96d3d660e3857e2e91b20e18c31a55c 100644
+index c88106c8d56b7a8dfbf81258055292723967f57b..70387693a557a5896a50319f139d3cbd6e696de1 100644
 --- a/apps/web/vite.config.ts
 +++ b/apps/web/vite.config.ts
-@@ -22,7 +22,12 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
+@@ -18,7 +18,12 @@ import { resolveTaggedSourceVersion } from "../../scripts/lib/tagged-source-vers
  import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
  import { tailwindPlugins } from "./vite/tailwind";
  import { warmBundledDevPlugin } from "./vite/warmBundledDev";
@@ -235,7 +251,7 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c0a93e9dd96d3d660e3857e2e91b20e1
  
  const repoEnv = loadRepoEnv();
  Object.assign(process.env, repoEnv);
-@@ -282,7 +287,7 @@ function bootstrapTitlePlugin(): Plugin {
+@@ -260,7 +265,7 @@ function bootstrapTitlePlugin(): Plugin {
          hostedAppChannel: configuredHostedAppChannel,
          development,
        });
@@ -244,7 +260,7 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c0a93e9dd96d3d660e3857e2e91b20e1
        return html.replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`);
      },
    };
-@@ -310,6 +315,7 @@ export default defineConfig(() => {
+@@ -295,6 +300,7 @@ export default defineConfig(({ command }) => {
      plugins: [
        bootstrapTitlePlugin(),
        devCompressionPlugin(),
@@ -252,7 +268,7 @@ index 63f1f1f737ebeac2adf0119005742bd3c69464ca..c0a93e9dd96d3d660e3857e2e91b20e1
        chunkCycleGuardPlugin(),
        builtDev
          ? undefined
-@@ -420,7 +426,26 @@ export default defineConfig(() => {
+@@ -406,7 +412,26 @@ export default defineConfig(({ command }) => {
        sourcemap: buildSourcemap,
        ...(builtDev ? { watch: { exclude: rolldownWatchExclude } } : {}),
        rolldownOptions: {

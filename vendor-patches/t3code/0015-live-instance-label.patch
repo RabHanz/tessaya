@@ -2,10 +2,10 @@ Live instance label (Tessaya rename): errors that name a provider instance call 
 its display name, not its internal id baton-live.
 
 diff --git a/apps/server/src/orchestration-v2/CommandPolicy.ts b/apps/server/src/orchestration-v2/CommandPolicy.ts
-index cd56460369bd64c958448413c1d9b51e402272f1..1e697ddb967937197841d8b2a4bbc5a9ef6cc9e7 100644
+index 1319083cca03053f591a62ae3b1f60123efbab86..ed22c993305e67d9ae850bcb827d0320f4a58cf4 100644
 --- a/apps/server/src/orchestration-v2/CommandPolicy.ts
 +++ b/apps/server/src/orchestration-v2/CommandPolicy.ts
-@@ -15,6 +15,7 @@ import * as Context from "effect/Context";
+@@ -16,6 +16,7 @@ import * as Context from "effect/Context";
  import * as Effect from "effect/Effect";
  import * as Layer from "effect/Layer";
  import * as Schema from "effect/Schema";
@@ -13,7 +13,7 @@ index cd56460369bd64c958448413c1d9b51e402272f1..1e697ddb967937197841d8b2a4bbc5a9
  
  export const SteeringExecutionPolicyV2 = Schema.Literals(["active_steering", "interrupt_restart"]);
  export type SteeringExecutionPolicyV2 = typeof SteeringExecutionPolicyV2.Type;
-@@ -47,7 +48,7 @@ export class CommandPolicyCapabilityUnsupportedError extends Schema.TaggedError<
+@@ -48,7 +49,7 @@ export class CommandPolicyCapabilityUnsupportedError extends Schema.TaggedError<
    },
  ) {
    override get message(): string {
@@ -23,10 +23,10 @@ index cd56460369bd64c958448413c1d9b51e402272f1..1e697ddb967937197841d8b2a4bbc5a9
  }
  
 diff --git a/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts b/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
-index a04c1df8872779c19f2d2aecad2e767433365671..ae089046c210f01bd53c60e7a6883e4e28506edb 100644
+index dd0e8f8cb48e27c5ca2f2574ff1217b2ff893f48..f6132d2501bdbee011dad026dd46e215e12a84e3 100644
 --- a/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
 +++ b/apps/server/src/orchestration-v2/ProviderAdapterRegistry.ts
-@@ -12,6 +12,7 @@ import * as Scope from "effect/Scope";
+@@ -15,6 +15,7 @@ import { brokenRuntimeError } from "../provider/providerCompatibility.ts";
  import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
  import { ProviderAdapterDriverCreateError } from "@t3tools/provider-core/server/adapterDriver";
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
@@ -34,7 +34,7 @@ index a04c1df8872779c19f2d2aecad2e767433365671..ae089046c210f01bd53c60e7a6883e4e
  
  const isProviderSetupError = Schema.is(ProviderSetupError);
  
-@@ -22,7 +23,7 @@ export class ProviderAdapterRegistryLookupError extends Schema.TaggedError<Provi
+@@ -25,7 +26,7 @@ export class ProviderAdapterRegistryLookupError extends Schema.TaggedError<Provi
    },
  ) {
    override get message(): string {
@@ -44,18 +44,18 @@ index a04c1df8872779c19f2d2aecad2e767433365671..ae089046c210f01bd53c60e7a6883e4e
  }
  
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index c2f7eb767945dca9f8bba21bc620b585b5740a74..8e85f2fb33d0e85ce9dbbb1b53fceffc7591ba3c 100644
+index 291ac02272a264db7123a2afddcb94f4d3a4fc02..89cee98cc74253cce0a9bd6e62b2707954e5bbf6 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-@@ -61,6 +61,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
- import { makeProviderFailure } from "@t3tools/provider-core/server/failure";
+@@ -77,6 +77,7 @@ import {
+ } from "@t3tools/provider-core/server/subagentProjection";
  import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
  import * as ProjectionStore from "./ProjectionStore.ts";
 +import { instanceLabel } from "@t3tools/tessaya-shared/liveThread";
  
- const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
- const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
-@@ -152,7 +153,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
+ const DEFAULT_IDLE_TIMEOUT_MS = 2 * 60 * 1000;
+ // Without native resume, a released session comes back as a summary of the thread, so it stays longer.
+@@ -179,7 +180,7 @@ export class ProviderSessionOpenError extends Schema.TaggedError<ProviderSession
    },
  ) {
    override get message(): string {
@@ -64,7 +64,7 @@ index c2f7eb767945dca9f8bba21bc620b585b5740a74..8e85f2fb33d0e85ce9dbbb1b53fceffc
    }
  }
  
-@@ -236,6 +237,11 @@ export interface ProviderSessionManagerV2Shape {
+@@ -263,6 +264,11 @@ export interface ProviderSessionManagerV2Shape {
      ProviderSessionManagerV2Error
    >;
    readonly isLive: (providerSessionId: ProviderSessionId) => Effect.Effect<boolean>;
@@ -76,7 +76,7 @@ index c2f7eb767945dca9f8bba21bc620b585b5740a74..8e85f2fb33d0e85ce9dbbb1b53fceffc
    readonly close: (
      providerSessionId: ProviderSessionId,
    ) => Effect.Effect<void, ProviderSessionManagerV2Error>;
-@@ -3027,6 +3033,13 @@ export const layerWithOptions = (
+@@ -3427,6 +3433,13 @@ export const layerWithOptions = (
            Ref.get(sessions).pipe(
              Effect.map((current) => current.has(sessionKey(providerSessionId))),
            ),
@@ -90,7 +90,7 @@ index c2f7eb767945dca9f8bba21bc620b585b5740a74..8e85f2fb33d0e85ce9dbbb1b53fceffc
          get: Effect.fn("ProviderSessionManager.get")(
            function* (providerSessionId) {
              const entry = (yield* Ref.get(sessions)).get(sessionKey(providerSessionId));
-@@ -3068,7 +3081,7 @@ export const layerWithOptions = (
+@@ -3468,7 +3481,7 @@ export const layerWithOptions = (
                  releaseEntry({
                    providerSessionId: entry.runtime.providerSessionId,
                    reason: "manual_shutdown",

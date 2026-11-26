@@ -13,7 +13,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { connectionAtomRuntime } from "./connection/runtime";
 import { chooseRecordingMicrophone } from "./speech/browserMicrophones";
-import { openMicrophone } from "./speech/browserPcmCapture";
+import { requestMicrophone } from "./speech/requestMicrophone";
 import workletUrl from "./speech/routeWorklet.ts?worker&url";
 import { environmentSession } from "./state/session";
 
@@ -170,7 +170,7 @@ function LaptopRouteLink({ choice: c }: { readonly choice: LaptopRouteChoice }) 
       playAt = 0;
     };
     const openMic = async () => {
-      const stream = await openMicrophone(await chooseRecordingMicrophone());
+      const stream = await requestMicrophone(await chooseRecordingMicrophone());
       const context = new AudioContext();
       const stop = () => {
         stream.getTracks().forEach((t) => t.stop());

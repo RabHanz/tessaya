@@ -2,10 +2,10 @@ Tessaya: every app command by voice. The shortcut dispatcher runs a command by n
 actions go through one app-wide listener (registerMenuAction), so Tessaya's app_command reaches every keybinding.
 
 diff --git a/apps/web/src/components/AppSidebarLayout.tsx b/apps/web/src/components/AppSidebarLayout.tsx
-index e4f3d690113e5db8dd37354115f54f36ae987e1d..7baf41a47cacc9964160a1cdb4eb448f35d59a8e 100644
+index d8a748b8797bb597e9ac1c9af0f927c3f50a87e0..ccdd9fc93a4f18af02f55e343414a82ddd128e08 100644
 --- a/apps/web/src/components/AppSidebarLayout.tsx
 +++ b/apps/web/src/components/AppSidebarLayout.tsx
-@@ -359,12 +359,10 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
+@@ -367,12 +367,10 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
      };
  
      window.addEventListener("keydown", onKeyDown, true);
@@ -18,23 +18,23 @@ index e4f3d690113e5db8dd37354115f54f36ae987e1d..7baf41a47cacc9964160a1cdb4eb448f
 -      unsubscribe?.();
 +      unsubscribe();
      };
-   }, [keybindings, showSidebar, toggleSidebar, usagePageOpen]);
+   }, [keybindings, router, showSidebar, toggleSidebar, usagePageOpen]);
  
 diff --git a/apps/web/src/components/CommandPalette.tsx b/apps/web/src/components/CommandPalette.tsx
-index fe21bd2e3a6356ba1bd0aed89c7f80c6e701b266..2a5a5c5770d989bf7da9b07c3a95023369f3011f 100644
+index b0b042f3a6cbbcb9c4dd7259fe121682a9f758c4..2e0ac7575fa108edf85385650197dcfd5eafae68 100644
 --- a/apps/web/src/components/CommandPalette.tsx
 +++ b/apps/web/src/components/CommandPalette.tsx
-@@ -265,6 +265,7 @@ import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindin
+@@ -285,6 +285,7 @@ import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindin
  import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
  import { Button } from "./ui/button";
  import { stackedThreadToast, toastManager } from "./ui/toast";
 +import { restartAgentSession } from "./chat/sessionActions";
  import { suggestAppAccessForRemote } from "./sourceControlAppAccessToast";
- import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
  import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
-@@ -1492,32 +1493,13 @@ function OpenCommandPaletteDialog(props: {
+ import type { ChatComposerHandle } from "./chat/ChatComposer";
+@@ -1593,32 +1594,13 @@ function OpenCommandPaletteDialog(props: {
        searchTerms: ["restart", "reset", "reload", "agent", "session", "skills", "plugins", "mcp"],
-       title: "Restart agent session",
+       title: gt("Restart agent session"),
        icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
 -      run: async () => {
 -        const { environmentId } = thread;
@@ -47,8 +47,8 @@ index fe21bd2e3a6356ba1bd0aed89c7f80c6e701b266..2a5a5c5770d989bf7da9b07c3a950233
 -        }
 -        toastManager.add({
 -          type: "success",
--          title: "Agent session will restart",
--          description: "Your next message starts a fresh session.",
+-          title: gt("Agent session will restart"),
+-          description: gt("Your next message restarts the agent. This conversation is kept."),
 -        });
 -        const project = projectByKey.get(`${environmentId}:${thread.projectId}`);
 -        if (!project) return;
@@ -73,18 +73,18 @@ index fe21bd2e3a6356ba1bd0aed89c7f80c6e701b266..2a5a5c5770d989bf7da9b07c3a950233
    }
  
 diff --git a/apps/web/src/components/ReopenClosedViewShortcut.tsx b/apps/web/src/components/ReopenClosedViewShortcut.tsx
-index dfb68fe27e80a0ed6029b4e7c1c3622a44be0169..dfefbcd9abdc0cf3574413942771d715b090ec96 100644
+index 40b5d40b44cce31e3384cafec053ce859e904843..9997e8b5e2646bd1ceceba57631f5ae0b83f39da 100644
 --- a/apps/web/src/components/ReopenClosedViewShortcut.tsx
 +++ b/apps/web/src/components/ReopenClosedViewShortcut.tsx
-@@ -42,6 +42,7 @@ import {
-   resolveThreadRouteTarget,
- } from "../threadRoutes";
+@@ -50,6 +50,7 @@ import {
  import { toastManager } from "./ui/toast";
+ import { readIssueListPreferences } from "./issue/issueListPreferences";
+ import { readPullRequestListPreferences } from "./pullRequest/pullRequestListPreferences";
 +import { registerMenuAction } from "../shortcuts/dispatcher";
  
- const PREVIEW_FORWARDED_COMMANDS = [
-   "workspace.focusNext",
-@@ -182,12 +183,12 @@ export function ReopenClosedViewShortcut() {
+ declare module "@tanstack/react-router" {
+   interface HistoryState {
+@@ -244,12 +245,12 @@ export function ReopenClosedViewShortcut() {
        if (!event.repeat) enqueueReopen();
      };
      window.addEventListener("keydown", onKeyDown, true);
@@ -101,10 +101,10 @@ index dfb68fe27e80a0ed6029b4e7c1c3622a44be0169..dfefbcd9abdc0cf3574413942771d715
    }, [keybindings, previewOpen, terminalOpen]);
  
 diff --git a/apps/web/src/components/preview/PreviewView.browser.test.tsx b/apps/web/src/components/preview/PreviewView.browser.test.tsx
-index 2766cf6abf097d622d8ca1e4d1f7cd52c6000de8..9cb43f27e99c1c4fb3480289c257835ba81174f2 100644
+index 115aec44c5ab3c3bbee35edd1d04997321cf85a7..70b87dc31a27ce58a32a1fa3986440b9739daf5d 100644
 --- a/apps/web/src/components/preview/PreviewView.browser.test.tsx
 +++ b/apps/web/src/components/preview/PreviewView.browser.test.tsx
-@@ -420,7 +420,7 @@ describe("PreviewView", () => {
+@@ -448,7 +448,7 @@ describe("PreviewView", () => {
      );
      await forward();
      await expect.element(address).not.toHaveFocus();
@@ -114,18 +114,18 @@ index 2766cf6abf097d622d8ca1e4d1f7cd52c6000de8..9cb43f27e99c1c4fb3480289c257835b
  
    it("focuses the address bar each time the focus-url shortcut fires", async () => {
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index f7cb3082491e9270e191b10b9ca197543c717742..266dc7a2d4dbdd4c4d29de7f66347fa072cd3cdc 100644
+index 00fd1f05441be9432e389b99e8438f80717619f0..e5fad4d17ddfb1b7fe48ee1d1529d4bdcc3bd602 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -102,6 +102,7 @@ import {
+@@ -113,6 +113,7 @@ import {
  import { stackedThreadToast, toastManager } from "~/components/ui/toast";
- import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
  import { observeResize } from "~/lib/observeResize";
+ import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
 +import { registerMenuAction } from "~/shortcuts/dispatcher";
  
  interface Props {
    threadRef: ScopedThreadRef;
-@@ -951,16 +952,18 @@ export function PreviewView({
+@@ -983,16 +984,18 @@ export function PreviewView({
      const unsubscribeAction = subscribePreviewAction((action) => onPreviewAction(action));
      // A focused page swallows its own keydowns, so the desktop forwards these
      // shortcuts from the guest as menu actions instead.
@@ -153,7 +153,7 @@ index f7cb3082491e9270e191b10b9ca197543c717742..266dc7a2d4dbdd4c4d29de7f66347fa0
    }, [visible]);
  
 diff --git a/apps/web/src/shortcuts/dispatcher.browser.test.ts b/apps/web/src/shortcuts/dispatcher.browser.test.ts
-index b9bf6c4e4b7d333f8fb53216d394f6970bf94b34..609a939cbb2bfdc1de1125143b2398432190753a 100644
+index db477b9acedd0eb3ff86507bceee1813276c8849..be00f2b9d7532364f5e51460a8362376a933d7ab 100644
 --- a/apps/web/src/shortcuts/dispatcher.browser.test.ts
 +++ b/apps/web/src/shortcuts/dispatcher.browser.test.ts
 @@ -1,7 +1,24 @@
@@ -182,7 +182,7 @@ index b9bf6c4e4b7d333f8fb53216d394f6970bf94b34..609a939cbb2bfdc1de1125143b239843
  
  function bindings(entries: ReadonlyArray<[string, KeybindingCommand]>): ResolvedKeybindingsConfig {
    return entries.map(([key, command]) => ({
-@@ -144,4 +161,36 @@ describe("command dispatcher", () => {
+@@ -167,4 +184,36 @@ describe("command dispatcher", () => {
      expect(newer).toHaveBeenCalledOnce();
      expect(older).toHaveBeenCalledOnce();
    });
@@ -220,7 +220,7 @@ index b9bf6c4e4b7d333f8fb53216d394f6970bf94b34..609a939cbb2bfdc1de1125143b239843
 +  });
  });
 diff --git a/apps/web/src/shortcuts/dispatcher.ts b/apps/web/src/shortcuts/dispatcher.ts
-index 9e361e825db7fbff877cb3059e3fe0a48659b330..94e8feaa44b23e93df7c3060f7c3f91ccd8c48ab 100644
+index c52f254cce68befba38f913b9b91d591c6159e53..778f84058f1861f1fe8199b43f01a702377bc21b 100644
 --- a/apps/web/src/shortcuts/dispatcher.ts
 +++ b/apps/web/src/shortcuts/dispatcher.ts
 @@ -2,6 +2,7 @@ import type { KeybindingCommand, ResolvedKeybindingsConfig } from "@t3tools/cont
@@ -231,7 +231,7 @@ index 9e361e825db7fbff877cb3059e3fe0a48659b330..94e8feaa44b23e93df7c3060f7c3f91c
  import { isPreviewFocused } from "../lib/previewFocus";
  import { isTerminalFocused } from "../lib/terminalFocus";
  import { isModelPickerOpen } from "../modelPickerVisibility";
-@@ -153,6 +154,68 @@ function ensureMenuActionListener() {
+@@ -158,6 +159,68 @@ function ensureMenuActionListener() {
    bridge.onMenuAction(dispatchMenuAction);
  }
  
@@ -301,10 +301,10 @@ index 9e361e825db7fbff877cb3059e3fe0a48659b330..94e8feaa44b23e93df7c3060f7c3f91c
  export function registerMenuAction(action: string, handler: MenuActionHandler): () => void {
    ensureMenuActionListener();
 diff --git a/packages/contracts/src/keybindings.ts b/packages/contracts/src/keybindings.ts
-index eda5138b760b9b3d028d89d9b4b7a0c0b7c8075b..27e11143a72aee64daf5f757de24ec20b066fd5a 100644
+index 855afb74013a532ff6f824c7480ae7775ab68c98..ce2ccb1711eb991e6683c720c9e4e8e9958b7555 100644
 --- a/packages/contracts/src/keybindings.ts
 +++ b/packages/contracts/src/keybindings.ts
-@@ -114,6 +114,10 @@ export const STATIC_KEYBINDING_COMMANDS = [
+@@ -116,6 +116,10 @@ export const STATIC_KEYBINDING_COMMANDS = [
    "usage.period.week",
    "usage.period.month",
    "usage.period.quarter",

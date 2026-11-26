@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { expect } from "vite-plus/test";
 
+import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { DictationCleanupApi } from "./DictationCleanupApi.ts";
@@ -60,6 +61,7 @@ const run = (
                 return Effect.succeed({ configured: true, text: ANSWER, ms: 1 });
               },
             }),
+            Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
             NodeServices.layer,
           ),
         ),

@@ -24,7 +24,7 @@ import { Button } from "../ui/button";
 import { useCloudRead } from "./CloudVoiceConfiguration";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { useSettingsScope } from "./SettingsScopeContext";
 
 const isApiKey = Schema.is(CloudSpeechApiKey);
@@ -36,6 +36,7 @@ const TEST_RESULTS: Record<DictationCleanupKeyTest["result"], string> = {
 };
 
 export function ApisSettingsPanel() {
+  const searchableSetting = useSearchableSetting();
   const { environment } = useSettingsScope();
   return (
     <SettingsPageContainer>

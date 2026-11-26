@@ -97,7 +97,7 @@ import { OutputOrderList, PrivateButtons } from "./OutputOrderList";
 import { R1SetupSection } from "./R1SetupSection";
 import { SecretInput } from "./SecretInput";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-import { searchableSetting } from "./settingsSearch";
+import { useSearchableSetting } from "./settingsSearch";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
 import { WifiSection } from "./WifiSection";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
@@ -198,6 +198,7 @@ function HardwareSections({
   readonly owns: (deviceId: string) => boolean;
   readonly alsoOn: (deviceId: string) => ReadonlyArray<string>;
 }) {
+  const searchableSetting = useSearchableSetting();
   const quiet = { reportFailure: false } as const;
   const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, quiet);
   const homeCall = useAtomCommand(tessayaWorkSessions.homeCall, quiet);
@@ -1356,6 +1357,7 @@ function TagsSection({
   readonly busy: boolean;
   readonly run: Run;
 }) {
+  const searchableSetting = useSearchableSetting();
   const [label, setLabel] = useState("");
   const [choice, setChoice] = useState<string>("mute");
   const [scene, setScene] = useState("");
@@ -1720,6 +1722,7 @@ type RoomBrainWay = keyof typeof ROOM_BRAIN_LABELS;
  * also lets the key pay for talking; choosing the subscription takes that back. Applies from the next turn.
  */
 function RoomBrainSection({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const searchableSetting = useSearchableSetting();
   const voice = useEnvironmentSettings(
     environmentId,
     (settings) => settings.brainCredentials?.voice,

@@ -35,9 +35,7 @@ import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilt
 import { useSettingsEnvironmentFilter } from "./settings-environment-filter";
 import { filterSettingsSections } from "./settings-search";
 import { usePaneRole } from "../../components/ui/Pane";
-import { I18nProvider, useGT, useLanguagePreference } from "../../i18n/I18nProvider";
-import { nativeLanguageName } from "@t3tools/client-runtime/locales";
-import { SUPPORTED_LOCALES } from "../../i18n/locales";
+import { useGT, useMessages } from "gt-react-native";
 
 export function SettingsRouteScreen() {
   const list = useSettingsListPlacement();
@@ -50,9 +48,7 @@ export function WorkspaceSettingsList() {
   return (
     <SettingsSidebarContext value={list.sidebar ? { selected: list.selected } : null}>
       <View className="flex-1 bg-screen">
-        <I18nProvider>
-          <SettingsListContent />
-        </I18nProvider>
+        <SettingsListContent />
       </View>
     </SettingsSidebarContext>
   );
@@ -80,17 +76,6 @@ export function SettingsListScreen(props: {
   readonly sidebar: boolean;
   readonly selected: string | null;
 }) {
-  return (
-    <I18nProvider>
-      <TranslatedSettingsListScreen {...props} />
-    </I18nProvider>
-  );
-}
-
-function TranslatedSettingsListScreen(props: {
-  readonly sidebar: boolean;
-  readonly selected: string | null;
-}) {
   const gt = useGT();
   const workspace = useWorkspaceTabs();
   const environmentMenu = useSettingsEnvironmentMenu();
@@ -98,7 +83,7 @@ function TranslatedSettingsListScreen(props: {
     <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
       <View className="flex-1 bg-screen">
         <SettingsScreen
-          title="More"
+          title={gt("More")}
           workspaceRoot={props.sidebar}
           menus={[environmentMenu]}
           search={
@@ -184,6 +169,7 @@ function environmentsRow(label: string, count: number): SettingsListRow {
 
 function SettingsList(props: { readonly connections: readonly SettingsListRow[] }) {
   const gt = useGT();
+  const m = useMessages();
   // UIKit's scroll-edge material takes the scroll view's own color; like the chat list, match
   // the sidebar's surface so the bar doesn't darken over content at rest.
   // Grouped cards only lift off the screen surface; the drawer is as dark as they are.
@@ -202,6 +188,7 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[] 
       ...indexSections.slice(3),
     ],
     query,
+    m,
   );
 
   return (
@@ -243,7 +230,6 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[] 
 
 function useSettingsIndexSections(): SettingsListSection[] {
   const gt = useGT();
-  const language = useLanguagePreference();
   const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
   const noServerTargets = selectedTargets.length === 0;
   const selectedProject = projectGroups.find((group) => group.key === selectedProjectKey);
@@ -254,8 +240,9 @@ function useSettingsIndexSections(): SettingsListSection[] {
         selectedTargets.some((target) => target.environmentId === project.environmentId),
       ) ?? [];
   const projectLabel =
-    scopedProjectMembers.length > 0
+    selectedProject && scopedProjectMembers.length > 0
       ? deriveProjectGroupLabel({
+          groupKey: selectedProject.key,
           representative: scopedProjectMembers[0]!,
           members: scopedProjectMembers,
         })
@@ -274,11 +261,11 @@ function useSettingsIndexSections(): SettingsListSection[] {
   // More, in three groups (phone redesign v2): her, his work, this phone. Personas and the house have their own tabs.
   return [
     {
-      title: "Her",
+      title: gt("Her"),
       rows: [
-        serverPage("SettingsUpcoming", "timer", "Coming up"),
-        serverPage("SettingsForgotten", "arrow.uturn.backward", "Recently forgotten"),
-        serverPage("SettingsMood", "face.smiling", "Her mood"),
+        serverPage("SettingsUpcoming", "timer", gt("Coming up")),
+        serverPage("SettingsForgotten", "arrow.uturn.backward", gt("Recently forgotten")),
+        serverPage("SettingsMood", "face.smiling", gt("Her mood")),
         // only where his server has a private layer; it opens over everything, after Face ID or his PIN
         ...(layerKnown === false || layerKnown === null
           ? []
@@ -286,22 +273,22 @@ function useSettingsIndexSections(): SettingsListSection[] {
               {
                 id: "private",
                 icon: "eye.slash" as const,
-                label: "Private",
-                value: "Locked",
+                label: gt("Private"),
+                value: gt("Locked"),
                 onPress: () => setPrivateShown(true),
               },
             ]),
-        serverPage("SettingsPulse", "bolt.circle", "Pulse"),
-        serverPage("SettingsTeam", "person.2", "Team"),
-        serverPage("SettingsCast", "person.crop.circle", "Cast"),
+        serverPage("SettingsPulse", "bolt.circle", gt("Pulse")),
+        serverPage("SettingsTeam", "person.2", gt("Team")),
+        serverPage("SettingsCast", "person.crop.circle", gt("Cast")),
       ],
     },
     {
-      title: "Your work",
+      title: gt("Your work"),
       rows: [
         ...overflowRows,
-        serverPage("SettingsActivity", "clock", "Activity"),
-        serverPage("SettingsBrainUsage", "chart.bar.xaxis", "Brain usage"),
+        serverPage("SettingsActivity", "clock", gt("Activity")),
+        serverPage("SettingsBrainUsage", "chart.bar.xaxis", gt("Brain usage")),
         serverPage("SettingsProviderAccounts", "person.crop.circle", gt("Providers")),
         serverPage("SettingsThreads", "text.bubble", gt("Threads")),
         page("SettingsScheduledTasks", "clock", gt("Scheduled tasks")),
@@ -314,29 +301,31 @@ function useSettingsIndexSections(): SettingsListSection[] {
         serverPage(
           "SettingsEnvironmentSourceControl",
           "arrow.triangle.branch",
-          gt("Source control"),
+          gt("Source control & issues"),
         ),
         serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
       ],
     },
     {
-      title: "This phone",
+      title: gt("This phone"),
       rows: [
         {
           id: "sleeve",
           icon: "iphone",
-          label: "Mode",
-          value: sleeve.sleeve ? "Sleeve: only her" : "Full",
+          label: gt("Mode"),
+          value: sleeve.sleeve ? gt("Sleeve: only her") : gt("Full"),
           onPress: () =>
             Alert.alert(
-              sleeve.sleeve ? "Give this phone back?" : "Make this phone her Sleeve?",
+              sleeve.sleeve ? gt("Give this phone back?") : gt("Make this phone her Sleeve?"),
               sleeve.sleeve
-                ? "It shows everything again: your work, her personas and every setting."
-                : "It shows only her, full screen. Hold the dot at the top, then Face ID or your PIN, to reach settings. You can also say “make this phone her sleeve” or “give me my phone back” on any device.",
+                ? gt("It shows everything again: your work, her personas and every setting.")
+                : gt(
+                    "It shows only her, full screen. Hold the dot at the top, then Face ID or your PIN, to reach settings. You can also say “make this phone her sleeve” or “give me my phone back” on any device.",
+                  ),
               [
-                { text: "Cancel", style: "cancel" },
+                { text: gt("Cancel"), style: "cancel" },
                 {
-                  text: sleeve.sleeve ? "Give it back" : "Make it her Sleeve",
+                  text: sleeve.sleeve ? gt("Give it back") : gt("Make it her Sleeve"),
                   onPress: () => {
                     // a new Sleeve covers the app at once, locked, as it will after every restart
                     if (!sleeve.sleeve) setSleeveUnlocked(false);
@@ -348,11 +337,6 @@ function useSettingsIndexSections(): SettingsListSection[] {
         },
         page("SettingsVoice", "mic", "Voice and microphone"),
         page("SettingsAppearance", "paintbrush", gt("Appearance")),
-        page("SettingsLanguage", "globe", gt("Language"), {
-          value: SUPPORTED_LOCALES.includes(language)
-            ? nativeLanguageName(language)
-            : gt("System default"),
-        }),
         page("SettingsOrganization", "gearshape", gt("General")),
         page("SettingsFollowUp", "bubble.left.and.bubble.right", gt("Chat")),
         ...(navigationCustomizationAvailable()
@@ -373,6 +357,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
 }
 
 function useOverflowRows(): SettingsListRow[] {
+  const m = useMessages();
   const order = useNavigationTabOrder();
   const hidden = useHiddenNavigationTabs();
   const { layout } = useAdaptiveWorkspaceLayout();
@@ -382,7 +367,7 @@ function useOverflowRows(): SettingsListRow[] {
   return tabs.map((tab) => ({
     id: tab,
     icon: NAVIGATION_TAB_ICONS[tab],
-    label: WORKSPACE_TAB_LABELS[tab],
+    label: m(WORKSPACE_TAB_LABELS[tab]),
     onPress: () => selectTab(tab),
   }));
 }

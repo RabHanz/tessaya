@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { msg } from "gt-react-native";
 import { AsyncResult } from "effect/reactivity";
 import { Platform } from "react-native";
 import {
@@ -6,16 +7,21 @@ import {
   navigationCustomizationAvailable,
   resolveHiddenNavigationTabs,
   enabledNavigationTabs,
+  sharedSlotAbsentee,
   type NavigationTab,
 } from "./navigation-tab-order";
 import type { AppSymbolName } from "../../../components/ui/AppSymbol";
 import { mobilePreferencesAtom } from "../../../state/preferences";
 import { PullRequestGlyph } from "../../pull-requests/pullRequestGlyphs";
+import { useWorkspaceTabs } from "./WorkspaceTabsContext";
 import { resolveWorkspaceTabOrder } from "./workspace-tabs-state";
 
 export const WORKSPACE_TAB_LABELS = {
   ...NAVIGATION_TAB_LABELS,
-  ...(Platform.OS === "ios" ? { pullRequests: "PRs" } : {}),
+  // Tessaya keeps "Work" for threads on iOS too (M-124).
+  ...(Platform.OS === "ios"
+    ? { pullRequests: msg("PRs", { $context: "navigation tab, pull requests" }) }
+    : {}),
 };
 
 export const NAVIGATION_TAB_ICONS = {
@@ -24,6 +30,8 @@ export const NAVIGATION_TAB_ICONS = {
   devices: "iphone",
   threads: "wrench.and.screwdriver",
   pullRequests: PullRequestGlyph.pullRequest,
+  issues: "git.issue",
+  workflows: "point.3.connected.trianglepath.dotted",
   usage: "chart.bar.xaxis",
 } as const satisfies Readonly<Record<NavigationTab, AppSymbolName>>;
 
@@ -37,10 +45,14 @@ export function useNavigationTabOrder() {
 
 export function useHiddenNavigationTabs() {
   const preferences = useAtomValue(mobilePreferencesAtom);
-  const saved = AsyncResult.isSuccess(preferences)
-    ? preferences.value.hiddenNavigationTabs
-    : undefined;
-  return navigationCustomizationAvailable() ? resolveHiddenNavigationTabs(saved) : [];
+  const selected = useWorkspaceTabs()?.state.selectedTab ?? "threads";
+  const saved = AsyncResult.isSuccess(preferences) ? preferences.value : undefined;
+  return [
+    ...(navigationCustomizationAvailable()
+      ? resolveHiddenNavigationTabs(saved?.hiddenNavigationTabs)
+      : []),
+    sharedSlotAbsentee(selected, saved?.sharedSlotTab),
+  ];
 }
 
 export function useEnabledNavigationTabs() {

@@ -16,6 +16,7 @@
         const LIGHT_BACKGROUND = "#ffffff";
         const DARK_BACKGROUND = "#000000";
         const CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
+        const ENVIRONMENT_THEMES_STORAGE_KEY = "t3code:environment-themes:v1";
         const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
         const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
         const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
@@ -198,12 +199,9 @@
               (appearance === value.appearance || isRecord(colors)),
           );
         };
-        const findCustomTheme = (themeId) => {
-          if (RESERVED_THEME_IDS.includes(themeId)) return null;
+        const findStoredTheme = (storageKey, themeId) => {
           try {
-            const parsed = JSON.parse(
-              window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY) ?? "null",
-            );
+            const parsed = JSON.parse(window.localStorage.getItem(storageKey) ?? "null");
             if (!Array.isArray(parsed)) return null;
             return (
               parsed.find((value) => isStoredCustomTheme(value) && value.id === themeId) ?? null
@@ -211,6 +209,14 @@
           } catch {
             return null;
           }
+        };
+        // Same precedence as getThemeDefinition: saved custom themes, then published ones.
+        const findCustomTheme = (themeId) => {
+          if (RESERVED_THEME_IDS.includes(themeId)) return null;
+          return (
+            findStoredTheme(CUSTOM_THEMES_STORAGE_KEY, themeId) ??
+            findStoredTheme(ENVIRONMENT_THEMES_STORAGE_KEY, themeId)
+          );
         };
 
         try {
@@ -438,6 +444,15 @@
         width: 64px;
         height: 64px;
         object-fit: contain;
+      }
+
+      #boot-shell-progress {
+        position: absolute;
+        top: 100%;
+        width: min(360px, 80vw);
+        text-align: center;
+        font: 13px system-ui;
+        opacity: 0.7;
       }
 
       /* App CSS locks body and #root scrolling once main loads, so the error screen scrolls itself. */
@@ -681,9 +696,30 @@
   <body>
     <div id="root">
       <div id="boot-shell">
-        <div id="boot-shell-card" aria-label="Tessaya is starting"></div>
+        <div id="boot-shell-card" aria-label="Tessaya is starting">
+          <p id="boot-shell-progress" role="status" aria-live="polite"></p>
+        </div>
       </div>
     </div>
+    <script>
+      const migrationLabel = document.getElementById("boot-shell-progress");
+      const readMigrationProgress = window.desktopBridge?.getDatabaseMigrationProgress;
+      if (readMigrationProgress && migrationLabel) {
+        const updateMigrationProgress = async () => {
+          if (!migrationLabel.isConnected) return;
+          try {
+            const progress = await readMigrationProgress();
+            migrationLabel.textContent = progress
+              ? `Upgrading database (${progress.current} of ${progress.total})`
+              : "";
+          } catch {
+            migrationLabel.textContent = "";
+          }
+          if (migrationLabel.isConnected) setTimeout(updateMigrationProgress, 1000);
+        };
+        void updateMigrationProgress();
+      }
+    </script>
     <script type="module" src="/src/bootstrap.ts"></script>
   </body>
 </html>
