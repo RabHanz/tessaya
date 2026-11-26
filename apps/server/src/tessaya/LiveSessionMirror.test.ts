@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import { runtimeRequestOutcome } from "./TessayaEngine.ts";
 import {
   MessageId,
   OrchestrationV2UserInputQuestion,
@@ -106,6 +107,10 @@ describe("a terminal permission prompt's card", () => {
     expect(escOnDismiss({ ...dismissed, answered: true })).toBe(false);
     expect(escOnDismiss({ ...dismissed, status: "expired" })).toBe(false);
     expect(escOnDismiss({ ...dismissed, status: "pending" })).toBe(false);
+    // Dismissing a message-mode card resolves its request with a cancel decision, which reads as cancelled.
+    expect(runtimeRequestOutcome({ status: "resolved", decision: "cancel" })).toBe("cancelled");
+    expect(runtimeRequestOutcome({ status: "resolved", decision: "decline" })).toBe("cancelled");
+    expect(runtimeRequestOutcome({ status: "resolved" })).toBe("resolved");
   });
 
   it("an answer the bridge finished makes the next tick read the pane, so a card whose prompt is gone closes", () => {

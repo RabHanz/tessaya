@@ -223,6 +223,7 @@ interface PanePrompt {
   readonly options: ReadonlyArray<{ readonly label: string; readonly description: string }>;
   readonly customIndex: number | null;
   readonly multiSelect?: boolean;
+  readonly review?: boolean;
   readonly key: string;
   /** A permission dialog's own words, behind its plain question. */
   readonly details?: string;
@@ -636,6 +637,7 @@ export const mirrorTitle = (input: {
 
 const SESSION_STEP_TIMEOUT = "30 seconds";
 const PROMPT_REREAD_MS = 10_000;
+const REVIEW_HOLD_MS = 20_000;
 
 /** Ended-session threads wait this long before leaving the list, so a failed read cannot empty it. */
 const ENDED_GRACE_MS = 5 * 60_000;
@@ -863,6 +865,8 @@ export const takeTouched = (follow: { touched: Set<string> }): ReadonlyArray<str
 
 interface Follow {
   readonly threadId: ThreadId;
+  /** When a review screen showed right after he answered a card: the bridge submits it, so it gets no card of its own. */
+  reviewHeldAt?: number | undefined;
   path: string | null;
   offset: number;
   rest: string;
@@ -1739,6 +1743,17 @@ const make = Effect.gen(function* () {
         shown: found?.key ?? null,
       });
       const again = follow.ask !== null && follow.ask.key === found?.key;
+      // He answered the last question on its card, so "Ready to submit your answers?" is the bridge's to press: a second
+      // card for it would ask him twice. It gets a card only if it is still showing REVIEW_HOLD_MS later.
+      if (found?.review === true && !again) {
+        if (
+          follow.ask !== null &&
+          (yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId)) === "resolved"
+        )
+          follow.reviewHeldAt ??= nowMs;
+        if (follow.reviewHeldAt !== undefined && nowMs - follow.reviewHeldAt < REVIEW_HOLD_MS)
+          return;
+      } else follow.reviewHeldAt = undefined;
       if (again && follow.ask !== null) {
         const status = yield* engine.runtimeRequestStatus(follow.threadId, follow.ask.requestId);
         const pending = status === "pending";
