@@ -42,9 +42,11 @@ regenerated() { [ -f "$dir/REGENERATED" ] && grep -vE '^\s*(#|$)' "$dir/REGENERA
 patch_paths() { sed -n 's|^diff --git a/\(.*\) b/.*$|\1|p' "$1"; }
 # Blob ids on stdin, fetched from the pin's remote in one request rather than one lazy fetch per
 # file. The flags are git's own lazy fetch's; without noop negotiation a batch fails its connectivity check.
-fetch_blobs() {
-  git -c fetch.negotiationAlgorithm=noop fetch --quiet --no-tags --no-write-fetch-head \
-    --recurse-submodules=no --filter=blob:none --stdin t3code-pin 2> /dev/null || true
+fetch_blobs() { # [<url>]: another source than the pin's, for blobs the pin's mirror does not have
+  local remote=t3code-pin extra=()
+  [ -n "${1:-}" ] && remote=t3code-up extra=(-c "remote.t3code-up.url=$1" -c remote.t3code-up.promisor=true)
+  git -c fetch.negotiationAlgorithm=noop "${extra[@]}" fetch --quiet --no-tags --no-write-fetch-head \
+    --recurse-submodules=no --filter=blob:none --stdin "$remote" 2> /dev/null || true
 }
 
 # main carries no upstream history (upstream enters as squashed imports), so a fresh clone may not
@@ -174,8 +176,9 @@ cmd_rebase() {
 
   echo "==> Upstream paths to $(git rev-parse --short "$new")"
   # The clone is blobless: the changed files, before checkout fetches them one by one (about
-  # 10,000 took 20 minutes in the 25b53299b7 import).
-  git diff --no-renames --raw --no-abbrev "$pin" "$new" | awk '$2 != "160000" && $4 !~ /^0+$/ { print $4 }' | fetch_blobs
+  # 10,000 took 20 minutes in the 25b53299b7 import). From upstream: the fork mirror has only the pin's blobs.
+  git diff --no-renames --raw --no-abbrev "$pin" "$new" | awk '$2 != "160000" && $4 !~ /^0+$/ { print $4 }' |
+    fetch_blobs "${TESSAYA_UPSTREAM_URL:-https://github.com/pingdotgg/t3code.git}"
   git checkout -q "$new" -- .
   git diff --no-renames --name-only --diff-filter=D "$pin" "$new" | xargs -r -d '\n' git rm -q --ignore-unmatch --
 
