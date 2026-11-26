@@ -337,6 +337,7 @@ export function ChatMarkdownVideo(props: {
         kind="video"
         copyMarkdown={props.copyMarkdown}
         actionsSource={props.actionsSource}
+        detail={props.unavailableDetail}
       />
     );
   }

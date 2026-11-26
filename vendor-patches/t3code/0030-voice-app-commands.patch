@@ -152,6 +152,21 @@ index cd4c14b34cd3ff482e1bcb02bac2c06faa9b28bc..ead15d722ff1e3d52620f88355b50a23
      };
    }, [visible]);
  
+diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+index d69de91e9715b9b89b0697ebce3d7232d009c944..67129f8030e964791b418e01084a5c31867747a2 100644
+--- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
++++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+@@ -537,6 +537,10 @@ const LATE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+   "view.reopenClosed": msg("Reopen Closed Tab"),
+   "preview.focusUrl": msg("Preview: Focus URL"),
+   "preview.find": msg("Preview: Find on Page"),
++  "thread.copyPromptLink": msg("Thread: Copy Prompt Link"),
++  "thread.restartSession": msg("Thread: Restart Session"),
++  "project.togglePin": msg("Project: Pin or Unpin"),
++  "project.settings": msg("Project: Open Settings"),
+ };
+ 
+ export function commandLabel(command: KeybindingCommand, resolve: MessageResolver = m): string {
 diff --git a/apps/web/src/shortcuts/dispatcher.browser.test.ts b/apps/web/src/shortcuts/dispatcher.browser.test.ts
 index db477b9acedd0eb3ff86507bceee1813276c8849..be00f2b9d7532364f5e51460a8362376a933d7ab 100644
 --- a/apps/web/src/shortcuts/dispatcher.browser.test.ts

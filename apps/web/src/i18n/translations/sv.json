@@ -3277,10 +3277,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "på datorn som öppnade den här sidan"
-      ]
+      "c": [" ", "på datorn som öppnade den här sidan"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3292,10 +3289,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· den som kör den får den här åtkomsten"
-      ]
+      "c": [" ", "· den som kör den får den här åtkomsten"]
     }
   ],
   "c54cc9c75db9dc58": "Godkänn bara en inloggning som du själv precis har startat.",
@@ -8968,6 +8962,10 @@
   "77cc8be47de8ec5c": "Öppna stängd flik igen",
   "69953eacfa5204be": "Förhandsvisning: fokusera URL",
   "0754bfbdfe21adc3": "Förhandsvisning: sök på sidan",
+  "456bcc756b0e0611": "Tråd: Kopiera promptlänk",
+  "bc4f187bf4c876f5": "Tråd: Starta om sessionen",
+  "b5ff845deb873cb3": "Projekt: Fäst eller lossa",
+  "7f3fd89278ae2107": "Projekt: Öppna inställningar",
   "7009e107f33abfe3": "Tråd: hoppa: {n}",
   "6fed8a652201d444": "Modellväljare: hoppa: {n}",
   "06f94d20873a36e8": "Kör skript: {name}",

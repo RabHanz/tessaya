@@ -3277,10 +3277,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "en el ordenador que abrió esta página"
-      ]
+      "c": [" ", "en el ordenador que abrió esta página"]
     }
   ],
   "b2d53b4d1d48fbef": [
@@ -3292,10 +3289,7 @@
     {
       "t": "span",
       "i": 2,
-      "c": [
-        " ",
-        "· quien lo ejecute obtiene este acceso"
-      ]
+      "c": [" ", "· quien lo ejecute obtiene este acceso"]
     }
   ],
   "c54cc9c75db9dc58": "Aprueba solo un inicio de sesión que acabes de iniciar.",
@@ -8960,6 +8954,10 @@
   "77cc8be47de8ec5c": "Reabrir pestaña cerrada",
   "69953eacfa5204be": "Vista previa: enfocar URL",
   "0754bfbdfe21adc3": "Vista previa: buscar en la página",
+  "456bcc756b0e0611": "Hilo: Copiar enlace del prompt",
+  "bc4f187bf4c876f5": "Hilo: Reiniciar sesión",
+  "b5ff845deb873cb3": "Proyecto: Fijar o desfijar",
+  "7f3fd89278ae2107": "Proyecto: Abrir ajustes",
   "7009e107f33abfe3": "Hilo: saltar: {n}",
   "6fed8a652201d444": "Selector de modelos: saltar: {n}",
   "06f94d20873a36e8": "Ejecutar script: {name}",

@@ -570,7 +570,7 @@ index 02057de1cae6d2973474dee9ace69b84319d0f2e..e998e927cf11eebb5e2d04a093a8e4b7
                return [
                  yield* makeDomainEvent(input, {
 diff --git a/apps/web/src/components/chat/ChatMarkdownMedia.tsx b/apps/web/src/components/chat/ChatMarkdownMedia.tsx
-index 78093d0bc90df49a45e58af5a825180606211a37..3097285eea5716198a7d87b48136b02971d7c900 100644
+index 78093d0bc90df49a45e58af5a825180606211a37..f4eb1469353091b4f95e80aa4e6c08ceec1fd1ad 100644
 --- a/apps/web/src/components/chat/ChatMarkdownMedia.tsx
 +++ b/apps/web/src/components/chat/ChatMarkdownMedia.tsx
 @@ -159,10 +159,7 @@ export function ChatMarkdownImageFallback(props: {
@@ -603,7 +603,7 @@ index 78093d0bc90df49a45e58af5a825180606211a37..3097285eea5716198a7d87b48136b029
    return (
      <MediaActions source={props.actionsSource}>
        <span
-@@ -322,6 +330,16 @@ export function ChatMarkdownVideo(props: {
+@@ -322,6 +330,17 @@ export function ChatMarkdownVideo(props: {
    readonly actionsSource?: MediaActionSource | undefined;
    readonly onRetry?: (() => Promise<unknown>) | undefined;
  }) {
@@ -614,6 +614,7 @@ index 78093d0bc90df49a45e58af5a825180606211a37..3097285eea5716198a7d87b48136b029
 +        kind="video"
 +        copyMarkdown={props.copyMarkdown}
 +        actionsSource={props.actionsSource}
++        detail={props.unavailableDetail}
 +      />
 +    );
 +  }
