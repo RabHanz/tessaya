@@ -46,11 +46,11 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
-import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
+import { HOME_KEY, JOINED_KEY, makeBrainLink } from "./BrainHost.ts";
 import { ownerOpensMemberStores } from "./HouseholdSettings.ts";
 import { destroyOf, exportOf, releaseOf } from "./memberData.ts";
 import { mergeVoiceProfiles } from "./voiceMerge.ts";
-import { TessayaMemoryService } from "./TessayaMemoryService.ts";
+import { DEVICE_CLAIM, TessayaMemoryService } from "./TessayaMemoryService.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
@@ -147,6 +147,17 @@ const limitsOf = (row: Row): ChildLimits =>
 const limitsJson = (limits: ChildLimits) => JSON.stringify(limits);
 /** An export link's token is kept only as its hash, so the database alone can't be used to fetch anyone's data. */
 const tokenHash = (token: string) => NodeCrypto.createHash("sha256").update(token).digest("hex");
+const CLAIM_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+/** A joining device's claim code, as its owner reads it: "ABCD-EFGH". */
+const newClaimCode = () => {
+  const c = Array.from(
+    { length: 8 },
+    () => CLAIM_LETTERS[NodeCrypto.randomInt(CLAIM_LETTERS.length)],
+  );
+  return `${c.slice(0, 4).join("")}-${c.slice(4).join("")}`;
+};
+/** The code as typed or said: case, spaces and dashes don't matter. */
+const claimCode = (typed: string) => typed.toUpperCase().replace(/[^A-Z0-9]/g, "");
 const isPasskeyError = Schema.is(PasskeyError);
 const accountsJson = (accounts: Readonly<Record<string, string>>) => JSON.stringify(accounts);
 /** A passkey ceremony's challenge lasts this long. */
@@ -1120,6 +1131,32 @@ export const make = Effect.gen(function* () {
             : "Taken back. Say yes again whenever you're ready.",
         );
       }
+      case "claimDevice": {
+        // Their own, from their own device, confirmed it's them (A3), with the code only the device's owner was shown.
+        if (c.member === null || c.service === true)
+          return refused("Only you can bring in your device's memories, from your own device.");
+        if (c.assurance < 3 || c.tainted === true)
+          return refused("Confirm it's you on this device first, with your PIN or passkey.");
+        const memory = yield* Effect.serviceOption(TessayaMemoryService);
+        if (Option.isNone(memory)) return refused("Memories aren't kept on this server.");
+        const key = `${DEVICE_CLAIM}${tokenHash(claimCode(input.code))}`;
+        const device = yield* memory.value.meta(key);
+        if (device === null || device === "")
+          return refused(
+            "That code doesn't match a device waiting here. Check it on the device, or join this home again there for a new one.",
+          );
+        const placed = yield* memory.value.resolveUnsure({
+          person: c.member,
+          how: "device",
+          heldFrom: device,
+        });
+        yield* memory.value.setMeta(key, "");
+        return done(
+          placed.length === 0
+            ? "Your device had nothing of its own to bring in."
+            : `Brought in ${placed.length} ${placed.length === 1 ? "memory" : "memories"} from your device; each says where it came from.`,
+        );
+      }
       case "exportMine": {
         // Their own, from their own device, confirmed it's them (A3): it is everything the home keeps about them.
         if (c.member === null || c.service === true)
@@ -1439,16 +1476,21 @@ export const make = Effect.gen(function* () {
           role === "owner" ? null : "Only the owner chooses where the members live.",
           on === null ? "Make this server her brain" : `Make ${on} her brain`,
           Effect.gen(function* () {
-            yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, ${on ?? ""}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`.pipe(
-              Effect.orDie,
-            );
+            yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, ${on ?? ""}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`;
             grantsCache = null;
+            if (on === null) {
+              yield* sql`DELETE FROM fabric_settings WHERE key = ${JOINED_KEY}`;
+              return done("This server is her brain: it keeps her members, mood and cards.");
+            }
+            // What it learned on its own stays here as its offline copy, and goes home only on its owner's claim.
+            const code = newClaimCode();
+            const mark = `{"codeHash":"${tokenHash(claimCode(code))}","sent":false}`;
+            yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${JOINED_KEY}, ${mark}) ON CONFLICT (key) DO UPDATE SET value = excluded.value`;
             return done(
-              on === null
-                ? "This server is her brain: it keeps her members, mood and cards."
-                : `${on} is her brain now: this server sends it what it hears and decides nothing itself.`,
+              `${on} is her brain now: this server sends it what it hears and decides nothing itself. What it learned before stays here for when ${on} can't be reached. To bring it into your own memories there, enter ${code} under "Bring in a device's memories" on your own device.`,
+              { code },
             );
-          }),
+          }).pipe(Effect.orDie),
         );
       }
       case "machine": {

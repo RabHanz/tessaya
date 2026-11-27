@@ -66,7 +66,7 @@ import {
 import * as ServerConfig from "../config.ts";
 import { readPack } from "./OperatingSystemPack.ts";
 import { emitAction, type TurnAction } from "./turnActions.ts";
-import { makeBrainLink } from "./BrainHost.ts";
+import { JOINED_KEY, makeBrainLink } from "./BrainHost.ts";
 
 export const BIN_DAYS_KEY = "people.binDays";
 /** Anything forgotten can be restored this long (the Director, 16 Nov: forgetting must be hard to do by mistake). */
@@ -146,7 +146,48 @@ export type UnsureResolution = {
       readonly askedSince?: string;
     }
   | { readonly turn: string }
+  // a joined device's own memories, claimed by its owner with its code (identity I-7): whoever it seemed nearest
+  | { readonly heldFrom: string }
 );
+
+/** The provenance of what a device learned on its own before it joined a home (identity I-7). */
+export const DEVICE_HOLD = "vessel:device:";
+/** Her brain's note of which device a claim code's SHA-256 opens (`fabric_memory_meta`), cleared once claimed. */
+export const DEVICE_CLAIM = "device-claim:";
+
+/**
+ * A joining device's own memories as her brain keeps them until its owner claims them: held "not sure who", in nobody's
+ * recall, each marked with the device and its item. Only what the device wrote itself; never a copy of another server's.
+ */
+export const heldFromDevice = (
+  device: string,
+  changes: ReadonlyArray<MemoryChange>,
+): ReadonlyArray<MemoryChange> =>
+  changes.flatMap((c) => {
+    if (c.item === null || c.writer !== device) return [];
+    const ref = `${DEVICE_HOLD}${device}:${c.item.id}`;
+    const unsure: MemoryUnsure = {
+      turn: ref,
+      conversation: "",
+      vessel: device,
+      nearest: null,
+      confidence: null,
+    };
+    return [
+      {
+        writer: device,
+        tombstone: null,
+        item: {
+          ...c.item,
+          sourceRef: ref,
+          surface: c.item.surface ?? "device",
+          speaker: null,
+          proposed: true,
+          unsure,
+        },
+      },
+    ];
+  });
 
 /** A note held from his "remember …" (TessayaTurn.remember), not one learnt from the conversation. */
 const askedToKeep = (u: MemoryUnsure) => u.turn.includes(":remember-");
@@ -986,8 +1027,11 @@ export const make = Effect.gen(function* () {
     const placed: Array<string> = [];
     for (const r of rows) {
       const u = unsureOf(r.unsure_json);
-      if (u === null || u.nearest !== input.person) continue;
-      if ("turn" in input ? u.turn !== input.turn : u.vessel !== input.vessel) continue;
+      if (u === null) continue;
+      if ("heldFrom" in input) {
+        if (u.vessel !== input.heldFrom || !u.turn.startsWith(DEVICE_HOLD)) continue;
+      } else if (u.nearest !== input.person) continue;
+      else if ("turn" in input ? u.turn !== input.turn : u.vessel !== input.vessel) continue;
       if ("since" in input && r.created_at < input.since && !askedToKeep(u)) continue;
       yield* sql`
         UPDATE fabric_memory_items SET proposed = 0, speaker = ${input.person}, unsure_json = NULL WHERE id = ${r.id}
@@ -1520,13 +1564,13 @@ export const make = Effect.gen(function* () {
           INSERT INTO fabric_memory_items (
             id, kind, text, source, source_ref, scope, scope_ref, confidence, pinned, proposed,
             created_at, updated_at, last_used_at, expires_at, superseded_by, origin, received_at,
-            persona, visibility, surface, speaker
+            persona, visibility, surface, speaker, unsure_json
           ) VALUES (
             ${i.id}, ${i.kind}, ${i.text}, ${i.source}, ${i.sourceRef}, ${i.scope}, ${i.scopeRef},
             ${i.confidence}, ${i.pinned ? 1 : 0}, ${i.proposed ? 1 : 0}, ${i.createdAt}, ${i.updatedAt}, ${i.lastUsedAt},
             ${i.expiresAt}, ${i.supersededBy}, ${change.writer}, ${at},
             ${i.persona ?? null}, ${i.visibility === "persona" && i.persona != null ? "persona" : "household"},
-            ${i.surface ?? null}, ${i.speaker ?? null}
+            ${i.surface ?? null}, ${i.speaker ?? null}, ${i.unsure == null ? null : JSON.stringify(i.unsure)}
           )
         `.pipe(Effect.orDie);
         yield* noteEntities(i);
@@ -1819,8 +1863,51 @@ export const oneBrain = Layer.effect(
     const local = yield* TessayaMemoryService;
     const brain = yield* makeBrainLink;
     let movedUp = false;
+    const sql = yield* SqlClient.SqlClient;
+    /**
+     * A server that joined by `setHome` sends its own memories to be held for its owner's claim, once per join, and
+     * keeps them here as its offline copy. One without the mark is one of his own servers: the fold below.
+     */
+    const holdForClaim = Effect.fn("TessayaMemoryService.holdForClaim")(function* () {
+      const row = (yield* sql<{ value: string }>`
+        SELECT value FROM fabric_settings WHERE key = ${JOINED_KEY}
+      `.pipe(Effect.orElseSucceed(() => [])))[0];
+      if (row === undefined) return false;
+      const mark = yield* Effect.try({
+        try: () => JSON.parse(row.value) as { codeHash?: unknown; sent?: unknown },
+        catch: () => null,
+      }).pipe(Effect.orElseSucceed(() => null));
+      if (mark === null || mark.sent === true || typeof mark.codeHash !== "string") return true;
+      const changes: Array<MemoryChange> = [];
+      let since: string | null = null;
+      for (;;) {
+        const page: { readonly changes: ReadonlyArray<MemoryChange>; readonly upTo: string } =
+          yield* local.changesSince(since);
+        changes.push(...page.changes);
+        if (page.changes.length < 1_000 || page.upTo === since) break;
+        since = page.upTo;
+      }
+      const origin = (yield* local.syncHello).origin;
+      const sent = yield* brain.send("deviceHold", {
+        device: origin,
+        codeHash: mark.codeHash,
+        changes: changes.filter((c) => c.item !== null && c.writer === origin),
+      });
+      if (Option.isNone(sent)) return true;
+      yield* sql`
+        UPDATE fabric_settings SET value = ${JSON.stringify({ ...mark, sent: true })} WHERE key = ${JOINED_KEY}
+      `.pipe(Effect.ignore);
+      yield* emitAction({
+        kind: "memory.move",
+        actor: { kind: "rule", id: "deviceHold", certainty: 1 },
+        outcome: "held",
+        data: { changes: changes.length },
+      });
+      return true;
+    });
     /** Once: what this server wrote before the brain held it goes up as one sync round (counted, the local store kept). */
     const moveUp = Effect.fn("TessayaMemoryService.moveUp")(function* () {
+      if (yield* holdForClaim()) return;
       if (movedUp) return;
       const all = yield* local.changesSince(null);
       yield* emitAction({

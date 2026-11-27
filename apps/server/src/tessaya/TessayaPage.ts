@@ -422,6 +422,10 @@ export const SCRIPT = `"use strict";
         a.download = "my-tessaya-data.json"; a.click(); said = v.line;
       });
     }));
+    // A device of theirs that learned on its own before joining (identity I-7): its memories come in with the code it showed.
+    var dev = card("Bring in a device's memories", "The code your device showed when it joined this home. It needs the confirmation above.");
+    var dcode = field("Device code"), dgo = mbtn("Bring them in", "", function () { return hh({ op: "claimDevice", code: dcode.value }).then(function (v) { said = v.line; }); });
+    onEnter(dcode, dgo); dev.appendChild(dcode); dev.appendChild(dgo);
   }
   function codeCard() {
     var c = card("Save this recovery code now", "If " + mem.code.whose + " PIN is lost, this code is the only way back in. Write it down and keep it away from this phone. Nothing is kept until it is typed back here.");

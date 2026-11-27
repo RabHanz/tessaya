@@ -125,6 +125,11 @@ export const TessayaHouseholdCallInput = Schema.Union([
   /** Everything the home keeps about the member asking, from their own device at A3 (their private store exports apart). */
   op("exportMine", {}),
   /**
+   * Brings in the memories a device of theirs learned on its own before it joined this home (identity I-7): the code it
+   * showed them when it joined, from their own device at A3. Until then they are held, in nobody's recall.
+   */
+  op("claimDevice", { code: Schema.String.check(Schema.isMaxLength(40)) }),
+  /**
    * A guardian's limit on their child, or (value null) lifting it: `quiet` hours as "21:00-07:00", in which she only
    * talks; `messages` "guardians", so they message only their guardians. The owner and admins may set them too.
    */

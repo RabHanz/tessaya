@@ -18,6 +18,11 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 
 /** The setting naming the linked server that is her brain (and holds the members); empty or absent: this one. */
 export const HOME_KEY = "household.home";
+/**
+ * Set when this server joins a home by `setHome` (identity I-7): the claim code's SHA-256, and whether its own memories
+ * have gone to the home to be held for that code. A server that joined before this has none, and keeps the one-brain fold.
+ */
+export const JOINED_KEY = "household.joined";
 /** The linked-server tool a worker sends its acts to the brain by. */
 export const BRAIN_TOOL = "tessaya_brain";
 export const BrainOp = Schema.Literals([
@@ -74,6 +79,8 @@ export const BrainOp = Schema.Literals([
   // the household's settings (dictation cleanup and its key, model preferences, feedback, expression): kept on her
   // brain, cached by workers; full access only, as the key travels with them, and never queued
   "householdSettings",
+  // a device's own memories from before it joined (identity I-7): held on her brain until its owner claims them
+  "deviceHold",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
