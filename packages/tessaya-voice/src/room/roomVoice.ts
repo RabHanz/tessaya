@@ -556,11 +556,6 @@ export interface RoomConfig {
    * `voice/current/<member>`, within 10 minutes), before their own default. Off until the manager's yes (P5).
    */
   readonly personaFollows: boolean;
-  /**
-   * Her downlink goes no faster than one 60 ms frame per this many ms (0: as fast as the lead allows). A burst of
-   * frames over Wi-Fi stalls the R1's speaker task, which then floods its own AEC and lets her echo through.
-   */
-  readonly paceMs: number;
 }
 
 export const ROOM_CONFIG: RoomConfig = {
@@ -597,7 +592,6 @@ export const ROOM_CONFIG: RoomConfig = {
   languages: ["en"],
   talkOver: "open",
   personaFollows: false,
-  paceMs: 0,
 };
 
 const REARM_AT_MS = [2_000, 8_000, 18_000];
@@ -1472,10 +1466,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       for (let at = 0; at < bytes.length && !signal.aborted; at += DOWN_FRAME_BYTES) {
         for (let h = hold; h !== null && !signal.aborted; h = hold) await h.released;
         // Awaits only when ahead: a frame that may go now goes in this same tick.
-        const wait = Math.max(
-          playUntil - deps.now() - config.leadMs,
-          lastDownAt + config.paceMs - deps.now(),
-        );
+        const wait = playUntil - deps.now() - config.leadMs;
         if (wait > 0) await deps.sleep(wait);
         if (signal.aborted) return;
         // The R1 ran out by this loop's clock mid-reply: a frame in hand is this loop late, a new chunk the voice late.
@@ -3280,10 +3271,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         for (let at = 0; at < bytes.length; at += DOWN_FRAME_BYTES) {
           // He or S2 may stop her mid-resume: the hold is gone or the reply cancelled.
           if (hold !== h || signal.aborted) break;
-          const wait = Math.max(
-            playUntil - deps.now() - config.leadMs,
-            lastDownAt + config.paceMs - deps.now(),
-          );
+          const wait = playUntil - deps.now() - config.leadMs;
           if (wait > 0) await deps.sleep(wait);
           emit(bytes.subarray(at, at + DOWN_FRAME_BYTES));
         }
