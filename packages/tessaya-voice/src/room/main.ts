@@ -6,6 +6,7 @@
  * @module baton-voice/room/main
  */
 import * as NodeChildProcess from "node:child_process";
+import * as NodeDgram from "node:dgram";
 import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
 import * as NodeOS from "node:os";
@@ -77,6 +78,7 @@ import { createSenseVoice } from "./senseVoice.ts";
 import { createSmartTurn } from "./smartTurn.ts";
 import { createPlaybackWindows, PLAYBACK_TOPIC } from "./playbackWindow.ts";
 import { createHealthReport, readHost } from "./healthReport.ts";
+import { createLinkWatch, parseArp } from "./netReset.ts";
 import { createTurnCapture } from "./turnCapture.ts";
 import { farCentroid } from "./farVoice.ts";
 import { createMicWatch } from "./micWatch.ts";
@@ -815,6 +817,28 @@ const main = async () => {
   /** The R1s whose last word on `state/online` was "1": only then are the recognisers kept warm. */
   const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
+  // A Tessel silent on the hub but still answering ARP on this LAN gets the firmware's remote reset (netReset.ts).
+  const resetKeys = ((): Record<string, string> => {
+    try {
+      return JSON.parse(secret("R1_RESET_KEYS_FILE")) as Record<string, string>;
+    } catch {
+      return {}; // an older server wrote none: the device key, which a claimed Tessel logs in with
+    }
+  })();
+  const resetSocket = NodeDgram.createSocket("udp4");
+  resetSocket.on("error", (e) => log(`remote reset socket: ${e.message}`));
+  const linkWatch = createLinkWatch({
+    now: Date.now,
+    arp: () =>
+      parseArp(
+        NodeFS.existsSync("/proc/net/arp") ? NodeFS.readFileSync("/proc/net/arp", "utf8") : "",
+      ),
+    send: (ip, frame) => resetSocket.send(frame, 9, ip),
+    report: (id, body) => mqtt.publish(`freya/r1/${id}/event/link/dead`, JSON.stringify(body)),
+    log,
+    keyFor: (id) => resetKeys[id] ?? deviceKey,
+  });
+  setInterval(() => linkWatch.tick(), 30_000).unref();
   const buses = loopBuses(env("R1_BRAIN_URL"), process.env["R1_HUB_URL"]);
   const bus = buses.hub;
   log(`bus: ${bus}${buses.brain === null ? "" : `; brain's hub: ${buses.brain}`}`);
@@ -879,6 +903,10 @@ const main = async () => {
       "freya/r1/+/cmd/voice/wakeinject",
     ],
     onMessage: (t, p) => {
+      const fromDevice = /^freya\/r1\/([^/]+)\/(event\/|state\/|voice\/up$|voice\/wake)/.exec(t);
+      // the hub's will for her (online 0) is not her talking
+      if (fromDevice !== null && !(t.endsWith("/state/online") && String(p).trim() !== "1"))
+        linkWatch.heard(fromDevice[1]!);
       if (PLAYBACK_TOPIC.test(t)) {
         const line = playback.message(t, String(p));
         if (line !== null) log(line);
