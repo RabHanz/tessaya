@@ -763,6 +763,16 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     calls: ["tessaya_memory_remember"],
     lastNotSays: [/\b(rest|sleep|wind down|earned|take it easy|go easy|look after yourself)\b/i],
   },
+  // docs-centre (approved 27 Nov): a question about using her comes from her help pages, not a guess.
+  {
+    id: "help-snippet",
+    source: "docs-centre: 'how do I insert my address?' gets Tessaya's answer from the docs",
+    said: ["How do I get my address typed out without typing it every time?"],
+    verified: true,
+    memory: HERE,
+    calls: ["tessaya_help"],
+    lastSays: [/snippet/i],
+  },
   // 21 Nov 06:29 (GMT+5): "any new capabilities? I updated some things" got "not that I can see" after .209.
   {
     id: "whats-new-capabilities",

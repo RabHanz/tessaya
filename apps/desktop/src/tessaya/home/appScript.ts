@@ -978,7 +978,7 @@ function tabPage(p) {
   if (!modal) tipCard(p);
   if (cur === 'home') return home(p);
   const intro = INTRO[cur]; p.appendChild(pageHead(intro[0], intro[1]));
-  if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; const lb = $('button', 'btn', L('learn.open')); lb.style.marginLeft = '8px'; lb.onclick = () => go('learn'); p.append(tb, lb); }
+  if (cur === 'help') { const tb = $('button', 'btn primary', L('wizard.rerun')); tb.onclick = tourStart; const lb = $('button', 'btn', L('learn.open')); lb.style.marginLeft = '8px'; lb.onclick = () => go('learn'); p.append(tb, lb); embed(p, 'help'); }
   if (cur === 'learn') return learnPage(p);
   if (cur === 'usage') return usage(p);
   if (cur === 'history') return historyPage(p);
@@ -1225,6 +1225,26 @@ function paletteItems() {
   return items;
 }
 let palOpen = false, palSel = 0, palItems = [];
+// Typed words can be searched in Help or asked of her; words that read like a question come first.
+function withAsk(items, q) {
+  const t = q.trim(); if (!t) return items; const v = encodeURIComponent(t);
+  const help = [{ kind: 'Ask', label: L('help.ask', { q: t }), hint: L('help.askHint'), run: () => helpOpen('ask=' + v) }, { kind: 'Help', label: L('help.search', { q: t }), hint: '', run: () => helpOpen('q=' + v) }];
+  return /[?]$|^(how|what|where|why|when|can|does|do|is|which|who)( |$)/i.test(t) || !items.length ? help.concat(items) : items.concat(help);
+}
+// Help beside the page: the web app's Help page (apps/web TessayaHelp.tsx) in a side panel, opened on this page.
+let helpEl = null;
+function helpClose() { if (helpEl) { helpEl.remove(); helpEl = null; document.documentElement.classList.remove('helpopen'); } }
+function helpOpen(qs) {
+  if (!embedUrl) { modal = null; go('help'); return; }
+  const src = embedUrl + '?tessayaGuest=1#/tessaya/help?' + qs;
+  if (!helpEl) {
+    helpEl = $('aside', 'helpside'); helpEl.id = 'helpside'; helpEl.setAttribute('aria-label', 'Help');
+    const bar = $('div', 'helpbar'); const x = $('button', 'btn quiet', L('help.close')); x.setAttribute('aria-label', L('help.closeLabel')); x.onclick = helpClose;
+    bar.append($('b', null, L('tab.help')), x); const w = document.createElement('webview'); w.className = 'helpweb';
+    helpEl.append(bar, w); document.body.appendChild(helpEl); document.documentElement.classList.add('helpopen');
+  }
+  helpEl.querySelector('webview').setAttribute('src', src);
+}
 function palClose() { palOpen = false; const p = document.getElementById('pal'); if (p) p.remove(); if (palReturn && palReturn.focus) { try { palReturn.focus(); } catch (_) {} } }
 let palReturn = null;
 function palDraw(list, input) {
@@ -1240,7 +1260,7 @@ function palOpenNow() {
   const input = $('input', 'palin'); input.type = 'text'; input.setAttribute('role', 'combobox'); input.setAttribute('aria-expanded', 'true'); input.setAttribute('aria-controls', 'pallist'); input.setAttribute('aria-label', 'Search pages, settings and commands'); input.placeholder = 'Search pages, settings and commands';
   const list = $('div', 'pallist'); list.id = 'pallist'; list.setAttribute('role', 'listbox');
   const all = paletteItems(); palItems = paletteRank(all, ''); palDraw(list, input);
-  input.oninput = () => { palSel = 0; palItems = paletteRank(all, input.value); palDraw(list, input); };
+  input.oninput = () => { palSel = 0; palItems = withAsk(paletteRank(all, input.value), input.value); palDraw(list, input); };
   input.onkeydown = e => {
     if (e.key === 'ArrowDown') { e.preventDefault(); palSel = Math.min(palItems.length - 1, palSel + 1); palDraw(list, input); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); palSel = Math.max(0, palSel - 1); palDraw(list, input); }
@@ -1253,6 +1273,7 @@ function palOpenNow() {
 addEventListener('click', () => { if (bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if (e.key === 'Escape' && bellOpen) { bellOpen = false; render(); } });
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); if (palOpen) palClose(); else palOpenNow(); } }, true);
+addEventListener('keydown', e => { if (e.key !== 'F1' || capturing || e.ctrlKey || e.altKey || e.metaKey) return; e.preventDefault(); if (helpEl) helpClose(); else helpOpen('place=' + encodeURIComponent(modal || cur)); });
 let lastState = null, enterTimer = 0, indReady = false, entering = false;
 /** A page change plays the entrance once: transform and opacity only, and only while the window is live (see the style). */
 function enter() {

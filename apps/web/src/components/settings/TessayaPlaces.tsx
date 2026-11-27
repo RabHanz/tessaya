@@ -37,6 +37,7 @@ import type { SettingsScopeSearch } from "./settingsScope";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { VoiceLibrarySections } from "./VoiceLibrarySettings";
 import { PersonaGroupsSection } from "./PersonaRosterSettings";
+import { TessayaHelpPanel } from "./TessayaHelp";
 
 function AccountsPage() {
   const { environment } = useSettingsScope();
@@ -143,6 +144,12 @@ const isBench = (b: unknown): b is Bench => BENCHES.some(([id]) => id === b);
  * Personas › Lab: try, compare, keep and use. Voices (the Playground, every voice and "Use it for"), Prompts (Prompt
  * Lab), Compare (blind A/B of two voices) and Body (the body playground), each moved here whole. `?bench=` opens one.
  */
+/** Help: her features and lessons from docs/user, and questions she answers from them. */
+function HelpPage() {
+  const primary = useHouseholdEnvironmentId();
+  return primary === null ? null : <TessayaHelpPanel key={primary} environmentId={primary} />;
+}
+
 function LabPage() {
   const primary = useHouseholdEnvironmentId();
   const search = useLocation({ select: (location) => location.search as Record<string, unknown> });
@@ -211,6 +218,7 @@ const TESSAYA_PAGES = {
   forgotten: ForgottenPage,
   health: HealthPage,
   allowed: AllowedPage,
+  help: HelpPage,
 } as const;
 
 export type TessayaPage = keyof typeof TESSAYA_PAGES;
@@ -221,6 +229,7 @@ const UNSCOPED: ReadonlySet<TessayaPage> = new Set([
   "lab",
   "voices",
   "cast",
+  "help",
 ]);
 
 export const isTessayaPage = (page: string): page is TessayaPage =>
@@ -326,6 +335,21 @@ export function TessayaPlacesPanel({ moved }: { readonly moved?: TessayaPlaceId 
           />
         </SettingsSection>
       )}
+      <SettingsSection title="Help">
+        <SettingsRow
+          title="Help and lessons"
+          description="Everything Tessaya does, what to say to her, short lessons, and questions she answers from her help."
+          control={
+            <Button
+              size="xs"
+              variant="outline"
+              render={<Link to="/tessaya/$page" params={{ page: "help" }} />}
+            >
+              Show here
+            </Button>
+          }
+        />
+      </SettingsSection>
       <SettingsSection title="Team">
         <SettingsRow
           title="The team"

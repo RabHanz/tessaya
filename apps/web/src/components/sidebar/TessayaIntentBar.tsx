@@ -33,17 +33,16 @@ import {
 } from "@t3tools/tessaya-contracts";
 import { classifyDictation } from "@t3tools/tessaya-shared/dictation";
 
-import { cn, randomUUID } from "~/lib/utils";
+import { cn } from "~/lib/utils";
 import { dictationModeLabel, dictationRefusal } from "../../tessayaContextView";
-import { goesToLead, leadAskSettled, previewResolution } from "../../tessayaIntentView";
+import { goesToLead, previewResolution } from "../../tessayaIntentView";
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
 import { Input } from "../ui/input";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useLeadAsk } from "./useLeadAsk";
 
 /** Long enough that typing does not round-trip per keystroke. */
 const PREVIEW_DEBOUNCE_MS = 400;
-/** How often an ask left for the lead is re-read until it is answered. */
-const LEAD_POLL_MS = 1_500;
 
 export interface TessayaIntentBarProps {
   readonly environmentId: EnvironmentId;
@@ -80,13 +79,12 @@ export function TessayaIntentBar(props: TessayaIntentBarProps): ReactNode {
   } | null>(null);
   const [reply, setReply] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
-  /** An ask left for the lead (the one assistant) on this bar's server, re-read until it settles. */
-  const [leadAsk, setLeadAsk] = useState<{ readonly id: string; readonly at: number } | null>(null);
   /** §12.3's mode. While it is on, ordinary words are text, not instructions. */
   const [dictating, setDictating] = useState(false);
   const resolveIntent = useAtomCommand(tessayaWorkSessions.intentResolve, { reportFailure: false });
   const runIntent = useAtomCommand(tessayaWorkSessions.intentRun, { reportFailure: false });
-  const phoneCall = useAtomCommand(tessayaWorkSessions.phoneCall, { reportFailure: false });
+  // An ask left for the lead (the one assistant) on this bar's server, re-read until it settles.
+  const lead = useLeadAsk(props.environmentId, setReply);
   const latest = useRef(0);
 
   // Resolve while typing. `intentResolve` is a read: it decides what the words
@@ -244,22 +242,12 @@ export function TessayaIntentBar(props: TessayaIntentBarProps): ReactNode {
               input: { text: trimmed, focusedWorkSessionId: props.focusedWorkSessionId as never },
             }).then((result) => (result._tag === "Success" ? result.value.resolution : null));
       if (grammar !== null && goesToLead(grammar)) {
-        const id = `web-${randomUUID()}`;
         // The same server the grammar just checked against: its own desktop answers.
-        const result = await phoneCall({
-          environmentId: props.environmentId,
-          input: { op: "ask", args: { id, text: trimmed } },
-        });
-        const made =
-          result._tag === "Success"
-            ? (result.value.value as { ok?: boolean; line?: string })
-            : null;
+        const took = await lead.ask(trimmed);
         setRunning(false);
-        setReply(made?.line ?? "Tessaya is not reachable from here.");
-        if (made?.ok !== true) return;
+        if (!took) return;
         setText("");
         setResolution(null);
-        setLeadAsk({ id, at: Date.now() });
         return;
       }
       if (grammar?.outcome === "refused") {
@@ -284,26 +272,6 @@ export function TessayaIntentBar(props: TessayaIntentBarProps): ReactNode {
       setReply("That could not be done. Nothing changed.");
     })();
   };
-
-  const { environmentId: askEnvironment } = props;
-  // Reads the lead's answer from the server until it settles; the server expires an undelivered ask in minutes.
-  useEffect(() => {
-    if (leadAsk === null) return;
-    const timer = setInterval(() => {
-      void phoneCall({
-        environmentId: askEnvironment,
-        input: { op: "askGet", args: { id: leadAsk.id } },
-      }).then((result) => {
-        const got =
-          result._tag === "Success"
-            ? (result.value.value as { status?: string; line?: string } | null)
-            : undefined;
-        if (got?.line !== undefined) setReply(got.line);
-        if (leadAskSettled(got, leadAsk.at, Date.now())) setLeadAsk(null);
-      });
-    }, LEAD_POLL_MS);
-    return () => clearInterval(timer);
-  }, [leadAsk, askEnvironment, phoneCall]);
 
   const trimmedText = text.trim();
   const shown =
