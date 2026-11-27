@@ -38,6 +38,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
+import { ownerOpensMemberStores } from "./HouseholdSettings.ts";
 import { mergeVoiceProfiles } from "./voiceMerge.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
@@ -928,7 +929,12 @@ export const make = Effect.gen(function* () {
     yield* purgeDue;
     switch (input.op) {
       case "list":
-        return done("", { members: yield* list, homeOn: yield* homeOn, peers: yield* peerLabels });
+        return done("", {
+          members: yield* list,
+          homeOn: yield* homeOn,
+          peers: yield* peerLabels,
+          ownerOpensStores: yield* ownerOpensMemberStores,
+        });
       case "home":
         return yield* home;
       case "here":

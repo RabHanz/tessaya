@@ -298,6 +298,8 @@ export const TessayaHouseholdCallResult = Schema.Struct({
   /** With `list`: the linked server the members live on (null: this one), and the linked servers it could be. */
   homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
   peers: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** With `list`: whether the owner can open the private memories of adults who join (identity decision 1). */
+  ownerOpensStores: Schema.optionalKey(Schema.Boolean),
   voices: Schema.optionalKey(Schema.Array(TessayaVoiceProfile)),
   /** With `passkeyOptions`: the challenge, the site it is for, and the member's passkeys. */
   passkey: Schema.optionalKey(

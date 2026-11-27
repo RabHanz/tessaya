@@ -1630,6 +1630,10 @@ export const ServerSettings = Schema.Struct({
   tessayaOwnSensorsNoApproval: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
+  // Tessaya: whether the owner can open the private memories of adults who join (identity decision 1); null: never chosen, sealed.
+  tessayaOwnerOpensMemberStores: Schema.NullOr(Schema.Boolean).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
   // Tessaya: how lively her own life is when he isn't directing her (motives.ts): still never moves on her own.
   tessayaLiveliness: Schema.Literals(["still", "calm", "lively"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("calm" as const)),
@@ -2166,6 +2170,7 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaExpression: Schema.optionalKey(Schema.Boolean),
   tessayaRoomCleanup: Schema.optionalKey(Schema.Boolean),
   tessayaOwnSensorsNoApproval: Schema.optionalKey(Schema.Boolean),
+  tessayaOwnerOpensMemberStores: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
   tessayaLiveliness: Schema.optionalKey(Schema.Literals(["still", "calm", "lively"])),
   tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
   tessayaPhoneVessel: Schema.optionalKey(Schema.Boolean),

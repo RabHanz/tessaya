@@ -25,6 +25,7 @@ export const HOUSEHOLD_SETTINGS = [
   "providerModelPreferences",
   "tessayaFeedback",
   "tessayaExpression",
+  "tessayaOwnerOpensMemberStores",
 ] as const;
 type HouseholdKey = (typeof HOUSEHOLD_SETTINGS)[number];
 export type HouseholdPatch = Partial<Pick<ServerSettings, HouseholdKey>>;
@@ -49,6 +50,7 @@ const householdOf = Effect.fn("HouseholdSettings.of")(function* (settings: Serve
       : { providerModelPreferences: settings.providerModelPreferences }),
     tessayaFeedback: settings.tessayaFeedback,
     tessayaExpression: settings.tessayaExpression,
+    tessayaOwnerOpensMemberStores: settings.tessayaOwnerOpensMemberStores,
   } satisfies HouseholdPatch;
 });
 
@@ -109,10 +111,36 @@ export const syncOnce = Effect.gen(function* () {
   return edited ? ("sent" as const) : ("taken" as const);
 });
 
+/** Whether the owner can open the private memories of adults who join (decision 1): only when chosen; never chosen is sealed. */
+export const ownerOpensMemberStores = Effect.serviceOption(ServerSettingsService).pipe(
+  Effect.flatMap((s) => (Option.isNone(s) ? Effect.succeed(null) : s.value.getSettings)),
+  Effect.map((settings) => settings?.tessayaOwnerOpensMemberStores === true),
+  Effect.orElseSucceed(() => false),
+);
+
+/** Set by migration 060 where private stores existed before the choice: that home keeps its rule (decision 1). */
+const KEPT_RULE_KEY = "household.ownerOpenedBefore";
+
+/** Once: a home whose stores were all open to the owner before decision 1 keeps that rule, as its own choice. */
+export const keepOwnersRule = Effect.gen(function* () {
+  const settings = yield* ServerSettingsService;
+  const sql = yield* SqlClient.SqlClient;
+  const kept = yield* sql`SELECT 1 FROM fabric_settings WHERE key = ${KEPT_RULE_KEY}`;
+  if (kept.length === 0) return;
+  if ((yield* settings.getSettings).tessayaOwnerOpensMemberStores === null)
+    yield* settings.updateSettings({ tessayaOwnerOpensMemberStores: true });
+  yield* sql`DELETE FROM fabric_settings WHERE key = ${KEPT_RULE_KEY}`;
+});
+
 export const layer = Layer.effectDiscard(
-  syncOnce.pipe(
+  keepOwnersRule.pipe(
     Effect.ignoreCause({ log: true }),
-    Effect.repeat(Schedule.spaced("1 minute")),
-    Effect.forkScoped,
+    Effect.andThen(
+      syncOnce.pipe(
+        Effect.ignoreCause({ log: true }),
+        Effect.repeat(Schedule.spaced("1 minute")),
+        Effect.forkScoped,
+      ),
+    ),
   ),
 );

@@ -55,6 +55,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaLiveliness: free(
     "how lively she is on her own when you're not talking to her: still, calm or lively",
   ),
+  tessayaOwnerOpensMemberStores: owner(
+    "whether the owner can open the private memories of adults who join from now on (each is told when they join), or they stay sealed, opened only with that adult's own PIN",
+  ),
   tessayaOwnSensorsNoApproval: owner(
     "whether she may use her own camera on the Tessel when you ask her, without a card to your phone",
   ),
