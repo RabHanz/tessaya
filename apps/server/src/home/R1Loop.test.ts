@@ -183,7 +183,7 @@ it("runs no loop when it is not installed, turned off, or no R1 is on this hub",
   expect(loopPlan({ ...base, devices: [] })).toBeNull();
   // His phone with no Tessel paired: the loop runs on the hub's own key and speaks through no Tessel.
   const phoneOnly = loopPlan({ ...base, devices: [], phones: true })!;
-  expect(phoneOnly.secrets.map((s) => s.value)).toEqual(["bus", "bus"]);
+  expect(phoneOnly.secrets.map((s) => s.value)).toEqual(["bus", "bus", "{}"]);
   expect(phoneOnly.env["R1_INHOUSE"]).toBe("");
 });
 

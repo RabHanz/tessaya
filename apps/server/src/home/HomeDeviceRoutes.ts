@@ -307,12 +307,12 @@ export const routes = HttpRouter.use((router) =>
     // stays the loopback route, which only this machine's Pocket reaches.
     const clone = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
       const devices = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
+      const caller = yield* deviceCaller(devices, request).pipe(Effect.provideContext(context));
       const allowed = mayFetchClone({
-        keyOk: r1ByKey(devices, bearer) !== null,
+        keyOk: caller !== null,
         remote: Option.getOrUndefined(request.remoteAddress) ?? "",
         proxied: PROXY_HEADERS.some((h) => request.headers[h] !== undefined),
         fullAccessIps: yield* fullAccessIps.pipe(Effect.provideContext(context)),
