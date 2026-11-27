@@ -60,6 +60,7 @@ import {
   contextCleaned,
   tesselWishTick,
   chatTurns,
+  roomHistory,
   signedFrom,
 } from "./R1Device.ts";
 import { DeviceRegistry } from "./DeviceRegistry.ts";
@@ -1693,4 +1694,49 @@ it("keeps his whole turn however long, and earlier lines short", () => {
     ["user", long.trim().length],
   ]);
   expect(long.length).toBeGreaterThan(2_000);
+});
+
+it("keeps the lines only the room heard, after what her server held from before", () => {
+  // 27 Nov 07:03-07:04 GMT+5: his line cut off by his own next words never reached her server, whose thread then won.
+  const tumble = "r1-3d57b3";
+  const said = (role: "user" | "assistant", content: string) => ({ role, content });
+  const kept = [
+    said("user", "I said, what have you been up?"),
+    said("assistant", "Earlier, a different answer."),
+    said("user", "Thank you. I will indeed do that later."),
+    said("assistant", "Good, later it is. Tea first, though, and sleep tonight."),
+    said("user", "I will sleep in a couple of hours, maybe even in in an hour or two."),
+    said("assistant", "Good, an hour or two is kind."),
+    { ...said("user", "What did I ask about on my desk?"), vessel: "desktop" },
+    said("user", "I said, what have you been up?"),
+    said(
+      "assistant",
+      "Mostly keeping the house quiet. Oh, and I'm a bit pleased the lamp is still glowing low.",
+    ),
+    said("user", "The lamps that it's making."),
+    said("assistant", "I didn't quite catch that. Did you want the bedside lamp changed?"),
+  ].map((t) => ({ vessel: tumble, ...t }));
+  const room = [
+    said("assistant", "Good, an hour or two is kind."),
+    said("user", "I said, what have you been up?"),
+    said(
+      "assistant",
+      "Mostly keeping the house quiet. Oh, and I'm a bit pleased the lamp is still glowing low.",
+    ),
+    said("user", "The lamps that it's making."),
+    said("assistant", "I didn't quite catch that. Did you want the bedside lamp changed?"),
+    said("user", "I meant to say, why is the state of the land?"),
+  ];
+  expect(roomHistory(kept, room, tumble).map((t) => t.content)).toEqual([
+    "I said, what have you been up?",
+    "Earlier, a different answer.",
+    "Thank you. I will indeed do that later.",
+    "Good, later it is. Tea first, though, and sleep tonight.",
+    "I will sleep in a couple of hours, maybe even in in an hour or two.",
+    "Good, an hour or two is kind.",
+    "What did I ask about on my desk?",
+    ...room.slice(1).map((t) => t.content),
+  ]);
+  // Nothing in common (her server restarted, or its words were cleaned): the longer, as before.
+  expect(roomHistory(kept.slice(2, 4), room, tumble)).toEqual(room);
 });
