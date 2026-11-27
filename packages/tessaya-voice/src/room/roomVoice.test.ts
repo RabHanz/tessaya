@@ -1451,10 +1451,17 @@ describe("waking by name with no session open", () => {
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
     expect(frames).toEqual([DEV, DEV]);
     expect(t.room.session(DEV)).toBeUndefined();
-    // Muted, nothing is heard: no wake, and no voice for ambient presence either (M-123).
+    // A start asked for here, the R1 still starting it (27 Nov: 11 s): its wake audio in flight leaves it open.
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await t.deps.sleep(5_000);
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(t.room.session(DEV)).toBeDefined();
+    await t.deps.sleep(10_000);
+    t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
+    expect(t.room.session(DEV)).toBeUndefined();
     t.room.message(`freya/r1/${DEV}/state/mic`, Buffer.from('{"muted":true,"src":"button"}'));
     t.room.message(`freya/r1/${DEV}/voice/wake`, new Uint8Array(1920));
-    expect(frames).toEqual([DEV, DEV]);
+    expect(frames).toEqual([DEV, DEV, DEV]);
   });
 
   it("reopens a session the R1 lost to a reboot, with one short line, and leaves it open for him", async () => {
@@ -2285,6 +2292,17 @@ describe("her listening and closing sounds", () => {
     const frames = (name: "wake" | "end") =>
       Math.ceil((renderSound(PILL_SOUNDS[name], 16_000).length * 2) / 1_920);
     expect(down).toBe(frames("wake") + frames("end"));
+  });
+
+  it("ends a session only its audio opened after a short quiet, not the long one (27 Nov, 11:55: 12 min)", async () => {
+    const t = setup();
+    await t.feed(false, 10);
+    expect(t.room.session(DEV)).toBeDefined();
+    await t.deps.sleep(ROOM_CONFIG.strayStopMs + 1_000);
+    t.room.sweep();
+    await t.deps.sleep(2_000);
+    expect(order(t.published)).toEqual(["voice/down", "cmd/voice/stop"]);
+    expect(t.room.session(DEV)).toBeUndefined();
   });
 
   it("sends nothing when the R1 ends its own session, which then refuses audio (14 Nov, 20:20), and lets it go", async () => {
