@@ -1,6 +1,6 @@
 /* Six short scenes that show the brain behind the face. Each is a list of steps: what you say, what a persona says
  * (your side spoken by a Gemini TTS voice, then a clip in her real Pocket TTS voice, with [expr:…] beats the eyes and body follow), and what the board shows
- * (a memory row, a plan, a playbook line). Statuses follow the LEDGER: live, in our evals, or coming.
+ * (a memory row, a plan, a playbook line). Statuses follow docs/user: live, beta, or coming.
  * TSScenes({base, list, eyes:[cL, cR], eyesWatch, rig: svg, log, board, title, note, stop, status, item(scene) → html}) */
 (function (g) {
  "use strict";
@@ -18,15 +18,15 @@
     {her: "freya", clip: "f-coffee2", say: "[expr:happy] Black, no sugar, I know. [expr:playful] Quick one, though. [expr:attentive] The review's due at five and you're down to the last file.", after: "happy"},
    ]},
   {id: "dictation", n: "02", title: "Dictation", kick: "Say it messy, get it clean", status: "live", who: "tessaya",
-   note: "Hold Ctrl+Alt+Space, talk, let go. Fillers and the bit you took back are gone before you look up.",
-   board: `<div class="card dict"><small>Hold Ctrl+Alt+Space · speaking</small><p class="raw" data-dict></p></div>
+   note: "Hold Alt+Win, talk, let go. Fillers and the bit you took back are gone before you look up.",
+   board: `<div class="card dict"><small>Hold Alt+Win · speaking</small><p class="raw" data-dict></p></div>
     <div class="card field" data-r="field"><small>#launch · message</small><p class="out"></p><span class="clock" data-s="clock"></span></div>`,
    steps: [
     {dictate: {words: "um can we move the the standup to ten no ten thirty the client's flying in".split(" "), clip: "u-dictate", filler: [0, 4], fix: [8, 9],
      clean: "Can we move the standup to 10:30? The client's flying in.", ms: 480}},
    ]},
   {id: "team", n: "03", title: "Orchestration", kick: "One sentence, a whole team", status: "live", who: "tessaya",
-   note: "Jobs, persona roles and approvals on your phone are live. Personas handing work to each other is coming.",
+   note: "Jobs, the team a job goes to, and approvals on your phone are all live.",
    board: `<ol class="plan">
     <li data-r="p1"><b>Onyx</b><span>Build and run the checks</span><em data-s="p1">queued</em></li>
     <li data-r="p2"><b>Sebastian</b><span>Release post, in your voice</span><em data-s="p2">queued</em></li>
@@ -42,8 +42,8 @@
     {her: "tessaya", clip: "t-release2", say: "[expr:happy] All forty-one checks are green. [expr:attentive] Say yes and it goes.", after: "attentive", cues: [[2.4, {set: {p3: "tap to approve"}}]]},
     {wait: 500}, {you: "Yes, go.", clip: "u-yes"}, {set: {p3: "approved"}}, {wait: 900}, {on: "live", sound: "approval", eyes: "delighted"},
    ]},
-  {id: "learning", n: "04", title: "Self-learning", kick: "Corrected once, right the next time", status: "evals", who: "alfred",
-   note: "Each correction becomes a line in that job's playbook. The loop runs in our evals; in the app, it is coming.",
+  {id: "learning", n: "04", title: "Self-learning", kick: "Corrected once, right the next time", status: "beta", who: "alfred",
+   note: "Each correction becomes a line in that job's playbook, and you can read and correct what she learned. Playbooks are in beta.",
    board: `<div class="card book" data-r="learn"><small>Playbook · weekly spending</small><b>Lead with the total, then anything unusual. Nothing else.</b><em>Learned from your correction, week 1</em></div>
     <div class="card used" data-r="used"><small>Week 2</small><b>Playbook line used</b></div>`,
    steps: [
@@ -73,7 +73,7 @@
     {her: "tessaya", clip: "t-deploy", say: "[expr:concerned] Not yet. It failed on the last step. [expr:thinking] Hang on. It's the flaky test again; [expr:relieved] your code's fine. The rerun's green. [expr:happy] We're live.", after: "happy"},
    ]},
  ];
- g.TS_STATUS = {live: "Live", evals: "In our evals", coming: "Coming"};
+ g.TS_STATUS = {live: "Live", beta: "Beta", coming: "Coming"};
 
  g.TSScenes = async function (o) {
   const voice = o.voice || g.TSVoice({base: o.base});

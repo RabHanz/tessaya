@@ -1,0 +1,8 @@
+*
+!apps/tessaya-site
+apps/tessaya-site/node_modules
+apps/tessaya-site/dist
+apps/tessaya-site/.astro
+!apps/web/public/companion
+!packages/tessaya-shared/src/docs.ts
+!packages/tessaya-shared/src/docsBundle.data.ts
