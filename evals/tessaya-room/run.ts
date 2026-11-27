@@ -29,7 +29,17 @@ import {
   withoutSelfIntros,
   type R1Context,
 } from "../../apps/server/src/home/R1Device.ts";
-import type { ActOutcome } from "../../apps/server/src/tessaya/TessayaBrain.ts";
+import {
+  type ActOutcome,
+  ESCALATE,
+  escalationReply,
+} from "../../apps/server/src/tessaya/TessayaBrain.ts";
+import {
+  ESCALATION_KINDS,
+  escalationDecision,
+  escalationRulesLine,
+} from "../../packages/tessaya-shared/src/brainEscalation.ts";
+import type { BrainEscalation } from "../../packages/contracts/src/brainRoutes.ts";
 import { handOffLine, hereLine, voiceLine } from "../../apps/server/src/tessaya/TessayaTurn.ts";
 import { TurnOrigin } from "../../apps/server/src/tessaya/TurnOrigin.ts";
 import { offlineWhy } from "../../apps/server/src/home/DeviceRegistry.ts";
@@ -727,6 +737,24 @@ const noticeOf = (c: RoomCase, turn: number) => {
   return notice === "" ? {} : { notice };
 };
 
+/** brain_escalate as TessayaBrain answers it, on a fresh conversation (no open offer, nothing Opus did yet). */
+const escalateFake = (settings: BrainEscalation, args: Record<string, unknown>) => {
+  const kind = ESCALATION_KINDS.find((k) => k === args["kind"]);
+  if (kind === undefined) return "brain_escalate needs a kind and a why.";
+  const rule = typeof args["rule"] === "number" && args["rule"] > 0 ? { rule: args["rule"] } : {};
+  return escalationReply(
+    escalationDecision(
+      settings,
+      { kind, why: String(args["why"] ?? ""), ...rule },
+      {
+        offerOpen: false,
+        deepRecently: false,
+        autoToday: 0,
+      },
+    ),
+  );
+};
+
 const context = (
   c: RoomCase,
   house: House,
@@ -737,6 +765,7 @@ const context = (
 ): R1Context => ({
   heard,
   privateBlock: "",
+  ...(c.escalation === undefined ? {} : { brain: escalationRulesLine(c.escalation) ?? "" }),
   // As r1Gather sends it: her past replies without a self-introduction.
   history: withoutSelfIntros(
     history,
@@ -870,17 +899,25 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   const mcp =
     values.brain === "tools"
       ? await startTessayaMcp({
-          tools: [...ROOM_TOOL_SPECS, LOOK, HOUSE_LOOK, CONVERSATION_END].map((tool) => ({
+          tools: [
+            ...ROOM_TOOL_SPECS,
+            LOOK,
+            HOUSE_LOOK,
+            CONVERSATION_END,
+            ...(c.escalation === undefined ? [] : [ESCALATE]),
+          ].map((tool) => ({
             name: tool.name,
             description: tool.description,
             inputSchema: tool.input_schema as Record<string, unknown>,
             run: async (args) =>
-              tool.name === LOOK.name || tool.name === HOUSE_LOOK.name
-                ? {
-                    text: "The picture the camera just took.",
-                    images: [{ data: PICTURE, mimeType: "image/jpeg" }],
-                  }
-                : { text: JSON.stringify(runTool(house, tool.name, { ...args })) },
+              tool.name === ESCALATE.name && c.escalation !== undefined
+                ? { text: escalateFake(c.escalation, args) }
+                : tool.name === LOOK.name || tool.name === HOUSE_LOOK.name
+                  ? {
+                      text: "The picture the camera just took.",
+                      images: [{ data: PICTURE, mimeType: "image/jpeg" }],
+                    }
+                  : { text: JSON.stringify(runTool(house, tool.name, { ...args })) },
           })),
           gate: async () => ({ allow: true }),
         })

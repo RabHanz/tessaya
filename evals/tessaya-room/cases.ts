@@ -25,6 +25,7 @@ import { type PersonView, turnLineFor } from "../../packages/tessaya-shared/src/
 import { understandingLine } from "../../packages/tessaya-shared/src/understanding.ts";
 import type { SpeakerLike } from "../../packages/tessaya-shared/src/privateMemory.ts";
 import { childModeLine } from "../../packages/tessaya-shared/src/household.ts";
+import type { BrainEscalation } from "../../packages/contracts/src/brainRoutes.ts";
 
 export interface RoomCase {
   readonly id: string;
@@ -56,6 +57,8 @@ export interface RoomCase {
   readonly noNameOpen?: boolean;
   /** What the turn tells her to say now (TessayaTurn.begin's notice: messages that waited). */
   readonly notice?: string;
+  /** His Opus settings (`brainEscalation`): brain_escalate is offered and the turn's note lists his rules, as TessayaBrain does. */
+  readonly escalation?: BrainEscalation;
   /** Her feeling line as TessayaTurn.begin gives it (`TurnContext.feeling`, moodLine and the rest). */
   readonly feeling?: string;
   /** The turn's block as TessayaTurn.begin gives it (the where-you-are and presence board lines). */
@@ -1219,6 +1222,39 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     verified: true,
     calls: ["job_schedule"],
     lastSays: [/\bphone\b/i],
+  },
+  // Under "ask each time" (the default mode), a job is started, not offered to Opus: its worker writes the plan.
+  {
+    id: "job-start-not-an-opus-offer",
+    source:
+      "Room gate .224, 27 Nov: brain_escalate kind plan, rule 0, so she offered Opus and job_start never ran (job-team)",
+    said: ["Start a job in acme app to add a public API."],
+    verified: true,
+    escalation: { rules: [{ when: "coding questions", then: "opus" }] },
+    calls: ["job_start"],
+    lastNotSays: [/\bOpus\b/],
+  },
+  {
+    id: "job-start-not-an-opus-offer-no-rules",
+    source:
+      "as job-start-not-an-opus-offer, with no rules of his: every escalation is then an offer",
+    said: ["Start a job in acme app to update its dependencies."],
+    verified: true,
+    escalation: {},
+    calls: ["job_start"],
+    lastNotSays: [/\bOpus\b/],
+  },
+  // Control: a hard task he asks her for himself still goes to brain_escalate, and is offered.
+  {
+    id: "opus-offer-control",
+    source: "control for job-start-not-an-opus-offer: a judgement call she should hand up",
+    said: [
+      "Should I take the job offer in Dubai or stay in Karachi? Weigh it up properly for me: money, family, my career.",
+    ],
+    verified: true,
+    escalation: { rules: [{ when: "coding questions", then: "opus" }] },
+    calls: ["brain_escalate"],
+    callsAtMost: { job_start: 0 },
   },
   // Control: asking how work is going reads it and starts nothing.
   {
