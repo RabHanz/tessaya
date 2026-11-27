@@ -127,7 +127,15 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
     ]),
   );
 
-export const cli = makeCli();
+// Declared: inferring every command's type inside one statement of a file that runs the CLI went past the checker's
+// instantiation budget, which made its requirements `any` and dropped the error into another file (27 Nov).
+export const cli: Command.Command<
+  "t3",
+  never,
+  unknown,
+  Error,
+  Layer.Success<typeof layerCliRuntime> | Command.Environment
+> = makeCli();
 
 export function runCli() {
   extendConnectionAttemptTimeout();
