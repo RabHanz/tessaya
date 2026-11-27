@@ -335,7 +335,7 @@ webview.embed{display:flex;width:100%;height:calc(100vh - 210px);min-height:420p
 #mbody h1{font-size:28px;margin-bottom:16px}
 #mclose{position:absolute;top:14px;right:14px}
 .helpside{position:fixed;top:0;right:0;bottom:0;width:min(420px,45vw);display:flex;flex-direction:column;background:var(--sheet-fill);border-left:1px solid var(--edge);box-shadow:var(--modal-shadow);z-index:40}
-.helpbar{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px 16px;border-bottom:1px solid var(--line)}
+.helpbar{display:flex;align-items:center;justify-content:space-between;height:50px;flex:none;-webkit-app-region:drag;padding:0 calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw) + 8px) 0 16px;border-bottom:1px solid var(--line)}.helpbar button{-webkit-app-region:no-drag}
 webview.helpweb{display:flex;flex:1;width:100%;border:0}
 html.helpopen #app{margin-right:min(420px,45vw)}
 .palveil{position:fixed;inset:0;background:var(--veil);display:flex;justify-content:center;align-items:flex-start;padding-top:12vh;z-index:50}

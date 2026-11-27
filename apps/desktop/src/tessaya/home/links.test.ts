@@ -38,6 +38,19 @@ describe("tessaya:// links", () => {
     const src = view?.attrs.get("src") ?? null;
     expect(src).toBe("t3code://app/?tessayaGuest=1#/tessaya/hardware");
     expect(isEmbedSrc("t3code://app/", src ?? "")).toBe(true);
+    // Help beside the page (F1) and the Lab's benches carry their query: blocked, the panel stayed blank (27 Nov).
+    expect(
+      isEmbedSrc("t3code://app/", "t3code://app/?tessayaGuest=1#/tessaya/help?place=home"),
+    ).toBe(true);
+    expect(
+      isEmbedSrc("t3code://app/", "t3code://app/?tessayaGuest=1#/tessaya/help?ask=how%20do%20I%3F"),
+    ).toBe(true);
+    expect(
+      isEmbedSrc("t3code://app/", "t3code://app/?tessayaGuest=1#/tessaya/lab?bench=prompts"),
+    ).toBe(true);
+    expect(isEmbedSrc("t3code://app/", "t3code://app/?tessayaGuest=1#/tessaya/help?x=<b>")).toBe(
+      false,
+    );
     expect(isEmbedSrc("t3code://app/", "t3code://app/tessaya/hardware")).toBe(false);
     expect(isEmbedSrc("t3code://app/", "t3code://app/#/welcome")).toBe(false);
     // Without the flag it would be a second whole T3.

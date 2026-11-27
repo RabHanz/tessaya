@@ -642,6 +642,18 @@ it.effect(
         Effect.provideContext(brain),
       )).value as { connected: boolean };
       assert.isTrue(seen.connected);
+      // Help and the web bar in the desktop's own window ask that same server: the ask waits on the brain, where the
+      // desktop takes it, and its answer is read back from there (27 Nov: "No Tessaya desktop is connected").
+      const asked = (yield* onWorker("ask", {
+        id: "web-help-ask",
+        text: "how do I make a snippet?",
+      })).value as { ok?: boolean };
+      assert.isTrue(asked.ok);
+      assert.strictEqual((yield* atBrain.get("web-help-ask"))?.text, "how do I make a snippet?");
+      yield* atBrain.take;
+      yield* atBrain.answer("web-help-ask", "Say make a snippet.", "Say make a snippet.");
+      const read = (yield* onWorker("askGet", { id: "web-help-ask" })).value as { line?: string };
+      assert.strictEqual(read.line, "Say make a snippet.");
 
       brainUp = false;
       // Her brain away (B-044): the desktop is answered here, so it still takes what waits on this server.
