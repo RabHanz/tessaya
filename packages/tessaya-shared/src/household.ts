@@ -257,3 +257,10 @@ export const inQuiet = (quiet: string | null, minutes: number): boolean => {
   if (r === null || r.from === r.to) return false;
   return r.from < r.to ? minutes >= r.from && minutes < r.to : minutes >= r.from || minutes < r.to;
 };
+
+/**
+ * Her instruction for a turn with a child of this home (identity I-5, child mode): their name, spoken to as a child,
+ * nothing unsuitable, and what is a guardian's to decide sent back to them.
+ */
+export const childModeLine = (name: string | null): string =>
+  `You are talking with ${name ?? "a child"} of this home, a child: speak simply, warmly and briefly; keep everything suitable for a child, with no swearing, gore, horror or adult topics, softening a request for them into a gentle version; for buying anything, changing the house or anything risky, say it is for a parent or guardian to decide.`;
