@@ -120,7 +120,10 @@ export const destroyOf = Effect.fn("memberData.destroyOf")(function* (
     .pipe(Effect.orDie);
 });
 
-/** At removal, before the window: what reaches them ends now (drop-in consents, their devices pass to the home). */
+/**
+ * At removal, before the window: what reaches them ends now (drop-in consents, their devices pass to the home, the
+ * profiles they linked in other homes).
+ */
 export const releaseOf = Effect.fn("memberData.releaseOf")(function* (
   sql: SqlClient.SqlClient,
   id: string,
@@ -133,6 +136,10 @@ export const releaseOf = Effect.fn("memberData.releaseOf")(function* (
         ),
         (t) => t.leave(sql, id),
         { discard: true },
+      ).pipe(
+        Effect.andThen(
+          sql`UPDATE tessaya_household_members SET profile_links_json = NULL WHERE id = ${id}`,
+        ),
       ),
     )
     .pipe(Effect.orDie);

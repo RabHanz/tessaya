@@ -63,7 +63,7 @@ const InviteTool = Tool.make("member_invite", {
 const WhoAmITool = Tool.make("member_whoami", {
   ...shared,
   description:
-    'Who the person speaking is to her right now ("who am I?", "do you know me?", "what do you keep about me?"): their name and role, how sure she is, what she keeps about them, who else can see it, and whether they have said yes to it. Read the kept list and who can see it plainly; when they have not said yes, ask whether they agree.',
+    'Who the person speaking is to her right now ("who am I?", "do you know me?", "what do you keep about me?", "am I linked to Mum\'s home?"): their name and role, how sure she is, what she keeps about them, who else can see it, whether they have said yes to it, and the other homes they linked their profile to. Read the kept list and who can see it plainly; when they have not said yes, ask whether they agree. Linking a profile to another home, and copying their voice or preferences there, is done on their phone.',
 })
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)

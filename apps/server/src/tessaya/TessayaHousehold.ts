@@ -26,6 +26,7 @@ import {
   TessayaHouseholdCallResult,
   type TessayaHouseholdCallInput,
   type TessayaHouseholdMember,
+  type TessayaProfileLink,
   type TessayaVoiceProfile,
 } from "@t3tools/tessaya-contracts";
 import type { AuthClientSession, AuthEnvironmentScope } from "@t3tools/contracts";
@@ -110,6 +111,7 @@ interface Row {
   readonly consented_at?: string | null;
   readonly limits_json?: string | null;
   readonly export_token?: string | null;
+  readonly profile_links_json?: string | null;
 }
 
 /** The linked-server tool a forwarded request runs on the home (`household_peer`). */
@@ -145,6 +147,14 @@ const limitsOf = (row: Row): ChildLimits =>
     ? NO_LIMITS
     : { ...NO_LIMITS, ...(JSON.parse(row.limits_json) as object) };
 const limitsJson = (limits: ChildLimits) => JSON.stringify(limits);
+// Written only by linkProfile: never malformed.
+const linksOf = (row: Row): ReadonlyArray<TessayaProfileLink> =>
+  row.profile_links_json == null
+    ? []
+    : (JSON.parse(row.profile_links_json) as Array<TessayaProfileLink>);
+const linksJson = (links: ReadonlyArray<TessayaProfileLink>) =>
+  links.length === 0 ? null : JSON.stringify(links);
+const MAX_PROFILE_LINKS = 10;
 /** An export link's token is kept only as its hash, so the database alone can't be used to fetch anyone's data. */
 const tokenHash = (token: string) => NodeCrypto.createHash("sha256").update(token).digest("hex");
 const CLAIM_LETTERS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -1092,10 +1102,15 @@ export const make = Effect.gen(function* () {
       const asRole = me?.role ?? "guest";
       const { kept, seenBy } = keptAbout(asRole, yield* ownerOpensMemberStores);
       const sure = c.assurance >= 3 ? "confirmed" : c.assurance === 2 ? "sure" : "fairly sure";
+      const links = me === null ? [] : linksOf(me);
       return done(
         me === null
           ? "I don't know you yet, so you're a guest here: nothing you say is kept."
-          : `You're ${me.name}, ${asRole === "adult" || asRole === "admin" || asRole === "owner" ? "an" : "a"} ${asRole} here; I'm ${sure} it's you.`,
+          : `You're ${me.name}, ${asRole === "adult" || asRole === "admin" || asRole === "owner" ? "an" : "a"} ${asRole} here; I'm ${sure} it's you.${
+              links.length === 0
+                ? ""
+                : ` Your profile here is linked to ${links.map((l) => l.home).join(" and ")}; copying your voice or preferences between them is done on your phone.`
+            }`,
         {
           you: {
             id: me?.id ?? null,
@@ -1105,6 +1120,7 @@ export const make = Effect.gen(function* () {
             kept,
             seenBy,
             consented: (me?.consented_at ?? null) !== null,
+            links,
           },
         },
       );
@@ -1155,6 +1171,46 @@ export const make = Effect.gen(function* () {
           placed.length === 0
             ? "Your device had nothing of its own to bring in."
             : `Brought in ${placed.length} ${placed.length === 1 ? "memory" : "memories"} from your device; each says where it came from.`,
+        );
+      }
+      case "linkProfile":
+      case "unlinkProfile":
+      case "myVoice": {
+        // Hers alone, from her own device, confirmed it's her (A3): by voice she is told to use her phone.
+        if (c.member === null || c.service === true)
+          return refused("Only you can link your profiles, from your own phone.");
+        if (c.assurance < 3 || c.tainted === true)
+          return refused(
+            "Do that on your phone: it needs you to confirm it's you there, with your PIN or passkey.",
+          );
+        const me = yield* target(c.member);
+        if (me === null) return refused("Only a member of this home links a profile here.");
+        if (input.op === "myVoice")
+          return done("", { voices: (yield* voicesHere).filter((v) => v.id === me.id) });
+        const home = input.home.trim();
+        if (home === "") return refused("Say which home it is.");
+        const others = linksOf(me).filter((l) => l.home.toLowerCase() !== home.toLowerCase());
+        if (input.op === "linkProfile" && others.length >= MAX_PROFILE_LINKS)
+          return refused(`You can link up to ${MAX_PROFILE_LINKS} other homes.`);
+        const next =
+          input.op === "unlinkProfile"
+            ? others
+            : [
+                ...others,
+                {
+                  home,
+                  member: input.member,
+                  environmentId: input.environmentId,
+                  linkedAt: iso(yield* Clock.currentTimeMillis),
+                },
+              ];
+        yield* sql`UPDATE tessaya_household_members SET profile_links_json = ${linksJson(next)} WHERE id = ${me.id}`.pipe(
+          Effect.orDie,
+        );
+        return done(
+          input.op === "linkProfile"
+            ? `Linked: you're the same person in ${home}. Your memories stay in each home.`
+            : `Unlinked from ${home} here.`,
         );
       }
       case "exportMine": {

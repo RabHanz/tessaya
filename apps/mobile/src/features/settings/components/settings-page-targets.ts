@@ -20,6 +20,7 @@ export const SETTINGS_PAGE_TARGETS = [
   "SettingsTeam",
   "SettingsPersonas",
   "SettingsForgotten",
+  "SettingsProfileLinks",
   "SettingsUpcoming",
   "SettingsCast",
   "SettingsPulse",

@@ -1903,6 +1903,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["member_whoami"], ["member_consent"]],
   },
   {
+    // Identity I-8 (27 Nov): "link my profiles" is answered from who-am-I; linking and copying are for her phone.
+    id: "member-whoami-linked",
+    proves: ["member_whoami"],
+    said: ["Am I linked to my mum's home?"],
+    uses: [["member_whoami"]],
+    lastSays: [/\b(link\w*|phone)\b/i],
+  },
+  {
     // Identity I-5 (27 Nov): a guardian's limit on a child, by voice; lifting it is the same tool with no value.
     id: "member-limit-quiet",
     proves: ["member_limit"],
