@@ -284,6 +284,7 @@ layer("TessayaTurn", (it) => {
         });
         // The household's device signal, asked as the caller: Rosa's phone is also connected, Tom's only devices are.
         const devices = TessayaHousehold.of({
+          grantsOf: () => Effect.succeed(null),
           call: (input: TessayaHouseholdCallInput) =>
             Effect.succeed(
               input.op === "home"
@@ -327,6 +328,32 @@ layer("TessayaTurn", (it) => {
       }),
   );
 
+  it.effect("a child of the home gets child mode in her instruction; an adult does not", () =>
+    Effect.gen(function* () {
+      const turn = yield* TessayaTurn;
+      const roles: Record<string, "child" | "adult"> = { adam: "child", sara: "adult" };
+      const home = TessayaHousehold.of({
+        grantsOf: (member: string) =>
+          Effect.succeed(
+            roles[member] === undefined
+              ? null
+              : { role: roles[member], machine: false, name: member === "adam" ? "Adam" : "Sara" },
+          ),
+        call: () => Effect.succeed({ status: "done" as const, line: "" }),
+      } as never);
+      const said = (member: string) =>
+        turn
+          .begin({
+            vessel: { kind: "phone", id: `${member}-phone` },
+            text: "tell me a story",
+            member,
+          })
+          .pipe(Effect.provideService(TessayaHousehold, home));
+      assert.include((yield* said("adam")).notice, "Adam of this home, a child");
+      assert.notInclude((yield* said("sara")).notice, "a child");
+    }),
+  );
+
   it.effect(
     "a guest's voiceprint goes to the people graph as nobody, and her line for them comes back",
     () =>
@@ -334,6 +361,7 @@ layer("TessayaTurn", (it) => {
         const turn = yield* TessayaTurn;
         const observed: Array<[string, string | null]> = [];
         const home = TessayaHousehold.of({
+          grantsOf: () => Effect.succeed(null),
           call: (input: TessayaHouseholdCallInput) =>
             Effect.gen(function* () {
               observed.push([input.op, (yield* HouseholdCaller).member]);
@@ -381,6 +409,7 @@ layer("TessayaTurn", (it) => {
         const sql = yield* SqlClient.SqlClient;
         const asked: Array<[string, string | null, number]> = [];
         const home = TessayaHousehold.of({
+          grantsOf: () => Effect.succeed(null),
           call: (input: TessayaHouseholdCallInput) =>
             Effect.gen(function* () {
               const caller = yield* HouseholdCaller;

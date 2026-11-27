@@ -8,6 +8,7 @@ import { alsoLine, bodyLine, type BodyNow } from "@t3tools/tessaya-shared/embodi
 import { SAME_CONVERSATION_MS, sinceLine } from "@t3tools/tessaya-shared/agentPrompt";
 import {
   type Assurance,
+  childModeLine,
   memberOfSpeaker,
   memberOfSubject,
   OWNER_MEMBER_ID,
@@ -1560,6 +1561,13 @@ export const make = Effect.gen(function* () {
     const sessions = yield* Effect.serviceOption(TessayaSessionInsight);
     const talkingWith = Option.isNone(sessions) ? null : yield* sessions.value.talkingWith;
     const talking = talkingWith === null ? "" : talkingLine(talkingWith);
+    // A child of this home: child mode, in her instruction (identity I-5; evals/tessaya-room child-mode-gentle).
+    const household = yield* Effect.serviceOption(TessayaHousehold);
+    const grants =
+      member === null || member === OWNER_MEMBER_ID || Option.isNone(household)
+        ? null
+        : yield* household.value.grantsOf(member);
+    const child = grants?.role === "child" ? childModeLine(preferences.name ?? grants.name) : "";
     return {
       // An instruction, not remembered data: the brain reads `notice` as hers to act on, the block as his data.
       notice: [
@@ -1567,6 +1575,7 @@ export const make = Effect.gen(function* () {
         inputLine(turn.input),
         waiting,
         voiceLine(turn.speaker),
+        child,
       ]
         .filter((l) => l !== "")
         .join(" "),
