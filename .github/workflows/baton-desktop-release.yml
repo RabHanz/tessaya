@@ -72,7 +72,7 @@ jobs:
   build_linux:
     name: Build Linux (AppImage, x64)
     needs: resolve_version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # node-pty built on the newest image needs a newer glibc than the AppImage allows
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
