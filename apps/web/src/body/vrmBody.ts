@@ -3,6 +3,7 @@
  * old devices: it draws only while something moves (speech, a gesture, a blend, a blink), capped per quality tier, and
  * nothing at all while hidden. At rest it is a still picture with a blink every few seconds.
  */
+import type { MorphDir, MorphLook } from "@t3tools/tessaya-shared/formMorph";
 import { VRMLoaderPlugin, VRMUtils, type VRM, type VRMHumanBoneName } from "@pixiv/three-vrm";
 import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
 import {
@@ -97,6 +98,13 @@ import { gaitAt, gaitOf, type Gait } from "@t3tools/tessaya-shared/bodyGait";
 import type { BodyTarget } from "@t3tools/tessaya-shared/bodyLocomotion";
 import type { StageMount, StageSpot } from "@t3tools/tessaya-shared/rooms";
 import { meetPalms, palmOf, palmWorld, reach, turnWorld, type Arm, type Limb } from "./handIk.ts";
+import {
+  createFormMorph,
+  loadCartoonSkin,
+  prepareBody,
+  type CartoonSpec,
+  type FormMorph,
+} from "./formMorph";
 import {
   bodySkinOf,
   deepestIn,
@@ -862,6 +870,13 @@ export function mountBody(
   };
 
   let vrm: VRM | null = null;
+  // her shapeshift to and from her cartoon (formMorph.ts): built on first use, for the model then worn
+  let morph: {
+    readonly of: VRM;
+    readonly base: string;
+    readonly player: FormMorph;
+    done: (() => void) | null;
+  } | null = null;
   let model: string | null = null;
   let shown = false;
   let onScreen = true;
@@ -2712,6 +2727,13 @@ export function mountBody(
           : [];
       soft.set([...his, ...own]);
     }
+    if (morph !== null && morph.player.active()) {
+      lastMove = now;
+      if (!morph.player.frame(now)) {
+        morph.done?.();
+        morph.done = null;
+      }
+    }
     if (shared === undefined) renderer.render(scene, camera);
     frames++;
     const spent = performance.now() - t0;
@@ -2731,7 +2753,7 @@ export function mountBody(
       stepping !== null ||
       handHeld ||
       now - lastMove < SETTLE_MS;
-    if (active(now) || motion.tremble > 0.05)
+    if (active(now) || motion.tremble > 0.05 || morph?.player.active() === true)
       schedule(1000 / (bodyMoving ? TIERS[tier]!.fps : Math.min(30, TIERS[tier]!.fps)));
     else if (breathing()) schedule(1000 / Math.min(BREATH_FPS, TIERS[tier]!.fps));
     else {
@@ -2800,6 +2822,8 @@ export function mountBody(
       root.remove(vrm.scene);
       VRMUtils.deepDispose(vrm.scene);
     }
+    morph?.player.dispose();
+    morph = null;
     vrm = next;
     overlays?.dispose();
     style = styleOf(next);
@@ -4334,9 +4358,49 @@ export function mountBody(
       model,
       posture: scenePose ?? affectPose,
     }),
+    /**
+     * Her shapeshift (Library film-shapeshift-morph-live): "out" melts her body into her cartoon, "in" brings her body
+     * back from it. The cartoon's skin and art load from `cartoon.base` (`<id>.bin`, `-front.jpg`, `-side.jpg`).
+     * Resolves when the change has played; frames are drawn only while it runs.
+     */
+    morph: async (
+      dir: MorphDir,
+      look: MorphLook,
+      cartoon: { readonly base: string; readonly spec: CartoonSpec },
+    ): Promise<void> => {
+      const her = vrm;
+      if (her === null) return;
+      if (morph === null || morph.of !== her || morph.base !== cartoon.base) {
+        const skin = await loadCartoonSkin(cartoon.base, cartoon.spec);
+        if (vrm !== her) return;
+        morph?.player.dispose();
+        morph = {
+          of: her,
+          base: cartoon.base,
+          player: createFormMorph(root, skin, prepareBody(her.scene, skin.plain), her.scene),
+          done: null,
+        };
+      }
+      const m = morph;
+      m.done?.();
+      // the cartoon stands where she stands, facing the way she faces (less the VRM 0 half turn in baseYaw)
+      root.updateMatrixWorld(true);
+      m.player.start(
+        dir,
+        look,
+        root.matrixWorld
+          .clone()
+          .multiply(new THREE.Matrix4().makeRotationY(her.scene.rotation.y - baseYaw)),
+      );
+      await new Promise<void>((done) => {
+        m.done = done;
+        invalidate();
+      });
+    },
     dispose: () => {
       disposed = true;
       if (lapse !== null) clearTimeout(lapse);
+      morph?.player.dispose();
       hideNow();
       if (blinkTimer !== null) clearTimeout(blinkTimer);
       document.removeEventListener("visibilitychange", onVisibility);
