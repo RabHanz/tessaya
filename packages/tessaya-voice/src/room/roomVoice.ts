@@ -2688,6 +2688,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       let said = "";
       /** A group member's eyes were shown this turn: the session persona's come back after. */
       let groupEyes = false;
+      // The Tessel ends a session after 120 s with no speech, reply audio or voice/ctl: a long brain turn is not idle.
+      // @effect-diagnostics-next-line globalTimers:off
+      const turnAlive = setInterval(
+        () => deps.publish(topic(id, "voice/ctl"), JSON.stringify({ ev: "turn" })),
+        30_000,
+      );
       try {
         let buffer = "";
         toneNow = null;
@@ -2863,6 +2869,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           await say(own(greet ?? "err.brain", sorry), control.signal).catch(() => undefined);
         }
       } finally {
+        clearInterval(turnAlive);
         groupVoice = null;
         if (groupEyes) void deps.sleep(Math.max(0, playUntil - deps.now())).then(look);
         if (reply === control || reply === null) {

@@ -6,8 +6,10 @@
  * @module baton-voice/room/wakeCapture
  */
 import * as NodeFS from "node:fs";
+import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
+import { createWriteQueue } from "./writeQueue.ts";
 import { FRAME_SAMPLES, KWS_LATE_MS, type KwsEvent } from "./wakeStream.ts";
 
 export interface Stage2 {
@@ -43,7 +45,7 @@ export const createWakeCapture = (opts: {
   readonly playback?: () => string | null;
   readonly now?: () => number;
   readonly log: (line: string) => void;
-}): WakeCapture => {
+}): WakeCapture & { readonly drained: () => Promise<void> } => {
   const now = opts.now ?? Date.now;
   const followMs = opts.followMs ?? 15_000;
   NodeFS.mkdirSync(opts.dir, { recursive: true, mode: 0o700 });
@@ -53,11 +55,14 @@ export const createWakeCapture = (opts: {
   for (const f of NodeFS.readdirSync(opts.dir).toSorted())
     files.set(f, NodeFS.statSync(NodePath.join(opts.dir, f)).size);
   let total = [...files.values()].reduce((a, b) => a + b, 0);
-  const recent = new Map<string, { json: string; at: number }>();
-  const last = new Map<string, { json: string; at: number }>();
+  // The record stays in memory while a late kws verdict or a session may still patch it, so a patch never reads disk.
+  type Kept = { json: string; at: number; record: Record<string, unknown> };
+  const recent = new Map<string, Kept>();
+  const last = new Map<string, Kept>();
+  const io = createWriteQueue((e) => opts.log(`wake capture: write failed (${String(e)})`));
 
   const put = (name: string, data: string | Uint8Array) => {
-    NodeFS.writeFileSync(NodePath.join(opts.dir, name), data, { mode: 0o600 });
+    io.run(() => NodeFSP.writeFile(NodePath.join(opts.dir, name), data, { mode: 0o600 }));
     total += data.length - (files.get(name) ?? 0);
     // A rewrite keeps its place, so a patched record still goes with its audio.
     files.set(name, data.length);
@@ -68,16 +73,16 @@ export const createWakeCapture = (opts: {
       // A segment's audio and record go together.
       const base = name.replace(/\.[^.]+$/, "");
       for (const f of [`${base}.pcm`, `${base}.json`]) {
-        NodeFS.rmSync(NodePath.join(opts.dir, f), { force: true });
+        io.run(() => NodeFSP.rm(NodePath.join(opts.dir, f), { force: true }));
         total -= files.get(f) ?? 0;
         files.delete(f);
       }
     }
   };
-  const patch = (json: string, fields: Record<string, unknown>) => {
-    if (!files.has(json)) return;
-    const record = JSON.parse(NodeFS.readFileSync(NodePath.join(opts.dir, json), "utf8")) as object;
-    put(json, JSON.stringify({ ...record, ...fields }));
+  const patch = (kept: Kept, fields: Record<string, unknown>) => {
+    if (!files.has(kept.json)) return;
+    kept.record = { ...kept.record, ...fields };
+    put(kept.json, JSON.stringify(kept.record));
   };
   const guard = (what: string, run: () => void) => {
     try {
@@ -94,44 +99,45 @@ export const createWakeCapture = (opts: {
         const at = now();
         const run = opts.playback?.() ?? null;
         const base = `${new Date(at).toISOString().replace(/[:.]/g, "-")}_${id.replace(/[^\w-]/g, "_")}_${seg ?? "x"}`;
-        put(`${base}.pcm`, new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength));
-        put(
-          `${base}.json`,
-          JSON.stringify({
-            v: 2,
-            device: id,
-            // Wake training reads only "live": test playback (speaker, clone, wakeinject) is not his speech.
-            source: run === null ? "live" : "playback",
-            ...(run === null ? {} : { run }),
-            // False when frames were lost on the way: the Tessel's kws score is then for audio this file lacks.
-            complete: sent === undefined ? null : pcm.length >= sent * FRAME_SAMPLES,
-            seg: seg ?? null,
-            at: new Date(at).toISOString(),
-            rate: 16_000,
-            samples: pcm.length,
-            stage2,
-            kws: kws ?? null,
-            session: false,
-          }),
-        );
+        // A copy: the write lands later, and the caller owns its buffer.
+        put(`${base}.pcm`, new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength).slice());
+        const record = {
+          v: 2,
+          device: id,
+          // Wake training reads only "live": test playback (speaker, clone, wakeinject) is not his speech.
+          source: run === null ? "live" : "playback",
+          ...(run === null ? {} : { run }),
+          // False when frames were lost on the way: the Tessel's kws score is then for audio this file lacks.
+          complete: sent === undefined ? null : pcm.length >= sent * FRAME_SAMPLES,
+          seg: seg ?? null,
+          at: new Date(at).toISOString(),
+          rate: 16_000,
+          samples: pcm.length,
+          stage2,
+          kws: kws ?? null,
+          session: false,
+        };
+        put(`${base}.json`, JSON.stringify(record));
+        const kept: Kept = { json: `${base}.json`, at, record };
         if (seg !== undefined) {
-          recent.set(`${id}#${seg}`, { json: `${base}.json`, at });
+          recent.set(`${id}#${seg}`, kept);
           if (recent.size > 64) recent.delete(recent.keys().next().value!);
         }
-        last.set(id, { json: `${base}.json`, at });
+        last.set(id, kept);
         rotate();
       }),
     kws: (id, event) =>
       guard("kws", () => {
         const r = typeof event.seg === "number" ? recent.get(`${id}#${event.seg}`) : undefined;
-        if (r !== undefined && now() - r.at < KWS_LATE_MS) patch(r.json, { kws: event });
+        if (r !== undefined && now() - r.at < KWS_LATE_MS) patch(r, { kws: event });
       }),
     session: (id) =>
       guard("session", () => {
         const l = last.get(id);
         if (l === undefined || now() - l.at > followMs) return;
         last.delete(id);
-        patch(l.json, { session: true });
+        patch(l, { session: true });
       }),
+    drained: io.drained,
   };
 };

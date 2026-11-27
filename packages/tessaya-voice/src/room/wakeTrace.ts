@@ -6,13 +6,17 @@
  */
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
+import * as NodeFSP from "node:fs/promises";
 
 import type { Stage2, WakeCapture } from "./wakeCapture.ts";
 import type { KwsEvent } from "./wakeStream.ts";
+import { createWriteQueue } from "./writeQueue.ts";
 
 export interface WakeTrace extends WakeCapture {
   /** A Tessel's own report on its wake path (`voice/wake/end`, `event/wake/stats`), as it sent it. */
   readonly report: (id: string, topic: string, payload: string) => void;
+  /** Resolves once every line so far is written. */
+  readonly drained: () => Promise<void>;
 }
 
 export const levelsOf = (pcm: Int16Array) => {
@@ -41,21 +45,20 @@ export const createWakeTrace = (opts: {
     }
   })();
   let failed = false;
+  const io = createWriteQueue((e) => {
+    // One line per failing streak, not one per segment.
+    if (!failed) opts.log(`wake trace: not written (${String(e)})`);
+    failed = true;
+  });
   const write = (record: Record<string, unknown>) => {
-    try {
-      const line = `${JSON.stringify({ at: new Date(now()).toISOString(), ...record })}\n`;
-      if (size + line.length > half) {
-        NodeFS.renameSync(opts.file, `${opts.file}.1`);
-        size = 0;
-      }
-      NodeFS.appendFileSync(opts.file, line, { mode: 0o600 });
-      size += line.length;
+    const line = `${JSON.stringify({ at: new Date(now()).toISOString(), ...record })}\n`;
+    const turn = size + line.length > half;
+    size = (turn ? 0 : size) + line.length;
+    io.run(async () => {
+      if (turn) await NodeFSP.rename(opts.file, `${opts.file}.1`);
+      await NodeFSP.appendFile(opts.file, line, { mode: 0o600 });
       failed = false;
-    } catch (e) {
-      // One line per failing streak, not one per segment.
-      if (!failed) opts.log(`wake trace: not written (${String(e)})`);
-      failed = true;
-    }
+    });
   };
   return {
     segment: (id, seg, pcm, stage2: Stage2, kws?: KwsEvent) =>
@@ -90,6 +93,7 @@ export const createWakeTrace = (opts: {
         ...(typeof body === "object" && body !== null ? body : { body }),
       });
     },
+    drained: io.drained,
   };
 };
 

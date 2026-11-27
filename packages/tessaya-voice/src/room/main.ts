@@ -87,6 +87,7 @@ import { farCentroid } from "./farVoice.ts";
 import { createMicWatch } from "./micWatch.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
+import { createWriteQueue } from "./writeQueue.ts";
 import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
 import {
@@ -771,13 +772,15 @@ const main = async () => {
   const testMode = process.env["R1_TEST_MODE"] === "1";
   /** When he last asked her to forget what she learnt of his voice (voiceIdGate.forgetLearningAt). */
   const forgotFile = NodePath.join(state, "voice", "forgot.json");
-  const forgotAt = () => {
+  // Read once: only this loop writes it, and publishLearning asks on every Tessel "online".
+  let forgot = (() => {
     try {
       return Number(JSON.parse(NodeFS.readFileSync(forgotFile, "utf8")).at) || 0;
     } catch {
       return 0;
     }
-  };
+  })();
+  const forgotAt = () => forgot;
   // Enrol once, recognised everywhere: the shared bases from her server, and this R1's own refinement of them.
   /** What this loop has learnt of his voice, on each Tessel it serves (retained): Settings shows it with Forget. */
   const publishLearning = () => {
@@ -831,6 +834,7 @@ const main = async () => {
   // An enrolment made here before the home could take it (an older server) reaches it now.
   for (const p of sharedProfiles.localOnly()) uploadProfile(p, false);
   const metricsFile = NodePath.join(state, "metrics.ndjson");
+  const metricsIo = createWriteQueue((e) => log(`metrics not written (${String(e)})`));
 
   // Off unless the host names a private folder (R1_WAKE_CAPTURE_DIR), capped at R1_WAKE_CAPTURE_MB (default 1024).
   const captureDir = process.env["R1_WAKE_CAPTURE_DIR"] ?? "";
@@ -1109,6 +1113,7 @@ const main = async () => {
       if (gateAsk > forgotAt()) {
         NodeFS.mkdirSync(NodePath.dirname(forgotFile), { recursive: true });
         NodeFS.writeFileSync(forgotFile, JSON.stringify({ at: gateAsk }), { mode: 0o600 });
+        forgot = gateAsk;
         sharedProfiles.reset();
         log("voice learning forgotten: back to his enrolled profile, his far voice cleared");
         publishLearning();
@@ -1445,7 +1450,7 @@ const main = async () => {
         mqtt.publish(t, p);
         bridge?.answer(t, p);
         if (t.endsWith("/event/voice/metrics"))
-          NodeFS.appendFileSync(metricsFile, `${String(p)}\n`);
+          metricsIo.run(() => NodeFS.promises.appendFile(metricsFile, `${String(p)}\n`));
       },
       vad: () => {
         const scorer = createSileroScorer(silero);

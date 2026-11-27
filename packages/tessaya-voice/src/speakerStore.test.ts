@@ -54,9 +54,10 @@ it("keeps profiles as vectors in a private file, and forgets one when it is dele
 
 it("sets an unreadable file aside instead of writing over it, and never loads a damaged vector", () =>
   inTemp((dir) => {
-    const store = createSpeakerStore(dir);
-    store.save(profile("owner", "owner"));
+    createSpeakerStore(dir).save(profile("owner", "owner"));
     NodeFS.writeFileSync(speakersPath(dir), "not json");
+    // The file is read once per store and after each of its own writes.
+    const store = createSpeakerStore(dir);
     expect(store.list()).toEqual([]);
     expect(
       NodeFS.readdirSync(NodePath.join(dir, "voice")).some((f) =>
