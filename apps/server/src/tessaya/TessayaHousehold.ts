@@ -39,6 +39,7 @@ import { EnvironmentAuth } from "../auth/EnvironmentAuth.ts";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
 import { ownerOpensMemberStores } from "./HouseholdSettings.ts";
+import { destroyOf, exportOf, releaseOf } from "./memberData.ts";
 import { mergeVoiceProfiles } from "./voiceMerge.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
@@ -340,6 +341,7 @@ export const make = Effect.gen(function* () {
     if (keep === null) {
       codes.delete(id);
       if (Option.isSome(stores)) yield* stores.value.endLeasesOf(id);
+      yield* releaseOf(sql, id);
     }
   });
 
@@ -449,8 +451,7 @@ export const make = Effect.gen(function* () {
 
   const purge = Effect.fn("TessayaHousehold.purge")(function* (row: Row) {
     if (Option.isSome(stores)) yield* stores.value.shred(row.id);
-    yield* sql`DELETE FROM tessaya_household_members WHERE id = ${row.id}`.pipe(Effect.orDie);
-    yield* sql`DELETE FROM tessaya_voice_profiles WHERE member_id = ${row.id}`.pipe(Effect.orDie);
+    yield* destroyOf(sql, row.id);
     yield* shareVoices;
     // Their voice print is theirs too (design §5.1): every vessel here and on every linked server forgets it.
     yield* forgetVoiceHere(row.id);
@@ -928,6 +929,19 @@ export const make = Effect.gen(function* () {
       return refused("Only members of this home can see that.");
     yield* purgeDue;
     switch (input.op) {
+      case "exportMine": {
+        // Their own, from their own device, confirmed it's them (A3): it is everything the home keeps about them.
+        if (c.member === null || c.service === true)
+          return refused("Only you can export your data, from your own device.");
+        if (c.assurance < 3)
+          return refused("Confirm it's you on this device first, with your PIN or passkey.");
+        return done(
+          "Here is everything this home keeps about you, apart from your private memories.",
+          {
+            export: yield* exportOf(sql, c.member),
+          },
+        );
+      }
       case "list":
         return done("", {
           members: yield* list,

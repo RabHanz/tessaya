@@ -412,6 +412,15 @@ export const SCRIPT = `"use strict";
     var pin = field("Your PIN", "password", true);
     var go = mbtn("Confirm with your PIN", "", function () { return hh({ op: "stepUp", pin: pin.value }).then(function (v) { said = v.line; }); });
     onEnter(pin, go); col.appendChild(pin); col.appendChild(go); c.appendChild(col);
+    // Everything the home keeps about them (identity I-6), as a file; it needs the confirmation above.
+    var ex = card("Export my data", "A file of everything this home keeps about you. Your private memories export on their own, with your PIN.");
+    ex.appendChild(mbtn("Export my data", "", function () {
+      return hh({ op: "exportMine" }).then(function (v) {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(v.export, null, 2)], { type: "application/json" }));
+        a.download = "my-tessaya-data.json"; a.click(); said = v.line;
+      });
+    }));
   }
   function codeCard() {
     var c = card("Save this recovery code now", "If " + mem.code.whose + " PIN is lost, this code is the only way back in. Write it down and keep it away from this phone. Nothing is kept until it is typed back here.");

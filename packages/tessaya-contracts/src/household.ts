@@ -112,6 +112,8 @@ export const TessayaHouseholdCallInput = Schema.Union([
     born: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(10))),
     adultAge: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 10, maximum: 25 }))),
   }),
+  /** Everything the home keeps about the member asking, from their own device at A3 (their private store exports apart). */
+  op("exportMine", {}),
   /** A new pairing code for a member's next device. */
   op("pair", Ref),
   op("setRole", { ...Ref, role: InviteRole }),
@@ -298,6 +300,10 @@ export const TessayaHouseholdCallResult = Schema.Struct({
   /** With `list`: the linked server the members live on (null: this one), and the linked servers it could be. */
   homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
   peers: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** With `exportMine`: their rows, table by table. */
+  export: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
+  ),
   /** With `list`: whether the owner can open the private memories of adults who join (identity decision 1). */
   ownerOpensStores: Schema.optionalKey(Schema.Boolean),
   voices: Schema.optionalKey(Schema.Array(TessayaVoiceProfile)),
