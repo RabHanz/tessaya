@@ -18,6 +18,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Haptics } from "../../../modules/t3-haptics";
 import { PhoneAudio, type PhoneAudioRoute } from "../../../modules/t3-phone-audio";
 import { connectionAtomRuntime } from "../../connection/runtime";
+import { useServerConfigs } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { environmentSession } from "../../state/session";
 import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
@@ -113,24 +114,28 @@ export const usePhoneVesselReady = () =>
 export const PHONE_VESSEL_DEVICE = "phone";
 
 /**
- * "Reach her on this phone": the phone holds her route as its own vessel, with no Tessel chosen. It follows her one
- * environment (failing over with it), so the saved environment is only where it was turned on.
+ * "Reach her on this phone": her environment's `tessayaPhoneVessel` setting, so he can say it too. With no Tessel chosen
+ * the phone holds her route as its own vessel, following her one environment (failing over with it).
  */
-export const setPhoneVessel = (environmentId: EnvironmentId | null) =>
-  setPhoneRoute(environmentId === null ? null : { environmentId, deviceId: PHONE_VESSEL_DEVICE });
+export const usePhoneVessel = (): boolean => {
+  const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
+  const configs = useServerConfigs();
+  return environmentId !== null && configs.get(environmentId)?.settings.tessayaPhoneVessel === true;
+};
 
 /** Holds the link while a Tessel or this phone itself is chosen; mounted once at the app root. */
 export function PhoneRouteHost() {
   const chosen = usePhoneRoute();
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
-  if (PhoneAudio === null || chosen === null) return null;
+  const vessel = usePhoneVessel();
+  if (PhoneAudio === null) return null;
   // Opt-in: an audio session takes the headset's button from his music, so it is held only when he asked.
   const c =
-    chosen.deviceId !== PHONE_VESSEL_DEVICE
+    chosen !== null && chosen.deviceId !== PHONE_VESSEL_DEVICE
       ? chosen
-      : environmentId === null
-        ? null
-        : { environmentId, deviceId: PHONE_VESSEL_DEVICE };
+      : vessel && environmentId !== null
+        ? { environmentId, deviceId: PHONE_VESSEL_DEVICE }
+        : null;
   // Keyed: another environment or Tessel is a fresh link with fresh tickets.
   return c === null ? null : <PhoneRouteLink key={`${c.environmentId}/${c.deviceId}`} choice={c} />;
 }

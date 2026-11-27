@@ -13,11 +13,12 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
 import { requestUrl } from "../requestUrl.ts";
 import { StepUps } from "./StepUps.ts";
-import { HomeAssistantService, r1ById, r1ByKey } from "./HomeAssistantService.ts";
+import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
 import { serveArbiter } from "./VoiceArbiter.ts";
 import {
   DEVICE_API_ROOTS,
+  deviceCaller,
   HUB_PATH,
   noteDeviceKeyUse,
   R1_HUB_PATH,
@@ -155,13 +156,7 @@ export const routes = HttpRouter.use((router) =>
         );
         // No Tessel named (or `phone`): the phone is a vessel of its own, served by this hub's room loop.
         const r1 = asked === "" || asked === "phone" ? null : asked;
-        // shortcut: the loop calls the brain on a Tessel's key, so a server with none paired to its hub cannot serve a phone yet.
-        const served = all.some((d) => d.deviceId !== null && d.mqttUrl === null);
-        if (
-          (r1 !== null && r1ById(all, r1) === null) ||
-          (r1 === null && !served) ||
-          Option.isNone(phoneId)
-        )
+        if ((r1 !== null && r1ById(all, r1) === null) || Option.isNone(phoneId))
           return HttpServerResponse.text("No such Tessel.", { status: 404 });
         const devices = Context.get(context, HomeDevices);
         const socket = yield* request.upgrade;
@@ -181,14 +176,13 @@ export const routes = HttpRouter.use((router) =>
     );
     const arbiter = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      // Any R1's key: each R1's room loop calls with its own.
-      const device = r1ByKey(
+      // Any R1's key: each R1's room loop calls with its own, or with the hub's when only phone vessels are here.
+      const device = yield* deviceCaller(
         yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
           Effect.provideContext(context),
         ),
-        bearer,
-      );
+        request,
+      ).pipe(Effect.provideContext(context));
       if (device === null)
         return HttpServerResponse.jsonUnsafe(
           { ok: false, error: "Wrong device key." },
@@ -213,14 +207,13 @@ export const routes = HttpRouter.use((router) =>
     // The loop's answer to a step-up over HTTP, as on `voice/stepup/done` (the live suite's way in, too): whether it ran.
     const stepUp = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      // Any R1's key: each R1's room loop calls with its own.
-      const device = r1ByKey(
+      // Any R1's key: each R1's room loop calls with its own, or with the hub's when only phone vessels are here.
+      const device = yield* deviceCaller(
         yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
           Effect.provideContext(context),
         ),
-        bearer,
-      );
+        request,
+      ).pipe(Effect.provideContext(context));
       if (device === null)
         return HttpServerResponse.jsonUnsafe(
           { ok: false, error: "Wrong device key." },
@@ -263,14 +256,13 @@ export const routes = HttpRouter.use((router) =>
     const decodeVoice = Schema.decodeUnknownOption(VoiceUpload);
     const voice = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      // Any R1's key: each R1's room loop calls with its own.
-      const device = r1ByKey(
+      // Any R1's key: each R1's room loop calls with its own, or with the hub's when only phone vessels are here.
+      const device = yield* deviceCaller(
         yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
           Effect.provideContext(context),
         ),
-        bearer,
-      );
+        request,
+      ).pipe(Effect.provideContext(context));
       if (device === null)
         return HttpServerResponse.jsonUnsafe(
           { ok: false, error: "Wrong device key." },
@@ -315,12 +307,12 @@ export const routes = HttpRouter.use((router) =>
     // stays the loopback route, which only this machine's Pocket reaches.
     const clone = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
       const devices = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
+      const caller = yield* deviceCaller(devices, request).pipe(Effect.provideContext(context));
       const allowed = mayFetchClone({
-        keyOk: r1ByKey(devices, bearer) !== null,
+        keyOk: caller !== null,
         remote: Option.getOrUndefined(request.remoteAddress) ?? "",
         proxied: PROXY_HEADERS.some((h) => request.headers[h] !== undefined),
         fullAccessIps: yield* fullAccessIps.pipe(Effect.provideContext(context)),

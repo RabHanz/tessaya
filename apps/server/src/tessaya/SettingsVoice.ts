@@ -59,6 +59,9 @@ export const SERVER_SETTINGS_VOICE: {
     "whether she may use her own camera on the Tessel when you ask her, without a card to your phone",
   ),
   tessayaVoiceBreath: free("a soft breath between her sentences on the Tessel"),
+  tessayaPhoneVessel: free(
+    "keeping her on his phone: his headphones' button talks to her anywhere, with no Tessel near; off stops his phone listening for it",
+  ),
   tessayaVesselAreas: free(
     'which room or Home Assistant area each of her devices is in, so room sensors know who is near it. Its value is the whole map by device id: {"<device id>": "<area name>"}; leave a device out to clear it',
   ),

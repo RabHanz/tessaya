@@ -135,7 +135,13 @@ import {
   type ToolOutcome,
 } from "./R1Brain.ts";
 import { askLaptop } from "./R1Laptop.ts";
-import { DEVICE_API_ROOTS, noteDeviceKeyUse, publishToDevice, R1Hub } from "./R1Hub.ts";
+import {
+  DEVICE_API_ROOTS,
+  deviceCaller,
+  noteDeviceKeyUse,
+  publishToDevice,
+  R1Hub,
+} from "./R1Hub.ts";
 import {
   HomeAssistantService,
   r1ById,
@@ -2090,6 +2096,11 @@ export const signedFrom = (
 
 const error = (status: number, message: string) =>
   HttpServerResponse.jsonUnsafe({ error: { message, type: "invalid_request_error" } }, { status });
+/** A device-API caller with no key here: none set up, or the wrong key. */
+const refused = (all: ReadonlyArray<unknown>) =>
+  all.length === 0
+    ? error(503, `This server has no ${DEVICE} set up.`)
+    : error(401, "Wrong device key.");
 
 export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
@@ -2149,17 +2160,15 @@ export const routes = HttpRouter.use((router) =>
       const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
-      // Each R1's room loop calls with that R1's key.
-      const keyOf = r1ByKey(all, bearer);
+      // Each R1's room loop calls with that R1's key, or with the hub's when only phone vessels are here.
+      const keyOf = yield* deviceCaller(all, request).pipe(Effect.provideContext(context));
       const vessels = Option.match(Context.getOption(context, R1Hub), {
         onNone: () => [],
         onSome: (h) => h.vessels(),
       });
       const signedBy = (key: string | null, device: string | undefined) =>
         signedFrom(key, device, vessels);
-      if (keyOf === null) return error(401, "Wrong device key.");
+      if (keyOf === null) return refused(all);
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodeChat(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a chat request.");
@@ -2269,10 +2278,9 @@ export const routes = HttpRouter.use((router) =>
       const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       // Each R1's room loop calls with that R1's key.
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      if ((yield* deviceCaller(all, request).pipe(Effect.provideContext(context))) === null)
+        return refused(all);
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a played turn.");
@@ -2319,9 +2327,8 @@ export const routes = HttpRouter.use((router) =>
       const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      if ((yield* deviceCaller(all, request).pipe(Effect.provideContext(context))) === null)
+        return refused(all);
       const body = decodeEffect(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not an effect.");
       const { deviceId, nonverbal, face } = body.value;
@@ -2357,9 +2364,8 @@ export const routes = HttpRouter.use((router) =>
       const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      if ((yield* deviceCaller(all, request).pipe(Effect.provideContext(context))) === null)
+        return refused(all);
       const { personas } = yield* personasList.pipe(Effect.provideContext(context));
       // A persona's saved clone: a loop on this machine fetches it on loopback, one on a full-access machine of his on
       // the device route (HomeDeviceRoutes, voice/clone).
@@ -2390,9 +2396,8 @@ export const routes = HttpRouter.use((router) =>
         Effect.provideContext(context),
       );
       const all = yield* home.devices.pipe(Effect.provideContext(context));
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      if ((yield* deviceCaller(all, request).pipe(Effect.provideContext(context))) === null)
+        return refused(all);
       // Bounded: a house that never answers must not hold the request open.
       yield* home.settled.pipe(Effect.timeout("30 seconds"), Effect.ignore);
       if (tools !== null)
@@ -2409,9 +2414,8 @@ export const routes = HttpRouter.use((router) =>
       const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      if ((yield* deviceCaller(all, request).pipe(Effect.provideContext(context))) === null)
+        return refused(all);
       return HttpServerResponse.jsonUnsafe({
         entries: yield* vocabularyEntries.pipe(Effect.provideContext(context)),
         ordinary: [...(yield* ordinaryHere.pipe(Effect.provideContext(context)))],
@@ -2424,10 +2428,9 @@ export const routes = HttpRouter.use((router) =>
       const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
       // Each R1's room loop calls with that R1's key.
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      if ((yield* deviceCaller(all, request).pipe(Effect.provideContext(context))) === null)
+        return refused(all);
       yield* noteDeviceKeyUse(request).pipe(Effect.provideContext(context));
       const body = decodePlayed(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a confirmed turn.");
@@ -2441,9 +2444,8 @@ export const routes = HttpRouter.use((router) =>
       const all = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
         Effect.provideContext(context),
       );
-      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
-      if (all.length === 0) return error(503, `This server has no ${DEVICE} set up.`);
-      if (r1ByKey(all, bearer) === null) return error(401, "Wrong device key.");
+      if ((yield* deviceCaller(all, request).pipe(Effect.provideContext(context))) === null)
+        return refused(all);
       const body = decodeLinesAsk(yield* request.text.pipe(Effect.orElseSucceed(() => "")));
       if (body._tag === "None") return error(400, "That is not a lines request.");
       const expression = yield* Effect.serviceOption(TessayaExpression).pipe(

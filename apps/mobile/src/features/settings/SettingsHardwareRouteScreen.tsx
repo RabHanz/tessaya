@@ -81,8 +81,8 @@ import {
   PHONE_VESSEL_DEVICE,
   phoneRouteAvailable,
   setPhoneRoute,
-  setPhoneVessel,
   usePhoneRoute,
+  usePhoneVessel,
   usePhoneVesselReady,
 } from "../tessel/phoneRoute";
 import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
@@ -180,11 +180,16 @@ export function SettingsHardwareRouteScreen() {
 
 /** "Reach her on this phone": the phone is a vessel of its own, so his headset's button talks to her anywhere. */
 function PhoneVesselSection() {
-  const chosen = usePhoneRoute();
+  const route = usePhoneRoute();
+  const chosen = route?.deviceId === PHONE_VESSEL_DEVICE ? null : route;
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
   const ready = usePhoneVesselReady();
+  const on = usePhoneVessel();
+  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
+    label: "phone vessel update",
+    reportFailure: true,
+  });
   if (!phoneRouteAvailable) return null;
-  const on = chosen?.deviceId === PHONE_VESSEL_DEVICE;
   return (
     <SettingsSection title="This phone">
       <Row
@@ -203,7 +208,10 @@ function PhoneVesselSection() {
           variant={on ? "pill" : "primary"}
           label={on ? "Turn off" : "Turn on"}
           disabled={!on && environmentId === null}
-          onPress={() => setPhoneVessel(on ? null : environmentId)}
+          onPress={() => {
+            if (environmentId !== null)
+              void updateSettings({ environmentId, input: { patch: { tessayaPhoneVessel: !on } } });
+          }}
         />
       </Row>
     </SettingsSection>

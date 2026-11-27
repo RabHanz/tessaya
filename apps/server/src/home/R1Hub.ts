@@ -28,7 +28,7 @@ import type { HttpServerRequest } from "effect/http";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { isPrivateNetworkAddress } from "../startupAccess.ts";
-import { HomeAssistantService, r1ById, type R1Device } from "./HomeAssistantService.ts";
+import { HomeAssistantService, r1ById, r1ByKey, type R1Device } from "./HomeAssistantService.ts";
 
 /**
  * The hub answers on the renamed path and the old one. Devices are still given (and store) the old one, so a rollback
@@ -553,11 +553,7 @@ const isLoopbackAddress = (address: string) =>
   address.startsWith("127.") || address === "::1" || address === "::ffff:127.0.0.1";
 
 /** What an R1 logs in with: its device key, or the password it already had on a broker of its own (adopted). */
-export const deviceGrant = (
-  device: R1Device | null,
-  user: string,
-  pass: string,
-): HubGrant | null =>
+export const deviceGrant = (device: R1Device | null, user: string, pass: string): HubGrant | null =>
   device?.deviceId === user &&
   DEVICE_ID.test(user) &&
   (sameKey(pass, device.deviceKey) ||
@@ -753,6 +749,26 @@ export const publishToDevice = (
         );
         return Effect.sync(cancel);
       });
+
+/**
+ * Who called the device API: a Tessel by its own key, or this hub's own room loop by the bus key, which is how a server
+ * with phone vessels and no Tessel paired calls its brain. `deviceId` is null for the loop's own key.
+ */
+export const deviceCaller = (
+  all: ReadonlyArray<R1Device>,
+  request: HttpServerRequest.HttpServerRequest,
+): Effect.Effect<{ readonly deviceId: string | null } | null> => {
+  const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+  const device = r1ByKey(all, bearer);
+  if (device !== null) return Effect.succeed(device);
+  return Effect.flatMap(Effect.serviceOption(R1Hub), (hub) =>
+    Option.isNone(hub)
+      ? Effect.succeed(null)
+      : Effect.map(hub.value.busLogin, (login) =>
+          login.key !== "" && sameKey(bearer, login.key) ? { deviceId: null } : null,
+        ),
+  );
+};
 
 /**
  * After a device-key check passed on an HTTP route: who used the key, so a rotation can warn that something on another
