@@ -1,15 +1,84 @@
 {
-  "at": "2026-11-26T22:39:57.980Z",
-  "result": "gates",
+  "at": "2026-11-27T22:55:03.669Z",
+  "result": "conflict",
   "ok": false,
   "pin": "bc0f04da94f64b5e487c598761a43b4cf06b2ac9",
-  "target": "6252f1f203f389b9c8aa2f41b4d415324e8d1fd9",
-  "behindCommits": 45,
-  "oldestUnsyncedDays": 0,
-  "conflictingPatches": [],
-  "conflictingFiles": [],
-  "touching": {},
+  "target": "b70db32d72f53dcbb8f8603b24283cbf0eeff8ee",
+  "behindCommits": 376,
+  "oldestUnsyncedDays": 1,
+  "conflictingPatches": [
+    "0001-build.patch",
+    "0002-server-hooks.patch",
+    "0006-web-sidebar.patch",
+    "0009-threads-media.patch",
+    "0014-provider-change-guard.patch",
+    "0016-accounts-settings.patch",
+    "0036-web-boot-stall.patch",
+    "0039-body-only-mcp.patch",
+    "0041-durable-stores.patch"
+  ],
+  "conflictingFiles": [
+    "apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts",
+    "apps/desktop/src/app/DesktopConnectionCatalogStore.ts",
+    "apps/mobile/package.json",
+    "apps/server/src/orchestration-v2/ProviderTurnStartService.ts",
+    "apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts",
+    "apps/server/src/provider/agentContextBudget.json",
+    "apps/web/src/components/chat/MessagesTimeline.logic.test.ts",
+    "apps/web/src/components/chat/ModelPickerSidebar.tsx",
+    "apps/web/src/components/settings/settingsSearch.test.ts",
+    "apps/web/vite.config.ts",
+    "packages/client-runtime/package.json",
+    "packages/client-runtime/src/work-log/presentation.test.ts"
+  ],
+  "touching": {
+    "apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts": [
+      "65f1ec8c79 fix(desktop): recover connection catalogs after safeStorage key loss (#23476)"
+    ],
+    "apps/desktop/src/app/DesktopConnectionCatalogStore.ts": [
+      "65f1ec8c79 fix(desktop): recover connection catalogs after safeStorage key loss (#23476)"
+    ],
+    "apps/mobile/package.json": [
+      "c959fac84c feat(mobile): configurable text and monospace fonts, SF by default on iOS (#43840)"
+    ],
+    "apps/server/src/orchestration-v2/ProviderTurnStartService.ts": [
+      "d7ea20f3d9 fix(server): /compact no longer runs on a session that lacks the thread's history (#44295)",
+      "d01ce6da1d fix(server): an Antigravity turn whose native session is gone recovers instead of failing (#44172)",
+      "d20571f9b9 fix(server): switching Codex accounts releases the old account's writer (#30647)"
+    ],
+    "apps/server/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts": [
+      "0c8b397b81 fix(server): show the context handoff when an imported session's first send switches provider (#44332)",
+      "d7ea20f3d9 fix(server): /compact no longer runs on a session that lacks the thread's history (#44295)",
+      "d01ce6da1d fix(server): an Antigravity turn whose native session is gone recovers instead of failing (#44172)"
+    ],
+    "apps/server/src/provider/agentContextBudget.json": [
+      "dcac7cfed6 feat(issues): choose internal note or customer reply on Jira Service Management (#39942)",
+      "3de7e376c6 fix(server): built-in browser asks for HTTP Basic Auth credentials (#35046)"
+    ],
+    "apps/web/src/components/chat/MessagesTimeline.logic.test.ts": [
+      "a0ad0c6c79 fix(web): timeline rows update their spacing and setup collapse when only those change (#44037)"
+    ],
+    "apps/web/src/components/chat/ModelPickerSidebar.tsx": [
+      "6c5e9e3ee6 perf(web): memoize model picker provider rows (#44338)"
+    ],
+    "apps/web/src/components/settings/settingsSearch.test.ts": [
+      "18d0019964 fix(web): settings search finds the worktree cleanup row by its title (#44432)",
+      "a86ac01b0a fix(web): settings search finds the Your dictionary row by its displayed title (#44033)",
+      "3c72b4e781 fix(web): settings search matches the localized navigation label (#43987)"
+    ],
+    "apps/web/vite.config.ts": [
+      "f22ff0003b feat(epub): add captions and read-along narration (#44015)",
+      "0404f700e8 feat(files): unlock password-protected previews (#44008)",
+      "0e08cf3404 fix(web): preserve EPUB styling in file previews (#43960)"
+    ],
+    "packages/client-runtime/package.json": [
+      "0404f700e8 feat(files): unlock password-protected previews (#44008)"
+    ],
+    "packages/client-runtime/src/work-log/presentation.test.ts": [
+      "c53d40ff83 fix(client-runtime): the read summary counts a file read in chunks once (#44115)"
+    ]
+  },
   "pr": null,
-  "log": "/home/dev/.t3/baton-autosync/20261126T223220Z.log",
-  "hint": "The series applied but a gate failed. The branch is pushed; read the gates log."
+  "log": "/home/dev/.t3/baton-autosync/20261127T223608Z.log",
+  "hint": "A patch no longer applies. Resolve the files below on a branch from main, run patches.sh refresh and verify, open the PR."
 }
