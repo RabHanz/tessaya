@@ -427,6 +427,8 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   const voice = useVoiceInputController({
     ownerKey: "tessaya-talk",
     label: "Talk to her",
+    // the tab's Talk and the Sleeve's share this key; only the one on screen claims it
+    hidden: !focused,
     readDraftMessage: () => "",
     selection: { start: 0, end: 0 },
     onChangeDraftMessage: (text) => void ask(text),
