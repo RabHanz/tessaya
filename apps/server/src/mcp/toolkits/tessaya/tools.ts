@@ -936,7 +936,7 @@ const NoteAddTool = Tool.make("tessaya_note_add", {
 const HelpTool = Tool.make("tessaya_help", {
   ...shared,
   description:
-    'Tessaya\'s own help pages: how one of her features works, where it lives and what to say ("how do I make a snippet?", "can you set alarms?", "where do I pair my phone?"). Call it for any question about what you can do or how to use you, and answer only from what it returns, in one or two short lines, naming the feature; offer to open its page (place_open). When it says nothing covers it, say so plainly; never guess. Never for what is happening now (what is in flight, sessions, jobs, status): those have their own tools.',
+    'Tessaya\'s own help pages: how one of her features works, where it lives and what to say ("how do I make a snippet?", "can you set alarms?", "where do I pair my phone?"). Call it for any question about what you can do or how to use you, and answer only from what it returns, in one or two short lines, naming the feature; offer to open its page (place_open). When it says nothing covers it, say so plainly; never guess. Never for what is happening now (what is in flight, sessions, jobs, status): those have their own tools. Not for a named setting (what it does, whether you may change it): that is settings_explain.',
   parameters: Schema.Struct({
     query: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(400)).annotate({
       description: "His question, in his words.",
