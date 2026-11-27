@@ -723,7 +723,7 @@ const AGENT_ASKS_FULL =
  * asks wait and "is the desktop connected?" is read (since 18 Nov the desktop's relay calls its own machine's server).
  */
 const DESK_OPS = new Set(["take", "renew", "answer", "fail", "state", "stateGet"]);
-/** The web bar's and Help's asks: on a worker they wait on her brain too, where the desktop takes them. */
+/** The web bar's, Help's and the phone's asks: on a worker they wait on her brain, where the desktop takes them. */
 const BAR_OPS = new Set(["ask", "askGet"]);
 /** The brain link answers within 10 s, so a forwarded take waits less than that. */
 const DESK_TAKE_WAIT_MAX_MS = 7_000;
@@ -733,8 +733,11 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (
   input: TessayaPhoneCallInput,
 ) {
   const inbox = yield* TessayaPhoneInbox;
-  // An outside agent's ask keeps its owner's limits here; the brain could not tell agents apart.
-  if (DESK_OPS.has(input.op) || (BAR_OPS.has(input.op) && (yield* AskOwner) === null)) {
+  // An ask goes to her brain unless this server answers asks itself (`brain.asks`); an outside agent's keeps its
+  // owner's limits here, since the brain could not tell agents apart.
+  const askAtBrain =
+    input.op === "ask" && (yield* AskOwner) === null && !(yield* inbox.brainAnswers);
+  if (DESK_OPS.has(input.op) || askAtBrain) {
     const args =
       input.op === "take" && typeof input.args["waitMs"] === "number"
         ? { ...input.args, waitMs: Math.min(input.args["waitMs"], DESK_TAKE_WAIT_MAX_MS) }
@@ -794,6 +797,11 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (
     case "askGet": {
       if (id === null) return yield* bad();
       const ask = yield* inbox.get(id);
+      // Not here: it went to her brain (see "ask" above), so it is read there; one poll, wherever it waits.
+      if (ask === null && (yield* AskOwner) === null) {
+        const there = yield* inbox.deskAtBrain(input.op, input.args);
+        if (Option.isSome(there)) return { value: there.value };
+      }
       return {
         value:
           ask === null ? null : { status: ask.status, line: askLine(ask, yield* inbox.connected) },
