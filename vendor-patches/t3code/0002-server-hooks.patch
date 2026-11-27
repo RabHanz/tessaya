@@ -1444,10 +1444,10 @@ index a51c669af98ff1c6a0587c7c73ac41006bdbaf6f..c7b0c8d62d84fdf0185a7869b0e80955
          id: `effect:${command.commandId}:provider-turn.start:${runId}`,
          commandId: command.commandId,
 diff --git a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-index 7fcd9ce50b602a37cae866e08cefef180f131283..6337e2cb523a54beca6bf07f3795b01c1b92aa35 100644
+index 5d17dc95957e71049c385194a8cf1f3ad5a8f0ab..90317ba4ba9d0e988f4f3a55486fbaec29d7452d 100644
 --- a/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderTurnStartService.ts
-@@ -71,6 +71,7 @@ import {
+@@ -73,6 +73,7 @@ import {
    withInlineContext,
  } from "./ContextHandoffDelivery.ts";
  import { isProviderCommand, outputInstructions } from "./runOutput.ts";
@@ -1455,7 +1455,7 @@ index 7fcd9ce50b602a37cae866e08cefef180f131283..6337e2cb523a54beca6bf07f3795b01c
  import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
  import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
  import * as ProjectionStore from "./ProjectionStore.ts";
-@@ -1882,7 +1883,7 @@ export const layer: Layer.Layer<
+@@ -1938,7 +1939,7 @@ export const layer: Layer.Layer<
              handoffs: [...handoffs, ...resumedRetryHandoff.handoffs],
              providerThread: { ...resumed.success, id: providerThread.id },
              budget: context.budget,
@@ -1464,7 +1464,7 @@ index 7fcd9ce50b602a37cae866e08cefef180f131283..6337e2cb523a54beca6bf07f3795b01c
              alreadyDeliveredItemIds: context.deliveredItemIds,
              persist: () => Effect.void,
            }).pipe(
-@@ -2290,11 +2291,11 @@ export const layer: Layer.Layer<
+@@ -2346,11 +2347,11 @@ export const layer: Layer.Layer<
          function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
            const delivery = yield* deliverContextHandoffs({
              handoffs: [...effectiveHandoffs, ...retryHandoff.handoffs],
@@ -1478,7 +1478,7 @@ index 7fcd9ce50b602a37cae866e08cefef180f131283..6337e2cb523a54beca6bf07f3795b01c
                ? {}
                : {
                    inject: (history: ProviderAdapter.ProviderAdapterV2HistoricalContext) =>
-@@ -2456,6 +2457,9 @@ export const layer: Layer.Layer<
+@@ -2512,6 +2513,9 @@ export const layer: Layer.Layer<
          resume: manualResume && unsentResumeMessage === undefined,
          nativeThreadHasTurns:
            nativeInputRunIds.size > 0 ||
@@ -2105,10 +2105,10 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
    Layer.provide(PreviewAutomationBroker.layer),
    Layer.provide(ServerSelfUpdate.layer.pipe(Layer.provide(layerDesktopAppUpdate))),
 diff --git a/apps/server/src/vcs/GitVcsDriver.test.ts b/apps/server/src/vcs/GitVcsDriver.test.ts
-index ff02153778495540b9c12dbde5aa25f7ecccc5e7..0cdf50d74e05f841b3ed1c3471024b1fec22c23f 100644
+index d6c091bda34b3184b617cf959149c9bb2d0847f0..dafabcd9b169a939ed6a785280092819db08aab4 100644
 --- a/apps/server/src/vcs/GitVcsDriver.test.ts
 +++ b/apps/server/src/vcs/GitVcsDriver.test.ts
-@@ -3068,6 +3068,26 @@ it.effect("GitVcsDriver treats a missing git executable as outside any repositor
+@@ -3186,6 +3186,26 @@ it.effect("GitVcsDriver treats a missing git executable as outside any repositor
    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
  );
  
@@ -2136,7 +2136,7 @@ index ff02153778495540b9c12dbde5aa25f7ecccc5e7..0cdf50d74e05f841b3ed1c3471024b1f
    "GitVcsDriver detects a repository whose path contains a newline",
    () =>
 diff --git a/apps/server/src/vcs/GitVcsDriver.ts b/apps/server/src/vcs/GitVcsDriver.ts
-index 7e97f29a821a9e9a75329b8613358a51d9a2373e..fc86f71d0d1f3addf7e401964dcc299f4e2ae73b 100644
+index 258793db5b1c6e66ec8d0b62c45b1fdc93b70af5..bf9bf78a93141de1989cf00c41d9b7c7c82b160c 100644
 --- a/apps/server/src/vcs/GitVcsDriver.ts
 +++ b/apps/server/src/vcs/GitVcsDriver.ts
 @@ -52,6 +52,7 @@ import * as CheckoutCloner from "./CheckoutCloner.ts";

@@ -114,10 +114,10 @@ index 115aec44c5ab3c3bbee35edd1d04997321cf85a7..70b87dc31a27ce58a32a1fa3986440b9
  
    it("focuses the address bar each time the focus-url shortcut fires", async () => {
 diff --git a/apps/web/src/components/preview/PreviewView.tsx b/apps/web/src/components/preview/PreviewView.tsx
-index 00fd1f05441be9432e389b99e8438f80717619f0..e5fad4d17ddfb1b7fe48ee1d1529d4bdcc3bd602 100644
+index cd4c14b34cd3ff482e1bcb02bac2c06faa9b28bc..ead15d722ff1e3d52620f88355b50a2387cfd8f4 100644
 --- a/apps/web/src/components/preview/PreviewView.tsx
 +++ b/apps/web/src/components/preview/PreviewView.tsx
-@@ -113,6 +113,7 @@ import {
+@@ -114,6 +114,7 @@ import {
  import { stackedThreadToast, toastManager } from "~/components/ui/toast";
  import { observeResize } from "~/lib/observeResize";
  import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
@@ -125,7 +125,7 @@ index 00fd1f05441be9432e389b99e8438f80717619f0..e5fad4d17ddfb1b7fe48ee1d1529d4bd
  
  interface Props {
    threadRef: ScopedThreadRef;
-@@ -983,16 +984,18 @@ export function PreviewView({
+@@ -979,16 +980,18 @@ export function PreviewView({
      const unsubscribeAction = subscribePreviewAction((action) => onPreviewAction(action));
      // A focused page swallows its own keydowns, so the desktop forwards these
      // shortcuts from the guest as menu actions instead.
@@ -152,6 +152,21 @@ index 00fd1f05441be9432e389b99e8438f80717619f0..e5fad4d17ddfb1b7fe48ee1d1529d4bd
      };
    }, [visible]);
  
+diff --git a/apps/web/src/components/settings/KeybindingsSettings.logic.ts b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+index d69de91e9715b9b89b0697ebce3d7232d009c944..67129f8030e964791b418e01084a5c31867747a2 100644
+--- a/apps/web/src/components/settings/KeybindingsSettings.logic.ts
++++ b/apps/web/src/components/settings/KeybindingsSettings.logic.ts
+@@ -537,6 +537,10 @@ const LATE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
+   "view.reopenClosed": msg("Reopen Closed Tab"),
+   "preview.focusUrl": msg("Preview: Focus URL"),
+   "preview.find": msg("Preview: Find on Page"),
++  "thread.copyPromptLink": msg("Thread: Copy Prompt Link"),
++  "thread.restartSession": msg("Thread: Restart Session"),
++  "project.togglePin": msg("Project: Pin or Unpin"),
++  "project.settings": msg("Project: Open Settings"),
+ };
+ 
+ export function commandLabel(command: KeybindingCommand, resolve: MessageResolver = m): string {
 diff --git a/apps/web/src/shortcuts/dispatcher.browser.test.ts b/apps/web/src/shortcuts/dispatcher.browser.test.ts
 index db477b9acedd0eb3ff86507bceee1813276c8849..be00f2b9d7532364f5e51460a8362376a933d7ab 100644
 --- a/apps/web/src/shortcuts/dispatcher.browser.test.ts

@@ -8137,6 +8137,27 @@ index 0b11a6c7f1242acb77be369e19f8d10074d4a5cb..f223b1b828995048a31ce502c49d6630
        {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
      </div>
    );
+diff --git a/apps/web/src/components/chat/McpAppFrame.browser.test.tsx b/apps/web/src/components/chat/McpAppFrame.browser.test.tsx
+index 5d1dc6a2611d74c9177864979017998e65d59af9..54e3b5ad7196b974d43821aef37599f2bfd8ce91 100644
+--- a/apps/web/src/components/chat/McpAppFrame.browser.test.tsx
++++ b/apps/web/src/components/chat/McpAppFrame.browser.test.tsx
+@@ -5,6 +5,7 @@ import { userEvent } from "vite-plus/test/browser";
+ import { injectMcpAppDocumentBootstrap } from "@t3tools/shared/mcpApp";
+ 
+ import "~/index.css";
++import { APP_BASE_NAME } from "~/branding";
+ import { act, fakeTimers, render } from "../../../test/render";
+ 
+ // Asks to close twice when told to, and answers only the first teardown, so
+@@ -179,7 +180,7 @@ describe("McpAppFrame", () => {
+     await expect
+       .element(
+         screen.getByText(
+-          "The Demo app needs a newer T3 Code server on this environment. Update the server to use it.",
++          `The Demo app needs a newer ${APP_BASE_NAME} server on this environment. Update the server to use it.`,
+         ),
+       )
+       .toBeInTheDocument();
 diff --git a/apps/web/src/components/chat/ModelPickerSidebar.tsx b/apps/web/src/components/chat/ModelPickerSidebar.tsx
 index 15efbbeae0a9d05b934fef07a4d2b87b414283d9..53ceb47a1f37df81c553bca06a2045b91fcd29be 100644
 --- a/apps/web/src/components/chat/ModelPickerSidebar.tsx
