@@ -2949,6 +2949,42 @@ describe("his 10:35 to 10:37 session, 13 Nov", () => {
     expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual(["What time is it?"]);
   });
 
+  // M-144: every Tessel wake 15-21 Nov whose recognisers took over 1.5 s (a wake on the score alone), with
+  // the words the recogniser heard again with no time limit (times GMT+5). The false ones stay silent; the true ones,
+  // 06:03 21 Nov among them, are answered. Five true wakes were her name alone, with their next words not kept.
+  it.each([
+    ["15 Nov 23:52, a test call", "Tasaya, are you there?", true],
+    ["16 Nov 01:27, a test call", "I Eseya, are you there?", true],
+    ["16 Nov 05:01", "Desayya, what's a good name for a cat?", true],
+    ["20 Nov 13:26, Freya", "What time is it?", true],
+    ["21 Nov 06:03, his soft call from across the room", "What time is it?", true],
+    ["16 Nov 05:30, not to her", "Yes, I am.", false],
+    ["16 Nov 20:25, not to her", "I'm also working on Tessaya as well as the shop site.", false],
+    ["16 Nov 23:22, not to her", "So my cycle is two same Samsung monitors and one Dell.", false],
+    // Known gap: not said to her, but they read as requests.
+    ["16 Nov 04:44, not to her (known gap)", "Tell me a fun fact about owls.", true],
+    ["16 Nov 22:15, not to her (known gap)", "Did you stop the Sayah because it crashed?", true],
+  ])("after a wake on her name's score alone (%s): %j answered %s", async (_at, said, answered) => {
+    const t = setup({ recognise: heard([said]) });
+    t.room.woken(DEV, "Tessaya", -20, 0.997, undefined, undefined, undefined, true);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await speakTurn(t);
+    expect(t.brainCalls.length > 0).toBe(answered);
+  });
+
+  it("goes on normally once a turn after a tentative wake was a request to her", async () => {
+    const t = setup({
+      recognise: heard(["Yes, I am.", "Turn off the study lamp.", "And the fan."]),
+    });
+    t.room.woken(DEV, "Tessaya", -20, 0.997, undefined, undefined, undefined, true);
+    t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+    await speakTurn(t);
+    await speakTurn(t);
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "Turn off the study lamp.",
+    ]);
+  });
+
   it("answers the same question once when the transcript grows by 'Oh.' (10:36:11)", async () => {
     const t = setup({ recognise: heard(["I think. Tessaya, what time is it?", "Oh."]) });
     t.s2();
