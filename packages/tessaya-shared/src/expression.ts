@@ -118,6 +118,11 @@ export const LINE_EVENTS = {
     "Every login her thinking runs on has used its allowance; {until} is when it comes back. Say why plainly, never claim anything was done.",
     { slots: ["until"], maxWords: 16, mood: "concerned", gesture: "shrug" },
   ),
+  "err.notYours": spec(
+    "Sorry, I can't think that through for you yet: my thinking here runs on someone's own plan.",
+    "Someone other than the person whose plan her thinking runs on spoke to her, and no household key is on for others yet, so she can't answer them. Say so kindly and plainly; never claim anything was done.",
+    { maxWords: 18, mood: "concerned", gesture: "shrug" },
+  ),
   "err.overlap": spec(
     "One at a time, please.",
     "Two people spoke to her at once and she can only take one.",
