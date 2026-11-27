@@ -1,0 +1,9 @@
+.astro/
+dist/
+# Staged by scripts/stage-engine.mjs from apps/web/public/companion and the three package.
+public/shared/rig.js
+public/shared/bodies.js
+public/shared/props.js
+public/shared/speech.js
+public/shared/three.module.min.js
+public/shared/three.core.min.js

@@ -1,0 +1,13 @@
+---
+import Site from "../layouts/Site.astro";
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
+---
+
+<Site title="Tessaya: not here" description="This page does not exist.">
+  <section>
+    <p class="kick">404</p>
+    <h2>Nothing by that name.</h2>
+    <p class="lede">The page you asked for is not here. <a href={base}>Back to the start</a>.</p>
+  </section>
+</Site>

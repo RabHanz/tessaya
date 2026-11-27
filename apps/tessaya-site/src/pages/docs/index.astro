@@ -1,0 +1,202 @@
+---
+import {
+  DOC_AREAS,
+  DOC_FEATURES,
+  DOC_LESSONS,
+  DOC_SURFACES,
+  type DocStatus,
+} from "@t3tools/tessaya-shared/docs";
+import Site from "../../layouts/Site.astro";
+
+// The same words as her Help and her own answers: docs/user/tessaya-features.md and tessaya-lessons.md.
+const STATUS: Record<DocStatus, string> = { live: "Live", beta: "Beta", coming: "Coming" };
+const surface = (id: string) => DOC_SURFACES.find((s) => s.id === id)?.label ?? id;
+const escape = (text: string) =>
+  text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
+const md = (text: string) => escape(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+const areas = DOC_AREAS.map((a) => ({ ...a, features: DOC_FEATURES.filter((f) => f.area === a.id) })).filter(
+  (a) => a.features.length > 0,
+);
+---
+
+<Site
+  title="Tessaya docs: everything she does"
+  description="Every Tessaya feature: what it is for, what to say, where it lives, and whether it is live, in beta or coming."
+>
+  <section class="docs-top">
+    <p class="kick">Docs</p>
+    <h2>Everything she does.</h2>
+    <p class="lede">
+      One short entry per feature: what it is for, what to say and where it lives. Each one says <b>Live</b> (on your
+      devices now), <b>Beta</b> (works, still changing) or <b>Coming</b> (planned, not here yet). Her Help and her own
+      answers read these same words.
+    </p>
+    <nav class="toc" aria-label="Sections">
+      <a href="#lessons">Lessons</a>
+      {areas.map((a) => <a href={`#${a.id}`}>{a.label}</a>)}
+    </nav>
+  </section>
+
+  <section id="lessons">
+    <p class="kick">Lessons</p>
+    <h2 class="docs-h">A few steps each.</h2>
+    <div class="lessons">
+      {
+        DOC_LESSONS.map((l) => (
+          <article class="lesson">
+            <h3>
+              {l.title}
+              <small>{l.minutes} min</small>
+            </h3>
+            <p>{l.blurb}</p>
+            <ol>
+              {l.steps.map((s) => (
+                <li>
+                  <b>{s.title}</b> <span set:html={md(s.text)} /> <q>{s.say}</q>
+                </li>
+              ))}
+            </ol>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+
+  {
+    areas.map((a) => (
+      <section id={a.id}>
+        <p class="kick">{a.features.length} features</p>
+        <h2 class="docs-h">{a.label}</h2>
+        <div class="features">
+          {a.features.map((f) => (
+            <article class="feature" id={f.id} data-status={f.status}>
+              <h3>
+                {f.title}
+                <span class="st">{STATUS[f.status]}</span>
+              </h3>
+              <p class="lead" set:html={md(f.lead)} />
+              {f.say.length > 0 && (
+                <p class="say">
+                  <small>Try saying</small>
+                  {f.say.map((s) => (
+                    <q>{s}</q>
+                  ))}
+                </p>
+              )}
+              {f.steps.length > 0 && (
+                <ol>
+                  {f.steps.map((s) => (
+                    <li set:html={md(s)} />
+                  ))}
+                </ol>
+              )}
+              {f.good && <p class="good" set:html={md(f.good)} />}
+              <p class="on">{f.on.map(surface).join(" · ")}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+    ))
+  }
+</Site>
+
+<style>
+  .docs-top h2 {
+    max-width: 16ch;
+  }
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.25rem;
+    font: 500 0.875rem/1.4 var(--mono);
+  }
+  .toc a {
+    color: var(--mute);
+    text-underline-offset: 0.25rem;
+  }
+  .toc a:hover {
+    color: var(--ink);
+  }
+  .docs-h {
+    font-size: clamp(2rem, 4.4vw, 3.75rem);
+  }
+  .lessons,
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+    gap: 1rem;
+  }
+  .lesson,
+  .feature {
+    background: var(--card);
+    border-radius: 1.25rem;
+    padding: clamp(1rem, 2vw, 1.5rem);
+    display: grid;
+    gap: 0.75rem;
+    align-content: start;
+    scroll-margin-top: 1rem;
+  }
+  h3 {
+    margin: 0;
+    display: flex;
+    gap: 0.75rem;
+    justify-content: space-between;
+    align-items: baseline;
+    font-weight: 800;
+    font-size: clamp(1.375rem, 2vw, 1.75rem);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    font-variation-settings: "wdth" 80;
+  }
+  h3 small,
+  .st {
+    flex: none;
+    font: 500 0.75rem/1 var(--mono);
+    letter-spacing: 0;
+    color: var(--mute);
+    padding: 0.3125rem 0.5625rem;
+    border: 1px solid var(--line);
+    border-radius: 62rem;
+  }
+  .feature[data-status="beta"] .st,
+  .feature[data-status="coming"] .st {
+    color: var(--dye-ink);
+    background: var(--dye);
+    border-color: var(--dye);
+  }
+  .lesson p,
+  .feature p {
+    margin: 0;
+  }
+  .lead {
+    font-size: 1.0625rem;
+  }
+  ol {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: grid;
+    gap: 0.375rem;
+    color: var(--mute);
+  }
+  q {
+    font-family: var(--serif);
+    font-style: italic;
+    color: var(--ink);
+  }
+  .say {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.75rem;
+  }
+  .say small,
+  .on {
+    flex-basis: 100%;
+    font: 500 0.75rem/1.4 var(--mono);
+    color: var(--mute);
+  }
+  .good {
+    color: var(--mute);
+    border-left: 0.1875rem solid var(--weld);
+    padding-left: 0.75rem;
+  }
+</style>

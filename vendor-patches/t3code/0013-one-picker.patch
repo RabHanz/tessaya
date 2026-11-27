@@ -893,7 +893,7 @@ index 1b3a16fd3154e71ef42c4a7db89c2f760c4dbbaf..c058398ed70b56f3b5739965881b1697
  
  export interface ComposerTrigger {
 diff --git a/vite.config.ts b/vite.config.ts
-index c8f6ca58b1194e2bf04783d4a36858764ad14541..f34173922a016279a9196fe713ff3bb368f9b697 100644
+index c8f6ca58b1194e2bf04783d4a36858764ad14541..1635b34ecb8eeefb354769cf3be73d0693e25550 100644
 --- a/vite.config.ts
 +++ b/vite.config.ts
 @@ -3,6 +3,7 @@ import { defineConfig } from "vite-plus";
@@ -904,25 +904,29 @@ index c8f6ca58b1194e2bf04783d4a36858764ad14541..f34173922a016279a9196fe713ff3bb3
  
  const TEST_EXCLUDE = [
    "**/.repos/**",
-@@ -179,6 +180,8 @@ export default defineConfig({
+@@ -179,6 +180,10 @@ export default defineConfig({
    },
    fmt: {
      ignorePatterns: [
 +      // The Character Studio's scripts, synced as they are (scripts/tessaya/sync-companion-art.sh).
 +      "apps/web/public/companion/**",
++      // The site's demo engine (eyes WASM, turntables, voice demo, sandbox), plain scripts carried from the approved round.
++      "apps/tessaya-site/public/shared/**",
        ".repos/**",
        "infra/task-cache/vendor/**",
        // Macroscope requires one glob per line; Markdown formatting corrupts it.
-@@ -214,6 +217,8 @@ export default defineConfig({
+@@ -214,6 +219,10 @@ export default defineConfig({
    },
    lint: {
      ignorePatterns: [
 +      // The Character Studio's scripts, synced as they are (scripts/tessaya/sync-companion-art.sh).
 +      "apps/web/public/companion/**",
++      // The site's demo engine (eyes WASM, turntables, voice demo, sandbox), plain scripts carried from the approved round.
++      "apps/tessaya-site/public/shared/**",
        ".repos",
        ".repos/**",
        "infra/task-cache/vendor/**",
-@@ -606,6 +611,7 @@ export default defineConfig({
+@@ -606,6 +615,7 @@ export default defineConfig({
            "**/{test-fixtures,*TestFixtures}.ts",
            "apps/mobile/src/features/development/**",
            "packages/client-runtime/src/rpc/**",
@@ -930,7 +934,7 @@ index c8f6ca58b1194e2bf04783d4a36858764ad14541..f34173922a016279a9196fe713ff3bb3
          ],
          rules: { "t3code/no-untranslated-copy": "error" },
        },
-@@ -672,6 +678,7 @@ export default defineConfig({
+@@ -672,6 +682,7 @@ export default defineConfig({
            "apps/mobile/src/features/review/ReviewSheet.tsx",
            "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
            "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",

@@ -146,6 +146,12 @@
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
       "ignoreDependencies": ["@astrojs/check"],
     },
+    "apps/tessaya-site": {
+      // `astro check` runs from the typecheck task; three is copied into public/ by scripts/stage-engine.mjs.
+      "ignoreDependencies": ["@astrojs/check", "three"],
+      // Plain scripts the pages load by URL.
+      "ignore": ["public/**"],
+    },
     "apps/mobile": {
       // Baton's mobile route is wired by a vendor patch the file audit cannot see.
       "ignore": ["src/features/baton/BatonRouteScreen.tsx", "src/state/baton-work-sessions.ts"],

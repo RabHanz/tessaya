@@ -182,6 +182,8 @@ export default defineConfig({
     ignorePatterns: [
       // The Character Studio's scripts, synced as they are (scripts/tessaya/sync-companion-art.sh).
       "apps/web/public/companion/**",
+      // The site's demo engine (eyes WASM, turntables, voice demo, sandbox), plain scripts carried from the approved round.
+      "apps/tessaya-site/public/shared/**",
       ".repos/**",
       "infra/task-cache/vendor/**",
       // Macroscope requires one glob per line; Markdown formatting corrupts it.
@@ -219,6 +221,8 @@ export default defineConfig({
     ignorePatterns: [
       // The Character Studio's scripts, synced as they are (scripts/tessaya/sync-companion-art.sh).
       "apps/web/public/companion/**",
+      // The site's demo engine (eyes WASM, turntables, voice demo, sandbox), plain scripts carried from the approved round.
+      "apps/tessaya-site/public/shared/**",
       ".repos",
       ".repos/**",
       "infra/task-cache/vendor/**",
