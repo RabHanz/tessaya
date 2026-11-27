@@ -1044,6 +1044,89 @@ index 716385dd5873e44c98a00550f1f95582efa62d0e..856286e48f09474b08bc82db667c6d7e
  export function registerHiddenUpdateTap(count: number): {
    readonly nextCount: number;
    readonly shouldCheck: boolean;
+diff --git a/apps/mobile/src/features/voice-input/useVoiceInputController.test.tsx b/apps/mobile/src/features/voice-input/useVoiceInputController.test.tsx
+index f6e5ae62836c3c67f7187aa957940b78d1ab295e..a744edbf8867f5373186d56f9126f6d383009641 100644
+--- a/apps/mobile/src/features/voice-input/useVoiceInputController.test.tsx
++++ b/apps/mobile/src/features/voice-input/useVoiceInputController.test.tsx
+@@ -1,4 +1,4 @@
+-import { act, useEffect, useSyncExternalStore } from "react";
++import { act, createContext, useSyncExternalStore } from "react";
+ import { createRoot } from "react-dom/client";
+ import { expect, it, vi } from "vite-plus/test";
+ 
+@@ -6,8 +6,14 @@ const harness = vi.hoisted(() => ({
+   session: null as import("./voiceInputSession").VoiceInputSession | null,
+ }));
+ 
++// As in react-navigation: the context is empty, and useFocusEffect throws, with no navigator above.
+ vi.mock("@react-navigation/native", () => ({
+-  useFocusEffect: (callback: () => void | (() => void)) => useEffect(callback, [callback]),
++  NavigationContext: createContext(undefined),
++  useFocusEffect: () => {
++    throw new Error(
++      "Couldn't find a navigation object. Is your component inside NavigationContainer?",
++    );
++  },
+ }));
+ vi.mock("./VoiceInputProvider", () => ({
+   useGlobalVoiceInput: () => {
+@@ -64,6 +70,7 @@ function setup() {
+   };
+ }
+ 
++// Rendered with no navigator above it, as the Sleeve draws Talk over the whole app.
+ // GlobalVoiceInputControl hides its dictation pill while the recording owner is focused, so a
+ // composer that stays mounted under display: none (e.g. behind an agent question) must unfocus.
+ it("unfocuses a hidden composer so the global dictation controls can show", () => {
+diff --git a/apps/mobile/src/features/voice-input/useVoiceInputController.ts b/apps/mobile/src/features/voice-input/useVoiceInputController.ts
+index 98188b0becdc8d3772b1dd0d58344aa04560aae4..085bd7ee003ff078d96532df40a8e4af3656d096 100644
+--- a/apps/mobile/src/features/voice-input/useVoiceInputController.ts
++++ b/apps/mobile/src/features/voice-input/useVoiceInputController.ts
+@@ -1,5 +1,5 @@
+-import { useFocusEffect } from "@react-navigation/native";
+-import { useCallback, useEffect, useRef } from "react";
++import { NavigationContext } from "@react-navigation/native";
++import { useCallback, useContext, useEffect, useRef, useSyncExternalStore } from "react";
+ import {
+   voiceInputBlocksSubmission,
+   type VoiceInputState,
+@@ -35,14 +35,29 @@ export function useVoiceInputController(input: {
+     };
+   }, []);
+ 
+-  useFocusEffect(
+-    useCallback(() => {
+-      const ownerKey = input.ownerKey;
+-      if (!ownerKey || input.hidden) return;
+-      session.setOwnerFocused(ownerKey, true);
+-      return () => session.setOwnerFocused(ownerKey, false);
+-    }, [input.hidden, input.ownerKey, session]),
++  // No navigator above the Sleeve, which draws Talk over the whole app: useFocusEffect would throw there.
++  const navigation = useContext(NavigationContext);
++  const screenFocused = useSyncExternalStore(
++    useCallback(
++      (listener: () => void) => {
++        const offFocus = navigation?.addListener("focus", listener);
++        const offBlur = navigation?.addListener("blur", listener);
++        return () => {
++          offFocus?.();
++          offBlur?.();
++        };
++      },
++      [navigation],
++    ),
++    () => navigation?.isFocused() ?? true,
+   );
++  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the shared voice session which composer is on screen
++  useEffect(() => {
++    const ownerKey = input.ownerKey;
++    if (!ownerKey || input.hidden || !screenFocused) return;
++    session.setOwnerFocused(ownerKey, true);
++    return () => session.setOwnerFocused(ownerKey, false);
++  }, [input.hidden, input.ownerKey, screenFocused, session]);
+ 
+   const start = useCallback(() => {
+     const captured = latestInput.current;
 diff --git a/apps/mobile/src/state/use-remote-environment-registry.ts b/apps/mobile/src/state/use-remote-environment-registry.ts
 index f8495bd3c3888bbb1d38084f6aeb2ddcd8c4452d..65d770b8f6e0612c0ad82b16a2aaa3aab91075a9 100644
 --- a/apps/mobile/src/state/use-remote-environment-registry.ts
