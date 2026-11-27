@@ -33,7 +33,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebView } from "react-native-webview";
 
 import { AppText as Text } from "../../../components/ui/AppText";
@@ -46,6 +46,7 @@ import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
 import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
 import { setHerPhase } from "../island/herPhase";
 import { phoneSoulIs } from "../private/privateLayer";
+import { useBottomClearance } from "../layout/screenInsets";
 import { useSleeveCovering } from "../sleeve/useSleeve";
 import {
   addFrames,
@@ -112,6 +113,9 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   // the hat her body here wears (renderFor for its form), sent only when it changes
   const hat = useRef<string | null>(null);
   const inset = useRef(0);
+  // the panel's height, so her face and its words stay above it
+  const [panel, setPanel] = useState(0);
+  const bottom = useBottomClearance();
   const listPersonas = useAtomCommand(tessayaWorkSessions.personasList, { reportFailure: false });
   const phoneCall = useAtomCommand(tessayaWorkSessions.phoneCall, { reportFailure: false });
   const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
@@ -442,7 +446,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   }, [listening, pending]);
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingTop: sleeve ? 0 : insets.top }}>
+    <View className="flex-1 bg-screen" style={{ paddingTop: sleeve ? 0 : insets.top }}>
       {drawing ? (
         <WebView<object>
           ref={webView}
@@ -478,8 +482,8 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
       {bodyShown ? null : (
         <View
           pointerEvents="none"
-          className="absolute inset-x-0 items-center gap-3"
-          style={{ top: insets.top + screenHeight * 0.18 }}
+          className="absolute inset-x-0 items-center justify-center gap-3 px-8"
+          style={{ top: sleeve ? insets.top : 0, bottom: panel }}
         >
           <Image
             source={require("../welcome/face-neutral.webp")}
@@ -487,7 +491,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
             contentFit="contain"
             accessibilityIgnoresInvertColors
           />
-          <Text className="text-base text-muted-foreground">
+          <Text className="text-center text-base text-foreground-muted">
             {environmentId === null
               ? "Pair a computer to talk to her"
               : bodyless
@@ -496,14 +500,17 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
           </Text>
         </View>
       )}
-      <SafeAreaView
-        // the native view reads its own safe area, which includes the floating iOS tab bar over this tab
-        edges={["bottom", "left", "right"]}
-        className={`absolute inset-x-0 bottom-0 gap-3 px-4 pt-4 ${sleeve ? "" : "rounded-t-3xl bg-background/85"}`}
-        style={{ paddingBottom: 12 }}
+      <View
+        className={`absolute inset-x-0 bottom-0 gap-3 pt-4 ${sleeve ? "" : "rounded-t-3xl bg-screen"}`}
+        style={{
+          paddingBottom: bottom + 12,
+          paddingLeft: insets.left + 20,
+          paddingRight: insets.right + 20,
+        }}
         // the panel grows with her reply or the keyboard; her framing keeps her face above it
         onLayout={(e) => {
           if (screenHeight === 0) return;
+          setPanel(e.nativeEvent.layout.height);
           inset.current = e.nativeEvent.layout.height / screenHeight;
           post({ type: "inset", bottom: inset.current });
         }}
@@ -511,12 +518,11 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
         <TalkHistory
           lines={sleeve ? lines.filter((l) => l.role === "her").slice(-1) : lines}
           pending={pending}
-          thisDevice={manifestNow().deviceId}
-          maxHeight={sleeve ? screenHeight * 0.2 : screenHeight * 0.38}
+          maxHeight={sleeve ? screenHeight * 0.2 : screenHeight * 0.3}
           earlier={sleeve || earliest === null ? null : () => void readHistory(earliest)}
         />
         <ScrollView
-          style={sleeve ? { display: "none" } : undefined}
+          style={sleeve ? { display: "none" } : { flexGrow: 0 }}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerClassName="gap-2"
@@ -544,7 +550,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
             className="items-center gap-1 rounded-full bg-secondary py-4"
           >
             <Text className="text-foreground">Let {persona?.name ?? "her"} hear you</Text>
-            <Text className="text-xs text-muted-foreground">
+            <Text className="text-xs text-foreground-muted">
               She listens only while you hold the button.
             </Text>
           </Pressable>
@@ -565,7 +571,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
               />
             </View>
             <Pressable accessibilityRole="link" onPress={() => void Linking.openSettings()}>
-              <Text className="text-center text-xs text-muted-foreground">
+              <Text className="text-center text-xs text-foreground-muted">
                 The microphone is off for Tessaya. Turn it on in Settings to talk.
               </Text>
             </Pressable>
@@ -594,7 +600,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
                 : `Hold to talk to ${persona?.name ?? "her"}`}
           </Text>
         </Pressable>
-      </SafeAreaView>
+      </View>
     </View>
   );
 }
@@ -603,7 +609,6 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
 function TalkHistory(props: {
   readonly lines: ReadonlyArray<TalkLine>;
   readonly pending: string | null;
-  readonly thisDevice: string;
   readonly maxHeight: number;
   readonly earlier: (() => void) | null;
 }) {
@@ -611,7 +616,7 @@ function TalkHistory(props: {
   // follows the newest line unless he has scrolled up to read
   const atEnd = useRef(true);
   const [now] = useState(() => Date.now());
-  const rows = talkRows(props.lines, props.thisDevice, now);
+  const rows = talkRows(props.lines, now);
   const lastHer = rows.findLastIndex((r) => r.kind === "line" && r.role === "her");
   if (rows.length === 0 && props.pending === null) return null;
   return (
@@ -631,26 +636,25 @@ function TalkHistory(props: {
     >
       {props.earlier === null ? null : (
         <Pressable accessibilityRole="button" onPress={props.earlier} className="py-1">
-          <Text className="text-center text-xs text-muted-foreground">Earlier</Text>
+          <Text className="text-center text-xs text-foreground-muted">Earlier</Text>
         </Pressable>
       )}
       {rows.map((r, i) =>
         r.kind === "day" ? (
           <Text
             key={r.key}
-            className="pt-2 text-center text-xs uppercase tracking-wide text-muted-foreground"
+            className="pt-2 text-center text-xs uppercase tracking-wide text-foreground-muted"
           >
             {r.label}
           </Text>
         ) : (
-          <View key={r.key} className={r.role === "them" ? "items-end" : "items-start"}>
-            <Text className="text-[11px] text-muted-foreground">{r.where}</Text>
+          <View key={r.key} className={r.role === "them" ? "items-end pl-12" : "items-start pr-6"}>
             <Text
               className={
                 r.private
-                  ? "text-sm italic text-muted-foreground"
+                  ? "text-sm italic text-foreground-muted"
                   : r.role === "them"
-                    ? "text-sm text-muted-foreground"
+                    ? "text-sm text-foreground-muted"
                     : i === lastHer && props.pending === null
                       ? "text-xl text-foreground"
                       : "text-base text-foreground"

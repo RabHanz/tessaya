@@ -30,10 +30,18 @@ describe("the Devices list", () => {
       "phone-a",
     );
     expect(rows.map((r) => `${r.name}: ${r.line}`)).toEqual([
-      "Tumble: Tessel · off",
-      "This phone: Phone · this phone",
+      "Tumble: Tessel · offline",
+      "This phone: Phone · here",
       "Pixel: Phone · on",
       "Your laptop: Desk body · on",
     ]);
+  });
+
+  it("says when a quiet Tessel was last heard rather than just off", () => {
+    const [row] = deviceRows(
+      [device("tumble", { online: false, lastSeenAt: "2026-11-28T05:21:00.000Z" })],
+      null,
+    );
+    expect(row?.line).toMatch(/^Tessel · last heard /);
   });
 });

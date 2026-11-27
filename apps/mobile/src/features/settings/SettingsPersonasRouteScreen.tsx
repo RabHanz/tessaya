@@ -16,9 +16,9 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useState } from "react";
 import { TextInput, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { useListEndPadding } from "../tessaya/layout/screenInsets";
 import { Button } from "../../components/ui/Button";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { ListRowLayout } from "../../components/ui/ListRowLayout";
@@ -51,13 +51,13 @@ const PRIVATE_ROOMS = [
 ] as const;
 
 const QUIET = { reportFailure: false } as const;
-const INPUT = "rounded-lg bg-background px-3 py-2 text-foreground";
+const INPUT = "rounded-lg bg-screen px-3 py-2 text-foreground";
 
 export function SettingsPersonasRouteScreen() {
   // one household on one brain (D-038): her personas come from the household's environment, never a picked one
   const household = useAtomValue(tessayaEnvironmentIdAtom);
   const selectedTargets = household === null ? [] : [{ environmentId: household }];
-  const insets = useSafeAreaInsets();
+  const endPadding = useListEndPadding();
   return (
     <SettingsScreen title="Personas">
       <ScreenScrollView
@@ -65,7 +65,7 @@ export function SettingsPersonasRouteScreen() {
         contentInsetAdjustmentBehavior="automatic"
         keyboardShouldPersistTaps="handled"
         contentContainerClassName="gap-6 px-5 pt-4"
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+        contentContainerStyle={{ paddingBottom: endPadding }}
       >
         {selectedTargets.length === 0 ? (
           <Text className="text-foreground-muted">Connect an environment to see the personas.</Text>
@@ -210,7 +210,8 @@ function PersonasSection(props: {
                 label={`${p.name}${p.lead ? " · lead" : ""}${p.private === true ? " · private" : ""}${p.sealed === undefined ? "" : " · sealed in your private layer"}`}
                 description={[
                   p.pronouns ?? null,
-                  p.role,
+                  // the first clause of what they do; the whole of it is in Edit
+                  p.role.split(";")[0]?.trim(),
                   speaksAs(p.id) === undefined ? null : `voice ${speaksAs(p.id)}`,
                 ]
                   .filter(Boolean)

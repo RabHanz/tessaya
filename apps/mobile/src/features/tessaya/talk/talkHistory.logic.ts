@@ -14,16 +14,8 @@ export type TalkRow =
       readonly key: string;
       readonly role: "them" | "her";
       readonly text: string;
-      readonly where: string;
       readonly private: boolean;
     };
-
-/** A vessel's id as a place: this phone, or its name ("tumble" → "Tumble", "desk-voice" → "Desk voice"). */
-export const vesselLabel = (vessel: string, thisDevice: string | null): string => {
-  if (vessel === thisDevice) return "this phone";
-  const words = vessel.replace(/[-_]+/g, " ").trim();
-  return words === "" ? "somewhere" : `${words[0]!.toUpperCase()}${words.slice(1)}`;
-};
 
 const dayOf = (at: number) => {
   const d = new Date(at);
@@ -38,11 +30,6 @@ const dayLabel = (at: number, now: number) => {
     day: "numeric",
     month: "long",
   });
-};
-
-const clock = (at: number) => {
-  const d = new Date(at);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 
 /** Pages of history merged oldest first, each line once (pages may overlap at their edges). */
@@ -61,12 +48,8 @@ export const mergeLines = (
     .sort((a, b) => a.at - b.at);
 };
 
-/** The conversation as rows: a heading per day, then each line with where and when it was said, in the phone's clock. */
-export const talkRows = (
-  lines: ReadonlyArray<TalkLine>,
-  thisDevice: string | null,
-  now: number,
-): ReadonlyArray<TalkRow> => {
+/** The conversation as rows: a heading per day, then each line. Lines carry no device label (one conversation, wherever said). */
+export const talkRows = (lines: ReadonlyArray<TalkLine>, now: number): ReadonlyArray<TalkRow> => {
   const rows: Array<TalkRow> = [];
   let day = "";
   lines.forEach((l, i) => {
@@ -79,7 +62,6 @@ export const talkRows = (
       key: `${l.at}-${l.role}-${i}`,
       role: l.role,
       text: l.private ? "A private moment" : l.text,
-      where: `on ${vesselLabel(l.vessel, thisDevice)} · ${clock(l.at)}`,
       private: l.private,
     });
   });

@@ -9,6 +9,8 @@ const { Children, harness } = vi.hoisted(() => ({
     // The app-wide error slot other features (composer sends, branch refreshes) write to.
     pendingConnectionError: null as string | null,
     connectPress: vi.fn(),
+    cameraGranted: false,
+    onScan: null as ((scan: { data: string }) => void) | null,
   },
 }));
 
@@ -35,8 +37,11 @@ vi.mock("@react-navigation/native", () => ({
 vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
 vi.mock("@clerk/expo", () => ({ useAuth: () => ({ isLoaded: false, isSignedIn: false }) }));
 vi.mock("expo-camera", () => ({
-  CameraView: () => null,
-  useCameraPermissions: () => [null, vi.fn()],
+  CameraView: (props: { onBarcodeScanned: (scan: { data: string }) => void }) => {
+    harness.onScan = props.onBarcodeScanned;
+    return null;
+  },
+  useCameraPermissions: () => [harness.cameraGranted ? { granted: true } : null, vi.fn()],
 }));
 vi.mock("expo-haptics", () => ({
   notificationAsync: vi.fn(async () => {}),
@@ -87,6 +92,7 @@ vi.mock("./devAutoConnect", () => ({
   devAutoConnectAttemptAtom: {},
   pairingLinksAllowed: () => __DEV__,
 }));
+vi.mock("../../lib/tessayaBrand", () => ({ IS_TESSAYA_APP: false }));
 vi.mock("../../state/tessayaHousehold", () => ({ joinHousehold: async () => [] }));
 vi.mock("../../state/use-remote-environment-registry", () => ({
   setPendingConnectionError: (message: string | null) => {
@@ -154,6 +160,31 @@ it("splits a pasted pairing link and preserves the code during address edits", (
       expect(code.value).toBe("replacement-code");
     }
   } finally {
+    act(() => root.unmount());
+  }
+});
+
+it("connects every machine on an Add a phone code from one scan, with no tap", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  vi.stubGlobal("__DEV__", false);
+  harness.pendingConnectionError = null;
+  harness.cameraGranted = true;
+  harness.connectPress.mockReset();
+  harness.connectPress.mockResolvedValue({ ok: true, error: null });
+  const container = document.createElement("div");
+  const root = createRoot(container);
+  try {
+    act(() => root.render(<ConnectionsNewRouteScreen route={{ params: undefined }} />));
+    const brain = "http://100.1.1.1:3773/pair#token=brain-code";
+    const laptop = "http://100.1.1.2:3773/pair#token=laptop-code";
+    const link = `tessaya://connections/new?${new URLSearchParams([
+      ["pairingUrl", brain],
+      ["pairingUrl", laptop],
+    ])}`;
+    await act(async () => harness.onScan!({ data: link }));
+    expect(harness.connectPress.mock.calls.map((c) => c[0])).toEqual([brain, laptop]);
+  } finally {
+    harness.cameraGranted = false;
     act(() => root.unmount());
   }
 });

@@ -40,10 +40,12 @@ import { splitEnvironmentSections } from "./environmentSections";
 import { leaveSettingsPage } from "../settings/settings-navigation";
 import { workspaceHasColumns } from "../layout/workspace/workspace-selection-store";
 import { m } from "../../i18n/messages";
+import { IS_TESSAYA_APP } from "../../lib/tessayaBrand";
 
 type ConnectionsNewRouteParams = {
   readonly mode?: string;
-  readonly pairingUrl?: string;
+  /** Tessaya's Add a phone code repeats it, once per machine. */
+  readonly pairingUrl?: string | ReadonlyArray<string>;
   readonly autoConnect?: string;
   readonly routeFor?: EnvironmentId;
   /** A linked machine this app chose to pair with; its details come from app state, never the link. */
@@ -55,7 +57,11 @@ export function ConnectionsNewRouteScreen({
 }: StaticScreenProps<ConnectionsNewRouteParams | undefined>) {
   const params = route.params ?? {};
   // Store builds ignore the prefill so a link can never supply an attacker-chosen host and token.
-  const routePairingUrl = pairingLinksAllowed() ? (params.pairingUrl?.trim() ?? "") : "";
+  // Tessaya's own code is meant for the phone's camera: it fills the form, and Connect stays his tap.
+  const [routePairingUrl = "", ...routeMore] =
+    pairingLinksAllowed() || IS_TESSAYA_APP
+      ? [params.pairingUrl ?? []].flat().map((url) => url.trim())
+      : [];
   const known = useAtomValue(linkedEnvironmentPrefillAtom);
   const linked = known !== null && known.environmentId === params.linked ? known : null;
   // A new prefill link replaces whatever the form held.
@@ -63,6 +69,7 @@ export function ConnectionsNewRouteScreen({
     <PairingForm
       key={`${routePairingUrl}:${linked?.environmentId ?? ""}`}
       routePairingUrl={routePairingUrl}
+      routeMore={routeMore}
       routeFor={params.routeFor ?? linked?.environmentId}
       linked={linked}
     />
@@ -71,10 +78,12 @@ export function ConnectionsNewRouteScreen({
 
 function PairingForm({
   routePairingUrl,
+  routeMore,
   routeFor,
   linked,
 }: {
   readonly routePairingUrl: string;
+  readonly routeMore: ReadonlyArray<string>;
   readonly routeFor: EnvironmentId | undefined;
   readonly linked: { readonly label: string; readonly host: string | null } | null;
 }) {
@@ -87,7 +96,7 @@ function PairingForm({
   const [hostInput, setHostInput] = useState(linked?.host ?? initialPairing.host);
   const [codeInput, setCodeInput] = useState(initialPairing.code);
   // Tessaya's Add a phone code names more machines; each pairs after the one in the form.
-  const [morePairingUrls, setMorePairingUrls] = useState<ReadonlyArray<string>>([]);
+  const [morePairingUrls, setMorePairingUrls] = useState<ReadonlyArray<string>>(routeMore);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   // The user's own edit or submit dismisses the dev auto-connect report.
@@ -164,6 +173,8 @@ function PairingForm({
       onChangeConnectionPairingUrl(pairingUrl);
       setScanComplete(true);
       setScannerLocked(false);
+      // Scanning is the yes: one scan connects this machine and the rest of the household.
+      void handleSubmit(pairingUrl, more);
     } catch (error) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Dialog.alert(
@@ -178,8 +189,11 @@ function PairingForm({
     }
   };
 
-  const handleSubmit = async () => {
-    const pairingUrl = buildPairingUrl(hostInput, codeInput);
+  const handleSubmit = async (
+    scanned?: string,
+    scannedMore: ReadonlyArray<string> = morePairingUrls,
+  ) => {
+    const pairingUrl = scanned ?? buildPairingUrl(hostInput, codeInput);
     setOwnAttempt(true);
     setSubmitError(null);
     setIsSubmitting(true);
@@ -187,7 +201,7 @@ function PairingForm({
     const outcome = await onConnectPress(pairingUrl, routeFor);
     const notAdded: Array<string> = [];
     if (outcome.ok) {
-      for (const more of morePairingUrls) {
+      for (const more of scannedMore) {
         const added = await onConnectPress(more);
         if (!added.ok)
           notAdded.push(`${parsePairingUrl(more).host}: ${added.error ?? "not added"}`);

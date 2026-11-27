@@ -530,17 +530,246 @@ index dbf7ab552aa8c72bf7d9c095d7de5849c7b23f0a..50d532a19e2f78e53d593a31d467590f
 +        ? require("../../../../assets/nightly/nightly-ios-1024.png")
 +        : require("../../../../assets/prod/black-ios-1024.png");
 diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx
-index c5f5b1d64f9971cf2f61235eff046f877c2b2658..f38a246f518027779e6835c1a84b11a98bb7f8ec 100644
+index c5f5b1d64f9971cf2f61235eff046f877c2b2658..68b37837c3c2c481db4d9d2aa04533d08397fc4c 100644
 --- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx
 +++ b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx
-@@ -87,6 +87,7 @@ vi.mock("./devAutoConnect", () => ({
+@@ -9,6 +9,8 @@ const { Children, harness } = vi.hoisted(() => ({
+     // The app-wide error slot other features (composer sends, branch refreshes) write to.
+     pendingConnectionError: null as string | null,
+     connectPress: vi.fn(),
++    cameraGranted: false,
++    onScan: null as ((scan: { data: string }) => void) | null,
+   },
+ }));
+ 
+@@ -35,8 +37,11 @@ vi.mock("@react-navigation/native", () => ({
+ vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
+ vi.mock("@clerk/expo", () => ({ useAuth: () => ({ isLoaded: false, isSignedIn: false }) }));
+ vi.mock("expo-camera", () => ({
+-  CameraView: () => null,
+-  useCameraPermissions: () => [null, vi.fn()],
++  CameraView: (props: { onBarcodeScanned: (scan: { data: string }) => void }) => {
++    harness.onScan = props.onBarcodeScanned;
++    return null;
++  },
++  useCameraPermissions: () => [harness.cameraGranted ? { granted: true } : null, vi.fn()],
+ }));
+ vi.mock("expo-haptics", () => ({
+   notificationAsync: vi.fn(async () => {}),
+@@ -87,6 +92,8 @@ vi.mock("./devAutoConnect", () => ({
    devAutoConnectAttemptAtom: {},
    pairingLinksAllowed: () => __DEV__,
  }));
++vi.mock("../../lib/tessayaBrand", () => ({ IS_TESSAYA_APP: false }));
 +vi.mock("../../state/tessayaHousehold", () => ({ joinHousehold: async () => [] }));
  vi.mock("../../state/use-remote-environment-registry", () => ({
    setPendingConnectionError: (message: string | null) => {
      harness.pendingConnectionError = message;
+@@ -156,3 +163,28 @@ it("splits a pasted pairing link and preserves the code during address edits", (
+     act(() => root.unmount());
+   }
+ });
++
++it("connects every machine on an Add a phone code from one scan, with no tap", async () => {
++  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
++  vi.stubGlobal("__DEV__", false);
++  harness.pendingConnectionError = null;
++  harness.cameraGranted = true;
++  harness.connectPress.mockReset();
++  harness.connectPress.mockResolvedValue({ ok: true, error: null });
++  const container = document.createElement("div");
++  const root = createRoot(container);
++  try {
++    act(() => root.render(<ConnectionsNewRouteScreen route={{ params: undefined }} />));
++    const brain = "http://100.1.1.1:3773/pair#token=brain-code";
++    const laptop = "http://100.1.1.2:3773/pair#token=laptop-code";
++    const link = `tessaya://connections/new?${new URLSearchParams([
++      ["pairingUrl", brain],
++      ["pairingUrl", laptop],
++    ])}`;
++    await act(async () => harness.onScan!({ data: link }));
++    expect(harness.connectPress.mock.calls.map((c) => c[0])).toEqual([brain, laptop]);
++  } finally {
++    harness.cameraGranted = false;
++    act(() => root.unmount());
++  }
++});
+diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
+index d1dab03ae4da6c6285737cf66f4917c733a13eb0..cb9cd0863ebdc2e343b38950b1c6363478a67e43 100644
+--- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
++++ b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx
+@@ -24,8 +24,9 @@ import { useAppearancePreferences } from "../settings/appearance/AppearancePrefe
+ import { SettingsScreen } from "../settings/components/SettingsScreen";
+ import { AppText as Text, AppTextInput, type AppTextInputProps } from "../../components/ui/AppText";
+ import { FrostedCutout } from "../../components/ui/FrostedCutout";
+-import { buildPairingUrl, extractPairingUrlFromQrPayload, parsePairingUrl } from "./pairing";
++import { buildPairingUrl, extractPairingUrlsFromQrPayload, parsePairingUrl } from "./pairing";
+ import { useRemoteConnections } from "../../state/use-remote-environment-registry";
++import { joinHousehold } from "../../state/tessayaHousehold";
+ import { SymbolView } from "../../components/ui/AppSymbol";
+ import { hasCloudPublicConfig } from "../cloud/publicConfig";
+ import { CloudEnvironmentRows } from "./CloudEnvironmentRows";
+@@ -39,10 +40,12 @@ import { splitEnvironmentSections } from "./environmentSections";
+ import { leaveSettingsPage } from "../settings/settings-navigation";
+ import { workspaceHasColumns } from "../layout/workspace/workspace-selection-store";
+ import { m } from "../../i18n/messages";
++import { IS_TESSAYA_APP } from "../../lib/tessayaBrand";
+ 
+ type ConnectionsNewRouteParams = {
+   readonly mode?: string;
+-  readonly pairingUrl?: string;
++  /** Tessaya's Add a phone code repeats it, once per machine. */
++  readonly pairingUrl?: string | ReadonlyArray<string>;
+   readonly autoConnect?: string;
+   readonly routeFor?: EnvironmentId;
+   /** A linked machine this app chose to pair with; its details come from app state, never the link. */
+@@ -54,7 +57,11 @@ export function ConnectionsNewRouteScreen({
+ }: StaticScreenProps<ConnectionsNewRouteParams | undefined>) {
+   const params = route.params ?? {};
+   // Store builds ignore the prefill so a link can never supply an attacker-chosen host and token.
+-  const routePairingUrl = pairingLinksAllowed() ? (params.pairingUrl?.trim() ?? "") : "";
++  // Tessaya's own code is meant for the phone's camera: it fills the form, and Connect stays his tap.
++  const [routePairingUrl = "", ...routeMore] =
++    pairingLinksAllowed() || IS_TESSAYA_APP
++      ? [params.pairingUrl ?? []].flat().map((url) => url.trim())
++      : [];
+   const known = useAtomValue(linkedEnvironmentPrefillAtom);
+   const linked = known !== null && known.environmentId === params.linked ? known : null;
+   // A new prefill link replaces whatever the form held.
+@@ -62,6 +69,7 @@ export function ConnectionsNewRouteScreen({
+     <PairingForm
+       key={`${routePairingUrl}:${linked?.environmentId ?? ""}`}
+       routePairingUrl={routePairingUrl}
++      routeMore={routeMore}
+       routeFor={params.routeFor ?? linked?.environmentId}
+       linked={linked}
+     />
+@@ -70,10 +78,12 @@ export function ConnectionsNewRouteScreen({
+ 
+ function PairingForm({
+   routePairingUrl,
++  routeMore,
+   routeFor,
+   linked,
+ }: {
+   readonly routePairingUrl: string;
++  readonly routeMore: ReadonlyArray<string>;
+   readonly routeFor: EnvironmentId | undefined;
+   readonly linked: { readonly label: string; readonly host: string | null } | null;
+ }) {
+@@ -85,6 +95,8 @@ function PairingForm({
+   const [initialPairing] = useState(() => parsePairingUrl(routePairingUrl || connectionPairingUrl));
+   const [hostInput, setHostInput] = useState(linked?.host ?? initialPairing.host);
+   const [codeInput, setCodeInput] = useState(initialPairing.code);
++  // Tessaya's Add a phone code names more machines; each pairs after the one in the form.
++  const [morePairingUrls, setMorePairingUrls] = useState<ReadonlyArray<string>>(routeMore);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [submitError, setSubmitError] = useState<string | null>(null);
+   // The user's own edit or submit dismisses the dev auto-connect report.
+@@ -119,6 +131,7 @@ function PairingForm({
+     } else {
+       setHostInput(value);
+     }
++    setMorePairingUrls([]);
+     clearError();
+   };
+ 
+@@ -152,13 +165,16 @@ function PairingForm({
+     setScannerLocked(true);
+ 
+     try {
+-      const pairingUrl = extractPairingUrlFromQrPayload(data);
++      const [pairingUrl, ...more] = extractPairingUrlsFromQrPayload(data);
+       const { host, code } = parsePairingUrl(pairingUrl);
+       setHostInput(host);
+       setCodeInput(code);
++      setMorePairingUrls(more);
+       onChangeConnectionPairingUrl(pairingUrl);
+       setScanComplete(true);
+       setScannerLocked(false);
++      // Scanning is the yes: one scan connects this machine and the rest of the household.
++      void handleSubmit(pairingUrl, more);
+     } catch (error) {
+       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+       Dialog.alert(
+@@ -173,15 +189,30 @@ function PairingForm({
+     }
+   };
+ 
+-  const handleSubmit = async () => {
+-    const pairingUrl = buildPairingUrl(hostInput, codeInput);
++  const handleSubmit = async (
++    scanned?: string,
++    scannedMore: ReadonlyArray<string> = morePairingUrls,
++  ) => {
++    const pairingUrl = scanned ?? buildPairingUrl(hostInput, codeInput);
+     setOwnAttempt(true);
+     setSubmitError(null);
+     setIsSubmitting(true);
+     onChangeConnectionPairingUrl(pairingUrl);
+     const outcome = await onConnectPress(pairingUrl, routeFor);
++    const notAdded: Array<string> = [];
++    if (outcome.ok) {
++      for (const more of scannedMore) {
++        const added = await onConnectPress(more);
++        if (!added.ok)
++          notAdded.push(`${parsePairingUrl(more).host}: ${added.error ?? "not added"}`);
++      }
++      // One household: pairing with any of his machines adds the rest (M-097).
++      if (outcome.environmentId !== undefined)
++        notAdded.push(...(await joinHousehold(outcome.environmentId, onConnectPress)));
++    }
+     setIsSubmitting(false);
+     setSubmitError(outcome.error);
++    if (notAdded.length > 0) Dialog.alert(gt("Some machines were not added"), notAdded.join("\n"));
+     void Haptics.notificationAsync(
+       outcome.ok
+         ? Haptics.NotificationFeedbackType.Success
+@@ -284,9 +315,15 @@ function PairingForm({
+                       "Create a pairing code on {environment}, in its Settings → Sharing & access or with `t3 auth pairing create`, and enter it here.",
+                       { environment: linked.label },
+                     )
+-                  : gt(
+-                      "For machines on your local network or tailnet. The machine keeps its own provider credentials.",
+-                    ))}
++                  : morePairingUrls.length > 0
++                    ? gt("This code also adds {hosts}.", {
++                        hosts: morePairingUrls
++                          .map((url) => parsePairingUrl(url).host.replace(/^https?:\/\//, ""))
++                          .join(", "),
++                      })
++                    : gt(
++                        "For machines on your local network or tailnet. The machine keeps its own provider credentials.",
++                      ))}
+             </Text>
+           </View>
+ 
+@@ -302,8 +339,10 @@ const SCAN_RETICLE_SIZE = 150;
+ const SCAN_RETICLE_TOP = 36;
+ const SCAN_RETICLE_RADIUS = 28;
+ 
+-function PairingScanCard(props: {
++export function PairingScanCard(props: {
+   readonly cameraActive: boolean;
++  /** What to scan; Tessaya's Add an R1 names the R1's pairing code. */
++  readonly hint?: string;
+   readonly onScan: (result: { readonly data: string }) => void;
+   readonly onScanPress: () => void;
+ }) {
+@@ -383,9 +422,10 @@ function PairingScanCard(props: {
+           )}
+         </View>
+         <Text className={cn("text-center text-sm", light ? "text-black/70" : "text-white/80")}>
+-          {gt("Scan the code from {command} or desktop Connections settings", {
+-            command: "t3 pair",
+-          })}
++          {props.hint ??
++            gt("Scan the code from {command} or desktop Connections settings", {
++              command: "t3 pair",
++            })}
+         </Text>
+       </View>
+     </Pressable>
 diff --git a/apps/mobile/src/features/connection/pairing.test.ts b/apps/mobile/src/features/connection/pairing.test.ts
 index a3f2fab4861f575d2f11ee8b6d2459767564d7d8..593b3a846a1ec47c5a0dc1454cb624c6b95c8f82 100644
 --- a/apps/mobile/src/features/connection/pairing.test.ts
