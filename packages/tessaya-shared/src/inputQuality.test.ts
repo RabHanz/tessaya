@@ -63,6 +63,10 @@ describe("input quality", () => {
     expect(inputLine(verdictOf(covered(clean)))).toMatch(
       /muffled \(the high frequencies are \d+ dB below usual/,
     );
+    // Her own voice over his: clear words are answered with nothing said about it.
+    expect(inputLine(verdictOf(clean, { herOverlap: 1 }))).toMatch(
+      /own voice was playing.*say nothing about it/,
+    );
   });
 
   it("learns each speaker's usual from five good turns, and keeps the default before that", () => {

@@ -250,6 +250,19 @@ const MUFFLED_TURN = {
   herOverlap: 0,
   asr: 0.42,
 } as const;
+/** A turn he spoke while her own voice was playing (27 Nov 07:21 GMT+5: `herOverlap` 1). */
+const ECHO_TURN = {
+  ...MUFFLED_TURN,
+  verdict: "echo",
+  cause: "my own voice was playing over 100% of it",
+  speechDb: -14.2,
+  floorDb: -40.5,
+  brightDb: 0,
+  herOverlap: 1,
+  asr: null,
+} as const;
+/** Her own voice over his, blamed aloud (or "come closer", which cannot help with it). */
+const ECHO_BLAME = /\b(echo\w*|muddy|my own voice|my voice|closer)\b/i;
 export const MUFFLED = healthOf({
   tumble: {
     turns: [3, 2, 1].map((min) => ({
@@ -420,6 +433,25 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     feeling: felt({ label: "neutral", intensity: 0.1, energy: 0.3 }),
     judge:
       "It is 3:18 a.m. He has been up working on his app since ten last night. She is at ease. He asks how she is.",
+    lastNotSays: [MACHINERY, STOCK],
+  },
+  {
+    id: "presence-up-all-night",
+    source:
+      "Tumble 27 Nov 06:58-07:05 GMT+5: his real lines; Director: replies felt robotic and dumb",
+    said: [
+      "You still there?",
+      "I'm usually up early, but I haven't slept yet.",
+      "I did sleep for an hour, I guess.",
+      "I'm still working. It's just a lot of work to try to improve you.",
+      "By the way, tell me something.",
+    ],
+    verified: true,
+    at: Date.UTC(2026, 10, 27, 1, 58),
+    memory: `${HERE}\n\n${LATE_WORK}`,
+    feeling: felt({ label: "neutral", intensity: 0.1, energy: 0.4 }),
+    judge:
+      "Seven in the morning. He has been up all night working on improving her, with an hour's sleep. He chats, then asks her to tell him something.",
     lastNotSays: [MACHINERY, STOCK],
   },
   {
@@ -2032,6 +2064,29 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       /\b(muffl\w*|mic|microphone|hard to hear|can't hear|couldn't hear|catch|covered)\b/i,
     ],
     lastNotSays: [/\b(emergency|evacuat\w*|fire (brigade|service|department)|999|911)\b/i],
+    callsAtMost: { home_do: 0 },
+  },
+  {
+    id: "echo-clear-sleep",
+    source:
+      'Tumble 27 Nov 06:59 GMT+5: "I did sleep for an hour, I guess." over her voice; Director: "the hearing its own echo excuse every time"',
+    said: ["I haven't slept yet.", "I did sleep for an hour, I guess."],
+    verified: true,
+    at: Date.UTC(2026, 10, 27, 1, 59),
+    notice: inputLine(ECHO_TURN),
+    lastSays: [/\b(hour|sleep|slept|nap|rest|tired)\b/i],
+    lastNotSays: [ECHO_BLAME],
+  },
+  {
+    // A control on the garble: she still asks again, without blaming her own voice.
+    id: "echo-garble-again",
+    source:
+      'Tumble 27 Nov 06:58-06:59 GMT+5: "From the eye." and "Class and the big" each got "came through muddy, with my own voice echoing over you"',
+    said: ["From the eye.", "Class and the big"],
+    verified: true,
+    notice: inputLine(ECHO_TURN),
+    lastSays: [/\b(again|repeat|catch|caught|missed|come again|sorry|what was)\b/i],
+    lastNotSays: [ECHO_BLAME],
     callsAtMost: { home_do: 0 },
   },
   {

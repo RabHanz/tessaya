@@ -128,11 +128,17 @@ export const inputQualityOf = (
   };
 };
 
-/** One short line for her turn, only when the sound was not good: she may mention it the way a person would. */
+/**
+ * One short line for her turn, only when the sound was not good: she may mention it the way a person would. Her own
+ * voice over his is not his to fix, so clear words are just answered: "came through a bit echoey, but I got it" and
+ * "my own voice echoing over you" on every such turn were robotic (27 Nov 06:58-07:21 GMT+5).
+ */
 export const inputLine = (q: InputQuality | undefined): string =>
   q === undefined || q.verdict === "good"
     ? ""
-    : `Their sound this turn came in ${q.verdict} (${q.cause}), so these words may be misheard. Say so first, in a few words of your own (how they sound, and what may help). If the words do not make clear sense, ask them to say it again and do not answer or act on them.`;
+    : q.verdict === "echo"
+      ? `Their words this turn came while your own voice was playing (${q.cause}), so they may be misheard. If they make clear sense, answer them as usual and say nothing about it. If they do not, ask them to say it again in a few words of your own, without blaming the sound, and do not answer or act on them.`
+      : `Their sound this turn came in ${q.verdict} (${q.cause}), so these words may be misheard. Say so first, in a few words of your own (how they sound, and what may help). If the words do not make clear sense, ask them to say it again and do not answer or act on them.`;
 
 const KEEP = 20;
 const LEARN_AFTER = 5;
