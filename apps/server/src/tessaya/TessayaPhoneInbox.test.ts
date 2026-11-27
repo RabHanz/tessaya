@@ -654,6 +654,20 @@ it.effect(
       yield* atBrain.answer("web-help-ask", "Say make a snippet.", "Say make a snippet.");
       const read = (yield* onWorker("askGet", { id: "web-help-ask" })).value as { line?: string };
       assert.strictEqual(read.line, "Say make a snippet.");
+      // Where her brain on this server answers asks itself (`brain.asks`, his phone's Talk on the laptop's server), the
+      // ask stays here for it, and the poll finds it here (28 Nov 02:13: "That was lost").
+      yield* worker.setBrainAnswers(true);
+      yield* worker.take;
+      const kept = (yield* onWorker("ask", { id: "phone-talk-1", text: "hello" })).value as {
+        ok?: boolean;
+      };
+      assert.isTrue(kept.ok);
+      assert.strictEqual((yield* worker.get("phone-talk-1"))?.text, "hello");
+      const polled = (yield* onWorker("askGet", { id: "phone-talk-1" })).value as {
+        status?: string;
+      } | null;
+      assert.strictEqual(polled?.status, "queued");
+      yield* worker.setBrainAnswers(false);
 
       brainUp = false;
       // Her brain away (B-044): the desktop is answered here, so it still takes what waits on this server.
