@@ -525,6 +525,8 @@ export interface RoomConfig {
   readonly acknowledge: Acknowledge;
   /** After this long with nothing said to her, the session ends (the R1 plays its exit chime); S2 starts it again. */
   readonly idleStopMs: number;
+  /** The same for a session only its audio opened (no S2, name or start seen here): the R1 is in one nobody here asked for. */
+  readonly strayStopMs: number;
   /** Who answers by name, the lead first; each speaks in its own voice. */
   readonly personas: ReadonlyArray<RoomPersona>;
   /** The speaker and mood readers may hold the reply this long at most. */
@@ -575,6 +577,8 @@ export const ROOM_CONFIG: RoomConfig = {
   acknowledge: "voice",
   // shortcut: her name only wakes her while the R1 streams; with the firmware's own wake word off, S2 after this.
   idleStopMs: 15 * 60_000,
+  // 27 Nov 11:55: a stray session held her mic open and her name unheard for 12 min (its own idle end needs 120 s of no sound).
+  strayStopMs: 90_000,
   // Until her server's roster arrives (main.ts reads it, and `personas` swaps it in for the next session).
   personas: roomPersonas(DEFAULT_OS_PACK.personas),
   sideMs: 250,
@@ -630,6 +634,8 @@ const onlyEnglish = (languages: ReadonlyArray<string>) =>
 const FAR_DB = 18;
 /** A session that has had no mic audio for this long while wake audio arrives is one the R1 has already left. */
 const STALE_SESSION_MS = 3_000;
+/** A session asked for here with no mic audio yet is the R1 still starting it (27 Nov: 11 s), not one it has left. */
+const START_GRACE_MS = 15_000;
 /** Her server's acts for a Tessel that open a session or move the eyes: only the loop on the Tessel's hub may run them. */
 const DEVICE_ACTS = /^(voice\/(intent\/eye|stepup|say|ask|persona|enrol)|cmd\/voice\/start)$/;
 
@@ -922,7 +928,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
 
   /** Each speaker's usual sound, across sessions and Tessels: a muffled turn is judged against his own voice. */
   const baselines = createInputBaselines();
-  const openSession = (id: string) => {
+  const openSession = (id: string, stray: boolean) => {
     const vad = deps.vad();
     const turns = createTurnTaking(config.turn);
     const echo = createEchoGuard();
@@ -1018,6 +1024,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let tentative = false;
     /** When its mic last sent anything (or it opened): a session with nothing for a while is one the R1 has left. */
     let lastUpAt = deps.now();
+    let heardUp = false;
     /** Mic samples the uplink never delivered (gaps in its frame numbers), and the count when this turn began. */
     let missedSamples = 0;
     let lastSeq: number | null = null;
@@ -2455,6 +2462,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       asleep = false;
       sentAway = false;
       lastActivity = deps.now();
+      stray = false;
       // Listen mode (M-135): his lines are kept, not answered, until the thought is whole; then it is one turn.
       const heardListen = listenStep(
         listen,
@@ -3309,6 +3317,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const arrivedAt = deps.now();
         if (tainted) lastTaintedAt = arrivedAt;
         lastUpAt = arrivedAt;
+        heardUp = true;
         const aligned =
           bytes.length > UP_HEADER && (bytes.length - UP_HEADER) % DOWN_FRAME_BYTES === 0;
         if (aligned) deps.tap?.up(id, bytes, arrivedAt);
@@ -3554,9 +3563,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           asleep = true;
           face("sleepy");
         }
-        return quiet && deps.now() - lastActivity > config.idleStopMs ? "stop" : null;
+        const idle = stray ? config.strayStopMs : config.idleStopMs;
+        return quiet && deps.now() - lastActivity > idle ? "stop" : null;
       },
-      quietFor: () => deps.now() - lastUpAt,
+      stale: () => deps.now() - lastUpAt >= (heardUp ? STALE_SESSION_MS : START_GRACE_MS),
       rerouted,
       wear,
       /** For the replay harness: everything heard so far has been scored. */
@@ -3718,7 +3728,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
   const start = (id: string, how = "audio", wear = true) => {
     stoppedAt.delete(id);
     sessions.get(id)?.close();
-    const s = openSession(id);
+    const s = openSession(id, how === "audio");
     sessions.set(id, s);
     if (wear) s.wear();
     deps.warm?.();
@@ -4050,7 +4060,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // that session is new, not stale (03:30 replay, 13 Nov: every wake closed its own session 60 ms later).
         const open = sessions.get(id);
         if (open !== undefined) {
-          if (open.quietFor() < STALE_SESSION_MS) return;
+          if (!open.stale()) return;
           deps.log(`[${id}] wake stream while a session was open here; closing it`);
           stop(id);
         }
