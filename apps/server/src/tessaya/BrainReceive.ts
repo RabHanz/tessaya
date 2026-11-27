@@ -31,6 +31,7 @@ import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
 import { VoiceIdGateChange, voiceIdGateHere, voiceLearningHere } from "./VoiceIdGate.ts";
 import { TessayaScratchpadAct } from "@t3tools/tessaya-contracts";
+import { R1Hub } from "../home/R1Hub.ts";
 import { scratchpadHere } from "./TessayaScratchpad.ts";
 import { storeStylePairs } from "./stylePairsStore.ts";
 import { TessayaVocabulary, VocabularyAtBrain } from "./TessayaVocabulary.ts";
@@ -254,6 +255,12 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       return (yield* household.value.mergeVoice(merge.value.profile))
         ? done()
         : refused("That voice can't be joined to the one here.");
+    }
+    case "hubLogin": {
+      const hub = yield* Effect.serviceOption(R1Hub);
+      if (Option.isNone(hub)) return refused("There is no hub here.");
+      const login = yield* hub.value.busLogin;
+      return login.key === "" ? refused("This hub has no bus login yet.") : done(login);
     }
     case "roomLoop": {
       const act = decodeRoomLoop(payload);
@@ -526,7 +533,8 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
   )
     return refused("That link may not open his private store.");
   // pairing codes reach a shell on every machine: only a link that already has one may ask
-  if (op === "phoneCodes" && access !== "full-access")
+  // pairing codes and her hub's bus login reach a shell or every Tessel: only a link that already has one may ask
+  if ((op === "phoneCodes" || op === "hubLogin") && access !== "full-access")
     return refused("Only another of his machines, linked with full access, may ask for this.");
   if (op !== "outbox") return yield* applyAtBrain(op, payload);
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
@@ -536,7 +544,8 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
     Option.isNone(box) ||
     box.value.op === "outbox" ||
     box.value.op === "privatePepper" ||
-    box.value.op === "phoneCodes"
+    box.value.op === "phoneCodes" ||
+    box.value.op === "hubLogin"
   )
     return refused("Not a queued change.");
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);

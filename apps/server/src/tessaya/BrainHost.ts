@@ -66,6 +66,9 @@ export const BrainOp = Schema.Literals([
   "preferences",
   // a worker's own copy of a member's voice profile, joined once to the one on her brain (21 Nov)
   "voiceMerge",
+  // her hub's bus login, for a standby room loop on another of his servers to reach her hub (21 Nov): full access only,
+  // never queued
+  "hubLogin",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
