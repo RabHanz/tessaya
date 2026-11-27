@@ -21,6 +21,13 @@ export const askOutcome = (
     : { done: false, line };
 };
 
+/** Why her brain turned an ask away at once (`{ ok: false, line }`: no desktop to take it; "" when it gave no reason), or null when it was taken. */
+export const askRefused = (opened: unknown): string | null => {
+  if (typeof opened !== "object" || opened === null || !("ok" in opened) || opened.ok !== false)
+    return null;
+  return "line" in opened && typeof opened.line === "string" ? opened.line.trim() : "";
+};
+
 /** Where a body model is kept on the phone after its first load: one file per model address, so a new one is fetched. */
 export const bodyCacheName = (url: string): string =>
   `tessaya-body-${url

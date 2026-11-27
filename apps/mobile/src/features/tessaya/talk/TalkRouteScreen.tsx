@@ -42,7 +42,7 @@ import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { useVoiceInputController } from "../../voice-input/useVoiceInputController";
-import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
+import { askOutcome, askRefused, bodyCacheName, talkPersona } from "./talk.logic";
 import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
 import { setHerPhase } from "../island/herPhase";
 import { phoneSoulIs } from "../private/privateLayer";
@@ -409,6 +409,12 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
     if (opened._tag !== "Success") {
       setHerPhase("idle");
       return setPending("She couldn't be reached. Try again.");
+    }
+    const refused = askRefused(opened.value.value);
+    if (refused !== null) {
+      setPending(null);
+      setHerPhase("idle");
+      return said("her", refused || "She can't take that right now. Try again in a moment.");
     }
     for (let i = 0; i < POLLS; i++) {
       await new Promise((r) => setTimeout(r, POLL_MS));

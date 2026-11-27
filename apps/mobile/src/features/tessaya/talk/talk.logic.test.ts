@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { askOutcome, bodyCacheName, talkPersona } from "./talk.logic";
+import { askOutcome, askRefused, bodyCacheName, talkPersona } from "./talk.logic";
 
 const persona = (id: string, extra: object = {}) => ({
   id,
@@ -35,6 +35,15 @@ describe("the Talk tab", () => {
       line: "It's sunny.",
     });
     expect(askOutcome(null).done).toBe(true);
+  });
+
+  it("says why an ask was turned away at once, instead of waiting for it and calling it lost", () => {
+    expect(askRefused({ ok: false, line: "Your computer isn't connected." })).toBe(
+      "Your computer isn't connected.",
+    );
+    expect(askRefused({ ok: false })).toBe("");
+    expect(askRefused({ ok: true, status: "queued" })).toBeNull();
+    expect(askRefused(null)).toBeNull();
   });
 
   it("keeps one cached file per model address, and a new address is fetched anew", () => {
