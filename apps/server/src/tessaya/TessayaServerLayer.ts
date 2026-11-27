@@ -30,6 +30,7 @@ import * as AccountRotationPolicy from "./AccountRotationPolicy.ts";
 import * as TessayaMemorySync from "./TessayaMemorySync.ts";
 import * as FleetCoherence from "./FleetCoherence.ts";
 import * as ActionShip from "../provenance/ActionShip.ts";
+import * as HouseholdSettings from "./HouseholdSettings.ts";
 import * as BrainHost from "./BrainHost.ts";
 import * as HouseholdDevices from "./HouseholdDevices.ts";
 import * as AccountRotationReactor from "./AccountRotationReactor.ts";
@@ -324,6 +325,8 @@ const servicesInner = Layer.mergeAll(
       FleetCoherence.reportLayer,
       // a worker's own Record events reach the brain's one Record (21 Nov)
       ActionShip.layer,
+      // the household's settings, from the brain, with a worker's edits written through (21 Nov)
+      HouseholdSettings.layer,
       // one phone, every machine: a sign-out of a household device here is a sign-out everywhere (M-097)
       HouseholdDevices.layer,
       // a desk body reaches her brain the moment it shows, hides or moves, so every vessel knows it (20 Nov)

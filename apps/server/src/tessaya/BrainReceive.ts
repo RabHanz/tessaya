@@ -38,6 +38,7 @@ import { TessayaVocabulary, VocabularyAtBrain } from "./TessayaVocabulary.ts";
 import { decodeFingerprint, FleetCoherence } from "./FleetCoherence.ts";
 import { ConsentAct, consentAtBrain } from "./consent.ts";
 import { MemberPreferences, PreferencesAct } from "./MemberPreferences.ts";
+import { HouseholdAct, householdAtBrain } from "./HouseholdSettings.ts";
 import * as Clock from "effect/Clock";
 import { inboxAtBrain, TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPresence } from "./TessayaPresence.ts";
@@ -218,6 +219,7 @@ const decodeVoiceMerge = Schema.decodeUnknownOption(
 const decodeActions = Schema.decodeUnknownOption(
   Schema.Struct({ rows: Schema.Array(ActionRow).check(Schema.isMaxLength(500)) }),
 );
+const decodeHousehold = Schema.decodeUnknownOption(HouseholdAct);
 
 const refused = (line: string) => ({ ok: false as const, line });
 const done = (value: unknown = null) => ({ ok: true as const, value });
@@ -273,6 +275,11 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       const kept = yield* log.value.ingest(batch.value.rows);
       // refused, so the worker keeps its place and sends them again
       return kept === null ? refused("The Record could not keep them.") : done(kept);
+    }
+    case "householdSettings": {
+      const act = decodeHousehold(payload);
+      if (Option.isNone(act)) return refused("Not a settings act.");
+      return done(yield* householdAtBrain(act.value));
     }
     case "roomLoop": {
       const act = decodeRoomLoop(payload);
@@ -544,9 +551,11 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
     (access === undefined || access === "read-only" || access === "body-only")
   )
     return refused("That link may not open his private store.");
-  // pairing codes reach a shell on every machine: only a link that already has one may ask
-  // pairing codes and her hub's bus login reach a shell or every Tessel: only a link that already has one may ask
-  if ((op === "phoneCodes" || op === "hubLogin") && access !== "full-access")
+  // pairing codes and her hub's bus login reach a shell or every Tessel, and the household's settings carry an API key
+  if (
+    (op === "phoneCodes" || op === "hubLogin" || op === "householdSettings") &&
+    access !== "full-access"
+  )
     return refused("Only another of his machines, linked with full access, may ask for this.");
   if (op !== "outbox") return yield* applyAtBrain(op, payload);
   if ((yield* brainOn) !== null) return refused("This server is not her brain.");
@@ -557,7 +566,8 @@ export const receiveAtBrain = Effect.fn("BrainHost.receive")(function* (
     box.value.op === "outbox" ||
     box.value.op === "privatePepper" ||
     box.value.op === "phoneCodes" ||
-    box.value.op === "hubLogin"
+    box.value.op === "hubLogin" ||
+    box.value.op === "householdSettings"
   )
     return refused("Not a queued change.");
   const sql = yield* Effect.serviceOption(SqlClient.SqlClient);
