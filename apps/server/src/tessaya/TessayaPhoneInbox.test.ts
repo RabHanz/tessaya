@@ -655,7 +655,7 @@ it.effect(
       const read = (yield* onWorker("askGet", { id: "web-help-ask" })).value as { line?: string };
       assert.strictEqual(read.line, "Say make a snippet.");
       // Where her brain on this server answers asks itself (`brain.asks`, his phone's Talk on the laptop's server), the
-      // ask stays here for it, and the poll finds it here (28 Nov 02:13: "That was lost" after #1767 sent it away).
+      // ask stays here for it, and the poll finds it here (28 Nov 02:13: "That was lost").
       yield* worker.setBrainAnswers(true);
       yield* worker.take;
       const kept = (yield* onWorker("ask", { id: "phone-talk-1", text: "hello" })).value as {
