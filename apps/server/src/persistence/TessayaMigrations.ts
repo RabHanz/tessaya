@@ -89,6 +89,7 @@ import Migration0057 from "./Migrations/Baton/057_AffectLedger.ts";
 import Migration0058 from "./Migrations/Baton/058_RoomTranscript.ts";
 import Migration0059 from "./Migrations/Baton/059_PersonAppearance.ts";
 import Migration0060 from "./Migrations/Baton/060_OwnerOpenedBefore.ts";
+import Migration0061 from "./Migrations/Baton/061_MemberConsent.ts";
 
 /**
  * Baton's own tracking table. Upstream's `effect_sql_migrations` is left to
@@ -158,6 +159,7 @@ const tessayaMigrationEntries = [
   [58, "RoomTranscript", Migration0058],
   [59, "PersonAppearance", Migration0059],
   [60, "OwnerOpenedBefore", Migration0060],
+  [61, "MemberConsent", Migration0061],
 ] as const;
 
 export const tessayaMigrationManifest = tessayaMigrationEntries.map(

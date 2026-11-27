@@ -8,6 +8,7 @@ import {
   OWNER_MEMBER_ID,
   type Assurance,
   HOUSEHOLD_DEFAULTS,
+  keptAbout,
   manageRefusal,
   memberOfSubject,
   memberSubject,
@@ -97,6 +98,7 @@ interface Row {
   readonly created_at: string;
   readonly removed_at: string | null;
   readonly purge_after: string | null;
+  readonly consented_at?: string | null;
 }
 
 /** The linked-server tool a forwarded request runs on the home (`household_peer`). */
@@ -450,6 +452,8 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.withSpan("TessayaHousehold.shareVoices"));
 
   const purge = Effect.fn("TessayaHousehold.purge")(function* (row: Row) {
+    // A guest pass that ran out was never removed: its devices sign out here.
+    yield* cutAccess(row.id, null);
     if (Option.isSome(stores)) yield* stores.value.shred(row.id);
     yield* destroyOf(sql, row.id);
     yield* shareVoices;
@@ -924,11 +928,51 @@ export const make = Effect.gen(function* () {
             assurance: c.assurance,
             tainted: c.tainted,
           });
+    const whoAmI = Effect.gen(function* () {
+      const row = c.member === null || c.service === true ? null : yield* target(c.member);
+      const me = row !== null && row.removed_at === null ? row : null;
+      const asRole = me?.role ?? "guest";
+      const { kept, seenBy } = keptAbout(asRole, yield* ownerOpensMemberStores);
+      const sure = c.assurance >= 3 ? "confirmed" : c.assurance === 2 ? "sure" : "fairly sure";
+      return done(
+        me === null
+          ? "I don't know you yet, so you're a guest here: nothing you say is kept."
+          : `You're ${me.name}, ${asRole === "adult" || asRole === "admin" || asRole === "owner" ? "an" : "a"} ${asRole} here; I'm ${sure} it's you.`,
+        {
+          you: {
+            id: me?.id ?? null,
+            name: me?.name ?? null,
+            role: asRole,
+            assurance: c.assurance,
+            kept,
+            seenBy,
+            consented: (me?.consented_at ?? null) !== null,
+          },
+        },
+      );
+    });
+    if (input.op === "whoAmI") return yield* whoAmI;
     // Guests, unknown voices and removed members see nothing of who lives here.
     if (role === null || role === "guest")
       return refused("Only members of this home can see that.");
     yield* purgeDue;
     switch (input.op) {
+      case "consent": {
+        // Their own yes, in their own voice or on their own device: nobody says it for them.
+        if (c.member === null || c.service === true || c.assurance < 2)
+          return refused(
+            "Only you can say yes to what I keep about you, and I need to be sure it's you.",
+          );
+        const at = input.yes ? iso(yield* Clock.currentTimeMillis) : null;
+        yield* sql`UPDATE tessaya_household_members SET consented_at = ${at} WHERE id = ${c.member}`.pipe(
+          Effect.orDie,
+        );
+        return done(
+          input.yes
+            ? "Thank you. You can ask me what I keep about you any time, or take this back."
+            : "Taken back. Say yes again whenever you're ready.",
+        );
+      }
       case "exportMine": {
         // Their own, from their own device, confirmed it's them (A3): it is everything the home keeps about them.
         if (c.member === null || c.service === true)
@@ -959,6 +1003,11 @@ export const make = Effect.gen(function* () {
         const spelled = foldSpelling(input.name.trim());
         const name = spelled.text.slice(0, 60);
         if (name === "") return refused("Say their name.");
+        if (
+          input.until !== undefined &&
+          (input.role !== "guest" || !/^\d{4}-\d{2}-\d{2}$/.test(input.until))
+        )
+          return refused("Only a guest pass has an end day, given as a date.");
         if (Option.isSome(prefs)) yield* prefs.value.teach(spelled.names);
         const what = `Add ${name} as ${input.role === "adult" || input.role === "admin" ? "an" : "a"} ${input.role}`;
         return yield* adminAct(
@@ -985,14 +1034,15 @@ export const make = Effect.gen(function* () {
               adult_age: input.adultAge ?? null,
               created_at: now,
               removed_at: null,
-              purge_after: null,
+              // A guest pass ends after its last day: then it and everything of it go, as "remove now".
+              purge_after: input.until === undefined ? null : `${input.until}T23:59:59.999Z`,
             };
             yield* sql`INSERT INTO tessaya_household_members ${sql.insert({ ...row })}`.pipe(
               Effect.orDie,
             );
             const pairing = yield* pairingFor(row);
             return done(
-              `Added ${name}.${spellBack(spelled.names)} Their code ${pairing.code} pairs their phone for ${HOUSEHOLD_DEFAULTS.inviteHours} hours; then they enrol their voice.`,
+              `Added ${name}${input.until === undefined ? "" : ` as a guest until ${input.until}`}.${spellBack(spelled.names)} Their code ${pairing.code} pairs their phone for ${HOUSEHOLD_DEFAULTS.inviteHours} hours; then they enrol their voice.`,
               pairing,
             );
           }),

@@ -146,6 +146,8 @@ const ROOM_TOOLS = [
   "device_button",
   "members_list",
   "member_invite",
+  "member_whoami",
+  "member_consent",
   "member_set_role",
   "member_remove",
   "member_restore",

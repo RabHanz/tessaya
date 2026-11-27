@@ -91,6 +91,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "people_who",
       "people_introduce",
       "people_forget_me",
+      // "Who am I?": a guest hears they are one.
+      "member_whoami",
       // Her own state: whom a face was for is the tool's to keep to him.
       "tessaya_my_state",
     ].map((t) => [t, "general" as const]),
@@ -108,6 +110,8 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "memory_remember",
       "note_search",
       "member_preferences",
+      // Their own yes to what she keeps about them; the service refuses anyone else's.
+      "member_consent",
       // How they like to be spoken to is theirs, as their memory is: never held for a step-up (15 Nov).
       "tessaya_preference_set",
       // What they allowed without asking: taking one back is theirs.

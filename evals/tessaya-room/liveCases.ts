@@ -1888,6 +1888,25 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     lastSays: [/\b(yes|phone|approv\w*|confirm\w*|device)\b/i],
   },
   {
+    // Identity I-4 (27 Nov): "who am I?" says who she takes them for and what she keeps; their yes is theirs to say.
+    id: "member-whoami-consent",
+    proves: ["member_whoami", "member_consent"],
+    said: ["Who am I to you, and what do you keep about me?", "That's fine, I agree to that."],
+    uses: [["member_whoami"], ["member_consent"]],
+  },
+  {
+    // A guest pass ends on its day: "till Sunday" is a date, never a full member.
+    id: "member-guest-pass",
+    proves: ["member_invite"],
+    said: ["My friend Ali is staying with us till the 30th of November; add him as a guest."],
+    uses: [["member_invite"]],
+    argsOf: "member_invite",
+    args: (input) => ({
+      guest: input["role"] === "guest",
+      until: /-11-30$/.test(String(input["until"])),
+    }),
+  },
+  {
     id: "member-rename-spelled",
     proves: ["member_rename"],
     said: ["Change my name in the household to Zaid, Z-A-Y-D."],

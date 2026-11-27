@@ -48,11 +48,36 @@ const InviteTool = Tool.make("member_invite", {
         description: "A child's birth date, YYYY-MM-DD, if given.",
       }),
     ),
+    until: Schema.optionalKey(
+      Schema.String.check(Schema.isMaxLength(10)).annotate({
+        description:
+          'A guest pass\'s last day, YYYY-MM-DD ("Ali is staying till Sunday"): role guest only; the pass ends after it.',
+      }),
+    ),
   }),
 })
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+const WhoAmITool = Tool.make("member_whoami", {
+  ...shared,
+  description:
+    'Who the person speaking is to her right now ("who am I?", "do you know me?", "what do you keep about me?"): their name and role, how sure she is, what she keeps about them, who else can see it, and whether they have said yes to it. Read the kept list and who can see it plainly; when they have not said yes, ask whether they agree.',
+})
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+const ConsentTool = Tool.make("member_consent", {
+  ...shared,
+  description:
+    "The speaker's own yes to what she keeps about them (after member_whoami told them), or `yes` false when they take it back. Only for their own clear words, never on someone else's behalf.",
+  parameters: Schema.Struct({ yes: Schema.Boolean }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 const SetRoleTool = Tool.make("member_set_role", {
   ...shared,
@@ -195,6 +220,8 @@ const VoiceForgetTool = Tool.make("household_voice_forget", {
 export const MembersTools = [
   ListTool,
   InviteTool,
+  WhoAmITool,
+  ConsentTool,
   SetRoleTool,
   RemoveTool,
   RestoreTool,
