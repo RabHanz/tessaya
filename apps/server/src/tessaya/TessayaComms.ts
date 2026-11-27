@@ -45,6 +45,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -1144,6 +1145,30 @@ export const make = Effect.gen(function* () {
         return yield* emergencyCancel();
     }
   });
+
+  // A child who just became an adult hears it from their guardian, in a note she reads them (identity I-5).
+  yield* Stream.fromSubscription(yield* household.grownUpdates).pipe(
+    Stream.runForEach((g) =>
+      Effect.gen(function* () {
+        if (!(yield* enabled)) return;
+        yield* send({
+          op: "send",
+          to: [personAddress(g.id)],
+          kind: "text",
+          text: `${g.name}, you're an adult in this home now: no guardians and no limits. Ask me "who am I?" to hear what I keep about you and who can see it.`,
+        }).pipe(
+          Effect.provideService(HouseholdCaller, {
+            member: g.guardians[0] ?? OWNER_MEMBER_ID,
+            service: true,
+            assurance: 0,
+            via: "Tessaya, on their birthday",
+          }),
+          Effect.ignore,
+        );
+      }),
+    ),
+    Effect.forkScoped,
+  );
 
   return TessayaComms.of({ call, waitingFor });
 });

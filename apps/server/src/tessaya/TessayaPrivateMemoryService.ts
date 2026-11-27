@@ -1163,8 +1163,21 @@ export const make = Effect.gen(function* () {
       const row = yield* needStore(input.storeId);
       const problem = pinProblem(input.newPin, kindOf(row));
       if (problem !== null) return yield* refuse(problem);
-      const dek = yield* keyFrom(row, input.pin, input.recoveryCode);
-      if (dek === null) return yield* refuse("That PIN is not right.");
+      // A child who forgot theirs: their guardian, the owner with his own store open here, sets a new one (choice 5).
+      const membership = yield* Effect.serviceOption(StoreMembership);
+      const byGuardian =
+        input.pin === undefined &&
+        input.recoveryCode === undefined &&
+        kindOf(row) === "person" &&
+        Option.isSome(membership) &&
+        (yield* membership.value.isChild(row.person_id));
+      const dek = byGuardian
+        ? Option.getOrNull(yield* adminKeyFor(row))
+        : yield* keyFrom(row, input.pin, input.recoveryCode);
+      if (dek === null)
+        return yield* refuse(
+          byGuardian ? "Open your own private memories first, here." : "That PIN is not right.",
+        );
       const keys = keysOf(row);
       const salt = NodeCrypto.randomBytes(16);
       const pepper = yield* pepperNow;
@@ -1190,7 +1203,7 @@ export const make = Effect.gen(function* () {
         yield* audit(row, "changed PIN", "did not read back; old PIN kept");
         return yield* refuse("The new PIN did not read back, so the old PIN still opens it.");
       }
-      yield* audit(row, "changed PIN", "ok");
+      yield* audit(row, byGuardian ? "PIN reset by their guardian" : "changed PIN", "ok");
       return yield* describe(yield* needStore(row.id));
     }, serial),
 
