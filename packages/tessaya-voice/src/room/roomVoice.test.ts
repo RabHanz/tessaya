@@ -128,6 +128,36 @@ describe("the room voice loop", () => {
     expect(played.brainCalls[0]!.tessaya.playback).toBe("osp-run1");
   });
 
+  it("tells the Tessel a turn is still alive while the brain works, so her idle stop never closes it", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      let answer: () => void = () => undefined;
+      const thinking = new Promise<void>((r) => (answer = r));
+      const t = setup({
+        brain: async function* () {
+          await thinking;
+          yield "Done.";
+        },
+      });
+      const alive = () =>
+        t.published.filter(
+          (p) => p.topic === `freya/r1/${DEV}/voice/ctl` && p.payload === '{"ev":"turn"}',
+        ).length;
+      t.room.message(`freya/r1/${DEV}/cmd/voice/start`, new Uint8Array());
+      await t.feed(false, 5);
+      await t.feed(true, 20);
+      await t.feed(false, 8);
+      vi.advanceTimersByTime(65_000);
+      expect(alive()).toBe(2);
+      answer();
+      await t.metrics;
+      vi.advanceTimersByTime(65_000);
+      expect(alive()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("guides an enrolment with the card on his screen: never answered, made from his read, then summarised", async () => {
     const windows: number[] = [];
     const t = setup({

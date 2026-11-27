@@ -55,6 +55,7 @@ describe("keeping wake segments for training", () => {
     stream.kws("r1", { seg: 5, ...kws, pass: false, score: 0.2 });
     clock += 3_000;
     capture.session("r1");
+    await capture.drained();
 
     expect(NodeFS.statSync(dir).mode & 0o777).toBe(0o700);
     const files = NodeFS.readdirSync(dir).toSorted();
@@ -79,7 +80,7 @@ describe("keeping wake segments for training", () => {
     });
   });
 
-  it("never puts a rebooted Tessel's verdict on an older segment with the same number", () => {
+  it("never puts a rebooted Tessel's verdict on an older segment with the same number", async () => {
     // 18 Nov: Tumble rebooted at 03:48 and numbered her segments from 1 again; their kws landed on 03:45's files.
     const dir = tmp();
     let clock = 0;
@@ -95,10 +96,11 @@ describe("keeping wake segments for training", () => {
     capture.kws("r1", { seg: 3, score: 0.01, pass: false, name: "alfred", best: 0.01 });
     clock += 180_000;
     capture.kws("r1", { seg: 3, score: 0.9, pass: true, name: "alfred", best: 0.998 });
+    await capture.drained();
     expect(records(dir).map((r) => r.kws)).toMatchObject([{ best: 0.01 }]);
   });
 
-  it("drops the oldest segments past the cap, and a late session marks nothing", () => {
+  it("drops the oldest segments past the cap, and a late session marks nothing", async () => {
     const dir = tmp();
     let clock = 0;
     const capture = createWakeCapture({
@@ -112,14 +114,18 @@ describe("keeping wake segments for training", () => {
       clock += 1_000;
       capture.segment("r1", seg, new Int16Array(500), stage2);
     }
+    // Written off the loop thread: nothing is on disk until the queue runs.
+    expect(NodeFS.readdirSync(dir)).toHaveLength(0);
+    await capture.drained();
     expect(records(dir).map((r) => r.seg)).toEqual([2, 3]);
     expect(NodeFS.readdirSync(dir).filter((f) => f.endsWith(".pcm"))).toHaveLength(2);
     clock += 20_000;
     capture.session("r1");
+    await capture.drained();
     expect(records(dir).map((r) => r.session)).toEqual([false, false]);
   });
 
-  it("marks segments inside a declared test playback or wakeinject window, and those missing frames", () => {
+  it("marks segments inside a declared test playback or wakeinject window, and those missing frames", async () => {
     const dir = tmp();
     let clock = 0;
     const windows = createPlaybackWindows(() => clock);
@@ -150,6 +156,7 @@ describe("keeping wake segments for training", () => {
     windows.message(topic, JSON.stringify({ open: true, run: "chain", until: 50_000 }));
     at(45_000, 6);
     at(70_000, 7);
+    await capture.drained();
     expect(records(dir).map((r) => [r.seg, r.source, r.run ?? null, r.complete])).toEqual([
       [1, "live", null, true],
       [2, "playback", "osp_0412", false],
@@ -181,6 +188,7 @@ describe("keeping wake segments for training", () => {
     await stream.drained("r1");
     stream.kws("r1", { seg: 9, score: 0.02, pass: false, best: 0.02 });
     trace.report("r1", "event/wake/stats", '{"opens":1,"shut":2,"rms_max":180}');
+    await trace.drained();
     const lines = NodeFS.readFileSync(file, "utf8")
       .trim()
       .split("\n")
@@ -190,6 +198,7 @@ describe("keeping wake segments for training", () => {
     expect(lines[1]).toMatchObject({ k: "kws", seg: 9, best: 0.02 });
     expect(lines[2]).toMatchObject({ k: "event/wake/stats", opens: 1, shut: 2, rms_max: 180 });
     for (let i = 0; i < 40; i += 1) trace.report("r1", "voice/wake/end", `{"seg":${i},"gate":160}`);
+    await trace.drained();
     const both = NodeFS.statSync(file).size + NodeFS.statSync(`${file}.1`).size;
     expect(both).toBeLessThanOrEqual(4_000);
     expect(NodeFS.readFileSync(file, "utf8")).toContain('"seg":39');

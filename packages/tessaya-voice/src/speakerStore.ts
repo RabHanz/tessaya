@@ -119,18 +119,24 @@ export const createSpeakerStore = (stateDir: string, input: VoiceInput = "mic") 
     return [];
   };
   // Only he and the people he saved can read it: a voice profile identifies a person.
+  // Read once per write: only this store writes the file, and every wake segment and turn asks for the list (27 Nov:
+  // a 3 KB read took ~17 ms on the voice host's busy disk, on the loop thread).
+  let cached: ReadonlyArray<SpeakerProfile> | null = null;
+  const list = () => (cached ??= read());
   const write = (profiles: ReadonlyArray<SpeakerProfile>) => {
     NodeFS.mkdirSync(NodePath.dirname(file), { recursive: true });
     NodeFS.writeFileSync(`${file}.tmp`, JSON.stringify(profiles.map(toStored), null, 2), {
       mode: 0o600,
     });
     NodeFS.renameSync(`${file}.tmp`, file);
+    // Read back on next use, so the list is always what a fresh read would load.
+    cached = null;
   };
   return {
-    list: read,
+    list,
     /** Adds or replaces the profile with this id. */
     save: (profile: SpeakerProfile) =>
-      write([...read().filter((p) => p.id !== profile.id), profile]),
-    remove: (id: string) => write(read().filter((p) => p.id !== id)),
+      write([...list().filter((p) => p.id !== profile.id), profile]),
+    remove: (id: string) => write(list().filter((p) => p.id !== id)),
   };
 };
