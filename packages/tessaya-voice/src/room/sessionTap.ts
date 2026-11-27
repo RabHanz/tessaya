@@ -41,17 +41,21 @@ export const createSessionTap = (opts: {
       if (total > opts.capBytes || Date.now() - f.at > opts.maxAgeMs) NodeFS.rmSync(f.path);
     }
   };
+  // Off the event loop, one write at a time so records keep their order: a sync append blocked the loop for up to
+  // 989 ms on a busy disk (27 Nov), and the tap writes between sessions too.
+  let writing: Promise<void> = Promise.resolve();
   const flush = () => {
     if (pending.length === 0 || file === "" || failed) return;
     const out = Buffer.concat(pending);
+    const to = file;
     pending = [];
-    try {
-      NodeFS.mkdirSync(opts.dir, { recursive: true, mode: 0o700 });
-      NodeFS.appendFileSync(file, out, { mode: 0o600 });
-    } catch (error) {
-      failed = true;
-      opts.log(`session tap off: ${String(error)}`);
-    }
+    writing = writing
+      .then(() => NodeFS.promises.mkdir(opts.dir, { recursive: true, mode: 0o700 }))
+      .then(() => NodeFS.promises.appendFile(to, out, { mode: 0o600 }))
+      .catch((error: unknown) => {
+        if (!failed) opts.log(`session tap off: ${String(error)}`);
+        failed = true;
+      });
   };
   const timer = setInterval(flush, 1_000);
   timer.unref();
@@ -77,6 +81,11 @@ export const createSessionTap = (opts: {
     pending.push(head, Buffer.from(bytes));
   };
   return {
+    /** Everything handed over so far, on disk. */
+    drained: () => {
+      flush();
+      return writing;
+    },
     up: (device: string, frame: Uint8Array, atMs: number) => add(TAP_UP, device, frame, 0, atMs),
     down: (device: string, frame: Uint8Array, sample: number, atMs: number) =>
       add(TAP_DOWN, device, frame, sample, atMs),
