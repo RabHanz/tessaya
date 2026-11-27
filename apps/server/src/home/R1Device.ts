@@ -599,7 +599,8 @@ const wordsKey = (text: string) =>
 /**
  * The loop's lines are what this room heard, whatever Voice ID made of each turn: a line he cut off, a line she left
  * unplaced, her reply as said. Her server's thread adds what came before them and what other vessels heard since.
- * No line in common (a restarted server, or words cleaned past matching): the longer, as before.
+ * No line in common (a restarted server, words cleaned past matching, or a turn whose end has not landed there yet):
+ * what other vessels heard, then every line this room heard. The room's lines are never dropped for a longer thread.
  */
 export const roomHistory = (
   kept: ReadonlyArray<Line & { readonly vessel: string }>,
@@ -615,7 +616,7 @@ export const roomHistory = (
       : kept.findLastIndex(
           (k) => k.role === "user" && wordsKey(k.content) === wordsKey(first.content),
         );
-  if (from < 0) return kept.length >= room.length ? kept : room;
+  if (from < 0) return [...kept.filter((k) => k.vessel !== vessel), ...room];
   // The loop's window can open on her reply to a line it no longer sends; her server's copy of it stays.
   const opening =
     from > 0
