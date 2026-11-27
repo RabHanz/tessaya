@@ -793,12 +793,18 @@ const main = async () => {
   // How late this loop's timers run, to split the R1 running dry between this loop and Wi-Fi.
   const lag = NodePerfHooks.monitorEventLoopDelay({ resolution: 10 });
   lag.enable();
+  // The garbage collector's longest pause in the same minute: a stall it does not explain is this loop's own work.
+  let gcMax = 0;
+  new NodePerfHooks.PerformanceObserver((list) => {
+    for (const e of list.getEntries()) gcMax = Math.max(gcMax, e.duration);
+  }).observe({ entryTypes: ["gc"] });
   setInterval(() => {
     if (lag.max / 1e6 >= 50)
       log(
-        `loop lag p99 ${Math.round(lag.percentile(99) / 1e6)} ms, max ${Math.round(lag.max / 1e6)} ms (1 min)`,
+        `loop lag p99 ${Math.round(lag.percentile(99) / 1e6)} ms, max ${Math.round(lag.max / 1e6)} ms, longest gc ${Math.round(gcMax)} ms, heap ${Math.round(process.memoryUsage().heapUsed / 1_048_576)} MB (1 min)`,
       );
     lag.reset();
+    gcMax = 0;
   }, 60_000).unref();
   // Always on, no audio: every segment and kws verdict, capped at R1_WAKE_TRACE_MB (default 50) in two files.
   const trace = createWakeTrace({
