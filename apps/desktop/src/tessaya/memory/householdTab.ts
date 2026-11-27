@@ -477,7 +477,8 @@ export const createHouseholdTab = (input: {
       if (NEEDS_THEM.has(op) && !(op === "rename" && args["id"] === members.find((m) => m.you)?.id))
         await confirm();
       const r = await input.call(op, args);
-      status = r.line;
+      // Their one-use export link, on the server's own address: shown once, to pass on.
+      status = r.exportLink === undefined ? r.line : `${r.line} ${r.exportLink}`;
       if (op === "stepUp" && r.status === "done") lease();
       if (r.code !== undefined && r.codeExpiresAt !== undefined)
         code = { name: name ?? "", code: r.code, until: r.codeExpiresAt };

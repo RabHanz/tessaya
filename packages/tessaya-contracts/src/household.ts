@@ -331,6 +331,8 @@ export const TessayaHouseholdCallResult = Schema.Struct({
       consented: Schema.Boolean,
     }),
   ),
+  /** With `remove` (not `now`): the path of their one-use export link, valid until their data goes. */
+  exportLink: Schema.optionalKey(Schema.String),
   /** With `exportMine`: their rows, table by table. */
   export: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),
