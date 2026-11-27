@@ -11,6 +11,7 @@ import {
   escalationDecision,
   escalationRulesLine,
   type EscalationAsk,
+  type EscalationDecision,
 } from "@t3tools/tessaya-shared/brainEscalation";
 import { firstClause, isNarration, withoutSelfIntro } from "@t3tools/tessaya-shared/narration";
 import {
@@ -153,7 +154,7 @@ export const speakableSentences = (
 };
 
 /** Hands a hard task to the deep role (BRAIN-DESIGN §2.2), on either route; the deep row says where Opus runs. */
-const ESCALATE: RoomTool = {
+export const ESCALATE: RoomTool = {
   name: "brain_escalate",
   description:
     'Hand this task to Opus, the deeper model, for a plan, code, research, a judgement call or a long request. It answers go (say only "Putting Opus on this." and stop), ask (offer it to him once, briefly, in your own words, and stop) or no (answer it yourself and do not mention Opus). Also call it with accept: true when he says yes to an open Opus offer, and with continuing: true when he goes on with a task Opus just answered. Never for his choice of model from now on ("talk to me on Opus", "use Haiku for voice"): that is the brainModels setting.',
@@ -173,6 +174,14 @@ const ESCALATE: RoomTool = {
     required: ["kind", "why", "rule"],
   },
 };
+
+/** What brain_escalate answers her, for the policy's decision. */
+export const escalationReply = (decided: EscalationDecision): string =>
+  decided.decision === "go"
+    ? 'go: Opus takes this. Say only "Putting Opus on this." and stop.'
+    : decided.decision === "ask"
+      ? `ask (${decided.why}): offer Opus to him once, briefly, in your own words, and stop.`
+      : `no (${decided.why}): answer it yourself and do not mention Opus.`;
 
 /** A session turn's tools. The vessel's warm sessions start with this same list, or the first turn finds none warm. */
 export const sessionTools = (shared: ReadonlyArray<RoomTool>, own: ReadonlyArray<RoomTool>) => [
@@ -470,10 +479,7 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
       for (const d of deepStarted.keys()) if (d !== day) deepStarted.delete(d);
       escalations.set(key, { ...held, offer: undefined });
       handOff = held.offer?.why ?? ask.why;
-      return {
-        text: 'go: Opus takes this. Say only "Putting Opus on this." and stop.',
-        isError: false,
-      };
+      return { text: escalationReply(decided), isError: false };
     }
     if (decided.decision === "ask") {
       escalations.set(key, { ...held, offer: { why: ask.why, at: now } });
@@ -487,15 +493,9 @@ export const brainTurn = Effect.fn("TessayaBrain.turn")(function* <E, R>(
           ...builtins,
         })
         .pipe(Effect.forkDetach);
-      return {
-        text: `ask (${decided.why}): offer Opus to him once, briefly, in your own words, and stop.`,
-        isError: false,
-      };
+      return { text: escalationReply(decided), isError: false };
     }
-    return {
-      text: `no (${decided.why}): answer it yourself and do not mention Opus.`,
-      isError: false,
-    };
+    return { text: escalationReply(decided), isError: false };
   });
   const toolTurn: ToolTurn = {
     system: vessel.system,

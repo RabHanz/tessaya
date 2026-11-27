@@ -79,7 +79,7 @@ export const escalationRulesLine = (settings: BrainEscalation): string | null =>
         )
         .join(
           "; ",
-        )}. A hard task no rule covers (a plan, research, a judgement call) still goes to brain_escalate, with rule 0.`;
+        )}. A hard task no rule covers (a plan, research, a judgement call) still goes to brain_escalate, with rule 0. Starting, steering or scheduling a job is never one: its worker writes the plan and the code, so call job_start or that job tool yourself.`;
 };
 
 /** A request this long qualifies on its own (§2.1's hard signals). */
