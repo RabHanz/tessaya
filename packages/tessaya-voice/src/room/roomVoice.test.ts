@@ -1055,6 +1055,29 @@ describe("answering only when he is talking to her", () => {
     ).toEqual([]);
   });
 
+  it("never bursts her downlink, however far ahead the lead would let it run (27 Nov taps)", async () => {
+    const t = setup(
+      {
+        recognise: said(["What time is it?"]),
+        speak: async function* () {
+          yield voice(16_000, 210, 3.1, 0);
+        },
+      },
+      { ...QUIET, leadMs: 60_000, prerollMs: 0, paceMs: 30 },
+    );
+    const sent: number[] = [];
+    const publish = t.deps.publish;
+    (t.deps as { publish: RoomDeps["publish"] }).publish = (topic, payload) => {
+      if (topic.endsWith("/voice/down")) sent.push(t.deps.now());
+      publish(topic, payload);
+    };
+    t.s2();
+    await t.feed(true, 20);
+    await t.feed(false, 60);
+    expect(sent.length).toBeGreaterThan(10);
+    expect(Math.min(...sent.slice(1).map((at, i) => at - sent[i]!))).toBeGreaterThanOrEqual(30);
+  });
+
   // Firmware 0.3.137 sends the mic while a Bluetooth reply plays: her echo then arrives after its buffer and the sink.
   it.each([0, 1_300])(
     "drops her echo by how it sounds, partly cancelled and with her persona's name in it (09:00 sweep, 13 Nov; Bluetooth buffer %i ms)",

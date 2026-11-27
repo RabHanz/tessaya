@@ -1514,7 +1514,8 @@ const main = async () => {
       acknowledge: ((v) => (v === "tone" || v === "off" ? v : "voice"))(process.env["R1_ACK"]),
       // A member's session opens on the persona they last talked to anywhere (R1_PERSONA_FOLLOWS=1; off by default).
       personaFollows: process.env["R1_PERSONA_FOLLOWS"] === "1",
-      aec: process.env["R1_AEC"] !== "0",
+      // Her downlink at most one frame per R1_PACE_MS (default 30, 0 for no pacing).
+      paceMs: Number(process.env["R1_PACE_MS"] ?? "30"),
     },
   );
   setInterval(() => room?.sweep(), 1_000);
