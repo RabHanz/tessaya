@@ -553,11 +553,7 @@ const isLoopbackAddress = (address: string) =>
   address.startsWith("127.") || address === "::1" || address === "::ffff:127.0.0.1";
 
 /** What an R1 logs in with: its device key, or the password it already had on a broker of its own (adopted). */
-export const deviceGrant = (
-  device: R1Device | null,
-  user: string,
-  pass: string,
-): HubGrant | null =>
+export const deviceGrant = (device: R1Device | null, user: string, pass: string): HubGrant | null =>
   device?.deviceId === user &&
   DEVICE_ID.test(user) &&
   (sameKey(pass, device.deviceKey) ||
