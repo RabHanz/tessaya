@@ -1,0 +1,22 @@
+{
+  "name": "@t3tools/tessaya-site",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/stage-engine.mjs && astro dev",
+    "build": "node scripts/stage-engine.mjs && astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@t3tools/tessaya-shared": "workspace:*",
+    "astro": "^7.3.5",
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "typescript": "~6.0.3"
+  }
+}
