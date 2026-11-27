@@ -137,7 +137,18 @@ interface ItemRow {
 export type UnsureResolution = {
   readonly person: string;
   readonly how: "verified-turn" | "device";
-} & ({ readonly vessel: string; readonly since: string } | { readonly turn: string });
+} & (
+  | {
+      readonly vessel: string;
+      readonly since: string;
+      /** What he asked her to keep ("remember its settings") is placed from this earlier time. */
+      readonly askedSince?: string;
+    }
+  | { readonly turn: string }
+);
+
+/** A note held from his "remember …" (TessayaTurn.remember), not one learnt from the conversation. */
+const askedToKeep = (u: MemoryUnsure) => u.turn.includes(":remember-");
 
 const unsureOf = (json: string | null | undefined): MemoryUnsure | null => {
   if (json == null) return null;
@@ -948,13 +959,14 @@ export const make = Effect.gen(function* () {
   ) {
     const rows = yield* sql<ItemRow>`
       SELECT * FROM fabric_memory_items
-      WHERE proposed = 1 AND unsure_json IS NOT NULL AND created_at >= ${"since" in input ? input.since : ""}
+      WHERE proposed = 1 AND unsure_json IS NOT NULL AND created_at >= ${"since" in input ? (input.askedSince ?? input.since) : ""}
     `.pipe(Effect.orDie);
     const placed: Array<string> = [];
     for (const r of rows) {
       const u = unsureOf(r.unsure_json);
       if (u === null || u.nearest !== input.person) continue;
       if ("turn" in input ? u.turn !== input.turn : u.vessel !== input.vessel) continue;
+      if ("since" in input && r.created_at < input.since && !askedToKeep(u)) continue;
       yield* sql`
         UPDATE fabric_memory_items SET proposed = 0, speaker = ${input.person}, unsure_json = NULL WHERE id = ${r.id}
       `.pipe(Effect.orDie);

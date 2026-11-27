@@ -1164,7 +1164,8 @@ layer("TessayaTurn", (it) => {
           { reply: "Noon." },
         );
         assert.isTrue((yield* pending())?.proposed);
-        // His own voice, verified, on the same vessel soon after: it is his.
+        // His own voice, verified, on the same vessel: what he asked to keep is his, 42 min on too (26 Nov 20:12-20:54).
+        yield* TestClock.adjust("42 minutes");
         yield* turn.end(
           { vessel: kitchen, text: "thanks", speaker: owner() },
           { reply: "Any time." },

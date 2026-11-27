@@ -1043,6 +1043,16 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     lastSays: [/\b(7|seven)\b/i],
   },
   {
+    id: "handoff-greets",
+    source:
+      'Tumble 2026-11-26 00:42 GMT+5: "Let me talk to Sebastian" got "Go ahead, I\'m listening.", as if nothing changed',
+    said: ["Let me talk to Sebastian."],
+    persona: "alter-ego",
+    noNameOpen: true,
+    // Live, on Sonnet: "Right here, I'm listening.", "Go ahead, I'm listening.", "Here, and listening."
+    lastNotSays: [/\blistening\b/i, /^\W*(?:right )?here\b/i],
+  },
+  {
     id: "api-cost",
     source: "Director 2026-11-13 (BRAIN-DESIGN §13.3): what the API cost, by voice",
     said: ["how much did the API cost this week?"],

@@ -532,7 +532,7 @@ export const boardLine = (
 };
 
 export const handOffLine = (from: string): string =>
-  `${from} handed this conversation to you: carry on from where it is, without a greeting or starting over.`;
+  `${from} handed this conversation to you: carry on from where it is, never starting over. When he only asked for you, greet him as yourself in a few words of your own, so he hears you have come (26 Nov: "Let me talk to Freya" got "I'm listening"); never your own name.`;
 
 /** A closed thread or conversation stays in the store this long past its idle boundary, then is swept. */
 const KEPT_CLOSED_MS = 24 * 60 * 60_000;
@@ -604,6 +604,8 @@ const causeOf = (turn: TurnEnvelope) =>
 
 /** A verified turn on the same vessel this soon after places what a voice near theirs said (the Director, 20 Nov). */
 const UNSURE_CONFIRM_MS = 30 * 60_000;
+/** What he asked her to keep waits longer: "remember its settings" at 20:12 met his next verified turn at 20:54 (26 Nov). */
+const ASKED_CONFIRM_MS = 12 * 60 * 60_000;
 
 /**
  * What an owner-labelled voice below the act bar teaches: held as "not sure who" (never merged, never lost) until his
@@ -2019,6 +2021,7 @@ export const make = Effect.gen(function* () {
         how: "verified-turn",
         vessel: turn.vessel.id,
         since: DateTime.formatIso(DateTime.makeUnsafe(now - UNSURE_CONFIRM_MS)),
+        askedSince: DateTime.formatIso(DateTime.makeUnsafe(now - ASKED_CONFIRM_MS)),
       });
     }
     const learn = learning.learn({

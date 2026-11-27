@@ -194,10 +194,13 @@ it("answers as the persona he called by name, and as Tessaya for her own name or
 });
 
 describe('who answers in the room (13 Nov audit: every reply opened with "Sebastian here.")', () => {
-  const context = async (switched: boolean): Promise<R1Context> => {
+  const context = async (
+    switched: boolean,
+    heard = "how many days in a week?",
+  ): Promise<R1Context> => {
     const { DEFAULT_OS_PACK } = await import("@t3tools/tessaya-shared/osPack");
     return {
-      heard: "how many days in a week?",
+      heard,
       privateBlock: "",
       history: [],
       devices: [],
@@ -220,6 +223,14 @@ describe('who answers in the room (13 Nov audit: every reply opened with "Sebast
     }
     expect(roomData(await context(true))).toMatch(/just called Sebastian/);
     expect(r1Data(await context(true)).join("\n")).toMatch(/just called Sebastian/);
+    // 26 Nov 00:42 GMT+5: asked for by name, he hears the persona arrive, not "I'm listening".
+    for (const asked of [
+      "Let me talk to Sebastian",
+      "I can talk to Sebastian.",
+      "Put Sebastian on",
+    ])
+      expect(roomData(await context(true, asked))).toMatch(/asked to talk to Sebastian.*Greet him/);
+    expect(roomData(await context(true, "Sebastian."))).toMatch(/name alone is no hand-off/);
   });
 
   it("reads a switch only from the loop's switched flag, so an older loop never switches", () => {

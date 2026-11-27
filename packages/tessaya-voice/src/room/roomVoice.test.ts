@@ -23,6 +23,7 @@ import {
   servedRoster,
   splitSentences,
   testModeAsked,
+  unheardLine,
   type RoomDeps,
   type TurnMetrics,
 } from "./roomVoice.ts";
@@ -423,22 +424,97 @@ describe("the room voice loop", () => {
       await t.feed(true, 20);
       await t.feed(false, 30);
     }
-    // Every turn of his is answered, never "a guest voice"; his soft turns stay unverified, so they grant nothing.
+    // Every turn of his is answered, never "a guest voice"; his soft turns carry his held session's verdict (26 Nov)
+    // until one is clearly another voice (0.06), which is answered unverified, so it grants nothing.
     expect(t.brainCalls.map((c) => c.tessaya.speaker?.kind)).toEqual([
       "owner",
-      "unverified",
-      "unverified",
+      "owner",
+      "owner",
       "unverified",
       "saved",
     ]);
     // Sara is answered as herself, and after her a low score is no longer presumed his.
     expect(logs.filter((l) => l.includes("a guest voice; not answered"))).toHaveLength(1);
     // His soft turns are kept apart as unverified (the far centroid's data); Sara's and the stranger's never are.
-    expect(kept).toEqual([
-      "owner:undefined",
-      "unverified:false",
-      "unverified:false",
-      "unverified:false",
+    expect(kept).toEqual(["owner:undefined", "owner:false", "owner:false", "unverified:false"]);
+  });
+
+  it("never lets a turn it drops as not a voice end his verified session (26 Nov, 20:13 GMT+5)", async () => {
+    // His 0.6 turn verified him; her echo (here a cough the recogniser heard as noise) scored 0.05 over 3 s and ended
+    // the session, so his short "Yes." at 0.49 was answered unverified and her lamp change was held as someone else's.
+    const turn = (kind: SpeakerIdentity["kind"], score: number, ms: number): SpeakerIdentity => ({
+      ...UNVERIFIED(0),
+      kind,
+      personId: kind === "owner" ? "owner" : null,
+      confidence: kind === "unverified" ? null : score,
+      verified: kind === "owner",
+      own: { score, ms },
+    });
+    const said = [
+      turn("owner", 0.6, 4_000),
+      turn("guest", 0.05, 3_000),
+      turn("unverified", 0.49, 900),
+    ];
+    // Her name, so her window never decides whether the last is said to her.
+    const texts = ["What about lilac?", "[cough]", "Tessaya, yes."];
+    let n = 0;
+    let r = 0;
+    const t = setup({
+      speaker: async () => said[n++]!,
+      recognise: () => {
+        const text = texts[r++] ?? "";
+        return {
+          feed: () => undefined,
+          finish: async () => text,
+          cancel: () => undefined,
+          words: () => ({ model: "m", words: text.split(" ").map((w) => ({ text: w, p: null })) }),
+        };
+      },
+    });
+    t.s2();
+    for (let i = 0; i < said.length; i += 1) {
+      await t.feed(true, 20);
+      await t.feed(false, 30);
+    }
+    expect(t.brainCalls.map((c) => c.messages.at(-1)!.content)).toEqual([
+      "What about lilac?",
+      "Tessaya, yes.",
+    ]);
+    expect(t.brainCalls.at(-1)!.tessaya.speaker).toMatchObject({
+      kind: "owner",
+      verified: true,
+      session: true,
+    });
+  });
+
+  it("shows her brain the line she left unanswered when his next turn asks about it (26 Nov, 21:26 GMT+5)", async () => {
+    // His request over her "Listening closely." scored as a guest and was dropped with a glance; then he asked.
+    const guest: SpeakerIdentity = { ...UNVERIFIED(0), kind: "guest", confidence: 0.3 };
+    const him: SpeakerIdentity = {
+      ...UNVERIFIED(0),
+      kind: "owner",
+      personId: "owner",
+      confidence: 0.6,
+      verified: true,
+    };
+    const said = [guest, him];
+    const texts = ["Turn off the bedside lamp.", "Did you hear what I said?"];
+    let n = 0;
+    let r = 0;
+    const t = setup({
+      speaker: async () => said[n++]!,
+      recognise: () => {
+        const text = texts[r++] ?? "";
+        return { feed: () => undefined, finish: async () => text, cancel: () => undefined };
+      },
+    });
+    t.s2();
+    for (let i = 0; i < said.length; i += 1) {
+      await t.feed(true, 20);
+      await t.feed(false, 30);
+    }
+    expect(t.brainCalls.map((c) => c.messages.map((m) => m.content))).toEqual([
+      [unheardLine("Turn off the bedside lamp."), "Did you hear what I said?"],
     ]);
   });
 

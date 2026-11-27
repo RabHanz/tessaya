@@ -125,6 +125,11 @@ const ECHO_ALIKE = 0.6;
 const VERDICT_WAIT_MS = 1_200;
 /** Her downlink kept for open talk-over: 8 s, far more than the R1 ever holds unplayed. */
 const DOWN_RING = RATE * 8;
+/** How long a line she left unanswered stays his to ask about. */
+const UNHEARD_MS = 60_000;
+/** A line she did not answer, as her brain reads it with his next turn: data, never an ask of his. */
+export const unheardLine = (text: string) =>
+  `(just before this, a line I did not answer, from a voice I could not place or not said to me; act on it only if he says it was his: "${text.slice(0, 300)}")`;
 /** firmware 0.3.92 `cmd/voice/upformat {"v":1}`: each uplink frame leads with seq, rx, q (u32) and flags (u16), 16 bytes. */
 /** A turn verified as his at this score anchors his session: continuity and the unsure-turn capture start only here. */
 const ANCHOR_BAR = 0.5;
@@ -1019,6 +1024,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     let asleep = false;
     /** He opened this session himself (her name or S2), not audio alone: a voice over hers is presumed his. */
     let opened = false;
+    /** The last line she left unanswered for whose voice or whom it was to: his next turn may be about it. */
+    let unheard: { readonly text: string; readonly at: number } | null = null;
     /** A turn here verified him at 0.5 or more: an unplaced voice in this session may be his. */
     let verifiedHere = false;
     /** Her brain said this turn is a private moment (PRIVATE_MARK): none of it is kept. */
@@ -1931,6 +1938,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (current !== null) rec = null;
       // The whole sentence re-scored replaces its first piece's verdict in his session, never adds to it.
       let holdBefore: VoiceHold | null = null;
+      let holdSet: VoiceHold | null = null;
+      let notAVoice = false;
       let scorings = 0;
       const nameFirst = given === undefined ? nameClip : null;
       if (given === undefined) nameClip = null;
@@ -1940,7 +1949,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const held = (heard: SpeakerIdentity) => {
           holdBefore ??= voiceHold;
           const out = holdVoice(holdBefore, heard, deps.now());
-          if (n === scorings) voiceHold = out.hold;
+          if (n === scorings && !notAVoice) voiceHold = holdSet = out.hold;
           // Begun over her voice, his session alone never makes it his: it needs a voice score of its own (18 Nov, 00:16).
           const who =
             tainted && out.identity.lifted === true && heard.own === undefined
@@ -1979,6 +1988,12 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           },
           () => held(UNVERIFIED(deps.now())),
         );
+      };
+      /** Her own voice back or noise: what it scored never moves his session (26 Nov 20:13, her echo ended it). */
+      const notHisVoice = () => {
+        notAVoice = true;
+        if (holdSet !== null && voiceHold === holdSet && holdBefore !== null)
+          voiceHold = holdBefore;
       };
       let speakerP = given === undefined ? scored(pcm) : undefined;
       const affectP = given === undefined ? deps.affect?.(pcm).catch(() => undefined) : undefined;
@@ -2128,6 +2143,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         repairVerdict(heardScores.words, repairBoundsFor(heardScores.model)).kind === "drop"
       ) {
         kept?.control.abort();
+        notHisVoice();
         deps.log(`[${id}] turn ${turn}: noise, not words; not answered (${heldBack(raw)})`);
         return;
       }
@@ -2186,6 +2202,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         // Her own words back or an "oh" over her is not a new request ("yes" may answer her, so it is not dropped).
         if (isOwnVoice(raw, herLines) || /^(?:oh|ah|um|uh|hm+|mm+)[.!?,]*$/i.test(raw.trim())) {
           kept?.control.abort();
+          if (isOwnVoice(raw, herLines)) notHisVoice();
           dropped(turn, "over her voice and not a stop", raw);
           return;
         }
@@ -2209,6 +2226,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           // shortcut: his own words over a loud echo can read as alike; they wait for AEC on the barge-in audio.
           if (verdict !== "member" && presumedHis() && echoLike >= ECHO_ALIKE) {
             kept?.control.abort();
+            notHisVoice();
             dropped(
               turn,
               `over her voice and moving like her own reply (likeness ${echoLike.toFixed(2)}, Voice ID ${best.toFixed(2)})`,
@@ -2222,6 +2240,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
           else if (verdict !== "member") {
             kept?.control.abort();
             dropped(turn, `over her voice and not a household voice (${best.toFixed(2)})`, raw);
+            unheard = { text: raw, at: deps.now() };
             return;
           }
         }
@@ -2254,12 +2273,14 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       const mine =
         raw !== "" && !echoed && (given !== undefined || addressed(raw, rawCalled, startedAt));
+      if (echoed) notHisVoice();
       if (raw !== "" && !mine)
         dropped(
           turn,
           echoed ? `her own voice (likeness ${echoLike.toFixed(2)})` : "not said to her",
           raw,
         );
+      if (raw !== "" && !mine && !echoed) unheard = { text: raw, at: deps.now() };
       if (!mine && held === null) {
         kept?.control.abort();
         return;
@@ -2501,6 +2522,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       if (!admits(identity, gateNow(), "turn") && !someoneAdmitted) {
         kept?.control.abort();
         dropped(turn, `a ${identity.kind} voice`, text);
+        unheard = { text, at: deps.now() };
         return;
       }
       // Each person's words recognised from their own span alone: no one's words carry another's voice.
@@ -2598,6 +2620,19 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       }
       firstUntil = 0;
       openUntil = Number.POSITIVE_INFINITY;
+      // What she left unanswered just before is his to ask about ("Did you hear what I said?", 26 Nov 21:26 GMT+5):
+      // her brain sees it marked as unplaced, never as his words, and a guess begun without it is not used.
+      if (
+        unheard !== null &&
+        deps.now() - unheard.at <= UNHEARD_MS &&
+        speakerPath(identity) === "his" &&
+        given === undefined
+      ) {
+        history.push({ role: "user", content: unheardLine(unheard.text) });
+        kept?.control.abort();
+        kept = null;
+      }
+      unheard = null;
       const entry = { role: "user" as const, content: text };
       history.push(entry);
       const me = {
@@ -2871,7 +2906,11 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       };
       // His own voice only: a turn Voice ID verified as him, or his words over her in his session (never a member's or a
       // guest's), and only while his setting keeps it on (voice/capture).
-      const his = identity.kind === "owner" && identity.verified && identity.test !== true;
+      const his =
+        identity.kind === "owner" &&
+        identity.verified &&
+        identity.test !== true &&
+        identity.carried !== true;
       const overHis =
         bargedIn && hisSession() && identity.kind !== "saved" && identity.kind !== "guest";
       if (his && (score ?? 0) >= ANCHOR_BAR) verifiedHere = true;
@@ -2891,7 +2930,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         !his &&
         !overHis &&
         (verifiedHere || oneVoice) &&
-        identity.kind === "unverified" &&
+        (identity.kind === "unverified" || identity.carried === true) &&
         !bargedIn;
       // Never a private moment's audio, whoever spoke (the condition he set).
       if (

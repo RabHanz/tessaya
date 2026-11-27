@@ -243,6 +243,8 @@ export interface SpeakerIdentity {
   };
   /** Its cosine to his own pieces earlier in this verified session (same room, same mic), whenever it has some. */
   readonly same?: number;
+  /** His held session's verdict on a turn not clearly his: never teaches or keeps his voice. */
+  readonly carried?: true;
   /** His by his session's evidence, not this turn's own score: verified only as his held session (`session`). */
   readonly lifted?: true;
   /** The replay check on the room mic: "heard" a loudspeaker (a guest), or "unchecked" (it could not run: never verified). */
@@ -308,8 +310,8 @@ export const identityOf = (
 /**
  * His voice across one session. Three owner turns averaging the "act" cut-off, or one verified, hold him for `HOLD_MS`.
  * A short or weak turn is lifted when its own score clears `SESSION_FLOOR`, sits near his last two pieces, and averaged
- * with them clears steer; under the floor is another voice and ends the session. A lifted turn is verified only by a
- * held session (`session`).
+ * with them clears steer. While he is held, any turn not clearly another voice (`CHANGED_VOICE`) carries the session's
+ * verdict; a clearly other voice ends it. A lifted turn is verified only by a held session (`session`).
  */
 export interface VoiceHold {
   readonly verifiedAt: number | null;
@@ -322,7 +324,7 @@ export interface VoiceHold {
 export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [], evidence: [], anchor: [] };
 export const HOLD_MS = 5 * 60_000;
 /**
- * CAM++: under this a turn is not his, so it is a speaker change. His live short turns on Tumble sit at 0.36-0.38
+ * CAM++: under this a turn's score is no evidence for his session. His live short turns on Tumble sit at 0.36-0.38
  * (16 Nov 12:35Z); LibriSpeech 1-2 s p99.5 is 0.35.
  */
 export const SESSION_FLOOR = 0.35;
@@ -434,9 +436,26 @@ export const holdVoice = (
       },
     };
   const long = (identity.own?.ms ?? CHANGE_MIN_MS) >= CHANGE_MIN_MS;
-  if (long && (same === null ? own < SESSION_FLOOR : same < CHANGED_VOICE))
-    return { hold: NO_HOLD, identity };
-  // Not clearly him, not clearly another voice: his session waits for the next turn.
+  // Only a clearly other voice ends his held session: his own Tumble turns scored 0.23-0.31 to his profile (26 Nov).
+  const changed =
+    same !== null ? same < CHANGED_VOICE : own < (held ? CHANGED_VOICE : SESSION_FLOOR);
+  if (long && changed) return { hold: NO_HOLD, identity };
+  // Not clearly another voice: his held session's one verdict carries it (26 Nov, Director).
+  if (held && identity.replay === undefined)
+    return {
+      hold: { ...hold, evidence },
+      identity: {
+        ...identity,
+        kind: "owner",
+        personId: "owner",
+        name: null,
+        confidence: own,
+        ...sessionVerdict(true),
+        lifted: true,
+        carried: true,
+        ...(same === null ? {} : { same }),
+      },
+    };
   if (same !== null) return { hold: { ...hold, evidence }, identity: { ...identity, same } };
   return identity.kind === "guest"
     ? { hold: { ...NO_HOLD, evidence }, identity }
@@ -456,6 +475,7 @@ export const teaches = (
     identity.kind === "guest" ||
     identity.kind === "unverified" ||
     identity.test === true ||
+    identity.carried === true ||
     identity.replay !== undefined ||
     identity.own?.vector === undefined ||
     identity.own.ms < TEACH_MIN_MS
