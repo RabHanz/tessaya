@@ -80,7 +80,7 @@ const setup = (
               ...row("thread:env-laptop:t-print", "V-Minion printer", "t-print"),
               box: "Laptop",
               thread: { environmentId: "env-laptop", threadId: "t-print" },
-              access: "approval-required",
+              access: "approval-required" as const,
             },
           ].map((r): TessayaSessionSummary => ({ ...r, state: states.get(r.key) ?? r.state })),
           unreachable: [],
