@@ -1,4 +1,4 @@
-import { act, useEffect, useSyncExternalStore } from "react";
+import { act, createContext, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vite-plus/test";
 
@@ -6,8 +6,14 @@ const harness = vi.hoisted(() => ({
   session: null as import("./voiceInputSession").VoiceInputSession | null,
 }));
 
+// As in react-navigation: the context is empty, and useFocusEffect throws, with no navigator above.
 vi.mock("@react-navigation/native", () => ({
-  useFocusEffect: (callback: () => void | (() => void)) => useEffect(callback, [callback]),
+  NavigationContext: createContext(undefined),
+  useFocusEffect: () => {
+    throw new Error(
+      "Couldn't find a navigation object. Is your component inside NavigationContainer?",
+    );
+  },
 }));
 vi.mock("./VoiceInputProvider", () => ({
   useGlobalVoiceInput: () => {
@@ -64,6 +70,7 @@ function setup() {
   };
 }
 
+// Rendered with no navigator above it, as the Sleeve draws Talk over the whole app.
 // GlobalVoiceInputControl hides its dictation pill while the recording owner is focused, so a
 // composer that stays mounted under display: none (e.g. behind an agent question) must unfocus.
 it("unfocuses a hidden composer so the global dictation controls can show", () => {

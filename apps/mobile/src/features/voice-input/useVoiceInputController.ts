@@ -1,5 +1,5 @@
-import { useFocusEffect } from "@react-navigation/native";
-import { useCallback, useEffect, useRef } from "react";
+import { NavigationContext } from "@react-navigation/native";
+import { useCallback, useContext, useEffect, useRef, useSyncExternalStore } from "react";
 import {
   voiceInputBlocksSubmission,
   type VoiceInputState,
@@ -35,14 +35,29 @@ export function useVoiceInputController(input: {
     };
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      const ownerKey = input.ownerKey;
-      if (!ownerKey || input.hidden) return;
-      session.setOwnerFocused(ownerKey, true);
-      return () => session.setOwnerFocused(ownerKey, false);
-    }, [input.hidden, input.ownerKey, session]),
+  // No navigator above the Sleeve, which draws Talk over the whole app: useFocusEffect would throw there.
+  const navigation = useContext(NavigationContext);
+  const screenFocused = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) => {
+        const offFocus = navigation?.addListener("focus", listener);
+        const offBlur = navigation?.addListener("blur", listener);
+        return () => {
+          offFocus?.();
+          offBlur?.();
+        };
+      },
+      [navigation],
+    ),
+    () => navigation?.isFocused() ?? true,
   );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the shared voice session which composer is on screen
+  useEffect(() => {
+    const ownerKey = input.ownerKey;
+    if (!ownerKey || input.hidden || !screenFocused) return;
+    session.setOwnerFocused(ownerKey, true);
+    return () => session.setOwnerFocused(ownerKey, false);
+  }, [input.hidden, input.ownerKey, screenFocused, session]);
 
   const start = useCallback(() => {
     const captured = latestInput.current;
