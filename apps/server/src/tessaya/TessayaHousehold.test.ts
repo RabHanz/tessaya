@@ -155,8 +155,14 @@ describe("TessayaHousehold", () => {
         );
         yield* voice(ids["Sara"]!)(call({ op: "consent", yes: true }));
         assert.isTrue((yield* voice(ids["Sara"]!)(call({ op: "whoAmI" }))).you!.consented);
+        // Memory keeps what is about her only now (the gate reads this); the owner never needs one.
+        const h = yield* TessayaHousehold;
+        assert.isTrue(yield* h.consented(ids["Sara"]!));
+        assert.isTrue(yield* h.consented("owner"));
+        assert.isFalse(yield* h.consented(ids["Adam"]!));
         yield* voice(ids["Sara"]!)(call({ op: "consent", yes: false }));
         assert.isFalse((yield* voice(ids["Sara"]!)(call({ op: "whoAmI" }))).you!.consented);
+        assert.isFalse(yield* h.consented(ids["Sara"]!));
         // Ali's pass ends after its last day (the hourly sweep), and all of it with it.
         yield* TestClock.adjust("3 days");
         assert.deepStrictEqual(

@@ -40,6 +40,7 @@ import {
   type MemoryUnsure,
 } from "@t3tools/tessaya-shared/memory";
 import { DEFAULT_OS_PACK, mayRecall } from "@t3tools/tessaya-shared/osPack";
+import { OWNER_PERSON_ID } from "@t3tools/tessaya-shared/privateMemory";
 import { findFact } from "@t3tools/tessaya-shared/understanding";
 import * as NodePath from "node:path";
 import * as Clock from "effect/Clock";
@@ -184,6 +185,25 @@ const fromRow = (row: ItemRow): MemoryItem => ({
 });
 
 const refuse = (reason: string) => new BatonMemoryRefusedError({ reason });
+
+/**
+ * Whether she may keep what is about this person (identity I-4): the owner always; another member only after their
+ * own yes ("who am I?", then "I agree"). The household answers on the brain; without one, the old rule stands.
+ */
+export class MemberConsent extends Context.Service<
+  MemberConsent,
+  { readonly mayKeep: (person: string) => Effect.Effect<boolean> }
+>()("t3/tessaya/TessayaMemoryService/MemberConsent") {}
+
+/** Whether a draft about `speaker` may be kept: nobody named, the owner, or a member who said yes. */
+export const consentRefusal = Effect.fn("BatonMemoryService.consentRefusal")(function* (
+  speaker: string | null | undefined,
+) {
+  if (speaker == null || speaker === OWNER_PERSON_ID) return null;
+  const consent = yield* Effect.serviceOption(MemberConsent);
+  if (Option.isNone(consent) || (yield* consent.value.mayKeep(speaker))) return null;
+  return 'They haven\'t said yes to what I keep about them yet: they can ask me "who am I?" and agree.';
+});
 const Aliases = Schema.fromJsonString(Schema.Array(Schema.String));
 const decodeAliases = Schema.decodeUnknownOption(Aliases);
 const encodeAliases = Schema.encodeSync(Aliases);
@@ -541,7 +561,9 @@ export const make = Effect.gen(function* () {
   });
 
   const add = Effect.fn("BatonMemoryService.add")(function* (draft: MemoryDraft) {
-    const reason = refuseToStore(draft.text, privateTexts(), draft.kind);
+    const reason =
+      refuseToStore(draft.text, privateTexts(), draft.kind) ??
+      (yield* consentRefusal(draft.speaker));
     if (reason !== null) return yield* refuse(reason);
     const text = wordingFor(draft.kind, draft.text);
     const scope = draft.scope ?? "global";
