@@ -590,6 +590,47 @@ const personaLine = (
 
 const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+type Line = { readonly role: string; readonly content: string };
+const wordsKey = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 100);
+/**
+ * The loop's lines are what this room heard, whatever Voice ID made of each turn: a line he cut off, a line she left
+ * unplaced, her reply as said. Her server's thread adds what came before them and what other vessels heard since.
+ * No line in common (a restarted server, or words cleaned past matching): the longer, as before.
+ */
+export const roomHistory = (
+  kept: ReadonlyArray<Line & { readonly vessel: string }>,
+  room: ReadonlyArray<Line>,
+  vessel: string,
+): ReadonlyArray<Line> => {
+  const said = new Set(kept.filter((k) => k.role === "user").map((k) => wordsKey(k.content)));
+  const first = room.find((r) => r.role === "user" && said.has(wordsKey(r.content)));
+  // Its latest copy: a short line ("Yes.") said earlier too must not drop the lines between.
+  const from =
+    first === undefined
+      ? -1
+      : kept.findLastIndex(
+          (k) => k.role === "user" && wordsKey(k.content) === wordsKey(first.content),
+        );
+  if (from < 0) return kept.length >= room.length ? kept : room;
+  // The loop's window can open on her reply to a line it no longer sends; her server's copy of it stays.
+  const opening =
+    from > 0
+      ? Math.max(
+          0,
+          room.findIndex((r) => r.role === "user"),
+        )
+      : 0;
+  return [
+    ...kept.slice(0, from),
+    ...kept.slice(from).filter((k) => k.vessel !== vessel),
+    ...room.slice(opening),
+  ];
+};
+
 /** Her past replies without an opening "Sebastian here." for any pack name, so the history never teaches it. */
 export const withoutSelfIntros = (
   history: ReadonlyArray<{ readonly role: string; readonly content: string }>,
@@ -1292,10 +1333,12 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
         preferences: {},
         who: { member: null, name: null },
       }
-    : yield* pipeline.value
-        .begin(turn)
-        // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
-        .pipe(Effect.provideService(MemoryViewer, "desktop"));
+    : yield* (
+        pipeline.value
+          .begin(turn)
+          // Tessaya's own surface: the persona's walls hold as on the desktop; never his own view.
+          .pipe(Effect.provideService(MemoryViewer, "desktop"))
+      );
   const many = turnsOf(turn, input.voice);
   const people =
     many.length < 2 || Option.isNone(pipeline)
@@ -1313,12 +1356,9 @@ export const r1Gather = Effect.fn("R1Device.gather")(function* (
     privateBlock: acts || people.length > 0 ? "" : begun.privateBlock,
     // The acts form has no tool to open his documents or keep a correction, so it goes without.
     ...(acts || people.length > 0 || !begun.owner ? {} : { owner: begun.owner }),
-    // The conversation he is having with her on any vessel; the loop's own when the pipeline has none yet.
-    // The longer: a brain that restarted or moved holds less than the loop that kept talking.
+    // The conversation he is having with her on any vessel, with every line this room heard (roomHistory).
     history: withoutSelfIntros(
-      begun.conversation.turns.length >= input.history.length
-        ? begun.conversation.turns
-        : input.history,
+      roomHistory(begun.conversation.turns, input.history, turn.vessel.id),
       pack.personas.map((p) => p.name),
     ),
     devices: status.state === "connected" ? devices : `Home is ${status.state}: ${status.line}`,
