@@ -19,6 +19,8 @@ export function UnlockSheet(props: {
   readonly detail: string;
   /** What checks his PIN; her brain's household step-up unless the caller has its own (the private layer's). */
   readonly check?: StepUpCall;
+  /** Another home's PIN: never offered or kept for Face ID, which holds his own home's. */
+  readonly pinOnly?: boolean;
   readonly onUnlocked: () => void;
   readonly onCancel: () => void;
 }) {
@@ -31,8 +33,8 @@ export function UnlockSheet(props: {
   const [busy, setBusy] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads from the keychain whether Face ID can stand in for his PIN
   useEffect(() => {
-    void biometricSaved().then(setSaved);
-  }, []);
+    if (props.pinOnly !== true) void biometricSaved().then(setSaved);
+  }, [props.pinOnly]);
   const settle = (r: { readonly ok: boolean; readonly line: string }) => {
     setBusy(false);
     if (r.ok) props.onUnlocked();
@@ -46,7 +48,7 @@ export function UnlockSheet(props: {
   const withPin = () => {
     if (call === null || busy || pin.trim() === "") return;
     setBusy(true);
-    void stepUpWithPin(call, pin.trim(), biometricOffered()).then((r) => {
+    void stepUpWithPin(call, pin.trim(), props.pinOnly !== true && biometricOffered()).then((r) => {
       setPin("");
       settle(r);
     });

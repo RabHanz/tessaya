@@ -83,6 +83,20 @@ export const TessayaVoiceProfile = Schema.Struct({
 });
 export type TessayaVoiceProfile = typeof TessayaVoiceProfile.Type;
 
+/**
+ * "Link my profiles" (identity I-8): her own statement, made from a device signed in to both homes, that she is
+ * `member` in the home she calls `home`. It only lets her copy her voice and preferences between them; memories never
+ * cross, and the homes never talk to each other.
+ */
+export const TessayaProfileLink = Schema.Struct({
+  home: Schema.String.check(Schema.isMaxLength(60)),
+  member: Schema.String.check(Schema.isMaxLength(140)),
+  /** The other home's environment, as her device knows it. */
+  environmentId: Schema.NullOr(Schema.String.check(Schema.isMaxLength(140))),
+  linkedAt: Schema.String,
+});
+export type TessayaProfileLink = typeof TessayaProfileLink.Type;
+
 const Ref = { id: TrimmedNonEmptyString };
 const VesselId = Schema.String.check(Schema.isMaxLength(128));
 /** One clip's speaker embedding (base64 float32) from a vessel's Voice ID model. */
@@ -122,6 +136,16 @@ export const TessayaHouseholdCallInput = Schema.Union([
   op("whoAmI", {}),
   /** The asker's own yes to what she keeps about them (after `whoAmI`), or (false) taking it back. */
   op("consent", { yes: Schema.Boolean }),
+  /** The asker's own link to their profile in another home, from their own device at A3; again for the same home replaces it. */
+  op("linkProfile", {
+    home: TessayaProfileLink.fields.home,
+    member: TessayaProfileLink.fields.member,
+    environmentId: TessayaProfileLink.fields.environmentId,
+  }),
+  /** The way out: that link ends here (her device ends it in the other home too). */
+  op("unlinkProfile", { home: Schema.String.check(Schema.isMaxLength(60)) }),
+  /** The asker's own voice profiles, to copy into a home they linked, from their own device at A3. */
+  op("myVoice", {}),
   /** Everything the home keeps about the member asking, from their own device at A3 (their private store exports apart). */
   op("exportMine", {}),
   /**
@@ -334,6 +358,8 @@ export const TessayaHouseholdCallResult = Schema.Struct({
       kept: Schema.Array(Schema.String),
       seenBy: Schema.String,
       consented: Schema.Boolean,
+      /** The other homes they linked their profile to. */
+      links: Schema.optionalKey(Schema.Array(TessayaProfileLink)),
     }),
   ),
   /** With `remove` (not `now`): the path of their one-use export link, valid until their data goes. */

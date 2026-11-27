@@ -34,8 +34,8 @@ it.effect(
       const sql = yield* SqlClient.SqlClient;
       const at = "2026-11-27T00:00:00.000Z";
       // The owner's row is the migration's own.
-      yield* sql`INSERT INTO tessaya_household_members (id, name, role, created_at)
-        VALUES ('maya', 'Maya', 'adult', ${at})`;
+      yield* sql`INSERT INTO tessaya_household_members (id, name, role, created_at, profile_links_json)
+        VALUES ('maya', 'Maya', 'adult', ${at}, ${JSON.stringify([{ home: "Mum's", member: "m-1" }])})`;
       for (const id of ["maya", "owner"]) {
         yield* sql`INSERT INTO tessaya_comms_consent (target, caller, state, set_by, since)
           VALUES (${`person:${id}`}, 'kitchen', 'allow', ${id}, ${at})`;
@@ -50,12 +50,16 @@ it.effect(
       expect(mine["tessaya_comms_consent"]?.map((r) => r["target"])).toEqual(["person:maya"]);
       expect(mine["tessaya_room_transcript"]).toHaveLength(1);
       expect(mine["fabric_devices"]).toHaveLength(1);
+      expect(mine["tessaya_household_members"]?.[0]?.["profile_links_json"]).toContain("Mum's");
 
       // Removal: what reaches her ends at once; her data waits for the window.
       yield* releaseOf(sql, "maya");
       expect((yield* exportOf(sql, "maya"))["tessaya_comms_consent"]).toEqual([]);
       expect((yield* exportOf(sql, "maya"))["fabric_devices"]).toEqual([]);
       expect((yield* exportOf(sql, "maya"))["tessaya_room_transcript"]).toHaveLength(1);
+      expect(
+        (yield* exportOf(sql, "maya"))["tessaya_household_members"]?.[0]?.["profile_links_json"],
+      ).toBeNull();
 
       yield* destroyOf(sql, "maya");
       expect(Object.values(yield* exportOf(sql, "maya")).every((rows) => rows.length === 0)).toBe(

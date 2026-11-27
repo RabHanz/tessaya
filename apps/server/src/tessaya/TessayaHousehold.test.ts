@@ -805,6 +805,92 @@ describe("one voice profile per member, on the home", () => {
       );
     }));
 
+  test("link my profiles: hers alone at A3, shown in who am I and her export, ended by unlink or her removal", () =>
+    Effect.gen(function* () {
+      const h = yield* TessayaHousehold;
+      yield* as(owner)(h.callHere({ op: "invite", name: "Sara", role: "adult" }));
+      const sara = (yield* as(owner)(h.callHere({ op: "list" }))).members![1]!.id;
+      const hers = { member: sara, assurance: 3, via: "her phone" } as const;
+      const link = {
+        op: "linkProfile",
+        home: "Mum's",
+        member: "m-7",
+        environmentId: "env-mum",
+      } as const;
+      // By voice (A2), by an agent, or tainted: told to use her phone; nothing kept.
+      const byVoice = yield* as({ ...hers, assurance: 2 })(h.callHere(link));
+      assert.strictEqual(byVoice.status, "refused");
+      assert.include(byVoice.line, "on your phone");
+      assert.strictEqual(
+        (yield* as({ ...hers, service: true })(h.callHere(link))).status,
+        "refused",
+      );
+      assert.strictEqual(
+        (yield* as({ ...hers, tainted: true })(h.callHere(link))).status,
+        "refused",
+      );
+      assert.strictEqual(
+        (yield* as({ ...hers, assurance: 2 })(h.callHere({ op: "myVoice" }))).status,
+        "refused",
+      );
+      // A home with no links is untouched.
+      const before = (yield* as(hers)(h.callHere({ op: "whoAmI" }))).you!;
+      assert.deepStrictEqual(before.links, []);
+
+      assert.strictEqual((yield* as(hers)(h.callHere(link))).status, "done");
+      // Linking the same home again replaces it.
+      yield* as(hers)(h.callHere({ ...link, member: "m-8" }));
+      const who = yield* as({ ...hers, assurance: 2 })(h.callHere({ op: "whoAmI" }));
+      assert.deepStrictEqual(
+        who.you!.links!.map((l) => [l.home, l.member, l.environmentId]),
+        [["Mum's", "m-8", "env-mum"]],
+      );
+      assert.include(who.line, "linked to Mum's");
+      // Only hers: the owner's own who-am-I has none, and her export carries it.
+      assert.deepStrictEqual((yield* as(owner)(h.callHere({ op: "whoAmI" }))).you!.links, []);
+      const exported = (yield* as(hers)(h.callHere({ op: "exportMine" }))).export!;
+      assert.include(
+        String(exported["tessaya_household_members"]![0]!["profile_links_json"]),
+        "m-8",
+      );
+
+      // Her own voice to copy: hers alone.
+      yield* as(owner)(h.callHere({ op: "saveVoice", profile: voice("owner", 4), fresh: true }));
+      yield* as(hers)(h.callHere({ op: "saveVoice", profile: voice(sara, 5), fresh: true }));
+      assert.deepStrictEqual(
+        (yield* as(hers)(h.callHere({ op: "myVoice" }))).voices!.map((v) => v.id),
+        [sara],
+      );
+
+      // The way out.
+      assert.strictEqual(
+        (yield* as(hers)(h.callHere({ op: "unlinkProfile", home: "mum's" }))).status,
+        "done",
+      );
+      assert.deepStrictEqual((yield* as(hers)(h.callHere({ op: "whoAmI" }))).you!.links, []);
+      // Removal ends it at once, though her data waits for her export.
+      yield* as(hers)(h.callHere(link));
+      yield* as(owner)(h.callHere({ op: "remove", id: sara }));
+      yield* as(owner)(h.callHere({ op: "restore", id: sara }));
+      assert.deepStrictEqual((yield* as(hers)(h.callHere({ op: "whoAmI" }))).you!.links, []);
+    }).pipe(
+      Effect.provide(
+        stackWith(null).pipe(
+          Layer.provide(
+            Layer.succeed(
+              VoiceForgets,
+              VoiceForgets.of({
+                forget: () => Effect.void,
+                setProfiles: () => Effect.void,
+                current: Effect.succeed([]),
+                listen: () => Effect.void,
+              }),
+            ),
+          ),
+        ),
+      ),
+    ));
+
   test("a spelled name is kept as spelled; each member edits their own preferences, the owner anyone's", () =>
     run(
       null,

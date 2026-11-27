@@ -309,6 +309,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
     {
       title: gt("This phone"),
       rows: [
+        page("SettingsProfileLinks", "link", gt("Link my profiles")),
         {
           id: "sleeve",
           icon: "iphone",

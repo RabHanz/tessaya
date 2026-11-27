@@ -108,6 +108,7 @@ import { SettingsTeamRouteScreen } from "./features/settings/SettingsTeamRouteSc
 import { SettingsCastRouteScreen } from "./features/settings/SettingsCastRouteScreen";
 import { SettingsPersonasRouteScreen } from "./features/settings/SettingsPersonasRouteScreen";
 import { SettingsForgottenRouteScreen } from "./features/settings/SettingsForgottenRouteScreen";
+import { SettingsProfileLinksRouteScreen } from "./features/settings/SettingsProfileLinksRouteScreen";
 import { SettingsUpcomingRouteScreen } from "./features/settings/SettingsUpcomingRouteScreen";
 import { SettingsPulseRouteScreen } from "./features/settings/SettingsPulseRouteScreen";
 import { SettingsHealthRouteScreen } from "./features/settings/SettingsHealthRouteScreen";
@@ -235,6 +236,7 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   SettingsTeam: msg("Team"),
   SettingsPersonas: msg("Personas"),
   SettingsForgotten: msg("Recently forgotten"),
+  SettingsProfileLinks: msg("Link my profiles"),
   SettingsUpcoming: msg("Coming up"),
   SettingsCast: msg("Cast"),
   SettingsPulse: msg("Pulse"),
@@ -339,6 +341,11 @@ const SETTINGS_SCREENS = {
   SettingsForgotten: createNativeStackScreen({
     screen: SettingsForgottenRouteScreen,
     linking: "settings/forgotten",
+    options: settingsPage(),
+  }),
+  SettingsProfileLinks: createNativeStackScreen({
+    screen: SettingsProfileLinksRouteScreen,
+    linking: "settings/profile-links",
     options: settingsPage(),
   }),
   SettingsUpcoming: createNativeStackScreen({

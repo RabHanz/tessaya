@@ -1,8 +1,8 @@
 diff --git a/apps/mobile/src/Stack.tsx b/apps/mobile/src/Stack.tsx
-index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2e006ad16 100644
+index 38eba55e812ed3b9463183acfb7c81e1181a69a0..4c5f66c737eb5a0e23161b8826ff878ff05da059 100644
 --- a/apps/mobile/src/Stack.tsx
 +++ b/apps/mobile/src/Stack.tsx
-@@ -102,6 +102,19 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
+@@ -102,6 +102,20 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
  import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
  import { SettingsDiagnosticsRouteScreen } from "./features/diagnostics/SettingsDiagnosticsRouteScreen";
  import { SettingsProviderAccountsRouteScreen } from "./features/settings/SettingsProviderAccountsRouteScreen";
@@ -12,6 +12,7 @@ index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2
 +import { SettingsCastRouteScreen } from "./features/settings/SettingsCastRouteScreen";
 +import { SettingsPersonasRouteScreen } from "./features/settings/SettingsPersonasRouteScreen";
 +import { SettingsForgottenRouteScreen } from "./features/settings/SettingsForgottenRouteScreen";
++import { SettingsProfileLinksRouteScreen } from "./features/settings/SettingsProfileLinksRouteScreen";
 +import { SettingsUpcomingRouteScreen } from "./features/settings/SettingsUpcomingRouteScreen";
 +import { SettingsPulseRouteScreen } from "./features/settings/SettingsPulseRouteScreen";
 +import { SettingsHealthRouteScreen } from "./features/settings/SettingsHealthRouteScreen";
@@ -22,7 +23,7 @@ index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2
  import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
  import { SettingsEnvironmentDetailRouteScreen } from "./features/settings/SettingsEnvironmentDetailRouteScreen";
  import {
-@@ -217,6 +230,19 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
+@@ -217,6 +231,20 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
    ConnectOnboarding: msg("Set up {product}", { product: "T3 Connect" }),
    Connections: msg("Environments"),
    ConnectionsNew: msg("Add Environment"),
@@ -31,6 +32,7 @@ index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2
 +  SettingsTeam: msg("Team"),
 +  SettingsPersonas: msg("Personas"),
 +  SettingsForgotten: msg("Recently forgotten"),
++  SettingsProfileLinks: msg("Link my profiles"),
 +  SettingsUpcoming: msg("Coming up"),
 +  SettingsCast: msg("Cast"),
 +  SettingsPulse: msg("Pulse"),
@@ -42,7 +44,7 @@ index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2
  };
  
  // Thread settings keep the Duo's vertical bar so cancel, search, filter and confirm sit in the
-@@ -290,6 +316,71 @@ const SETTINGS_SCREENS = {
+@@ -290,6 +318,76 @@ const SETTINGS_SCREENS = {
      linking: "settings/provider-accounts",
      options: settingsPage(),
    }),
@@ -69,6 +71,11 @@ index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2
 +  SettingsForgotten: createNativeStackScreen({
 +    screen: SettingsForgottenRouteScreen,
 +    linking: "settings/forgotten",
++    options: settingsPage(),
++  }),
++  SettingsProfileLinks: createNativeStackScreen({
++    screen: SettingsProfileLinksRouteScreen,
++    linking: "settings/profile-links",
 +    options: settingsPage(),
 +  }),
 +  SettingsUpcoming: createNativeStackScreen({
@@ -114,7 +121,7 @@ index 38eba55e812ed3b9463183acfb7c81e1181a69a0..9951f9c780e1e9af5ea62c3e57435ef2
    SettingsEnvironmentMaintenance: createNativeStackScreen({
      screen: SettingsEnvironmentMaintenanceRouteScreen,
      linking: "settings/maintenance",
-@@ -865,7 +956,8 @@ const RootStackConfig = createWorkspaceStackNavigator({
+@@ -865,7 +963,8 @@ const RootStackConfig = createWorkspaceStackNavigator({
      ConnectionsNew: createNativeStackScreen({
        screen: ConnectionsNewRouteScreen,
        linking: "connections/new",
@@ -145,7 +152,7 @@ index 5333af3ea577abda416b1a386bdd77b393e6066a..50d96919343e4be74495dbf7f8ad1059
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 2a0edba8a3cead7921dfad513829a6573ae60952..d57a52c5b412b80abd851c1612b910bb2c124dcd 100644
+index 2a0edba8a3cead7921dfad513829a6573ae60952..03af4c56e24123e49072d872f67cf035afb833af 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 @@ -17,7 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
@@ -258,13 +265,14 @@ index 2a0edba8a3cead7921dfad513829a6573ae60952..d57a52c5b412b80abd851c1612b910bb
          page(
            "SettingsProjectOverview",
            "folder",
-@@ -292,6 +306,45 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -292,6 +306,46 @@ function useSettingsIndexSections(): SettingsListSection[] {
          serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
        ],
      },
 +    {
 +      title: gt("This phone"),
 +      rows: [
++        page("SettingsProfileLinks", "link", gt("Link my profiles")),
 +        {
 +          id: "sleeve",
 +          icon: "iphone",
@@ -319,10 +327,10 @@ index ce61dec7cfe69d5100b15fb3ac4766fec44e2e82..b773f4084130aeb25860b70d5e1e9cbc
        navigation.navigate(props.fullScreenTarget);
      } else {
 diff --git a/apps/mobile/src/features/settings/components/settings-page-targets.ts b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-index a92922a66d1e3525b89f0e68de7da337f6770ce2..db07331484fc9dedaf3a0da6329ac1c5c0643b0b 100644
+index a92922a66d1e3525b89f0e68de7da337f6770ce2..b7e6b5a9c34e3f1fb26370b870bf747626e6c9c8 100644
 --- a/apps/mobile/src/features/settings/components/settings-page-targets.ts
 +++ b/apps/mobile/src/features/settings/components/settings-page-targets.ts
-@@ -15,6 +15,19 @@ export const SETTINGS_PAGE_TARGETS = [
+@@ -15,6 +15,20 @@ export const SETTINGS_PAGE_TARGETS = [
    "SettingsLabs",
    "SettingsEnvironmentMaintenance",
    "SettingsProviderAccounts",
@@ -331,6 +339,7 @@ index a92922a66d1e3525b89f0e68de7da337f6770ce2..db07331484fc9dedaf3a0da6329ac1c5
 +  "SettingsTeam",
 +  "SettingsPersonas",
 +  "SettingsForgotten",
++  "SettingsProfileLinks",
 +  "SettingsUpcoming",
 +  "SettingsCast",
 +  "SettingsPulse",
