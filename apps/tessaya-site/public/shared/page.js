@@ -50,7 +50,7 @@ voice.say = (a, h = {}) => say0(a, {...h, onState: (s, w) => { if (s === "speaki
 if (!reduced) setTimeout(() => loom.pluck(.8), 400);
 
 // on a phone, her name rides along at the bottom once the hero has gone, and steps aside where the page has its own controls
-const dock = $("#dock"), busy = ["#top", "#moments", "#tessel", "#poke", "footer"].map((q) => $(q));
+const dock = $("#dock"), busy = ["#top", "#moments", "#sayIt", "#tessel", "#poke", "footer"].map((q) => $(q));
 let dockF = 0;
 const dockCheck = () => { dockF = 0; dock.classList.toggle("on", innerWidth <= 720 && !busy.some((el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; })); };
 addEventListener("scroll", () => { dockF ||= requestAnimationFrame(dockCheck); }, {passive: true});
