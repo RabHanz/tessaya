@@ -523,6 +523,11 @@ export class TessayaVoiceLibrary extends Context.Service<
     }) => Effect.Effect<{ readonly affect: string; readonly clip: VoiceClip }, VoiceRefusedError>;
     /** A clone's embedding file for this machine's Pocket, by this server's key; null for anything else. */
     readonly embedding: (key: string, file: string) => Effect.Effect<Uint8Array | null>;
+    /**
+     * The same file for a room loop on another of his machines (Director, 21 Nov), which reaches it on a Tessel's key
+     * from a full-access link (HomeDeviceRoutes); null for a file that is not a saved clone's.
+     */
+    readonly cloneForLoop: (file: string) => Effect.Effect<Uint8Array | null>;
     readonly setHfToken: (token: string | null) => Effect.Effect<void, VoiceRefusedError>;
     readonly setPersona: (input: {
       readonly persona: string;
@@ -802,20 +807,22 @@ export const make = Effect.gen(function* () {
     return { affect: input.affect, clip: syntheticClip(line) };
   });
 
-  /** A clone's embedding for this machine's own Pocket, by the key this start handed out; null for anything else. */
-  const embedding = Effect.fn("TessayaVoiceLibrary.embedding")(function* (
-    key: string,
-    file: string,
-  ) {
+  /** A saved clone's embedding file by its name; null for any other name. */
+  const cloneFile = Effect.fn("TessayaVoiceLibrary.cloneFile")(function* (file: string) {
     const m = /^([0-9a-f-]{36})(?:\.affect-([a-z]+))?\.safetensors$/.exec(file);
-    if (key !== embedKey || m === null || (m[2] !== undefined && !isAffectVariant(m[2])))
-      return null;
+    if (m === null || (m[2] !== undefined && !isAffectVariant(m[2]))) return null;
     if (!(yield* savedClones).some((c) => c.id === m[1])) return null;
     return yield* Effect.promise(() =>
       NodeFS.promises.readFile(NodePath.join(clonesDir, file)).catch(() => null),
     );
   });
-
+  /** A clone's embedding for this machine's own Pocket, by the key this start handed out; null for anything else. */
+  const embedding = Effect.fn("TessayaVoiceLibrary.embedding")(function* (
+    key: string,
+    file: string,
+  ) {
+    return key === embedKey ? yield* cloneFile(file) : null;
+  });
   const cloneVoice = Effect.fn("TessayaVoiceLibrary.cloneVoice")(function* (input: {
     readonly wav: Uint8Array;
     readonly consent: boolean;
@@ -972,6 +979,7 @@ export const make = Effect.gen(function* () {
     deleteClone,
     recordAffect,
     embedding,
+    cloneForLoop: cloneFile,
     setPersona,
     setGoogleKey,
     setHfToken,

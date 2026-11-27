@@ -351,39 +351,78 @@ const servedPersonas = async (url: string, key: string): Promise<RoomPersona[] |
       signal: AbortSignal.timeout(5_000),
     });
     const roster = res.ok ? servedRoster(await res.json()) : null;
-    return roster === null ? null : Promise.all(roster.map((p) => withClone(p, url)));
+    return roster === null ? null : Promise.all(roster.map((p) => withClone(p, url, key)));
   } catch {
     return null;
   }
 };
 
+/** Clone files fetched from a brain on another machine, kept in memory only, for this machine's Pocket. */
+const clones = new Map<string, Uint8Array>();
+let clonePort: Promise<number> | null = null;
+const cloneServer = () =>
+  (clonePort ??= new Promise<number>((resolve, reject) => {
+    const server = NodeHttp.createServer((req, res) => {
+      const bytes = clones.get(decodeURIComponent((req.url ?? "").replace(/^\/clone\//, "")));
+      res.writeHead(bytes === undefined ? 404 : 200, {
+        "content-type": "application/octet-stream",
+      });
+      res.end(bytes);
+    });
+    server.on("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve((server.address() as { port: number }).port));
+  }));
+
+const isLoopbackHost = (host: string) => /^(127\.0\.0\.1|localhost|\[::1\])$/.test(host);
+
 /**
- * A persona's saved clone as its voice (M-046), when this loop's Pocket can fetch it: her server serves it on loopback
- * only, so a loop on another machine, or a clone whose consent he withdrew, keeps the persona's Pocket voice.
+ * A persona's saved clone as its voice (M-046): fetched from her brain on the Tessel's key over the tailnet (only for a
+ * machine linked there with full access) and served to this machine's Pocket on loopback. A clone she no longer
+ * serves leaves the persona its Pocket voice.
  */
-const withClone = async (p: RoomPersona, brainUrl: string): Promise<RoomPersona> => {
+const withClone = async (p: RoomPersona, brainUrl: string, key: string): Promise<RoomPersona> => {
   if (p.cloneUrl === undefined) return p;
-  const at = new URL(p.cloneUrl, brainUrl);
-  at.hostname = "127.0.0.1";
-  const ok = await fetch(at, { signal: AbortSignal.timeout(5_000) })
-    .then(async (r) => (await r.arrayBuffer(), r.ok))
-    .catch(() => false);
-  if (!ok) return p;
-  // Its recorded tones are on the same loopback route.
-  const local = (path: string) => {
-    const url = new URL(path, brainUrl);
-    url.hostname = "127.0.0.1";
-    return url.href;
+  const fetchFile = async (path: string): Promise<string | null> => {
+    if (isLoopbackHost(new URL(brainUrl).hostname)) {
+      const url = new URL(path, brainUrl);
+      url.hostname = "127.0.0.1";
+      const ok = await fetch(url, { signal: AbortSignal.timeout(5_000) })
+        .then(async (r) => (await r.arrayBuffer(), r.ok))
+        .catch(() => false);
+      return ok ? url.href : null;
+    }
+    const file = path.split("/").pop() ?? "";
+    const bytes = await fetch(brainUrl.replace(/\/chat\/completions$/, `/voice/clone/${file}`), {
+      headers: { authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(15_000),
+    })
+      .then(async (r) => (r.ok ? new Uint8Array(await r.arrayBuffer()) : null))
+      .catch(() => null);
+    if (bytes === null || bytes.length === 0) {
+      clones.delete(file);
+      return null;
+    }
+    clones.set(file, bytes);
+    return `http://127.0.0.1:${await cloneServer()}/clone/${encodeURIComponent(file)}`;
   };
+  const voice = await fetchFile(p.cloneUrl);
+  if (voice === null) return p;
+  // Its recorded tones, the same way; a tone that can't be had is left out.
   const tones =
     p.cloneTones === undefined
       ? {}
       : {
           cloneTones: Object.fromEntries(
-            Object.entries(p.cloneTones).map(([t, u]) => [t, local(u)]),
+            (
+              await Promise.all(
+                Object.entries(p.cloneTones).map(
+                  async ([t, u]) => [t, await fetchFile(u)] as const,
+                ),
+              )
+            ).flatMap(([t, u]) => (u === null ? [] : [[t, u]])),
           ),
         };
-  return { ...p, voice: at.href, ...tones };
+  return { ...p, voice, ...tones };
 };
 
 /** A word the room listens for; `version` is her signed model's, for a word she trained. */

@@ -32,6 +32,8 @@ import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import * as Schema from "effect/Schema";
 import { HouseholdCaller, TessayaHousehold } from "../tessaya/TessayaHousehold.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
+import { TessayaVoiceLibrary } from "../tessaya/TessayaVoiceLibrary.ts";
+import { fullAccessIps, mayFetchClone, PROXY_HEADERS } from "./cloneGate.ts";
 
 /**
  * What the room loop sends after enrolling: the profile less what the server decides (the member, the version). A post
@@ -309,5 +311,28 @@ export const routes = HttpRouter.use((router) =>
       ),
     );
     for (const root of DEVICE_API_ROOTS) yield* router.add("POST", `${root}/voice/profile`, voice);
+    // His cloned voice for a room loop on another of his machines (cloneGate.ts); the address its persona carries
+    // stays the loopback route, which only this machine's Pocket reaches.
+    const clone = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const bearer = (request.headers["authorization"] ?? "").replace(/^Bearer\s+/i, "");
+      const devices = yield* Effect.flatMap(HomeAssistantService, (h) => h.devices).pipe(
+        Effect.provideContext(context),
+      );
+      const allowed = mayFetchClone({
+        keyOk: r1ByKey(devices, bearer) !== null,
+        remote: Option.getOrUndefined(request.remoteAddress) ?? "",
+        proxied: PROXY_HEADERS.some((h) => request.headers[h] !== undefined),
+        fullAccessIps: yield* fullAccessIps.pipe(Effect.provideContext(context)),
+      });
+      const file = Option.getOrNull(requestUrl(request))?.pathname.split("/").pop() ?? "";
+      const voices = Context.getOption(context, TessayaVoiceLibrary);
+      const bytes =
+        !allowed || Option.isNone(voices) ? null : yield* voices.value.cloneForLoop(file);
+      return bytes === null
+        ? HttpServerResponse.empty({ status: 404 })
+        : HttpServerResponse.uint8Array(bytes, { contentType: "application/octet-stream" });
+    }).pipe(Effect.catchCause(() => Effect.succeed(HttpServerResponse.empty({ status: 500 }))));
+    for (const root of DEVICE_API_ROOTS) yield* router.add("GET", `${root}/voice/clone/*`, clone);
   }),
 );
