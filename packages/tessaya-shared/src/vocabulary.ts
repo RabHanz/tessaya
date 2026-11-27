@@ -303,6 +303,10 @@ export const customWordsOf = (
     .slice(0, max);
 };
 
+/** His dictionary as the recogniser's phrase-boosting terms (transcribe.cpp `vocabulary`), in `customWordsOf`'s order. */
+export const recogniserTerms = (entries: ReadonlyArray<VocabularyEntry>): ReadonlyArray<string> =>
+  customWordsOf(entries, 1_000).map((w) => w.term);
+
 /** An edit of T3's dictionary list (Settings → Voice on web and phone) as changes to his one dictionary. */
 export const changesFromCustomWords = (
   before: ReadonlyArray<{ readonly term: string; readonly aliases: ReadonlyArray<string> }>,

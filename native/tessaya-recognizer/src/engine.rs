@@ -33,6 +33,8 @@ pub struct Job {
     pub audio: Receiver<Feed>,
     pub replies: Sender<Reply>,
     pub language: Option<String>,
+    /// His dictionary's terms, in priority order: the decoder favours them once the model starts one (phrase boosting).
+    pub vocabulary: Vec<String>,
 }
 
 /// Loads the model once and recognises dictations one after another; `queue` counts those begun and not finished.
@@ -57,8 +59,8 @@ pub fn start(model: &Path, threads: i32) -> (Sender<Job>, Arc<AtomicUsize>) {
     (jobs, queue)
 }
 
-fn decode(session: &mut Session, piece: Piece, language: Option<String>) -> Result<(String, Scored), String> {
-    decode_words(session, piece, language).map(|(text, _, scored)| (text, scored))
+fn decode(session: &mut Session, piece: Piece, options: &RunOptions) -> Result<(String, Scored), String> {
+    decode_words(session, piece, options).map(|(text, _, scored)| (text, scored))
 }
 
 /// A preview's words with where each ends, in samples of the uncut audio.
@@ -71,14 +73,12 @@ pub type Scored = Vec<(String, f32)>;
 fn decode_words(
     session: &mut Session,
     piece: Piece,
-    language: Option<String>,
+    options: &RunOptions,
 ) -> Result<(String, EndedWords, Scored), String> {
     let Piece { mut pcm, context, .. } = piece;
     lift_gain(&mut pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
-    // Token timestamps: the same words, plus each token's confidence (Word alone leaves `tokens` empty).
-    let options = RunOptions { language, timestamps: TimestampKind::Token, ..Default::default() };
-    let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
+    let result = session.run(&pcm, options).map_err(|e| format!("transcribe: {e}"))?;
     let context_ms = context as i64 / 16;
     let kept: Vec<(usize, _)> = result
         .words
@@ -115,7 +115,9 @@ fn safe_words(words: &EndedWords, previewed: usize) -> Option<(usize, String)> {
 }
 
 fn recognise(session: &mut Session, job: Job) {
-    let Job { audio, replies, language } = job;
+    let Job { audio, replies, language, vocabulary } = job;
+    // Token timestamps: the same words, plus each token's confidence (Word alone leaves `tokens` empty).
+    let options = RunOptions { language, vocabulary, timestamps: TimestampKind::Token, ..Default::default() };
     let mut chunker = Chunker::new(ChunkParams::from_env());
     let mut heard: Vec<f32> = Vec::new();
     let mut text: Vec<String> = Vec::new();
@@ -163,7 +165,7 @@ fn recognise(session: &mut Session, job: Job) {
         if let Some(piece) = chunker.push(&block) {
             let at_pause = piece.at_pause;
             let t = Instant::now();
-            match decode(session, piece, language.clone()) {
+            match decode(session, piece, &options) {
                 Ok((words, piece_scored)) if !words.is_empty() => {
                     text.push(words);
                     scored.extend(piece_scored);
@@ -195,7 +197,7 @@ fn recognise(session: &mut Session, job: Job) {
                 if !chunker.quiet_since(from, &heard) {
                     if let Some(piece) = chunker.preview() {
                         let t = Instant::now();
-                        let decoded = decode_words(session, piece, language.clone()).ok();
+                        let decoded = decode_words(session, piece, &options).ok();
                         preview_words = decoded.as_ref().map(|(_, words, _)| words.clone()).unwrap_or_default();
                         preview_scored = decoded.as_ref().map(|(_, _, s)| s.clone()).unwrap_or_default();
                         preview = decoded.map(|(text, _, _)| text);
@@ -229,7 +231,7 @@ fn recognise(session: &mut Session, job: Job) {
                 chunker.finish()
             } {
                 let t = Instant::now();
-                match decode(session, piece, language.clone()) {
+                match decode(session, piece, &options) {
                     Ok((words, piece_scored)) if !words.is_empty() => {
                         text.push(words);
                         scored.extend(piece_scored);

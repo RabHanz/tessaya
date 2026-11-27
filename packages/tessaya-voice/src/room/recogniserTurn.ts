@@ -11,7 +11,12 @@ export type LiveTurn = RecogniserTurn & {
   readonly why?: () => string | null;
 };
 
-export const recogniserTurn = (url: string, token: string): LiveTurn => {
+/** `vocabulary`: his dictionary's terms, which the recogniser's decoder favours once the model begins one. */
+export const recogniserTurn = (
+  url: string,
+  token: string,
+  vocabulary: ReadonlyArray<string> = [],
+): LiveTurn => {
   const ws = new WebSocket(url, {
     headers: { authorization: `Bearer ${token}` },
   } as unknown as string[]);
@@ -52,7 +57,7 @@ export const recogniserTurn = (url: string, token: string): LiveTurn => {
   });
   ws.addEventListener("open", () => {
     open = true;
-    ws.send(JSON.stringify({ cmd: "begin", language: "en" }));
+    ws.send(JSON.stringify({ cmd: "begin", language: "en", vocabulary }));
     for (const q of queued.splice(0)) ws.send(q);
     if (ended) ws.send(JSON.stringify({ cmd: "end" }));
   });

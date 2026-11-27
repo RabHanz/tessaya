@@ -48,8 +48,8 @@ export const credentialOf = (
       ? { kind: "instance", instanceId: credential.slice("instance:".length) }
       : { kind: "subscription", account: credential.slice("subscription:".length) };
 
-/** Cleanup's model before the table: the cleanup setting's when it is Claude's, else Haiku. */
-const CLEANUP_MODEL = "claude-haiku-5-5";
+/** Cleanup's model before the table: the cleanup setting's when it is Claude's, else Sonnet (Director, 16 Nov). */
+const CLEANUP_MODEL = "claude-sonnet-5-5";
 
 /** What a row he has not set uses: what the role used before the table, except his 13 Nov choices (voice, the key). */
 const before = (
@@ -67,9 +67,10 @@ const before = (
   switch (role) {
     case "cleanup": {
       const chosen = settings.dictationCleanup.model?.model;
+      // His 16 Nov rule, as the desktop runs it: his Claude plan first, his key only as the fallback.
       return {
-        use: ANTHROPIC_KEY,
-        fallback: null,
+        use: SUBSCRIPTION,
+        fallback: ANTHROPIC_KEY,
         model: chosen?.startsWith("claude-") === true ? chosen : CLEANUP_MODEL,
         effort: "low",
       };

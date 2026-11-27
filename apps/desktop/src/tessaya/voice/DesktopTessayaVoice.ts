@@ -604,6 +604,7 @@ import {
   parseNever,
   type NeverList,
   parseAddToDictionary,
+  recogniserTerms,
   removeHeard,
   screenNames,
   unteach,
@@ -1995,6 +1996,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   const saveVocabulary = (next: ReadonlyArray<VocabularyEntry>) => {
     saveDictionary(input.stateDir, next);
     syncServer(next);
+    syncRecogniserTerms();
   };
   /**
    * His one dictionary is his server's: words he taught on his phone, a Tessel or another computer come here too, and
@@ -2015,6 +2017,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     if (push) return saveVocabulary(next);
     sentToServer = next;
     if (JSON.stringify(next) !== JSON.stringify(local)) saveDictionary(input.stateDir, next);
+    syncRecogniserTerms();
   };
   const VOCABULARY_PULL_MS = 5 * 60_000;
   setTimeout(() => void pullVocabulary(), 5_000).unref();
@@ -4497,9 +4500,17 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       configureDictation();
     }
   }, 5 * 60_000).unref();
+  /** The terms the recogniser was last given; a dictionary change that alters them configures it again. */
+  let termsSent = "";
+  const termsNow = () => recogniserTerms(withOwnWords(dictionaryForCleanup()));
+  const syncRecogniserTerms = () => {
+    if (JSON.stringify(termsNow()) !== termsSent) configureDictation();
+  };
   const configureDictation = () => {
     if (sidecar === null) return;
     micWarmSent = micWarmNow();
+    const vocabulary = termsNow();
+    termsSent = JSON.stringify(vocabulary);
     // Automatic names its default too: a default that hears nothing is then rescued by the mics beside it.
     const { device, fallbacks } = dictationMics(devices, preference(), choice);
     const baton = settings.dictation === "baton" && parakeetPath !== null;
@@ -4513,6 +4524,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       channel: device === null ? null : channelFor(device),
       paste: settings.paste,
       language: recogniserHint(settings.languages),
+      vocabulary,
       external: cloudChoice() === null ? null : cloudTmpDir,
       keepAudio: settings.keepVoice ? cloudTmpDir : null,
       cleanup: true,

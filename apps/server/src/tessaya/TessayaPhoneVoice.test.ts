@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+
 import { describe, expect, it } from "vite-plus/test";
 
 import { NOT_AVAILABLE, parseTranscript, transcribeWav } from "./TessayaPhoneVoice.ts";
@@ -19,15 +22,27 @@ describe("the phone's push-to-talk", () => {
   });
   it("runs the sidecar's transcribe on the recording and returns the words", async () => {
     const seen: string[][] = [];
+    let terms = "";
     const out = await transcribeWav({
       wav,
       env: { BATON_DICTATION: "/bin/side", BATON_STT_MODEL: "/m/model.gguf" },
       userdataDir: "/x",
+      vocabulary: ["Tessaya", "Northwind"],
       exists: () => true,
-      run: async (_b, args) => (seen.push([...args]), '{"file":"f","text":"approve the plan"}'),
+      run: async (_b, args) => {
+        seen.push([...args]);
+        terms = NodeFS.readFileSync(args[args.indexOf("--vocabulary-file") + 1]!, "utf8");
+        return '{"file":"f","text":"approve the plan"}';
+      },
     });
     expect(out).toEqual({ ok: true, text: "approve the plan" });
-    expect(seen[0]!.slice(0, 3)).toEqual(["transcribe", "--model", "/m/model.gguf"]);
+    expect(seen[0]!.slice(0, 4)).toEqual([
+      "transcribe",
+      "--model",
+      "/m/model.gguf",
+      "--vocabulary-file",
+    ]);
+    expect(terms).toBe("Tessaya\nNorthwind");
   });
   it("tells him when the model fails or hears nothing", async () => {
     const base = {

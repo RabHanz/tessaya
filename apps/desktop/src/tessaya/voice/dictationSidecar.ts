@@ -31,6 +31,8 @@ export interface DictationConfig {
   readonly channel: number | null;
   readonly paste: PasteMethod;
   readonly language: string | null;
+  /** His dictionary's terms for the recogniser's phrase boosting, here and on his recognisers (`recogniserTerms`). */
+  readonly vocabulary?: ReadonlyArray<string>;
   /** Cloud recognition: each recording is written as a WAV into this private folder and handed back, not recognised here. */
   readonly external?: string | null;
   /** The sidecar leaves the paste to the desktop, which cleans the text up first. */

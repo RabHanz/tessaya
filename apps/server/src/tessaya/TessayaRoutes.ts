@@ -75,7 +75,9 @@ import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./Tessay
 import { TessayaUpcoming } from "./TessayaUpcoming.ts";
 import { houseZone, isoIn } from "./houseZone.ts";
 import { countdownText } from "@t3tools/tessaya-shared/upcoming";
+import { recogniserTerms } from "@t3tools/tessaya-shared/vocabulary";
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
+import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
 import { changePersona } from "./PersonaChanges.ts";
 import { playgroundRoutes } from "./PlaygroundRoutes.ts";
@@ -195,10 +197,18 @@ export const routes = HttpRouter.use((router) =>
           return { ok: false, why: "Still working on the last recording. Try again in a moment." };
         hearing = true;
         try {
+          const vocabulary = await run(
+            Effect.serviceOption(TessayaVocabulary).pipe(
+              Effect.flatMap((store) =>
+                Option.isSome(store) ? store.value.read : Effect.succeed([]),
+              ),
+            ),
+          );
           return await transcribeWav({
             wav,
             env: process.env,
             userdataDir: NodePath.dirname(config.dbPath),
+            vocabulary: recogniserTerms(vocabulary),
           });
         } finally {
           hearing = false;

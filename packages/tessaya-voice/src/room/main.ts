@@ -89,7 +89,11 @@ import { createWakeCapture } from "./wakeCapture.ts";
 import { bothCaptures, createWakeTrace } from "./wakeTrace.ts";
 import { createWakeStream, kwsSettingsCommand, parseWakeGate } from "./wakeStream.ts";
 import { DEVICE } from "@t3tools/tessaya-shared/productNames";
-import { biasTranscript, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
+import {
+  biasTranscript,
+  recogniserTerms,
+  type VocabularyEntry,
+} from "@t3tools/tessaya-shared/vocabulary";
 import { adoptTesselNames } from "./envNames.ts";
 
 const env = (key: string, fallback?: string): string => {
@@ -175,7 +179,7 @@ const health = (url: string, token: string) =>
 const WARM_CLIP = Int16Array.from({ length: 9_600 }, (_, i) => ((i * 7919) % 401) - 200);
 
 /** His recognisers (`R1_RECOGNIZERS=url=tokenfile,...`), each turn to the quickest lately (recognisers.ts). */
-const recognisers = (online: () => boolean) => {
+const recognisers = (online: () => boolean, terms: () => ReadonlyArray<string>) => {
   const parse = (pairs: string, personal: boolean) =>
     pairs
       .split(",")
@@ -232,6 +236,7 @@ const recognisers = (online: () => boolean) => {
   const status = () => states.map((s) => ({ url: s.url, up: s.queue !== null }));
   const across = (
     poolOf: (states: ReadonlyArray<RecogniserState>) => ReadonlyArray<RecogniserState>,
+    vocabulary: ReadonlyArray<string>,
   ): RecogniserTurn =>
     turnAcross(
       (tried) => {
@@ -239,7 +244,7 @@ const recognisers = (online: () => boolean) => {
         const chosen = pickRecogniser(pool) ?? pool[0];
         if (chosen === undefined) return null;
         const token = list.find((r) => r.url === chosen.url)!.token;
-        return { url: chosen.url, turn: recogniserTurn(chosen.url, token) };
+        return { url: chosen.url, turn: recogniserTurn(chosen.url, token, vocabulary) };
       },
       (url, ms, failed, next, why) => {
         // A failed one counts as very slow, so the next turns leave it alone until its probes are quick again.
@@ -256,10 +261,12 @@ const recognisers = (online: () => boolean) => {
   /** `only`: his personal model alone (the wake check compares the two models), not hedged with a general one. */
   const turn = (owner = false, only = false): RecogniserTurn => {
     const mine = owner && states.some((s) => s.personal === true && s.queue !== null);
-    if (!mine || only) return across((pool) => recognisersFor(pool, owner));
+    // A wake check hears the name unbiased: favouring his names there would confirm more false wakes.
+    const vocabulary = only ? [] : terms();
+    if (!mine || only) return across((pool) => recognisersFor(pool, owner), vocabulary);
     return hedge(
-      across((pool) => pool.filter((s) => s.personal === true)),
-      across((pool) => recognisersFor(pool, false)),
+      across((pool) => pool.filter((s) => s.personal === true), vocabulary),
+      across((pool) => recognisersFor(pool, false), vocabulary),
       () => new Promise((r) => setTimeout(r, PERSONAL_BUDGET_MS)),
       (who) => log(`recogniser hedge: ${who} words taken`),
     );
@@ -1182,7 +1189,14 @@ const main = async () => {
       embedding: model("embedding_model.onnx"),
       wakes: list.map((w) => ({ word: w.word, path: w.file, threshold: w.threshold })),
     });
-  const heard = recognisers(() => online.size > 0);
+  const heard = recognisers(
+    () => online.size > 0,
+    () =>
+      recogniserTerms([
+        ...vocabulary.entries,
+        ...roster.map((p) => ({ phrase: p.name, replacement: null })),
+      ]),
+  );
   const personalConfirm = (process.env["R1_PERSONAL_RECOGNIZERS"] ?? "").trim() !== "";
   // The room's words get dictation's own correction: his dictionary and the personas he can call (one ear).
   let vocabulary: {

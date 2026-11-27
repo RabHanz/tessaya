@@ -28,9 +28,11 @@ describe("brain routes", () => {
       effort: "low",
     });
     expect(brainRoute(settings(), "background", "sonnet").model).toBe("sonnet");
+    // His 16 Nov rule: Sonnet on his plan first, his key only as the fallback.
     expect(brainRoute(settings(), "cleanup", "haiku")).toMatchObject({
-      use: "apiKey:anthropic",
-      model: "claude-haiku-5-5",
+      use: "subscription",
+      fallback: "apiKey:anthropic",
+      model: "claude-sonnet-5-5",
     });
     expect(
       brainRoute(
