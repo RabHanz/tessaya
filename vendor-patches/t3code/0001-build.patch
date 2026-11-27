@@ -304,7 +304,7 @@ index 21f022a680466bb95e149436f070cafd284207e8..24813624d2ebb92a2950209b50756170
    "dependencies": {
      "@effect/platform-node": "catalog:",
 diff --git a/knip.jsonc b/knip.jsonc
-index dafe7ba4fd21e86dc9116f40431825aa0fc3ea06..62174728b121fc8d43d26bcf104d1ddfe3275f91 100644
+index dafe7ba4fd21e86dc9116f40431825aa0fc3ea06..234c57fa01d89fd276662d37b1dd4504e993409d 100644
 --- a/knip.jsonc
 +++ b/knip.jsonc
 @@ -45,6 +45,9 @@
@@ -385,7 +385,7 @@ index dafe7ba4fd21e86dc9116f40431825aa0fc3ea06..62174728b121fc8d43d26bcf104d1ddf
      },
      "apps/web": {
        // Worktree setup (scripts/setup-worktree.ts) runs this directly, and evidence
-@@ -110,13 +134,21 @@
+@@ -110,13 +134,27 @@
        // UI component modules are copied and adapted as cohesive sets. Keep their
        // named subcomponents even before they have callers; the file audit still
        // reports an entire component module when nothing imports it.
@@ -402,13 +402,19 @@ index dafe7ba4fd21e86dc9116f40431825aa0fc3ea06..62174728b121fc8d43d26bcf104d1ddf
        // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
        "ignoreDependencies": ["@astrojs/check"],
      },
++    "apps/tessaya-site": {
++      // `astro check` runs from the typecheck task; three is copied into public/ by scripts/stage-engine.mjs.
++      "ignoreDependencies": ["@astrojs/check", "three"],
++      // Plain scripts the pages load by URL.
++      "ignore": ["public/**"],
++    },
      "apps/mobile": {
 +      // Baton's mobile route is wired by a vendor patch the file audit cannot see.
 +      "ignore": ["src/features/baton/BatonRouteScreen.tsx", "src/state/baton-work-sessions.ts"],
        // Expo loads plugins and the fingerprint config by string; Metro embeds the browser entry in the native WebView.
        "entry": [
          "index.ts!",
-@@ -125,6 +157,7 @@
+@@ -125,6 +163,7 @@
          "scripts/generate-device-stream.mts",
          "src/features/devices/device-stream.browser.ts!",
          "src/features/browser/preview-stream.browser.ts!",
@@ -416,7 +422,7 @@ index dafe7ba4fd21e86dc9116f40431825aa0fc3ea06..62174728b121fc8d43d26bcf104d1ddf
        ],
        // Fonts are configured as asset paths; Expo autolinks the native packages.
        "ignoreDependencies": [
-@@ -162,6 +195,19 @@
+@@ -162,6 +201,19 @@
        // These workspace packages are private to this monorepo.
        "includeEntryExports": true,
      },
