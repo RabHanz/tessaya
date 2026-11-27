@@ -453,7 +453,7 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return talking === undefined
         ? WORK.tessaya_my_state
         : {
-            line: `${WORK.tessaya_my_state.line}\nYou are talking with ${talking} for him: what he tells it goes straight to it (from his session conversation).`,
+            line: `${(WORK.tessaya_my_state as { line: Array<string> }).line.join("\n")}\nYou are talking with ${talking} for him: what he tells it goes straight to it (from his session conversation).`,
           };
     }
     case "home_find":
