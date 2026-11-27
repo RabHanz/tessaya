@@ -9,7 +9,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as TestClock from "effect/testing/TestClock";
-import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
@@ -662,7 +661,8 @@ describe("a device's own memories, brought in", () => {
         heldFromDevice("her-phone", [{ item, tombstone: null, writer: "her-phone" }]),
         "",
       );
-      const hash = NodeCrypto.createHash("sha256").update("ABCDEFGH").digest("hex");
+      // SHA-256 of "ABCDEFGH", the code as the device keeps it
+      const hash = "9ac2197d9258257b1ae8463e4214e4cd0a578bc1517f2415928b91be4283fc48";
       yield* memory.setMeta(`${DEVICE_CLAIM}${hash}`, "her-phone");
       const hers = { member: maya.id, assurance: 3, via: "her phone" } as const;
       const claim = (code: string) => call({ op: "claimDevice", code });
