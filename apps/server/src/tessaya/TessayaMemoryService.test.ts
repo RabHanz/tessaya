@@ -12,12 +12,14 @@ import * as TestClock from "effect/testing/TestClock";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { HOME_KEY } from "./BrainHost.ts";
+import { HOME_KEY, JOINED_KEY } from "./BrainHost.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
 
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import * as ServerConfig from "../config.ts";
 import {
+  DEVICE_CLAIM,
+  DEVICE_HOLD,
   MemberConsent,
   TessayaMemoryService,
   MemoryViewer,
@@ -845,6 +847,36 @@ it.layer(memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)))(
   },
 );
 
+/** A server whose brain is `brainCtx`'s, reached while `reachable()` says so. */
+const workerOf = (brainCtx: Context.Context<never>, reachable: () => boolean) =>
+  Layer.build(
+    oneBrain.pipe(
+      Layer.provideMerge(memoryLayer),
+      Layer.provideMerge(
+        Layer.succeed(PeerLinks.PeerLinks, {
+          enabled: Effect.succeed(true),
+          list: Effect.succeed([
+            { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+          ]),
+        } as never),
+      ),
+      Layer.provideMerge(
+        Layer.succeed(
+          PeerMcpClient.PeerMcpClient,
+          PeerMcpClient.PeerMcpClient.of({
+            call: (input) =>
+              (reachable()
+                ? receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
+                    Effect.provideContext(brainCtx),
+                  )
+                : Effect.fail("away")) as never,
+          }),
+        ),
+      ),
+      Layer.provideMerge(SqlitePersistenceMemory),
+    ),
+  );
+
 it.effect(
   "her one memory: a worker reads and writes the brain's, what it held moves up, and with the brain away it keeps nothing",
   () =>
@@ -854,34 +886,7 @@ it.effect(
       );
       const brainMemory = Context.get(brainCtx, TessayaMemoryService);
       let reachable = true;
-      const workerCtx = yield* Layer.build(
-        oneBrain.pipe(
-          Layer.provideMerge(memoryLayer),
-          Layer.provideMerge(
-            Layer.succeed(PeerLinks.PeerLinks, {
-              enabled: Effect.succeed(true),
-              list: Effect.succeed([
-                { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
-              ]),
-            } as never),
-          ),
-          Layer.provideMerge(
-            Layer.succeed(
-              PeerMcpClient.PeerMcpClient,
-              PeerMcpClient.PeerMcpClient.of({
-                call: (input) =>
-                  (reachable
-                    ? receiveAtBrain(
-                        input.arguments["op"] as never,
-                        input.arguments["payload"],
-                      ).pipe(Effect.provideContext(brainCtx))
-                    : Effect.fail("away")) as never,
-              }),
-            ),
-          ),
-          Layer.provideMerge(SqlitePersistenceMemory),
-        ),
-      );
+      const workerCtx = yield* workerOf(brainCtx as never, () => reachable);
       const worker = Context.get(workerCtx, TessayaMemoryService);
       // the worker learned something before the brain held its memory
       const sql = Context.get(workerCtx, SqlClient.SqlClient);
@@ -915,6 +920,59 @@ it.effect(
       assert.strictEqual(
         (yield* brainMemory.list()).filter((i) => i.text === "The bins go out on Tuesday").length,
         1,
+      );
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "a device that joins a home keeps its own memories, and they reach the home only on its owner's claim",
+  () =>
+    Effect.gen(function* () {
+      const brainCtx = yield* Layer.build(
+        memoryLayer.pipe(Layer.provideMerge(SqlitePersistenceMemory)),
+      );
+      const brainMemory = Context.get(brainCtx, TessayaMemoryService);
+      let reachable = true;
+      const deviceCtx = yield* workerOf(brainCtx as never, () => reachable);
+      const device = Context.get(deviceCtx, TessayaMemoryService);
+      const sql = Context.get(deviceCtx, SqlClient.SqlClient);
+      const mine = yield* device.add({
+        kind: "fact",
+        text: "Maya's locker code is 4471",
+        source: "user",
+      });
+      // joined by setHome: the mark it leaves (the claim code's hash) sends its own memories to be held, once
+      const codeHash = "a".repeat(64);
+      yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+      yield* sql`INSERT INTO fabric_settings (key, value) VALUES (${JOINED_KEY}, ${JSON.stringify({ codeHash, sent: false })})`;
+      yield* device.list();
+      yield* device.list();
+      // held on her brain, in nobody's recall, and marked with where it came from
+      assert.notInclude(
+        (yield* brainMemory.list()).map((i) => i.text),
+        "Maya's locker code is 4471",
+      );
+      const origin = (yield* device.syncHello).origin;
+      assert.strictEqual(yield* brainMemory.meta(`${DEVICE_CLAIM}${codeHash}`), origin);
+      // the home away: the device still answers from its own copy
+      reachable = false;
+      assert.include(
+        (yield* device.list()).map((i) => i.text),
+        "Maya's locker code is 4471",
+      );
+      // its owner's claim places it with her, once, and only the held ones from that device
+      const placed = yield* brainMemory.resolveUnsure({
+        person: "maya",
+        how: "device",
+        heldFrom: origin,
+      });
+      assert.deepStrictEqual(placed, [mine.id]);
+      const brought = (yield* brainMemory.list()).find((i) => i.id === mine.id)!;
+      assert.strictEqual(brought.speaker, "maya");
+      assert.strictEqual(brought.sourceRef, `${DEVICE_HOLD}${origin}:${mine.id}`);
+      assert.deepStrictEqual(
+        yield* brainMemory.resolveUnsure({ person: "maya", how: "device", heldFrom: "elsewhere" }),
+        [],
       );
     }).pipe(Effect.scoped),
 );

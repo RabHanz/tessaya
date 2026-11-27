@@ -22,6 +22,12 @@ import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { layerMemory as TessayaDatabaseMemory } from "./TessayaDatabase.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import {
+  DEVICE_CLAIM,
+  heldFromDevice,
+  layer as memoryLayer,
+  TessayaMemoryService,
+} from "./TessayaMemoryService.ts";
+import {
   TessayaPrivateMemoryService,
   PrivateCaller,
   PrivateKdf,
@@ -587,10 +593,10 @@ describe("a home's members on one server, asked by its others", () => {
       const carried: Array<unknown> = [];
       const fromLimb = Effect.gen(function* () {
         const limb = yield* TessayaHousehold;
-        assert.strictEqual(
-          (yield* as(owner)(limb.call({ op: "setHome", on: "home box" }))).status,
-          "done",
-        );
+        // joining shows its owner the one code that brings this server's own memories in at home
+        const joined = yield* as(owner)(limb.call({ op: "setHome", on: "home box" }));
+        assert.strictEqual(joined.status, "done");
+        assert.match(joined.code!, /^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
         const listed = yield* as(owner)(limb.call({ op: "list" }));
         const sara = listed.members!.find((m) => m.name === "Sara")!;
         return { names: listed.members!.map((m) => m.name), grants: yield* limb.grantsOf(sara.id) };
@@ -623,6 +629,56 @@ describe("a home's members on one server, asked by its others", () => {
       const unknownPeer = yield* as(owner)(home.callHere({ op: "setHome", on: "nowhere" }));
       assert.strictEqual(unknownPeer.status, "refused");
     }).pipe(Effect.scoped));
+});
+
+describe("a device's own memories, brought in", () => {
+  test("only by its owner, at A3 on their own device, with the code it showed them, once", () =>
+    Effect.gen(function* () {
+      const memory = yield* TessayaMemoryService;
+      yield* as(owner)(call({ op: "invite", name: "Maya", role: "adult" }));
+      const maya = (yield* as(owner)(call({ op: "list" }))).members!.find(
+        (m) => m.name === "Maya",
+      )!;
+      const item = {
+        id: "phone-1",
+        kind: "fact",
+        text: "Maya's locker code is 4471",
+        source: "user",
+        sourceRef: null,
+        scope: "global",
+        scopeRef: null,
+        confidence: 1,
+        pinned: false,
+        proposed: false,
+        createdAt: "2026-11-01T00:00:00.000Z",
+        updatedAt: "2026-11-01T00:00:00.000Z",
+        lastUsedAt: null,
+        expiresAt: null,
+        supersededBy: null,
+      } as const;
+      yield* memory.applyChanges(
+        "her-phone",
+        heldFromDevice("her-phone", [{ item, tombstone: null, writer: "her-phone" }]),
+        "",
+      );
+      // SHA-256 of "ABCDEFGH", the code as the device keeps it
+      const hash = "9ac2197d9258257b1ae8463e4214e4cd0a578bc1517f2415928b91be4283fc48";
+      yield* memory.setMeta(`${DEVICE_CLAIM}${hash}`, "her-phone");
+      const hers = { member: maya.id, assurance: 3, via: "her phone" } as const;
+      const claim = (code: string) => call({ op: "claimDevice", code });
+      // not at A2, not an agent, not a wrong code
+      for (const [who, code] of [
+        [{ ...hers, assurance: 2 }, "ABCD-EFGH"],
+        [{ ...hers, service: true }, "ABCD-EFGH"],
+        [hers, "ABCD-EFGJ"],
+      ] as const)
+        assert.strictEqual((yield* as(who)(claim(code))).status, "refused");
+      assert.strictEqual((yield* as(hers)(claim("abcd efgh"))).status, "done");
+      const placed = (yield* memory.list()).find((i) => i.id === "phone-1")!;
+      assert.strictEqual(placed.speaker, maya.id);
+      // used once
+      assert.strictEqual((yield* as(hers)(claim("ABCD-EFGH"))).status, "refused");
+    }).pipe(Effect.provide(memoryLayer.pipe(Layer.provideMerge(stackWith(0))))));
 });
 
 describe("a removed member's voice", () => {

@@ -3,6 +3,7 @@
  * here would call. A server that is not the brain refuses, so an act is never passed along a chain.
  */
 import type { AffectEvent } from "@t3tools/tessaya-shared/affect";
+import type { MemoryChange } from "@t3tools/tessaya-shared/memory";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -25,7 +26,13 @@ import { privateRowsAtBrain } from "./PrivateRows.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { PRIVATE_PEPPER } from "./TessayaPrivateMemoryService.ts";
 import { TessayaTurn } from "./TessayaTurn.ts";
-import { memoryAtBrain, ON_BRAIN, TessayaMemoryService } from "./TessayaMemoryService.ts";
+import {
+  DEVICE_CLAIM,
+  heldFromDevice,
+  memoryAtBrain,
+  ON_BRAIN,
+  TessayaMemoryService,
+} from "./TessayaMemoryService.ts";
 import { LibraryRemovedAct, writeLibraryRemoved } from "./LibraryRemoved.ts";
 import { PrivateTierAct, tierAct } from "./PrivateTier.ts";
 import { PronounceChange, pronounceHere } from "./Pronunciations.ts";
@@ -200,6 +207,12 @@ const MemorySyncIn = Schema.Struct({
   upTo: Schema.String.check(Schema.isMaxLength(60)),
 });
 const decodeMemorySync = Schema.decodeUnknownOption(MemorySyncIn);
+const DeviceHoldIn = Schema.Struct({
+  device: Schema.String.check(Schema.isMaxLength(200)),
+  codeHash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)),
+  changes: Schema.Array(Schema.Unknown),
+});
+const decodeDeviceHold = Schema.decodeUnknownOption(DeviceHoldIn);
 const decodePresenceAct = Schema.decodeUnknownOption(PresenceAct);
 const decodePersonaAct = Schema.decodeUnknownOption(PersonaAct);
 const decodeGroupAct = Schema.decodeUnknownOption(GroupAct);
@@ -413,6 +426,20 @@ const applyAtBrain = Effect.fn("BrainHost.apply")(function* (op: BrainOp, payloa
       if (Option.isNone(here)) return refused("No memory here.");
       const s = sync.value;
       return done(yield* here.value.applyChanges(s.origin, s.changes as never, s.upTo));
+    }
+    case "deviceHold": {
+      const hold = decodeDeviceHold(payload);
+      if (Option.isNone(hold)) return refused("Not a device's memories.");
+      const here = yield* Effect.serviceOption(TessayaMemoryService);
+      if (Option.isNone(here)) return refused("No memory here.");
+      const h = hold.value;
+      const changes = h.changes.filter(
+        (c): c is MemoryChange =>
+          typeof c === "object" && c !== null && typeof (c as MemoryChange).item?.id === "string",
+      );
+      const held = yield* here.value.applyChanges(h.device, heldFromDevice(h.device, changes), "");
+      yield* here.value.setMeta(`${DEVICE_CLAIM}${h.codeHash}`, h.device);
+      return done({ held });
     }
     case "phoneCodes": {
       const ask = decodePhoneCodes(payload);
