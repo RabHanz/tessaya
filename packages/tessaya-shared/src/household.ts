@@ -233,3 +233,27 @@ export const adultOn = (born: string | null, age: number): string | null => {
   const m = born === null ? null : /^(\d{4})-(\d{2})-(\d{2})$/.exec(born);
   return m === null ? null : `${String(Number(m[1]) + age).padStart(4, "0")}-${m[2]}-${m[3]}`;
 };
+
+/** A child's limits a guardian set (identity I-5); each is lifted by setting it to null. */
+export interface ChildLimits {
+  /** "21:00-07:00": in these hours (the home's clock) she only talks with them. */
+  readonly quiet: string | null;
+  /** "guardians": they message only their guardians. */
+  readonly messages: string | null;
+}
+export const NO_LIMITS: ChildLimits = { quiet: null, messages: null };
+
+/** Minutes after midnight of "HH:MM-HH:MM"'s two ends, or null when it is not one. */
+export const quietRange = (text: string): { readonly from: number; readonly to: number } | null => {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)-([01]\d|2[0-3]):([0-5]\d)$/.exec(text.trim());
+  return m === null
+    ? null
+    : { from: Number(m[1]) * 60 + Number(m[2]), to: Number(m[3]) * 60 + Number(m[4]) };
+};
+
+/** Whether `minutes` after midnight falls in quiet hours; a range past midnight wraps. */
+export const inQuiet = (quiet: string | null, minutes: number): boolean => {
+  const r = quiet === null ? null : quietRange(quiet);
+  if (r === null || r.from === r.to) return false;
+  return r.from < r.to ? minutes >= r.from && minutes < r.to : minutes >= r.from || minutes < r.to;
+};

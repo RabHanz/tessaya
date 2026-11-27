@@ -202,6 +202,7 @@ export const make = Effect.gen(function* () {
       member: grants === null ? null : caller.member,
       role: grants?.role ?? null,
       name: grants?.name ?? null,
+      messagesTo: grants?.messagesTo ?? null,
     };
   });
 
@@ -431,10 +432,19 @@ export const make = Effect.gen(function* () {
   const send = Effect.fn("TessayaComms.send")(function* (
     input: Extract<CommsCallInput, { op: "send" }>,
   ) {
-    const { caller, member, role, name } = yield* who;
+    const { caller, member, role, name, messagesTo } = yield* who;
     if (caller.member !== null && member === null)
       return refused("Only members of this home can send messages.");
     if (role === "guest") return refused("A guest can't send messages here.");
+    // A guardian's limit: only their guardians, until a guardian lifts it.
+    if (
+      messagesTo !== null &&
+      !input.to.every((a) => {
+        const t = parseAddress(a);
+        return t?.kind === "person" && messagesTo.includes(t.id);
+      })
+    )
+      return refused("You can message only your guardians right now; they can change that.");
     if (!(yield* enabled)) return refused(OFF_LINE);
     const bad = input.to.find((a) => parseAddress(a) === null);
     if (bad !== undefined) return refused(`I don't know who "${bad}" is.`);

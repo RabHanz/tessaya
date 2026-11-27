@@ -61,6 +61,8 @@ export interface TrustPrincipal {
   readonly role: PrincipalRole;
   readonly assurance: Assurance;
   readonly machine?: boolean;
+  /** A child in the quiet hours a guardian set: only talk (identity I-5). */
+  readonly quiet?: boolean;
 }
 
 /**
@@ -158,6 +160,7 @@ const REACH: Readonly<Record<string, ToolReach>> = {
       "tessaya_wake_word_change",
       "member_invite",
       "member_set_role",
+      "member_limit",
       "member_remove",
       "member_restore",
       "member_rename",
@@ -208,6 +211,8 @@ export const principalRefusal = (principal: TrustPrincipal, tool: string): strin
     (reach === "machine" && role !== "owner" && principal.machine !== true)
   )
     return `${tessayaToolName(tool)} is not for a ${role} in this home.`;
+  if (principal.quiet === true && reach !== "general")
+    return "It's your quiet time now, so I can only talk; your guardian can change that.";
   // My own things need me, not a likely me: refused rather than asked of someone else.
   if (reach === "personal" && principal.assurance < REACH_ASSURANCE.personal)
     return "I need to be sure it's you for that: try again on your own device.";

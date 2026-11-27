@@ -266,6 +266,31 @@ export const householdControls = (s: {
         kind: "toggle",
         on: m.machine,
       });
+    // A guardian's limits on a child (identity I-5): each shows what is set, and clears with Remove.
+    if (m.state !== "leaving" && m.role === "child")
+      rows.push(
+        {
+          id: `m.hh.quiet:${m.id}`,
+          section,
+          label: text("hh.limit.quiet", { name: m.name }),
+          hint: text("hh.limit.quiet.hint"),
+          kind: "list",
+          items: m.limits?.quiet == null ? [] : [m.limits.quiet],
+          placeholder: "21:00-07:00",
+          addLabel: text("hh.limit.set"),
+        },
+        {
+          id: `m.hh.messages:${m.id}`,
+          section,
+          label: text("hh.limit.messages", { name: m.name }),
+          kind: "choice",
+          value: m.limits?.messages ?? "",
+          options: [
+            { value: "", label: text("hh.limit.messages.anyone") },
+            { value: "guardians", label: text("hh.limit.messages.guardians") },
+          ],
+        },
+      );
     rows.push(
       m.state === "leaving"
         ? {
@@ -532,7 +557,19 @@ export const createHouseholdTab = (input: {
         value.trim() !== ""
       )
         run("invite", { name: value.trim().slice(0, 120), role: inviteRole }, value.trim());
-      else if (kind === "machine" && target !== undefined)
+      else if (kind === "quiet" || kind === "messages") {
+        // A list sends :add with its text or :rm; a choice sends its value, "" for none.
+        const [who, edit] = rest.split(":");
+        const child = memberOf(who ?? "");
+        const set =
+          edit === "rm"
+            ? null
+            : typeof value === "string" && value.trim() !== ""
+              ? value.trim()
+              : null;
+        if (child !== undefined)
+          run("setLimit", { id: child.id, limit: kind, value: set }, child.name);
+      } else if (kind === "machine" && target !== undefined)
         run("machine", { id: target.id, on: value === true }, target.name);
       else if (kind === "role" && target !== undefined && ROLES.includes(value as InviteRole))
         run("setRole", { id: target.id, role: value });

@@ -148,6 +148,7 @@ const ROOM_TOOLS = [
   "member_invite",
   "member_whoami",
   "member_consent",
+  "member_limit",
   "member_set_role",
   "member_remove",
   "member_restore",
@@ -370,7 +371,11 @@ export const roomRefusal = (
     readonly member?: string | null | undefined;
     readonly assurance?: Assurance | undefined;
   },
-  grants: { readonly role: MemberRole; readonly machine: boolean } | null,
+  grants: {
+    readonly role: MemberRole;
+    readonly machine: boolean;
+    readonly quietNow?: boolean | undefined;
+  } | null,
   tool: string,
 ): string | null =>
   origin.member === undefined || origin.member === OWNER_MEMBER_ID
@@ -380,6 +385,7 @@ export const roomRefusal = (
           role: grants?.role ?? "guest",
           machine: grants?.machine ?? false,
           assurance: origin.assurance ?? 0,
+          ...(grants?.quietNow === true ? { quiet: true } : {}),
         },
         tool,
       );

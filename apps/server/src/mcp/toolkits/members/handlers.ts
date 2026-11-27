@@ -56,6 +56,14 @@ export const make = Effect.gen(function* () {
       }),
     ),
     member_whoami: McpToolAccess.reads(() => run({ op: "whoAmI" })),
+    member_limit: McpToolAccess.writes((input: Args) =>
+      run({
+        op: "setLimit",
+        id: id(input),
+        limit: input["limit"] === "messages" ? "messages" : "quiet",
+        value: typeof input["value"] === "string" && input["value"] !== "" ? input["value"] : null,
+      }),
+    ),
     member_consent: McpToolAccess.writes((input: Args) =>
       run({ op: "consent", yes: input["yes"] === true }),
     ),

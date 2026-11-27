@@ -1895,6 +1895,20 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     uses: [["member_whoami"], ["member_consent"]],
   },
   {
+    // Identity I-5 (27 Nov): a guardian's limit on a child, by voice; lifting it is the same tool with no value.
+    id: "member-limit-quiet",
+    proves: ["member_limit"],
+    said: [
+      "Give the household member with id adam-1 quiet hours from nine at night to seven in the morning.",
+    ],
+    uses: [["member_limit", "members_list"]],
+    argsOf: "member_limit",
+    args: (input) => ({
+      quiet: input["limit"] === "quiet",
+      hours: input["value"] === "21:00-07:00",
+    }),
+  },
+  {
     // A guest pass ends on its day: "till Sunday" is a date, never a full member.
     id: "member-guest-pass",
     proves: ["member_invite"],

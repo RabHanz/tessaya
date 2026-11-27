@@ -79,7 +79,16 @@ const household = Layer.succeed(
   TessayaHousehold,
   TessayaHousehold.of({
     grantsOf: (member: string) =>
-      Effect.succeed(MEMBERS[member] === undefined ? null : { ...MEMBERS[member], machine: false }),
+      Effect.succeed(
+        MEMBERS[member] === undefined
+          ? null
+          : {
+              ...MEMBERS[member],
+              machine: false,
+              // Maya's guardian set "only her guardians" (identity I-5).
+              messagesTo: member === "maya" ? ["owner"] : null,
+            },
+      ),
     call: () =>
       Effect.succeed({
         status: "done" as const,
@@ -169,6 +178,12 @@ layer("TessayaComms", (it) => {
         urgency: "urgent",
       });
       assert.strictEqual(child.note?.urgency, "soon");
+      // Her guardian's limit: the owner yes, her sister or everyone no.
+      for (const to of [["person:sara"], ["all"], ["person:owner", "person:sara"]])
+        assert.strictEqual(
+          (yield* comms("maya", { op: "send", to, kind: "text", text: "hi" })).status,
+          "refused",
+        );
     }),
   );
 

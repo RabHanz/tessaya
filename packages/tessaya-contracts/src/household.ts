@@ -57,6 +57,10 @@ export const TessayaHouseholdMember = Schema.Struct({
   you: Schema.Boolean,
   /** The Windows account whose Hello confirms them, when one is set. */
   windowsAccount: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** A child's limits a guardian set: quiet hours ("21:00-07:00") and who they may message ("guardians"). */
+  limits: Schema.optionalKey(
+    Schema.Struct({ quiet: Schema.NullOr(Schema.String), messages: Schema.NullOr(Schema.String) }),
+  ),
 });
 export type TessayaHouseholdMember = typeof TessayaHouseholdMember.Type;
 
@@ -120,6 +124,15 @@ export const TessayaHouseholdCallInput = Schema.Union([
   op("consent", { yes: Schema.Boolean }),
   /** Everything the home keeps about the member asking, from their own device at A3 (their private store exports apart). */
   op("exportMine", {}),
+  /**
+   * A guardian's limit on their child, or (value null) lifting it: `quiet` hours as "21:00-07:00", in which she only
+   * talks; `messages` "guardians", so they message only their guardians. The owner and admins may set them too.
+   */
+  op("setLimit", {
+    ...Ref,
+    limit: Schema.Literals(["quiet", "messages"]),
+    value: Schema.NullOr(Schema.String.check(Schema.isMaxLength(20))),
+  }),
   /** A new pairing code for a member's next device. */
   op("pair", Ref),
   op("setRole", { ...Ref, role: InviteRole }),

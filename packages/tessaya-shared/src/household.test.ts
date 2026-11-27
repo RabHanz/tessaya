@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  inQuiet,
   memberOfSpeaker,
   memberOfSubject,
   memberSubject,
@@ -8,6 +9,21 @@ import {
   vesselSubject,
   voiceAssurance,
 } from "./household.ts";
+
+describe("a child's quiet hours", () => {
+  it.each([
+    ["21:00-07:00", 22 * 60, true],
+    ["21:00-07:00", 6 * 60 + 59, true],
+    ["21:00-07:00", 7 * 60, false],
+    ["21:00-07:00", 12 * 60, false],
+    ["13:00-15:00", 14 * 60, true],
+    ["13:00-15:00", 15 * 60, false],
+    ["9pm-7am", 22 * 60, false],
+    ["07:00-07:00", 7 * 60, false],
+  ] as const)("%s at minute %i is quiet: %s", (range, minutes, quiet) => {
+    expect(inQuiet(range, minutes)).toBe(quiet);
+  });
+});
 
 describe("memberOfSubject", () => {
   it.each([
