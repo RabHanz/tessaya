@@ -8,7 +8,20 @@ const BASE = new URL("./", import.meta.url).href;
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches, narrow = matchMedia("(max-width:860px)").matches;
 
 // light and dark (R1-A Loom's switch)
-$("#theme").onclick = () => { const d = document.documentElement, dark = d.dataset.theme ? d.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; d.dataset.theme = dark ? "light" : "dark"; loom && loom.ring(); };
+// the woven mark repaints itself (loom.js); the threads give a little shiver and her eyes notice the lights
+let onLights = null;
+$("#theme").onclick = () => {
+ const d = document.documentElement, dark = d.dataset.theme ? d.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+ d.dataset.theme = dark ? "light" : "dark";
+ if (!reduced) loom.pluck(.35);
+ onLights && onLights(!dark);
+};
+
+// small things that notice you: the hour where you are, and when you look away
+const hour = new Date().getHours();
+$("#hello").textContent = hour < 5 ? "It's late where you are. She'd tell you to get some sleep." : hour < 12 ? "Good morning from her." : hour >= 21 ? "Evening. She's still up." : "";
+const title = document.title;
+document.addEventListener("visibilitychange", () => { document.title = document.hidden ? "Say my name when you're back." : title; });
 
 // each section below the hero builds itself (rigs, eye WASM, physics, WebGL) only as it comes near the screen
 const near = (el, fn, rootMargin = "600px") => new IntersectionObserver(([e], io) => { if (e.isIntersecting) { io.disconnect(); Promise.resolve().then(fn).catch((err) => console.warn("section unavailable", err)); } }, {rootMargin}).observe(el);
@@ -19,7 +32,11 @@ let scenes = null, drop = null;
 near($("#moments"), async () => { scenes = await TSScenes({base: BASE, voice, root: $("#moments"), list: $("#scenes"), eyes: [$("#eL"), $("#eR")], eyesWatch: $("#pair"), rig: $("#rig"),
  log: $("#log"), board: $("#board"), title: $("#stitle"), note: $("#note"), stop: $("#stop"), status: $("#status"),
  item: (sc) => `<span class="n">${sc.n}</span><b>${sc.title}</b><span class="st">${TS_STATUS[sc.status]}</span><span class="k">${sc.kick}</span>`}); });
-$("#scenes").addEventListener("click", () => { if (innerWidth < 900) $("#stage").scrollIntoView({behavior: "smooth", block: "start"}); });
+// on a tablet the stage sits below the list, so bring it up; on a phone the asks are a strip right above it already
+$("#scenes").addEventListener("click", (ev) => {
+ if (innerWidth <= 720) { const b = ev.target.closest(".scene"), row = $("#scenes"); if (b) row.scrollTo({left: b.offsetLeft - row.offsetLeft - parseFloat(getComputedStyle(row).paddingLeft), behavior: reduced ? "auto" : "smooth"}); return; }
+ if (innerWidth < 900) $("#stage").scrollIntoView({behavior: "smooth", block: "start"});
+});
 
 // the mark rings and the drop swells whenever any of her voices speaks
 const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -32,6 +49,13 @@ const say0 = voice.say;
 voice.say = (a, h = {}) => say0(a, {...h, onState: (s, w) => { if (s === "speaking") { loom.ring(); drop && drop.ring(); } h.onState && h.onState(s, w); }});
 if (!reduced) setTimeout(() => loom.pluck(.8), 400);
 
+// on a phone, her name rides along at the bottom once the hero has gone, and steps aside where the page has its own controls
+const dock = $("#dock"), busy = ["#top", "#moments", "#tessel", "#poke", "footer"].map((q) => $(q));
+let dockF = 0;
+const dockCheck = () => { dockF = 0; dock.classList.toggle("on", innerWidth <= 720 && !busy.some((el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; })); };
+addEventListener("scroll", () => { dockF ||= requestAnimationFrame(dockCheck); }, {passive: true});
+$("#dockCall").onclick = () => { $("#dockSays").textContent = "Wake word heard. She answers."; voice.yes("tessaya", {eyes: scenes && scenes.eyes, onState: (st) => { if (st === "idle") $("#dockSays").textContent = "That is all it takes."; }}); };
+
 // hero: her name is the wake word
 $("#callHer").onclick = () => { $("#heard").textContent = "Wake word heard. She answers."; voice.yes("tessaya", {eyes: scenes && scenes.eyes, onState: (s) => { if (s === "idle") $("#heard").textContent = "That is all it takes. Then say what you need."; }}); };
 $("#hearHer").onclick = () => voice.say({who: "tessaya", clip: "t-name", say: "Say my name.", eyes: "happy", quick: true}, {eyes: scenes && scenes.eyes});
@@ -42,14 +66,20 @@ $("#sayIt").onclick = () => {
  voice.yes("tessaya", {eyes: scenes && scenes.eyes, onState: (s) => { if (s === "speaking") drop && drop.mood("happy", 2200); if (s === "idle") $("#heard2").textContent = "That is all it takes. Then say what you need."; }});
 };
 
-// the cast shelf: tap one and she answers to her name
-const SHELF = ["freya", "alfred", "tessaya", "sebastian", "onyx"];
+// the cast shelf: tap one and she answers to her name; they all glance at the pointer as it passes
+const SHELF = ["freya", "alfred", "tessaya", "sebastian", "onyx"], shelfRigs = [];
+let lookT = 0;
+$("#shelf").addEventListener("pointermove", (ev) => {
+ if (reduced || ev.timeStamp - lookT < 120) return; lookT = ev.timeStamp;
+ for (const r of shelfRigs) { const b = r.el.getBoundingClientRect(); r.rig.look((ev.clientX - (b.left + b.width / 2)) / (b.width * 2), (ev.clientY - (b.top + b.height / 2)) / (b.height * 2), 1400); }
+});
 near($("#shelf"), () => { for (const who of SHELF) {
  const W = TS_WHO[who], b = document.createElement("button"); b.className = "char"; b.type = "button";
  if (!W.yes) b.dataset.soon = "";
  b.innerHTML = `<svg aria-hidden="true"></svg><span>${W.name}</span>`;
  b.setAttribute("aria-label", W.yes ? `${W.name}: hear her answer` : `${W.name}: no lines on this page yet`);
  const rig = TCS.create(b.querySelector("svg"), {character: W.ch, personality: (TCS.PERSONAS[who] || {}).traits || {}, expression: "neutral", intensity: .9, quiet: true});
+ shelfRigs.push({el: b, rig});
  b.onclick = () => {
   if (!W.yes) { rig.react("poke"); $("#castNote").textContent = "Onyx has no lines on this page yet. For now he only goes thud."; return; }
   $("#castNote").textContent = `${W.name}, in the ${W.voice} voice.`; voice.yes(who, {rig});
@@ -69,16 +99,16 @@ const world = TSWorld(pit, {
  ledges: () => { const pr = pit.getBoundingClientRect(), r = word.getBoundingClientRect(); return [{x1: r.left - pr.left + r.width * .01, x2: r.right - pr.left - r.width * .01, y: r.top - pr.top + r.height * .03 + 3}]; },
  bin: (w, h, S) => { const tw = Math.max(44, S * .42), th = tw * 1.15, tx = w - tw - Math.max(8, w * .02); Object.assign(binEl.style, {left: tx + "px", top: h - th + "px", width: tw + "px", height: th + "px"}); return {x1: tx, x2: tx + tw, y: h - th}; },
  onTalk: (b) => { const who = Object.keys(TS_WHO).find((k) => TS_WHO[k].ch === b.id); if (!who || !TS_WHO[who].yes) return false; voice.yes(who, {rig: b.rig}); return true; },
- onFull: () => flash("That's eight, a full house. Take one out to bring in another."),
+ onFull: () => flash("That's eight, a full house. Drop one in the bin to make room."),
  onCount: (n) => { $("#count").textContent = `${n} of 8`; },
 });
 const toss = (id) => world.add(id, null, -world.S * .3, {vx: (Math.random() - .5) * 500});
-const personas = Object.values(TS_WHO).map((w) => w.ch);
-for (const w of Object.values(TS_WHO)) { const b = document.createElement("button"); b.className = "p"; b.textContent = "+ " + w.name; b.onclick = () => toss(w.ch); $("#cast-p").appendChild(b); }
-for (const id of TS_BODIES.filter((i) => !personas.includes(i))) { const b = document.createElement("button"); b.textContent = "+ " + TS_NAME(id); b.onclick = () => toss(id); $("#cast-b").appendChild(b); }
+// one button instead of thirteen: whoever is not in yet, personas first
+const queue = [...Object.values(TS_WHO).map((w) => w.ch), ...TS_BODIES.filter((i) => !Object.values(TS_WHO).some((w) => w.ch === i))];
+let next = 0;
+$("#someone").onclick = () => { toss(queue[next % queue.length]); next++; };
 document.querySelectorAll("[data-tool]").forEach((b) => b.onclick = () => { world.tool = b.dataset.tool; document.querySelectorAll("[data-tool]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); });
-$("#clear").onclick = () => world.reset();
-$("#pop").onclick = () => world.pop();
+$("#clear").onclick = () => { world.reset(); next = 0; };
 document.fonts.ready.then(() => world.layout && world.layout());
 new IntersectionObserver(([e], io) => { if (e.isIntersecting) { io.disconnect(); world.drop(["selvedge", "felt", "tweed", "spool"]); } }, {threshold: .25}).observe(pit);
 });
@@ -101,13 +131,28 @@ teyes.persona(1); teyes.expr("happy");
 const phone = TSScreen($("#phone"), {mood: "happy", label: "Happy"});
 const front = () => spins.forEach((s) => s.front());
 const press = (box, b) => box.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-let group = "";
-for (const [n, label, g] of TS_EYELIST.moods) {
- if (g !== group) { group = g; $("#moods").insertAdjacentHTML("beforeend", `<span class="g">${g}</span>`); }
- const b = document.createElement("button"); b.textContent = label; b.setAttribute("aria-pressed", String(n === "happy"));
- b.onclick = () => { teyes.expr(n); phone.mood(n, label); press($("#moods"), b); front(); };
- $("#moods").appendChild(b);
+// a few moments with intent rather than all 44 moods; "Surprise me" reaches the rest
+const MOMENTS = [["You said her name", "happy"], ["Something new", "curious"], ["A compliment", "shy"], ["A surprise", "surprised"],
+ ["A dodgy claim", "skeptical"], ["Bad news", "sad"], ["The build broke", "grumpy"], ["Past midnight", "sleepy"]];
+const label = (n) => (TS_EYELIST.moods.find((m) => m[0] === n) || [n, n])[1];
+const feel = (n, b) => { teyes.expr(n); phone.mood(n, label(n)); press($("#moods"), b); front(); };
+for (const [what, n] of MOMENTS) {
+ const b = document.createElement("button"); b.type = "button"; b.innerHTML = `${what}<small>${label(n)}</small>`; b.setAttribute("aria-pressed", String(n === "happy"));
+ b.onclick = () => feel(n, b); $("#moods").appendChild(b);
 }
-for (const n of TS_EYELIST.gestures) { const b = document.createElement("button"); b.textContent = n.replace(/([A-Z])/g, " $1").toLowerCase().replace(/^./, (c) => c.toUpperCase()); b.onclick = () => { teyes.play(n); front(); }; $("#gestures").appendChild(b); }
-for (const [k, i] of Object.entries(teyes.PERSONA)) { const b = document.createElement("button"); b.textContent = TS_WHO[k].name; b.setAttribute("aria-pressed", String(i === 1)); b.onclick = () => { teyes.persona(i); phone.who(TS_WHO[k].name, TS_WHO[k].ch); press($("#persona"), b); }; $("#persona").appendChild(b); }
+const any = document.createElement("button"); any.type = "button"; any.innerHTML = "Surprise me<small>any of 44</small>";
+any.onclick = () => { const [n, l] = TS_EYELIST.moods[Math.floor(Math.random() * TS_EYELIST.moods.length)]; feel(n, any); any.querySelector("small").textContent = l; };
+$("#moods").appendChild(any);
+for (const [g, what] of [["nodSmall", "Yes"], ["shakeSmall", "No"], ["tilt", "Hmm?"], ["eyeRoll", "Oh, please"], ["giggleOnce", "Giggle"]]) {
+ const b = document.createElement("button"); b.type = "button"; b.textContent = what; b.onclick = () => { teyes.play(g); front(); }; $("#gestures").appendChild(b);
+}
+for (const [k, i] of Object.entries(teyes.PERSONA)) { const b = document.createElement("button"); b.type = "button"; b.textContent = TS_WHO[k].name; b.setAttribute("aria-pressed", String(i === 1)); b.onclick = () => { teyes.persona(i); phone.who(TS_WHO[k].name, TS_WHO[k].ch); press($("#persona"), b); }; $("#persona").appendChild(b); }
+// their eyes follow the pointer across the band, and notice when the lights change
+let gazeT = 0;
+$("#render").addEventListener("pointermove", (ev) => {
+ if (reduced || ev.timeStamp - gazeT < 150) return; gazeT = ev.timeStamp;
+ const r = $("#render").getBoundingClientRect();
+ teyes.gaze(Math.max(-1, Math.min(1, (ev.clientX - r.left) / r.width * 2 - 1)) * .6, Math.max(-1, Math.min(1, (ev.clientY - r.top) / r.height * 2 - 1)) * .4, 1800);
+});
+onLights = (dark) => teyes.play(dark ? "yawn" : "startle");
 }, "900px");

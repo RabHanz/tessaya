@@ -77,7 +77,10 @@ export function Loom(canvas, o) {
  });
  canvas.addEventListener("pointerleave", () => { lastP = null; });
  new ResizeObserver(resize).observe(canvas);
- matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { paint(); draw(); });
+ // the threads take the theme's colours whenever it changes, from the system or the page's own switch
+ const repaint = () => { paint(); draw(); };
+ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", repaint);
+ new MutationObserver(repaint).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
  resize();
  return {ring, resize, pluck(n = 1) { threads.forEach((t, i) => kick(t, Math.round(SEG * (.25 + .1 * i)), (i % 2 ? 1.6 : -1.6) * n)); ring(); }};
 }

@@ -21,9 +21,9 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
 
 <section id="cast">
  <p class="kick">The cast</p>
- <h2>Five names. One memory.</h2>
- <p class="lede">Tessaya leads, Freya keeps you company, Alfred runs the admin, Sebastian checks the facts, and Onyx looks after engineering. Freya knows what Alfred just told you. Tap one.</p>
- <div class="shelf" id="shelf"></div>
+ <h2>Five souls. One house.</h2>
+ <p class="lede">Tessaya leads, Freya keeps you company, Alfred runs the admin, Sebastian checks the facts, and Onyx looks after engineering. Each has their own moods and their own history with you. What the house knows, they all know, so Freya knows what Alfred just told you. Tap one.</p>
+ <div class="shelf swipe" id="shelf"></div>
  <p class="cast-note" id="castNote" aria-live="polite"></p>
 </section>
 
@@ -32,7 +32,7 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
  <h2>Watch her think.</h2>
  <p class="lede">Sound on. You hear the request first, then her: the wake chime, a beat to think, and the answer in her own voice. The eyes run the same code as the Tumble on a desk, and the face and body follow each word.</p>
  <div class="demo">
-  <div class="asks" id="scenes"></div>
+  <div class="asks swipe" id="scenes"></div>
   <div class="stage" id="stage">
    <div class="spin tuft" id="pair" style="--ar:1.1967" tabindex="0" role="slider" aria-label="Tuft, the plush, its eyes following her words. Drag or use the arrow keys to turn it." aria-valuemin="0" aria-valuemax="359" data-src={`${base}shared/spin/tuft`}><canvas aria-hidden="true"></canvas><div class="spin-screens"><div class="eye"><canvas width="512" height="512" id="eL"></canvas></div><div class="eye"><canvas width="512" height="512" id="eR"></canvas></div></div></div>
    <div class="top"><h3 id="stitle">Pick a moment<small>The Tumble's own eye code, running in your browser.</small></h3><svg id="rig" aria-hidden="true"></svg></div>
@@ -41,7 +41,7 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
    <div class="meta"><span id="note"></span><span id="status"></span><button id="stop">Stop</button></div>
   </div>
  </div>
- <p class="disclaim">A demo: nothing on this page listens to you. Your side is a synthetic voice; her lines were rendered ahead of time on our own speech engine. “In our evals” and “Coming” mark what is not out yet.</p>
+ <p class="disclaim">A demo: nothing on this page listens to you. Your side is a synthetic voice; her lines were rendered ahead of time on our own speech engine. “Beta” marks what works but is still changing; “Coming” marks what is not out yet. The badges match the docs.</p>
 </section>
 
 <section id="story">
@@ -61,39 +61,37 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
   <div class="cols">
    <p>Tessaya comes from the Italian <i>tessere</i>, to weave. She weaves your sessions, machines and agents into one assistant that hears you anywhere and does the work, and her name is the word that wakes her.</p>
    <p>The code started on 17 September 2026, as a fork of the open-source T3 Code. The idea is older. Since he was a kid, the man who builds her has wanted to run things just by saying so, and he still builds her that way, talking to a crowd of coding agents at once: 1,071 pull requests merged in the twenty days to 15 November. One day she might get arms and legs. For now she makes do with Bluetooth.</p>
-   <p>She has five faces and one memory behind all of them. What you tell one, the others know, and every memory is a row you can see, edit or forget.</p>
+   <p>There are five of them now, and room for more. Each keeps their own feelings and their own history with you; what the house knows, they share. Every memory is a row you can see, edit or forget.</p>
   </div>
  </div>
  <blockquote>“She answered her own voice 43 times in about three minutes.”</blockquote>
- <p>The Tumble, before its speaker's amplifier was wired up. On the bare board it now removes 40.3 dB of her echo; in its case, that work goes on.</p>
- <div class="notes" id="numbers">
-  <div class="note"><b>0.48 s</b><p>Dictation key up to clean text, on a busy 2018 laptop. It was 14.5 s.</p></div>
-  <div class="note"><b>8.98%</b><p>Formatting errors on held-out speech in our evals; the app it replaced scored 10.57%.</p></div>
-  <div class="note"><b>199 ms</b><p>From a spoken “stop” to silence, on the Tumble.</p></div>
-  <div class="note"><b>0 an hour</b><p>False stops in a busy room, once she checks the voice against the voices she knows.</p></div>
-  <div class="note"><b>44 / 33</b><p>Moods and gestures in her eyes. Try them below.</p></div>
-  <div class="note gap"><b>3.29 s</b><p>To her first sound. The target is 1.5 s, and she is not there yet.</p></div>
+ <p>The Tumble, early on, before it learned to tell her voice from yours.</p>
+ <div class="notes swipe" id="numbers">
+  <div class="note"><b>75.2%</b><p>Hard names spelled right in dictation, with your own dictionary. It was 61.9%.</p></div>
+  <div class="note"><b>0.86 s</b><p>From letting go of the dictation key to clean text, typical in daily use.</p></div>
+  <div class="note"><b>−40 dB</b><p>Her own voice, as the Tumble's microphone hears it. It was −22 dB.</p></div>
+  <div class="note"><b>0</b><p>False pauses in five quiet minutes on the Tumble.</p></div>
+  <div class="note"><b>44 / 33</b><p>Moods and gestures in her eyes. A few of them are below.</p></div>
+  <div class="note gap"><b>3.3 s</b><p>To her first sound at best, often longer. The target is 1.5 s, and she is not there yet.</p></div>
  </div>
- <p class="disclaim">Our own measurements, November 2026.</p>
+ <p class="disclaim">Our own measurements, to 27 November 2026.</p>
 </section>
 
 <section id="poke">
  <p class="kick">The character sandbox</p>
  <h2>Go on, poke her.</h2>
  <p class="lede">Thirteen bodies, five of them personas, with the physics they have on your desktop. Each has its own weight, bounce and temper, and they notice each other. Up to eight at once.</p>
- <div class="tools" id="cast-p"><span class="lbl">Personas</span></div>
- <div class="tools" id="cast-b"><span class="lbl">More bodies</span></div>
- <div class="tools" role="toolbar" aria-label="Sandbox"><button data-tool="hand" aria-pressed="true">Hand</button><button data-tool="squish" aria-pressed="false">Squish</button><button data-tool="taffy" aria-pressed="false">Stretch</button><span class="sep"></span><button id="pop">Take one out</button><button id="clear">Clear</button><span class="count" id="count" aria-live="polite">0 of 8</span></div>
+ <div class="tools" role="toolbar" aria-label="Sandbox" id="cast-p"><span class="lbl">Bring in</span><button id="someone" class="p">+ Someone new</button><span class="sep"></span><button data-tool="hand" aria-pressed="true">Hand</button><button data-tool="squish" aria-pressed="false">Squish</button><button data-tool="taffy" aria-pressed="false">Stretch</button><span class="sep"></span><button id="clear">Clear</button><span class="count" id="count" aria-live="polite">0 of 8</span></div>
  <div class="pit" id="pit"><p class="word" aria-hidden="true"><span id="word">TESSAYA</span></p></div>
  <p class="hint" id="hint">Drag to carry, flick to throw, tap to poke, stroke to pet. Double-tap a persona to hear her. Try the bin.</p>
 </section>
 
 <section id="tessel">
  <div class="tumble" id="band" data-band="damson">
-  <div class="copy"><p class="kick">Tessel</p><h2>A little body for her.</h2><p>One palm-sized core with eyes, ears and a voice. It clicks into whichever body suits the room, and knows which one it's in.</p>
+  <div class="copy"><p class="kick">Tessel</p><h2>A little body for her.</h2><p>One palm-sized core with eyes, ears and a voice. It clicks into whichever body suits the room, and knows which one it's in. On it she laughs, sighs and hums where a person would.</p>
    <ul><li><b>Tumble</b> the core</li><li><b>Tuft</b> the plush</li><li><b>Sleeve</b> for a spare phone</li></ul>
    <span class="soon">Working prototype, not for sale</span></div>
-  <div class="family" id="render">
+  <div class="family swipe" id="render">
    <figure class="dev">
     <div class="spin tuft" id="spinTuft" style="--ar:1.1967" tabindex="0" role="slider" aria-label="Tuft, the plush. Drag or use the arrow keys to turn it." aria-valuemin="0" aria-valuemax="359" data-src={`${base}shared/spin/tuft`}><canvas aria-hidden="true"></canvas><div class="spin-screens"><div class="eye"><canvas width="512" height="512" id="fL"></canvas></div><div class="eye"><canvas width="512" height="512" id="fR"></canvas></div></div></div>
     <figcaption><b>Tuft</b><span>The plush. A soft coat over the Tumble, its eyes under two clear domes.</span><small>From its Blender design file</small></figcaption>
@@ -106,13 +104,15 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
     <div class="spin sleeve" id="spinSleeve" style="--ar:1.5833" tabindex="0" role="slider" aria-label="A spare phone in the Sleeve, a concept, with Tessaya on its screen. Drag or use the arrow keys to turn it." aria-valuemin="0" aria-valuemax="359" data-src={`${base}shared/spin/sleeve`}><canvas aria-hidden="true"></canvas><div class="spin-screens"><div class="phone" id="phone"></div></div></div>
     <figcaption><b>Sleeve</b><span>A spare phone becomes her. Tessaya on the screen, in the light of her mood.</span><small>An early concept; the real Sleeve is being designed</small></figcaption>
    </figure>
-   <p class="spin-hint" id="tcap">Drag any of them to turn it all the way round. Pick a mood below and each one turns back to show you its face.</p>
+   <p class="spin-hint" id="tcap">Drag any of them to turn it all the way round. Move over them and they look at you.</p>
   </div>
- </div>
- <div class="face">
-  <div><p class="kick">Her face</p><h3>44 moods, 33 gestures.</h3><p>Every one is the code on the device. Pick a mood, then a gesture on top of it.</p>
-   <div class="persona" role="group" aria-label="Persona" id="persona"></div></div>
-  <div><div class="chips" id="moods" role="group" aria-label="Moods"></div><div class="chips" id="gestures" role="group" aria-label="Gestures"><span class="g">Gestures</span></div></div>
+  <div class="dial" id="dial">
+   <p class="kick">How would she take it?</p>
+   <div class="chips" id="moods" role="group" aria-label="What just happened"></div>
+   <div class="chips" id="gestures" role="group" aria-label="Gestures"></div>
+   <div class="persona" role="group" aria-label="Persona" id="persona"></div>
+   <p class="dial-note">The same eye code the Tumble ran in mid-November. On the device her eyes now take a colour from her mood too: indigo when sad, damson when sleepy.</p>
+  </div>
  </div>
 </section>
 
@@ -123,24 +123,27 @@ const base = import.meta.env.BASE_URL.replace(/\/?$/, "/");
    <li><div><b>Runs on your computer</b><span>History stays there until you delete it.</span></div></li>
    <li><div><b>Nothing risky without your yes</b><span>Approvals shows the exact action, with limits on time and turns.</span></div></li>
    <li><div><b>Secrets it never sees</b><span>An encrypted vault; it uses keys without reading them.</span></div></li>
+   <li><div><b>A household, not one login</b><span>Each person at home has their own memory and their own yes. Children get limits, guests get a pass, and anyone can leave with their data.</span></div></li>
   </ol>
  </div>
 </section>
 
 <section id="start">
- <p class="kick">Start here</p>
+ <p class="kick">How it starts</p>
  <div class="start">
   <h2>Three steps, then talk.</h2>
   <div>
    <ol class="steps">
-    <li><strong>Install the desktop app</strong><span>Windows first. It holds the dictation pill, the characters and the screen companion.</span></li>
+    <li><strong>The desktop app</strong><span>In private testing on Windows, with no public download yet. It holds the dictation pill, the characters and the screen companion.</span></li>
     <li><strong>Say her name</strong><span>“Tessaya”, then what you need. Each persona answers to its own name, in its own voice.</span></li>
     <li><strong>Hand her a job</strong><span>She writes a plan first. Approvals shows exactly what your yes allows.</span></li>
    </ol>
-   <a class="docs" href={`${base}docs/`}>Read the docs</a>
+   <a class="docs" href={`${base}docs/`}>Read the docs</a><p class="ask">Or just ask her: “how do I…?” She answers from the same pages.</p>
   </div>
  </div>
 </section>
+
+<div class="dock" id="dock" aria-hidden="true"><p id="dockSays">Her name is the wake word.</p><button class="call" id="dockCall" type="button" tabindex="-1">Tessaya</button></div>
 
 <script is:inline src={`${base}shared/rig.js`} defer></script>
 <script is:inline src={`${base}shared/bodies.js`} defer></script>
