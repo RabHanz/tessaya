@@ -48,6 +48,7 @@ import {
 
 import { createEchoGuard } from "../echoGuard.ts";
 import { createTalkOver, createVoiceLevel, voiceCheckDue, type TalkOver } from "../talkOver.ts";
+import { createEchoCanceller, type EchoCanceller } from "./speexAec.ts";
 import { ackLines, pickAck, type Acknowledge } from "./acknowledge.ts";
 import type { RoomLines } from "./lines.ts";
 import {
@@ -481,6 +482,11 @@ export interface RoomDeps {
     } | null>;
     readonly report: (op: "speaking" | "ended", deviceId: string, untilMs?: number) => void;
   };
+  /** Raw aligned uplink frames and her downlink, for replaying the echo path offline (`R1_SESSION_TAP_DIR`). */
+  readonly tap?: {
+    readonly up: (deviceId: string, frame: Uint8Array, atMs: number) => void;
+    readonly down: (deviceId: string, frame: Uint8Array, sample: number, atMs: number) => void;
+  };
   /** A bench turn kept for a regression case (`cmd/voice/no-reply` with `keep`): never his, only while the bench asks. */
   readonly keep?: (turn: BenchTurn) => void;
   /** Her name with no session open (`voice/wake`): voiced segments only, never recognised beyond the wake check. */
@@ -550,6 +556,11 @@ export interface RoomConfig {
    * `voice/current/<member>`, within 10 minutes), before their own default. Off until the manager's yes (P5).
    */
   readonly personaFollows: boolean;
+  /**
+   * Her echo is cancelled out of the aligned uplink (speex, her downlink as the reference) before anything hears it: the
+   * recogniser, Voice ID and the talk-over detector. Off: the device's own cancelling only (`R1_AEC=0`).
+   */
+  readonly aec: boolean;
 }
 
 export const ROOM_CONFIG: RoomConfig = {
@@ -586,6 +597,7 @@ export const ROOM_CONFIG: RoomConfig = {
   languages: ["en"],
   talkOver: "open",
   personaFollows: false,
+  aec: true,
 };
 
 const REARM_AT_MS = [2_000, 8_000, 18_000];
@@ -1463,6 +1475,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const wait = playUntil - deps.now() - config.leadMs;
         if (wait > 0) await deps.sleep(wait);
         if (signal.aborted) return;
+        // The R1 ran out by this loop's clock mid-reply: a frame in hand is this loop late, a new chunk the voice late.
+        const late = deps.now() - playUntil;
+        if (late > 20 && deps.now() - lastDownAt < 2_000)
+          deps.log(`[${id}] downlink late ${Math.round(late)} ms (${at === 0 ? "voice" : "loop"})`);
         emit(bytes.subarray(at, at + DOWN_FRAME_BYTES));
         onFirst();
       }
@@ -1471,6 +1487,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const start = Math.max(deps.now(), playUntil);
       if (start > playUntil) soundingFrom = start + config.downDelayMs;
       deps.publish(topic(id, "voice/down"), frame);
+      deps.tap?.down(id, frame, downSamples, deps.now());
       herVoice.set(id, deps.now());
       const samples = fromBytes(frame);
       echo.reference(samples, start + config.downDelayMs);
@@ -3104,6 +3121,24 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       });
 
     /**
+     * Her downlink under the speaker as each of `n` mic samples was heard, `shift` samples after the device's latency;
+     * null until the R1's downlink count has been lined up with ours.
+     */
+    const herUnder = (rx: number, q: number, n: number, shift: number): Int16Array | null => {
+      // Nothing in flight and nothing queued: the R1 has every byte sent, so its count and ours differ by a constant.
+      if (q === 0 && deps.now() - lastDownAt > 1_000) downBase = rx - downSamples * 2;
+      if (downBase === null) return null;
+      const from = (rx - q - downBase) / 2 - R1_LATENCY + shift;
+      const ref = new Int16Array(n);
+      for (let i = 0; i < n; i += 1) {
+        const k = from + i;
+        if (k >= 0 && k < downSamples && k > downSamples - DOWN_RING) ref[i] = down[k % DOWN_RING]!;
+      }
+      return ref;
+    };
+    const canceller = config.aec ? cancellerOf(id) : null;
+
+    /**
      * Open talk-over: the frame's own header says which of her samples were under the speaker as it was heard
      * (rx - q, firmware 0.3.92), so her playback lines up with the mic to the sample, and his voice rising over what
      * is left of hers stops her at once. The words then go through the same echo and addressing checks as any turn.
@@ -3111,17 +3146,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     const heardOver = (pcm: Int16Array, seq: number, rx: number, q: number) => {
       voiceLevel.push(pcm);
       heardLately = [...heardLately, { seq, pcm }].slice(-60);
-      // Nothing in flight and nothing queued: the R1 has every byte sent, so its count and ours differ by a constant.
-      if (q === 0 && deps.now() - lastDownAt > 1_000) downBase = rx - downSamples * 2;
-      if (downBase === null) return;
-      const at = seq * pcm.length;
       // From 32 ms before the device's latency: the detector finds the rest (it only looks later, never earlier).
-      const from = (rx - q - downBase) / 2 - R1_LATENCY + 512;
-      const ref = new Int16Array(pcm.length);
-      for (let i = 0; i < ref.length; i += 1) {
-        const n = from + i;
-        if (n >= 0 && n < downSamples && n > downSamples - DOWN_RING) ref[i] = down[n % DOWN_RING]!;
-      }
+      const ref = herUnder(rx, q, pcm.length, 512);
+      if (ref === null) return;
+      const at = seq * pcm.length;
       talk.reference(ref, at);
       const heard = talk.process(pcm, at).some((v) => v.ready && v.speech);
       if (hold !== null) {
@@ -3290,8 +3318,16 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         lastUpAt = arrivedAt;
         const aligned =
           bytes.length > UP_HEADER && (bytes.length - UP_HEADER) % DOWN_FRAME_BYTES === 0;
-        const pcm = fromBytes(aligned ? bytes.subarray(UP_HEADER) : bytes);
+        if (aligned) deps.tap?.up(id, bytes, arrivedAt);
+        const heard_ = fromBytes(aligned ? bytes.subarray(UP_HEADER) : bytes);
         const head = aligned ? new DataView(bytes.buffer, bytes.byteOffset, UP_HEADER) : null;
+        // 100 ms before the device's latency: the filter's 400 ms covers the alignment's slack and the room.
+        const under =
+          head === null
+            ? null
+            : herUnder(head.getUint32(4, true), head.getUint32(8, true), heard_.length, -1_600);
+        const pcm =
+          under === null || canceller === null ? heard_ : canceller.process(heard_, under);
         if (head !== null)
           input = (head.getUint16(12, true) & UP_FLAG_HEADSET) !== 0 ? "headset" : "mic";
         if (input === "headset" && pcm.every((v) => Math.abs(v) < HEADSET_DEAD_PEAK))
@@ -3661,6 +3697,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
     if (known !== undefined) return known;
     const made = createTalkOver({ searchMs: 96 });
     talks.set(id, made);
+    return made;
+  };
+  /** One canceller per R1: the room it learned from her last replies holds for the next session. */
+  const cancellers = new Map<string, EchoCanceller>();
+  const cancellerOf = (id: string) => {
+    const known = cancellers.get(id);
+    if (known !== undefined) return known;
+    const made = createEchoCanceller();
+    cancellers.set(id, made);
     return made;
   };
   /** R1s on a bench (`cmd/voice/no-reply`, retained): what they hear is judged and logged, never answered. */
