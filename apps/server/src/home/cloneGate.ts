@@ -4,7 +4,7 @@
  * the tailnet (WireGuard, so encrypted) with no proxy or tunnel in between, from a machine of his linked here with
  * full access. Anything else keeps the loopback-only route, and the persona's Pocket voice.
  */
-import * as NodeDns from "node:dns/promises";
+import * as NodeDnsPromises from "node:dns/promises";
 
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -29,7 +29,11 @@ export const mayFetchClone = (input: {
   return input.keyOk && !input.proxied && ip !== null && input.fullAccessIps.has(ip);
 };
 
-export const PROXY_HEADERS = ["cf-connecting-ip", "x-forwarded-for", "tailscale-user-login"] as const;
+export const PROXY_HEADERS = [
+  "cf-connecting-ip",
+  "x-forwarded-for",
+  "tailscale-user-login",
+] as const;
 
 /** The tailnet IPs of every full-access link here, from its addresses (IPs as they are, names looked up). */
 export const fullAccessIps = Effect.gen(function* () {
@@ -44,7 +48,7 @@ export const fullAccessIps = Effect.gen(function* () {
       hosts.map((h) =>
         tailnetIp(h) !== null
           ? Promise.resolve([h])
-          : NodeDns.lookup(h, { all: true, family: 4 }).then(
+          : NodeDnsPromises.lookup(h, { all: true, family: 4 }).then(
               (r) => r.map((a) => a.address),
               () => [],
             ),

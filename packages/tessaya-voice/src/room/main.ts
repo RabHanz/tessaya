@@ -362,7 +362,9 @@ const cloneServer = () =>
   (clonePort ??= new Promise<number>((resolve, reject) => {
     const server = NodeHttp.createServer((req, res) => {
       const bytes = clones.get(decodeURIComponent((req.url ?? "").replace(/^\/clone\//, "")));
-      res.writeHead(bytes === undefined ? 404 : 200, { "content-type": "application/octet-stream" });
+      res.writeHead(bytes === undefined ? 404 : 200, {
+        "content-type": "application/octet-stream",
+      });
       res.end(bytes);
     });
     server.on("error", reject);
@@ -372,11 +374,9 @@ const cloneServer = () =>
 const isLoopbackHost = (host: string) => /^(127\.0\.0\.1|localhost|\[::1\])$/.test(host);
 
 /**
- * A persona's saved clone as its voice (M-046). On her brain's own machine, Pocket fetches it on her server's loopback
- * route. On another machine of his (Director, 21 Nov: approved), the loop fetches it from her brain on the Tessel's
- * key over the tailnet, which her server allows only from a machine linked there with full access, and keeps it in
- * memory for Pocket on this machine's loopback. A clone she no longer serves (consent withdrawn, or this machine not
- * trusted) leaves the persona its Pocket voice.
+ * A persona's saved clone as its voice (M-046): fetched from her brain on the Tessel's key over the tailnet (only for a
+ * machine linked there with full access) and served to this machine's Pocket on loopback. A clone she no longer
+ * serves leaves the persona its Pocket voice.
  */
 const withClone = async (p: RoomPersona, brainUrl: string, key: string): Promise<RoomPersona> => {
   if (p.cloneUrl === undefined) return p;
@@ -413,7 +413,9 @@ const withClone = async (p: RoomPersona, brainUrl: string, key: string): Promise
           cloneTones: Object.fromEntries(
             (
               await Promise.all(
-                Object.entries(p.cloneTones).map(async ([t, u]) => [t, await fetchFile(u)] as const),
+                Object.entries(p.cloneTones).map(
+                  async ([t, u]) => [t, await fetchFile(u)] as const,
+                ),
               )
             ).flatMap(([t, u]) => (u === null ? [] : [[t, u]])),
           ),
