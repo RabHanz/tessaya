@@ -52,7 +52,12 @@ export const make = Effect.gen(function* () {
         name: String(input["name"] ?? ""),
         role: input["role"] as "adult",
         ...(typeof input["born"] === "string" ? { born: input["born"] } : {}),
+        ...(typeof input["until"] === "string" ? { until: input["until"] } : {}),
       }),
+    ),
+    member_whoami: McpToolAccess.reads(() => run({ op: "whoAmI" })),
+    member_consent: McpToolAccess.writes((input: Args) =>
+      run({ op: "consent", yes: input["yes"] === true }),
     ),
     member_set_role: McpToolAccess.writes((input: Args) =>
       run({ op: "setRole", id: id(input), role: input["role"] as "adult" }),

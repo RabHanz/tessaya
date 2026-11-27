@@ -111,7 +111,13 @@ export const TessayaHouseholdCallInput = Schema.Union([
     /** A child's birth date (YYYY-MM-DD), for growing up. */
     born: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(10))),
     adultAge: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 10, maximum: 25 }))),
+    /** A guest pass's last day (YYYY-MM-DD): "Ali is staying till Sunday". The pass and all of it end after that day. */
+    until: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(10))),
   }),
+  /** Who the asker is to her now, how sure she is, what she keeps about them, who can see it, and their yes to it. */
+  op("whoAmI", {}),
+  /** The asker's own yes to what she keeps about them (after `whoAmI`), or (false) taking it back. */
+  op("consent", { yes: Schema.Boolean }),
   /** Everything the home keeps about the member asking, from their own device at A3 (their private store exports apart). */
   op("exportMine", {}),
   /** A new pairing code for a member's next device. */
@@ -300,6 +306,18 @@ export const TessayaHouseholdCallResult = Schema.Struct({
   /** With `list`: the linked server the members live on (null: this one), and the linked servers it could be. */
   homeOn: Schema.optionalKey(Schema.NullOr(Schema.String)),
   peers: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** With `whoAmI`: who she takes the asker for, and what is kept about them. */
+  you: Schema.optionalKey(
+    Schema.Struct({
+      id: Schema.NullOr(Schema.String),
+      name: Schema.NullOr(Schema.String),
+      role: TessayaMemberRole,
+      assurance: Schema.Int,
+      kept: Schema.Array(Schema.String),
+      seenBy: Schema.String,
+      consented: Schema.Boolean,
+    }),
+  ),
   /** With `exportMine`: their rows, table by table. */
   export: Schema.optionalKey(
     Schema.Record(Schema.String, Schema.Array(Schema.Record(Schema.String, Schema.Unknown))),

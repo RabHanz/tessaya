@@ -196,3 +196,34 @@ export const wakeTrainingOn = (member: string, value: string | undefined): boole
     : /^\s*(?:on|yes|y|true|allow(?:ed)?|ok(?:ay)?|sure|go ahead|use it)\b/i.test(value);
 
 export const isPreferenceKey = (key: string): key is PreferenceKey => key in PREFERENCE_KEYS;
+
+/**
+ * What she keeps about a member and who else can see it (identity I-4, the consent at join): told before they agree,
+ * and again whenever they ask "who am I?". Guests: nothing is kept.
+ */
+export const keptAbout = (
+  role: MemberRole,
+  ownerOpensStores: boolean,
+): { readonly kept: ReadonlyArray<string>; readonly seenBy: string } =>
+  role === "guest"
+    ? {
+        kept: ["nothing you say: a guest is never remembered"],
+        seenBy: "There is nothing of yours to see.",
+      }
+    : {
+        kept: [
+          "your voice print, so she knows it's you",
+          "your preferences, like what to call you",
+          "what you tell her, and each persona's memories of you",
+          "your private memories, locked by your PIN",
+          "your devices, and when you're home only if you turn that on",
+        ],
+        seenBy:
+          role === "owner"
+            ? "Your private memories are yours alone."
+            : role === "child"
+              ? "Your guardians can open your private memories; nobody else can."
+              : ownerOpensStores
+                ? "The owner can open your private memories; everyone else sees only that they exist."
+                : "Nobody else can open your private memories, not even the owner.",
+      };

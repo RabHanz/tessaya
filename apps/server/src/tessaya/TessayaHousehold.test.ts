@@ -109,6 +109,62 @@ describe("TessayaHousehold", () => {
       }),
     ));
 
+  test("a family of four set up on a pretend Tumble: who each is, their yes, and a guest pass that ends", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        // He adds them by voice at the desk he has confirmed (A3); the clock starts on 1 Jan 1970.
+        const added = (name: string, role: "adult" | "child" | "guest", extra = {}) =>
+          as(owner)(call({ op: "invite", name, role, ...extra }));
+        assert.strictEqual((yield* added("Sara", "adult")).status, "done");
+        assert.strictEqual((yield* added("Adam", "child", { born: "1962-05-01" })).status, "done");
+        const ali = yield* added("Ali", "guest", { until: "1970-01-02" });
+        assert.include(ali.line, "as a guest until 1970-01-02");
+        assert.strictEqual(
+          (yield* added("Omar", "adult", { until: "1970-01-02" })).status,
+          "refused",
+        );
+        const ids = Object.fromEntries(
+          (yield* as(owner)(call({ op: "list" }))).members!.map((m) => [m.name, m.id]),
+        );
+        // Each one, by voice on the kitchen Tumble, asks "who am I?".
+        const voice = (id: string | null) =>
+          as({ member: id, assurance: id === null ? 0 : 2, via: "Tessaya via kitchen" });
+        const sara = (yield* voice(ids["Sara"]!)(call({ op: "whoAmI" }))).you!;
+        assert.deepInclude(sara, { name: "Sara", role: "adult", assurance: 2, consented: false });
+        // A new home: her private memories are sealed from him, and she is told so.
+        assert.include(sara.seenBy, "not even the owner");
+        const adam = (yield* voice(ids["Adam"]!)(call({ op: "whoAmI" }))).you!;
+        assert.include(adam.seenBy, "guardians");
+        assert.strictEqual((yield* voice(ids["Ali"]!)(call({ op: "whoAmI" }))).you!.role, "guest");
+        const stranger = yield* voice(null)(call({ op: "whoAmI" }));
+        assert.include(stranger.line, "you're a guest");
+        // Her yes is hers, in her own voice; an agent or an unsure voice can't give it, and she can take it back.
+        assert.strictEqual(
+          (yield* as({ member: ids["Sara"]!, assurance: 1, via: "a short reply" })(
+            call({ op: "consent", yes: true }),
+          )).status,
+          "refused",
+        );
+        assert.strictEqual(
+          (yield* as({ member: ids["Sara"]!, service: true, assurance: 2, via: "an agent" })(
+            call({ op: "consent", yes: true }),
+          )).status,
+          "refused",
+        );
+        yield* voice(ids["Sara"]!)(call({ op: "consent", yes: true }));
+        assert.isTrue((yield* voice(ids["Sara"]!)(call({ op: "whoAmI" }))).you!.consented);
+        yield* voice(ids["Sara"]!)(call({ op: "consent", yes: false }));
+        assert.isFalse((yield* voice(ids["Sara"]!)(call({ op: "whoAmI" }))).you!.consented);
+        // Ali's pass ends after its last day (the hourly sweep), and all of it with it.
+        yield* TestClock.adjust("3 days");
+        assert.deepStrictEqual(
+          (yield* as(owner)(call({ op: "list" }))).members!.map((m) => m.name).sort(),
+          ["Adam", "Owner", "Sara"],
+        );
+      }),
+    ));
+
   test("starts with the owner, under the id his voice and store use", () =>
     run(
       null,
