@@ -4,7 +4,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { SpeechCustomWords } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, SpeechCustomWords } from "@t3tools/contracts";
 import { customWordsOf, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -231,10 +231,12 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         const workerFile = yield* fileIn(dirs.worker);
         write(brainFile, [{ phrase: "kodi", replacement: null, source: "added", count: 1 }]);
         write(workerFile, HIS_WORDS.slice(0, 3));
+        // Its own database, so a call from the worker's link never reads the worker's (where she is not the brain).
         const brain = yield* Layer.build(
           Vocabulary.layer.pipe(
             Layer.provideMerge(ServerSettingsService.layerTest()),
             Layer.provide(ServerConfig.layerTest(process.cwd(), dirs.brain)),
+            Layer.provideMerge(SqlitePersistenceMemory),
           ),
         );
         let reachable = true;
@@ -249,11 +251,14 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
             PeerMcpClient.PeerMcpClient,
             PeerMcpClient.PeerMcpClient.of({
               call: (input) =>
-                (reachable
-                  ? receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
-                      Effect.provideContext(brain),
-                    )
-                  : Effect.fail(new Error("her brain is away"))) as never,
+                reachable
+                  ? (receiveAtBrain(
+                      input.arguments["op"] as never,
+                      input.arguments["payload"],
+                    ).pipe(Effect.provideContext(brain)) as never)
+                  : Effect.fail(
+                      new OrchestratorMcpFailure({ code: "orchestration_error", message: "away" }),
+                    ),
             }),
           ),
         );
@@ -261,7 +266,7 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
           Vocabulary.layer.pipe(
             Layer.provideMerge(ServerSettingsService.layerTest()),
             Layer.provide(ServerConfig.layerTest(process.cwd(), dirs.worker)),
-            Layer.provide(peers),
+            Layer.provideMerge(peers),
             Layer.provideMerge(SqlitePersistenceMemory),
           ),
         );
