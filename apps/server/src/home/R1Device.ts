@@ -29,7 +29,7 @@ import {
 import { recordText } from "@t3tools/tessaya-shared/audit";
 import { clockLine, clockStyleOf } from "@t3tools/tessaya-shared/brain";
 import type { SpeakerLike } from "@t3tools/tessaya-shared/privateMemory";
-import { memberOfSpeaker, OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
+import { memberOfSpeaker, onOwnersPlan, OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { speakerMark } from "@t3tools/tessaya-shared/groupTalk";
 import { CONVERSATION_END, PRIVATE_MARK } from "@t3tools/tessaya-shared/stopPhrases";
 import {
@@ -1582,12 +1582,20 @@ const r1Commit = Effect.fn("R1Device.commit")(function* (
 });
 
 /** One turn, whatever carried his words: the Agora bridge, or the room voice loop. */
+/** Someone other than his plan's owner, with no household key on for them (C-1): one honest line. */
+const notYours = Effect.fn("R1Device.notYours")(function* (input: R1Heard) {
+  const plain =
+    "Sorry, I can't think that through for you yet: my thinking here runs on someone's own plan.";
+  return (yield* expressOr("err.notYours", { ...lineWho(input), plain }))?.text ?? plain;
+});
+
 const r1Turn = Effect.fn("R1Device.turn")(function* (input: R1Heard) {
   // "carry on": a scene he paused on her body plays again, and she still answers
   yield* resumeBody(input.heard);
   const layered = yield* r1Layer(input);
   if (layered !== null) return (yield* r1Route(input, layered.text))!;
   yield* r1Route(input, null);
+  if (!onOwnersPlan(speakerOf(input.voice))) return yield* notYours(input);
   const { device, context, turn, names, justSpoke } = yield* r1Gather(input);
   const oneShot = yield* TessayaOneShot;
   const plan = yield* oneShot
@@ -1836,7 +1844,9 @@ export const r1TurnStream = (
       // Silence while she thinks, her eyes showing it (Director, 19 Nov 06:20: "the filler words are really out of place…
       // most times it breaks the flow"; 13:40: a hold line restated or previewed the answer on every slow turn).
       const say = (words: string) => Queue.offerUnsafe(queue, words);
-      const way = yield* brain.route;
+      // His plan answers only him (C-1): anyone else goes by the household key, or hears why not.
+      const others = !onOwnersPlan(speakerOf(input.voice));
+      const way = others ? ("api" as const) : yield* brain.route;
       /** When the login's limit resets, once a route has failed on it: nothing else on that login can answer. */
       let limited: string | null = null;
       const failed = (detail: string) => {
@@ -1903,7 +1913,7 @@ export const r1TurnStream = (
         });
         if (spoken.length > 0) return yield* Queue.end(queue);
         if (limited !== null) return yield* outOfCapacity;
-        say("Sorry, something went wrong on my side.");
+        say(others ? yield* notYours(input) : "Sorry, something went wrong on my side.");
         return yield* Queue.end(queue);
       }
       if (way === "subscription" && tools !== null) {
@@ -1943,6 +1953,10 @@ export const r1TurnStream = (
           );
           return yield* Queue.end(queue);
         }
+      }
+      if (others) {
+        say(yield* notYours(input));
+        return yield* Queue.end(queue);
       }
       // The subscription, or the key's fallback: the acts form, no tools.
       const startedAt = yield* Clock.currentTimeMillis;

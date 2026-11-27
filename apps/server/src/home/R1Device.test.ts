@@ -491,6 +491,62 @@ effectIt.effect(
 );
 
 effectIt.effect(
+  "his plan answers only him (C-1): a guest or another member goes by the household key, or hears why not",
+  () =>
+    Effect.gen(function* () {
+      const touched: Array<string> = [];
+      let keyAnswers = false;
+      const brain = R1Brain.of({
+        route: Effect.succeed("subscription"),
+        subscription: () => Stream.suspend(() => (touched.push("plan"), Stream.make("no"))),
+        warm: () => Effect.void,
+        converse: () =>
+          Stream.suspend(() =>
+            (touched.push("key"), keyAnswers)
+              ? Stream.make("By the key.")
+              : Stream.fail(new R1BrainError({ detail: "refused: voice is not allowed" })),
+          ),
+        session: () => Stream.suspend(() => (touched.push("plan"), Stream.make("no"))),
+      });
+      const home = Layer.mock(HomeAssistantService)({
+        devices: Effect.succeed([]),
+        status: Effect.succeed({ state: "connected", line: "" } as never),
+        actions: () => Effect.succeed([]),
+        find: () => Effect.succeed([]),
+        timeZone: Effect.succeed("UTC"),
+      });
+      const record = Layer.mock(TessayaRecordService)({ append: () => Effect.void as never });
+      const turn = (kind: "guest" | "saved") =>
+        r1TurnStream(
+          {
+            heard: "turn the lights on",
+            history: [],
+            device: "kitchen",
+            voice: {
+              speaker: {
+                kind,
+                personId: kind === "saved" ? "sara" : null,
+                verified: true,
+                inherited: false,
+              },
+            },
+          },
+          brain,
+          { specs: [], run: () => Effect.succeed({ text: "", isError: false }) },
+        ).pipe(
+          Stream.runCollect,
+          Effect.map((words) => [...words].join("").trim()),
+          Effect.provide(Layer.mergeAll(home, record, Layer.mock(TessayaOneShot)({}))),
+        );
+      expect(yield* turn("guest")).toMatch(/runs on someone's own plan/);
+      expect(yield* turn("saved")).toMatch(/runs on someone's own plan/);
+      keyAnswers = true;
+      expect(yield* turn("saved")).toBe("By the key.");
+      expect(touched).toEqual(["key", "key", "key"]);
+    }),
+);
+
+effectIt.effect(
   "the house matching his words and what needs him are in the model's message before it starts, unless a read is slow",
   () =>
     Effect.gen(function* () {
