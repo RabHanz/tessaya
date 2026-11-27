@@ -1737,6 +1737,27 @@ it("keeps the lines only the room heard, after what her server held from before"
     "What did I ask about on my desk?",
     ...room.slice(1).map((t) => t.content),
   ]);
-  // Nothing in common (her server restarted, or its words were cleaned): the longer, as before.
+  // Nothing in common (her server restarted, or its words were cleaned): this vessel's copies give way to the room's.
   expect(roomHistory(kept.slice(2, 4), room, tumble)).toEqual(room);
+  // Nothing in common, and her server's thread longer: what other vessels heard leads, and every line this room heard
+  // follows. Room suite on .219 (27 Nov): his household thread from another Tessel won, and the suite's own first
+  // turn ("Remember that my sister's flight lands at") never reached the second ("six on Friday evening.").
+  const desk = [
+    { ...said("user", "What did I ask about on my desk?"), vessel: "desktop" },
+    { ...said("assistant", "The lamp's schedule."), vessel: "desktop" },
+    { ...said("user", "Thanks."), vessel: tumble },
+    { ...said("assistant", "Any time."), vessel: tumble },
+  ];
+  const split = [
+    said("user", "Remember that my sister's flight lands at"),
+    said("assistant", "Your sentence cut off before the time. When does her flight land?"),
+    said("user", "six on Friday evening."),
+  ];
+  expect(roomHistory(desk, split, "replay-suite").map((t) => t.content)).toEqual([
+    "What did I ask about on my desk?",
+    "The lamp's schedule.",
+    "Thanks.",
+    "Any time.",
+    ...split.map((t) => t.content),
+  ]);
 });
