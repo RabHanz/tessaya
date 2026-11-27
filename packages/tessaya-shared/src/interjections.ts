@@ -86,6 +86,12 @@ const CLIP_GAIN: Partial<Record<Nonverbal, number>> = {
   cough: 0.8,
   yawn: 0.6,
   sniff: 0.35,
+  // Only the Gemini cache has these (registerSounds); without it they stay the defaults above.
+  laugh: 0.7,
+  chuckle: 0.6,
+  giggle: 0.6,
+  groan: 0.55,
+  breath: 0.35,
 };
 
 const soundFor = (voice: string, nonverbal: Nonverbal): Sound => {

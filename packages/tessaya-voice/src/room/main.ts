@@ -14,6 +14,7 @@ import * as NodePath from "node:path";
 import * as NodePerfHooks from "node:perf_hooks";
 
 import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
+import { registerSounds } from "@t3tools/tessaya-shared/voiceClips";
 import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
 import { WAKE_WORDS, wakeModelFile } from "@t3tools/tessaya-shared/wakeWords";
@@ -115,6 +116,39 @@ const INPUT_ENROL_KEEP = 12;
 const models = env("R1_MODELS");
 const state = env("R1_STATE");
 const model = (file: string) => NodePath.join(models, file);
+
+const listDir = (dir: string): string[] => {
+  try {
+    return NodeFS.readdirSync(dir).toSorted();
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Each voice's sounds from the interjection cache, `<state>/interjections/<voice>/<sound>/<n>.wav`: rendered once by
+ * Gemini off the loop (an ops drip job), played here like the built-in clips, which stay where a sound is missing.
+ */
+const loadInterjections = (): number => {
+  const root = NodePath.join(state, "interjections");
+  let count = 0;
+  for (const voice of listDir(root)) {
+    for (const sound of listDir(NodePath.join(root, voice))) {
+      const dir = NodePath.join(root, voice, sound);
+      let rate = 24_000;
+      const variants = listDir(dir)
+        .filter((f) => f.endsWith(".wav"))
+        .map((f) => {
+          const bytes = NodeFS.readFileSync(NodePath.join(dir, f));
+          rate = bytes.readUInt32LE(24);
+          return createWavReader()(bytes);
+        });
+      registerSounds(voice, sound, rate, variants);
+      count += variants.length;
+    }
+  }
+  return count;
+};
 
 /** One health answer from a recogniser: its queue, or null when it did not answer within 1.5 s. */
 const health = (url: string, token: string) =>
@@ -1556,6 +1590,9 @@ const main = async () => {
     },
   );
   setInterval(() => room?.sweep(), 1_000);
+  // A day's new interjections are heard from the next hour on.
+  log(`interjections: ${loadInterjections()} cached clips`);
+  setInterval(loadInterjections, 3_600_000);
   // His pack edits reach the room within a minute: new voices are fetched first, then the next session uses them.
   setInterval(() => {
     void servedPersonas(env("R1_BRAIN_URL"), deviceKey).then(async (next) => {

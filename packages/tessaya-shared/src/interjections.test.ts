@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { hasDirection, speechPieces, withoutDirections } from "./interjections.ts";
-import { voiceClips } from "./voiceClips.ts";
+import { registerSounds, voiceClips } from "./voiceClips.ts";
 import {
   breath,
   rmsOf,
@@ -198,6 +198,22 @@ describe("splicing sounds between words", () => {
     expect(first.length === second.length && first.every((v, i) => v === second[i])).toBe(false);
     expect(rmsOf(first)).toBeCloseTo((3000 / 32768) * 0.8, 2);
     expect(Math.max(...first.map(Math.abs))).toBeLessThan(32767);
+  });
+
+  it("plays a voice's cached clips before its built-in ones, and the built-in again once they go", () => {
+    const take = Int16Array.from({ length: 4800 }, (_, i) => (i % 2 ? 900 : -900));
+    registerSounds("eve", "cough", 24_000, [take]);
+    registerSounds("eve", "laugh", 24_000, [take]);
+    expect(voiceClips("eve", "cough")).toEqual({ kind: "sound", rate: 24_000, variants: [take] });
+    // A laugh has no built-in clip, so only a cached one turns it from words into her sound.
+    expect(speechPieces("*laughs*", "eve")[0]).toMatchObject({
+      sound: { kind: "clip", name: "laugh" },
+    });
+    expect(speechPieces("*laughs*", "anna")[0]).toMatchObject({ sound: { kind: "say" } });
+    registerSounds("eve", "cough", 24_000, []);
+    registerSounds("eve", "laugh", 24_000, []);
+    expect(voiceClips("eve", "cough")).toMatchObject({ kind: "sound", rate: 16_000 });
+    expect(speechPieces("*laughs*", "eve")[0]).toMatchObject({ sound: { kind: "say" } });
   });
 
   it("makes a gasp a sharp bright inhale, not the sigh's soft breath at another length", () => {

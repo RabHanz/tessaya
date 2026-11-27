@@ -36,6 +36,20 @@ export const voiceClips = (voice: string, name: string): VoiceClipSet | undefine
   return set;
 };
 
+/**
+ * Clips rendered once elsewhere for this voice (the room loop's Gemini cache), used before the built-in ones. An empty
+ * list puts the built-in set back.
+ */
+export const registerSounds = (
+  voice: string,
+  name: string,
+  rate: number,
+  variants: ReadonlyArray<Int16Array>,
+): void => {
+  if (variants.length === 0) sets.delete(`${voice}/${name}`);
+  else sets.set(`${voice}/${name}`, { kind: "sound", rate, variants });
+};
+
 /** A voice's references as its server lists them (a clone's affect variants, by URL); replaces what it had. */
 export const registerReferences = (
   voice: string,
