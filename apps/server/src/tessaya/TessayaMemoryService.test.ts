@@ -18,6 +18,7 @@ import { receiveAtBrain } from "./BrainReceive.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import * as ServerConfig from "../config.ts";
 import {
+  MemberConsent,
   TessayaMemoryService,
   MemoryViewer,
   SyncCredential,
@@ -87,6 +88,38 @@ layer("BatonMemoryService", (it) => {
       });
       assert.notStrictEqual(his.createdAt, "2020-01-01T00:00:00.000Z");
     }),
+  );
+
+  it.effect(
+    "keeps nothing about a member before their own yes; the owner and the unnamed as before",
+    () =>
+      Effect.gen(function* () {
+        const memory = yield* TessayaMemoryService;
+        const agreed = new Set<string>();
+        const about = (speaker: string, text: string) =>
+          memory
+            .add({ kind: "fact", text, source: "thread", speaker })
+            .pipe(
+              Effect.provideService(
+                MemberConsent,
+                MemberConsent.of({ mayKeep: (p) => Effect.succeed(agreed.has(p)) }),
+              ),
+            );
+        assert.include(
+          (yield* Effect.flip(about("sara", "Sara is allergic to cats"))).reason,
+          "who am I",
+        );
+        agreed.add("sara");
+        assert.strictEqual((yield* about("sara", "Sara is allergic to cats")).speaker, "sara");
+        // The owner needs no yes, and a home with no household (no MemberConsent) keeps the old rule.
+        yield* about("owner", "He takes his tea black");
+        yield* memory.add({
+          kind: "fact",
+          text: "Omar plays the oud",
+          source: "thread",
+          speaker: "omar",
+        });
+      }),
   );
 
   it.effect("a repeat reinforces a model's item instead of adding another", () =>

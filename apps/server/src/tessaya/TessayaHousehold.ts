@@ -190,6 +190,8 @@ export class TessayaHousehold extends Context.Service<
     readonly homeOn: Effect.Effect<string | null>;
     /** Destroys the data of members whose export window ended. */
     readonly purgeDue: Effect.Effect<number>;
+    /** Whether she may keep what is about this person: the owner, or a member who said yes (identity I-4). */
+    readonly consented: (person: string) => Effect.Effect<boolean>;
     /** Children whose day has come become adults (identity I-5); their names. */
     readonly growUp: Effect.Effect<ReadonlyArray<string>>;
     /** Another of this home's servers destroyed this member's data: this server's vessels forget their voice too. */
@@ -480,6 +482,15 @@ export const make = Effect.gen(function* () {
    * On the day a child reaches their age (16 unless a guardian set 10 to 25), they become an adult: guardians end, and
    * the owner's copy of their store's key goes unless this home opens every adult's store (choice 1).
    */
+  const consented = Effect.fn("TessayaHousehold.consented")(function* (person: string) {
+    const row = yield* rowOf(person);
+    return (
+      Option.isSome(row) &&
+      row.value.removed_at === null &&
+      (row.value.role === "owner" || (row.value.consented_at ?? null) !== null)
+    );
+  });
+
   const growUp = Effect.gen(function* () {
     const today = iso(yield* Clock.currentTimeMillis).slice(0, 10);
     const opens = yield* ownerOpensMemberStores;
@@ -1351,6 +1362,7 @@ export const make = Effect.gen(function* () {
     grantsOf,
     purgeDue,
     growUp,
+    consented,
     forgetVoiceHere,
     mergeVoice,
   });

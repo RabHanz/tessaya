@@ -61,7 +61,7 @@ import {
   BatonMemoryRefusedError,
   type TessayaHouseholdCallInput,
 } from "@t3tools/tessaya-contracts";
-import { readBinDays, TessayaMemoryService } from "./TessayaMemoryService.ts";
+import { consentRefusal, readBinDays, TessayaMemoryService } from "./TessayaMemoryService.ts";
 import { TessayaPrivateMemoryService, PrivateCaller } from "./TessayaPrivateMemoryService.ts";
 import { TessayaComms } from "./TessayaComms.ts";
 import { commsWaitingLine } from "@t3tools/tessaya-shared/comms";
@@ -555,6 +555,8 @@ const CONVERSATION_IDLE_MS = SAME_CONVERSATION_MS;
 const TRANSCRIPT_KEEP_MS = 30 * 86_400_000;
 /** What a private moment leaves in the transcript: only that it happened. */
 export const PRIVATE_LINE = "(a private moment)";
+/** A member's words before their yes to what she keeps (identity I-4): only that they spoke. */
+export const NOT_KEPT_LINE = "(not kept: they haven't said yes yet)";
 /** One line of the room's transcript. */
 export interface TranscriptLine {
   readonly at: number;
@@ -1042,11 +1044,16 @@ export const make = Effect.gen(function* () {
       yield* brain.sendOrQueue("threads", { a: "said", lines });
       return;
     }
-    for (const l of lines)
+    for (const raw of lines) {
+      const l =
+        raw.role === "them" && raw.private === 0 && (yield* consentRefusal(raw.who)) !== null
+          ? { ...raw, text: NOT_KEPT_LINE }
+          : raw;
       yield* sql`
         INSERT INTO tessaya_room_transcript (at, vessel, conversation, role, who, text, private)
         VALUES (${l.at}, ${l.vessel}, ${l.conversation}, ${l.role}, ${l.who}, ${l.text}, ${l.private})
       `.pipe(Effect.ignore);
+    }
     const now = yield* Clock.currentTimeMillis;
     if (now - transcriptSweptAt > 3_600_000) {
       transcriptSweptAt = now;

@@ -357,18 +357,27 @@ const servicesInner = Layer.mergeAll(
   // Beside the mergeAll above, not in it: one more member there loses its types.
   // The household's members, over the private stores it shreds; asks for the owner's yes go through the phone inbox.
   // A private store is only a member's: the store service asks the household, from its home server.
+  // What she keeps about a member waits for their own yes (identity I-4), as the household on the brain records it.
   Layer.provideMerge(
-    Layer.effect(
-      TessayaPrivateMemoryService.StoreMembership,
-      Effect.map(TessayaHousehold.TessayaHousehold, (household) =>
-        TessayaPrivateMemoryService.StoreMembership.of({
-          isMember: Effect.fn("StoreMembership.isMember")((personId: string) =>
-            Effect.map(household.grantsOf(personId), (grants) => grants !== null),
-          ),
-          isChild: Effect.fn("StoreMembership.isChild")((personId: string) =>
-            Effect.map(household.roleOf(personId), (role) => role === "child"),
-          ),
-        }),
+    Layer.mergeAll(
+      Layer.effect(
+        TessayaPrivateMemoryService.StoreMembership,
+        Effect.map(TessayaHousehold.TessayaHousehold, (household) =>
+          TessayaPrivateMemoryService.StoreMembership.of({
+            isMember: Effect.fn("StoreMembership.isMember")((personId: string) =>
+              Effect.map(household.grantsOf(personId), (grants) => grants !== null),
+            ),
+            isChild: Effect.fn("StoreMembership.isChild")((personId: string) =>
+              Effect.map(household.roleOf(personId), (role) => role === "child"),
+            ),
+          }),
+        ),
+      ),
+      Layer.effect(
+        TessayaMemoryService.MemberConsent,
+        Effect.map(TessayaHousehold.TessayaHousehold, (household) =>
+          TessayaMemoryService.MemberConsent.of({ mayKeep: household.consented }),
+        ),
       ),
     ),
   ),
