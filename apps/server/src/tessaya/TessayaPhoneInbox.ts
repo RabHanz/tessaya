@@ -324,7 +324,7 @@ export const inboxAtBrain = Effect.fn("BatonPhoneInbox.atBrain")(function* (
       // A worker's desktop takes asks and says how it is here, on the brain (desktop 0.1.169+ calls its own server).
       const call = args["op"];
       const callArgs = args["args"];
-      if (typeof call !== "string" || !DESK_OPS.has(call)) return undefined;
+      if (typeof call !== "string" || !(DESK_OPS.has(call) || BAR_OPS.has(call))) return undefined;
       const answer = yield* phoneCall({
         op: call,
         args:
@@ -723,6 +723,8 @@ const AGENT_ASKS_FULL =
  * asks wait and "is the desktop connected?" is read (since 18 Nov the desktop's relay calls its own machine's server).
  */
 const DESK_OPS = new Set(["take", "renew", "answer", "fail", "state", "stateGet"]);
+/** The web bar's and Help's asks: on a worker they wait on her brain too, where the desktop takes them. */
+const BAR_OPS = new Set(["ask", "askGet"]);
 /** The brain link answers within 10 s, so a forwarded take waits less than that. */
 const DESK_TAKE_WAIT_MAX_MS = 7_000;
 
@@ -731,7 +733,8 @@ export const phoneCall = Effect.fn("BatonPhoneInbox.call")(function* (
   input: TessayaPhoneCallInput,
 ) {
   const inbox = yield* TessayaPhoneInbox;
-  if (DESK_OPS.has(input.op)) {
+  // An outside agent's ask keeps its owner's limits here; the brain could not tell agents apart.
+  if (DESK_OPS.has(input.op) || (BAR_OPS.has(input.op) && (yield* AskOwner) === null)) {
     const args =
       input.op === "take" && typeof input.args["waitMs"] === "number"
         ? { ...input.args, waitMs: Math.min(input.args["waitMs"], DESK_TAKE_WAIT_MAX_MS) }

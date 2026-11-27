@@ -16,10 +16,10 @@ export const placeInArgs = (argv: ReadonlyArray<string>): TessayaPlaceId | Tessa
 
 const EMBED_PREFIX = "?tessayaGuest=1#/tessaya/";
 
-/** One of the T3 pages Tessaya's window shows inline: T3's guest page at its address, hash-routed to `/tessaya/<page>`. */
+/** One of the T3 pages Tessaya's window shows inline: T3's guest page at its address, hash-routed to `/tessaya/<page>`, with an optional plain query. */
 export const isEmbedSrc = (appUrl: string, src: string): boolean =>
   src.startsWith(`${appUrl}${EMBED_PREFIX}`) &&
-  /^[a-z]+$/.test(src.slice(`${appUrl}${EMBED_PREFIX}`.length));
+  /^[a-z]+(\?[A-Za-z0-9=&%._~-]*)?$/.test(src.slice(`${appUrl}${EMBED_PREFIX}`.length));
 
 /** The T3 path a guest page's link leads to, for T3's own window; null for one of the guest's own pages. */
 export const guestLinkOut = (appUrl: string, url: string): string | null => {
