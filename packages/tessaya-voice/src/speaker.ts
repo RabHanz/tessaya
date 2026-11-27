@@ -320,8 +320,19 @@ export interface VoiceHold {
   readonly evidence: ReadonlyArray<{ readonly at: number; readonly score: number }>;
   /** The embeddings of his last two owner turns: what a later turn in a verified session is compared with. */
   readonly anchor: ReadonlyArray<Float32Array>;
+  /**
+   * When a turn last put this session on his path (verified, his by score, or lifted): one person is one conversation,
+   * so until a clearly other voice, his turns in it carry his path, never a verification (27 Nov, Director).
+   */
+  readonly placedAt: number | null;
 }
-export const NO_HOLD: VoiceHold = { verifiedAt: null, scores: [], evidence: [], anchor: [] };
+export const NO_HOLD: VoiceHold = {
+  verifiedAt: null,
+  scores: [],
+  evidence: [],
+  anchor: [],
+  placedAt: null,
+};
 export const HOLD_MS = 5 * 60_000;
 /**
  * CAM++: under this a turn's score is no evidence for his session. His live short turns on Tumble sit at 0.36-0.38
@@ -360,6 +371,7 @@ export const holdVoice = (
   policy: Omit<SpeakerPolicy, "model"> = CAMPLUS_POLICY,
 ): { readonly hold: VoiceHold; readonly identity: SpeakerIdentity } => {
   const held = hold.verifiedAt !== null && now - hold.verifiedAt <= HOLD_MS;
+  const placed = held || (hold.placedAt !== null && now - hold.placedAt <= HOLD_MS);
   // The test clone is trusted turn by turn while test mode is on, and never leaves him held once it ends.
   if (identity.kind === "saved" || identity.test === true) return { hold: NO_HOLD, identity };
   const own = identity.own?.score ?? (identity.kind === "owner" ? identity.confidence : null);
@@ -382,6 +394,7 @@ export const holdVoice = (
         scores,
         evidence,
         anchor: vector === undefined ? hold.anchor : [...hold.anchor, vector].slice(-2),
+        placedAt: now,
       },
       identity: {
         ...identity,
@@ -394,7 +407,7 @@ export const holdVoice = (
   if (own === null) {
     // Not scored (a guess before the verdict, an embedding that failed): a held session keeps his path, nothing more.
     if (identity.kind === "guest") return { hold: NO_HOLD, identity };
-    return held
+    return placed
       ? { hold, identity: { ...identity, kind: "owner", personId: "owner", lifted: true } }
       : { hold, identity };
   }
@@ -408,7 +421,7 @@ export const holdVoice = (
     mean([own, ...last]) >= SESSION_MEAN
   )
     return {
-      hold: { ...hold, verifiedAt: held ? now : hold.verifiedAt, evidence },
+      hold: { ...hold, verifiedAt: held ? now : hold.verifiedAt, evidence, placedAt: now },
       identity: {
         ...identity,
         kind: "owner",
@@ -419,11 +432,26 @@ export const holdVoice = (
         lifted: true,
       },
     };
+  // A session's first piece clear of every stranger measured (1-2 s, LibriSpeech p99.5 0.35; 109 others at 1 s, at most
+  // 0.33) puts it on his path at once: "What time is it?" at 0.49 waited for a second turn (26 Nov 00:42).
+  if (!placed && last.length === 0 && own >= ROOM_POLICY.single.steer && identity.kind !== "guest")
+    return {
+      hold: { ...hold, evidence, placedAt: now },
+      identity: {
+        ...identity,
+        kind: "owner",
+        personId: "owner",
+        name: null,
+        confidence: own,
+        verified: false,
+        lifted: true,
+      },
+    };
   // In a verified session his own earlier pieces judge a follow-up better than his profile does (17 Nov: his bedroom
   // replies scored 0.1-0.3 against it). Still his path only, never an owner-only act.
   if (same !== null && same >= SAME_VOICE)
     return {
-      hold: { ...hold, verifiedAt: now, evidence },
+      hold: { ...hold, verifiedAt: now, evidence, placedAt: now },
       identity: {
         ...identity,
         kind: "owner",
@@ -438,10 +466,10 @@ export const holdVoice = (
   const long = (identity.own?.ms ?? CHANGE_MIN_MS) >= CHANGE_MIN_MS;
   // Only a clearly other voice ends his held session: his own Tumble turns scored 0.23-0.31 to his profile (26 Nov).
   const changed =
-    same !== null ? same < CHANGED_VOICE : own < (held ? CHANGED_VOICE : SESSION_FLOOR);
+    same !== null ? same < CHANGED_VOICE : own < (placed ? CHANGED_VOICE : SESSION_FLOOR);
   if (long && changed) return { hold: NO_HOLD, identity };
-  // Not clearly another voice: his held session's one verdict carries it (26 Nov, Director).
-  if (held && identity.replay === undefined)
+  // Not clearly another voice: his session's one verdict carries it (26 Nov, Director), verified only while held.
+  if (placed && identity.replay === undefined)
     return {
       hold: { ...hold, evidence },
       identity: {
@@ -450,7 +478,7 @@ export const holdVoice = (
         personId: "owner",
         name: null,
         confidence: own,
-        ...sessionVerdict(true),
+        ...sessionVerdict(held),
         lifted: true,
         carried: true,
         ...(same === null ? {} : { same }),

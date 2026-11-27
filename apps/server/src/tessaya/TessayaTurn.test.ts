@@ -52,6 +52,7 @@ import {
   nameOnceLine,
   originOf,
   turnIdentity,
+  voiceLine,
   type TurnEnvelope,
 } from "./TessayaTurn.ts";
 
@@ -225,6 +226,37 @@ layer("TessayaTurn", (it) => {
         ],
       );
     }),
+  );
+
+  it.effect(
+    "places him by another signal before ever saying she can't recognise him (REQ-13-206)",
+    () =>
+      Effect.gen(function* () {
+        const turn = yield* TessayaTurn;
+        // 21 Nov 21:23 GMT+5: "What's the status?" at 0.331 was answered "I don't recognise your voice".
+        const unsure = {
+          kind: "unverified" as const,
+          personId: null,
+          verified: false,
+          inherited: false,
+        };
+        const room = { vessel: device, origin: "R1", text: "What's the status?", speaker: unsure };
+        // Nothing else places him: the voice stays as Voice ID heard it.
+        assert.deepStrictEqual((yield* turn.place(room)).speaker, unsure);
+        // He typed to her on his own desktop a minute ago.
+        yield* turn.begin({
+          vessel: { kind: "desktop", id: "his-desk" },
+          text: "hi",
+          member: "owner",
+        });
+        const placed = (yield* turn.place(room)).speaker!;
+        assert.deepInclude(placed, { kind: "owner", personId: "owner", verified: false });
+        assert.include(voiceLine(placed), "answer him as him");
+        assert.notInclude(voiceLine(placed), "not verified");
+        // A voice Voice ID judged someone else's is never placed as him.
+        const guest = { ...unsure, kind: "guest" as const };
+        assert.deepStrictEqual((yield* turn.place({ ...room, speaker: guest })).speaker, guest);
+      }),
   );
 
   it.effect(

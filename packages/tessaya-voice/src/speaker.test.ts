@@ -313,18 +313,27 @@ describe("the speaker identity", () => {
       own: { score, ms },
     });
     const turns: Array<[string, SpeakerIdentity, string]> = [
-      ["her name's clip, too short alone", scored("unverified", 0.5, 1_200), "unverified"],
+      // Clear of every stranger measured, a first piece puts the session on his path (never verified).
+      ["her name's clip, too short alone", scored("unverified", 0.5, 1_200), "lifted"],
       ["his short first turn, on her name's clip", scored("unverified", 0.48, 1_300), "lifted"],
       ["his 2 s turn", scored("owner", 0.69, 2_400), "owner"],
       ["his short turn", scored("unverified", 0.56, 1_700), "lifted"],
       ["his weak turn", scored("guest", 0.38, 2_200), "lifted"],
+      // One person is one conversation: a blip too short to call a change carries his path (27 Nov, Director).
+      ["a short low blip, too short to call a change", scored("unverified", 0.2, 600), "lifted"],
+      // A loudspeaker playing his voice is never carried, however like him it sounds.
       [
-        "a short low blip, too short to call a change",
-        scored("unverified", 0.2, 600),
+        "the clone inside his session",
+        { ...scored("guest", 0.3, 2_300), replay: "heard" },
+        "guest",
+      ],
+      ["a short turn after it", scored("unverified", 0.5, 1_500), "lifted"],
+      ["a clearly other voice ends his session", scored("guest", 0.1, 2_000), "guest"],
+      [
+        "a short turn after that: nothing carries it",
+        scored("unverified", 0.3, 1_500),
         "unverified",
       ],
-      ["the clone inside his session", scored("guest", 0.3, 2_300), "guest"],
-      ["a short turn after it: no evidence left", scored("unverified", 0.5, 1_500), "unverified"],
     ];
     let hold = NO_HOLD;
     const seen = turns.map(([, identity], i) => {
@@ -342,20 +351,21 @@ describe("the speaker identity", () => {
       return out.identity.lifted === true ? "lifted" : out.identity.kind;
     });
     expect(his).toEqual(["unverified", "lifted", "lifted"]);
-    // A held session's evidence never lifts a turn far under it, nor a voice under the floor.
+    // A turn far under his session's evidence is not lifted by it; his session carries it (never verified) unless the
+    // voice clearly changed, and nothing carries once the session has gone quiet for HOLD_MS.
     const strong = holdVoice(
       holdVoice(NO_HOLD, scored("owner", 0.8, 3_000), 0).hold,
       scored("owner", 0.8, 3_000),
       1,
     ).hold;
-    expect(holdVoice(strong, scored("unverified", 0.39, 1_500), 2).identity.kind).toBe(
-      "unverified",
-    );
-    expect(holdVoice(strong, scored("unverified", 0.34, 1_500), 2).identity.kind).toBe(
-      "unverified",
-    );
-    expect(holdVoice(strong, scored("unverified", 0.34, 1_500), 2).hold).toEqual(NO_HOLD);
-    expect(holdVoice(strong, scored("unverified", 0.45, 1_500), HOLD_MS + 2).identity.kind).toBe(
+    for (const score of [0.39, 0.34])
+      expect(holdVoice(strong, scored("unverified", score, 1_500), 2).identity).toMatchObject({
+        kind: "owner",
+        verified: false,
+        carried: true,
+      });
+    expect(holdVoice(strong, scored("unverified", 0.1, 1_500), 2).hold).toEqual(NO_HOLD);
+    expect(holdVoice(strong, scored("unverified", 0.38, 1_500), HOLD_MS + 2).identity.kind).toBe(
       "unverified",
     );
   });
@@ -519,10 +529,15 @@ describe("the speaker identity", () => {
     expect(holdVoice(other.hold, turn("guest", 0.2, 1_800, v(1, 0, 0)), 40_000).identity.kind).toBe(
       "guest",
     );
-    // A session never verified lends nothing, and a loudspeaker is a guest however like him it sounds.
+    // A session only placed (never verified) carries his path but never a verification, and a loudspeaker is a guest
+    // however like him it sounds.
     const unheld = holdVoice(NO_HOLD, turn("owner", 0.46, 2_000, v(1, 0, 0)), 0);
-    expect(holdVoice(unheld.hold, turn("guest", 0.2, 1_800, v(1, 0, 0)), 1).identity.kind).toBe(
-      "guest",
+    expect(holdVoice(unheld.hold, turn("guest", 0.2, 1_800, v(1, 0, 0)), 1).identity).toMatchObject(
+      {
+        kind: "owner",
+        verified: false,
+        carried: true,
+      },
     );
     const played = replayChecked(turn("guest", 0.2, 1_800, v(1, 0, 0)), 2, REPLAY_CUT);
     expect(holdVoice(start.hold, played, 10_000).identity.kind).toBe("guest");

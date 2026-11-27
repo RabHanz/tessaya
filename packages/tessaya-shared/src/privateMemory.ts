@@ -96,6 +96,8 @@ export interface SpeakerLike {
   readonly session?: boolean;
   /** His path by his session's evidence, never verified. */
   readonly lifted?: boolean;
+  /** Voice ID could not tell, but another fresh signal places him here (REQ-13-206): his path, never verified. */
+  readonly placed?: string;
 }
 
 /** Verified on this turn's own clips: an inherited verdict, his session's evidence or the test clone opens nothing private. */
