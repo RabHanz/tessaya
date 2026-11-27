@@ -51,8 +51,8 @@ export const MEMBER_ROLES = ["owner", "admin", "adult", "child", "guest"] as con
 export type PrincipalRole = MemberRole | "service";
 
 /**
- * The defaults for the identity decisions still open with the Director (ACCOUNTS-IDENTITY-DESIGN §10), each the
- * design's recommended option. They are changed here; nothing else hard-codes them.
+ * The identity decisions (ACCOUNTS-IDENTITY-DESIGN §10), each the recommended option he approved on 27 Nov. Decision 1
+ * (the owner opening adults' stores) differs per home, so it is the `tessayaOwnerOpensMemberStores` setting instead.
  */
 export const HOUSEHOLD_DEFAULTS = {
   /** Decision 5: a child becomes an adult at this age, unless their own row sets another. */
@@ -63,11 +63,6 @@ export const HOUSEHOLD_DEFAULTS = {
   adminsAllowed: true,
   /** An invite (a member-bound pairing code) lasts this long. */
   inviteHours: 24,
-  /**
-   * Decision 1: a member's store, made when they accept, is also wrapped to the owner's key, so the owner can open it
-   * (his rule of 11 Nov, and every store's today). The design's proposal for other homes is false: sealed from the owner.
-   */
-  ownerOpensMemberStores: true,
 } as const;
 
 /**

@@ -133,13 +133,14 @@ export const SCRIPT = `"use strict";
     var row = el("div", "row"); row.appendChild(code); row.appendChild(b); c.appendChild(row);
   }
   // A household member's own phone (not the owner's): only their own memory here.
-  var member = null;
+  var member = null, ownerOpens = false;
   function household() {
     return fetch("/tessaya/household", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ op: "list" }) }).then(function (r) {
       return r.ok ? r.json() : null;
     }).then(function (j) {
       var you = j && j.value && j.value.members ? j.value.members.filter(function (m) { return m.you; })[0] : null;
       member = you && you.role !== "owner" ? you : null;
+      ownerOpens = !!(j && j.value && j.value.ownerOpensStores);
       // The ask bar reaches the owner's work, which a member's phone can't: it goes rather than fail.
       if (member) { TABS = [["msg", "Messages"], ["mem", "Your memory"]]; tab = "mem"; denied = false; document.querySelector(".bar").hidden = true; refresh(); }
     }).catch(function () {});
@@ -451,7 +452,7 @@ export const SCRIPT = `"use strict";
   }
   // A member's own store, made here when they accept: their own 6-digit PIN, sealed on this server.
   function memberView() {
-    var c = card("Set up your own memory", "Choose a 6-digit PIN. It opens what Tessaya keeps for you; as this home is set up, its owner can open it too. Until you do, Tessaya can't keep anything for you.");
+    var c = card("Set up your own memory", "Choose a 6-digit PIN. It opens what Tessaya keeps for you; " + (ownerOpens ? "as this home is set up, its owner can open it too." : "nobody else can open it, not even the home's owner.") + " Until you do, Tessaya can't keep anything for you.");
     var pin = field("Your new 6-digit PIN", "password", true), again = field("The same PIN again", "password", true), col = el("div", "col");
     var b = mbtn("Make my memory", "primary", function () {
       if (pin.value !== again.value) throw new Error("The two PINs are not the same.");

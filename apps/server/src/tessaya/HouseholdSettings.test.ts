@@ -12,7 +12,8 @@ import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { HOME_KEY } from "./BrainHost.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
-import { syncOnce } from "./HouseholdSettings.ts";
+import OwnerOpenedBefore from "../persistence/Migrations/Baton/060_OwnerOpenedBefore.ts";
+import { keepOwnersRule, ownerOpensMemberStores, syncOnce } from "./HouseholdSettings.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 
 it.effect(
@@ -79,4 +80,32 @@ it.effect(
       expect(yield* sync).toBe("away");
       expect((yield* here.getSettings).tessayaFeedback).toBe("silent");
     }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "a new home starts sealed from its owner; one that had private stores before keeps his rule, once (decision 1)",
+  () =>
+    Effect.gen(function* () {
+      const home = yield* Layer.build(
+        Layer.mergeAll(ServerSettingsService.layerTest(), SqlitePersistenceMemory),
+      );
+      const settings = Context.get(home, ServerSettingsService);
+      const sql = Context.get(home, SqlClient.SqlClient);
+      const opens = ownerOpensMemberStores.pipe(Effect.provideContext(home));
+      const keep = keepOwnersRule.pipe(Effect.provideContext(home));
+      // A fresh database had no stores when its migrations ran: never chosen, so sealed.
+      yield* keep;
+      expect((yield* settings.getSettings).tessayaOwnerOpensMemberStores).toBeNull();
+      expect(yield* opens).toBe(false);
+      // A home that had a store when 060 ran keeps the owner's opening, as its own choice.
+      yield* sql`INSERT INTO tessaya_private_stores (id, person_id, name, kind, keys_json, created_at)
+        VALUES ('s1', 'owner', 'Owner', 'owner', '{}', '2026-11-11T00:00:00.000Z')`;
+      yield* OwnerOpenedBefore.pipe(Effect.provideContext(home));
+      yield* keep;
+      expect(yield* opens).toBe(true);
+      // Only once: a later "no" by voice stays, through restarts.
+      yield* settings.updateSettings({ tessayaOwnerOpensMemberStores: false });
+      yield* keep;
+      expect(yield* opens).toBe(false);
+    }),
 );

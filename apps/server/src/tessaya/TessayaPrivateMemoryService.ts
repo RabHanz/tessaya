@@ -54,7 +54,6 @@ import {
   type KdfParams,
   type Sealed,
 } from "@t3tools/tessaya-shared/privateCrypto";
-import { HOUSEHOLD_DEFAULTS } from "@t3tools/tessaya-shared/household";
 import { newRecoveryKey, parseRecoveryKey } from "@t3tools/tessaya-shared/vaultCrypto";
 import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
@@ -72,6 +71,7 @@ import * as ServerConfig from "../config.ts";
 import * as NodePath from "node:path";
 import { moveUpPrivate, privateRowsClient } from "./PrivateRows.ts";
 import { makeBrainLink } from "./BrainHost.ts";
+import { ownerOpensMemberStores } from "./HouseholdSettings.ts";
 
 /**
  * Who is calling, set by the transport from the authenticated session: its id (so an unlock belongs to one device),
@@ -784,10 +784,10 @@ export const make = Effect.gen(function* () {
       const c = yield* PrivateCaller;
       if (c.member === personId) {
         // A member making their own store when they accept: sealed to their PIN, and wrapped to the owner's public
-        // key where the household's default says so (decision 1); the owner's store need not be open.
+        // key only where this home chose so (decision 1); the owner's store need not be open.
         const owner = yield* storeOfPerson(OWNER_PERSON_ID);
         adminPublic =
-          HOUSEHOLD_DEFAULTS.ownerOpensMemberStores && Option.isSome(owner)
+          (yield* ownerOpensMemberStores) && Option.isSome(owner)
             ? keysOf(owner.value).box.publicKey
             : null;
       } else {

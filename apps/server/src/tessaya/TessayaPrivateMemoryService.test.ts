@@ -13,6 +13,7 @@ import { HOME_KEY } from "./BrainHost.ts";
 import { receiveAtBrain } from "./BrainReceive.ts";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import { TessayaMemoryService, layer as memoryLayer } from "./TessayaMemoryService.ts";
 import {
@@ -438,6 +439,16 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
       StoreMembership,
       StoreMembership.of({ isMember: (id) => Effect.succeed(ids.includes(id)) }),
     );
+  test("is sealed from the owner in a home that never chose otherwise (decision 1)", () =>
+    Effect.gen(function* () {
+      const p = yield* TessayaPrivateMemoryService;
+      const owner = yield* as(desk)(made({ name: "Rab", pin: OWNER_PIN }));
+      const mayas = yield* as(maya)(made({ personId: "maya", name: "Maya", pin: SARA_PIN }));
+      yield* as(phone)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN }));
+      // His open store is no key to hers: only her own PIN opens it.
+      yield* Effect.flip(as(phone)(p.unlock({ storeId: mayas.store.id })));
+      assert.isTrue((yield* as(maya)(p.unlock({ storeId: mayas.store.id, pin: SARA_PIN }))).open);
+    }).pipe(Effect.provide(members(["maya"]))));
   test("is made by the member alone, wrapped to his key, and reaches no one else's", () =>
     Effect.gen(function* () {
       const p = yield* TessayaPrivateMemoryService;
@@ -463,10 +474,13 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
         ["maya"],
       );
       yield* Effect.flip(as(maya)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN })));
-      // His key opens hers (decision 1's default for his home).
+      // His key opens hers: his home kept his rule (decision 1).
       yield* as(phone)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN }));
       assert.isTrue((yield* as(phone)(p.unlock({ storeId: mayas.store.id }))).open);
-    }).pipe(Effect.provide(members(["maya"]))));
+    }).pipe(
+      Effect.provide(members(["maya"])),
+      Effect.provide(ServerSettingsService.layerTest({ tessayaOwnerOpensMemberStores: true })),
+    ));
 });
 
 it.effect(
