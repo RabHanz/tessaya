@@ -10,6 +10,8 @@ import {
   scanLine,
   playingLine,
   tesselHosts,
+  tesselName,
+  tesselOffers,
 } from "./deviceView.ts";
 
 describe("an R1 button's choices", () => {
@@ -100,5 +102,22 @@ describe("one Tessel heard by several servers", () => {
       { host: "office", devices: [r1(true, false)] },
     ]);
     expect(hosts.get("r1-a1b2c3")).toEqual({ primary: "office", reachable: ["home"] });
+  });
+});
+
+describe("a Tessel's controls", () => {
+  const tessel = (ids: ReadonlyArray<string>) =>
+    ({ items: ids.map((id) => ({ id })) }) as unknown as Parameters<typeof tesselOffers>[0];
+  it("follow its own manifest, by item or by group, and offer everything until it reports one", () => {
+    const r = tessel(["audio.volume", "eye.mood"]);
+    expect(tesselOffers(r, "audio.volume")).toBe(true);
+    expect(tesselOffers(r, "eye.")).toBe(true);
+    expect(tesselOffers(r, "motor.")).toBe(false);
+    expect(tesselOffers(undefined, "motor.")).toBe(true);
+    expect(tesselOffers(tessel([]), "motor.")).toBe(true);
+  });
+  it("is named as he reads it, never by its registry id", () => {
+    expect(tesselName({ id: "r1-3d57b3", name: "Tessel (r1-3d57b3)" })).toBe("Tessel 3d57");
+    expect(tesselName({ id: "r1-3d57b3", name: "Kitchen" })).toBe("Kitchen");
   });
 });

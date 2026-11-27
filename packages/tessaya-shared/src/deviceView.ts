@@ -33,7 +33,7 @@ export const clock = (iso: string): string =>
 
 export const deviceStatusLine = (d: DeviceView): string =>
   [
-    d.online === true ? "Online" : d.online === false ? "Offline" : "Not heard from yet",
+    d.online === true ? "Online" : d.online === false ? "Offline" : "Waiting to hear from it",
     d.batteryPct === null
       ? null
       : `battery ${d.batteryPct}%${d.charging === true ? ", charging" : ""}`,
@@ -41,7 +41,6 @@ export const deviceStatusLine = (d: DeviceView): string =>
       ? null
       : `Wi-Fi ${d.signal ?? ""}${d.rssi === null ? "" : ` (${d.rssi} dBm)`}`.replace("  ", " "),
     d.firmware === null ? null : `firmware ${d.firmware}`,
-    d.mode,
     d.online !== true && d.lastSeenAt !== null ? `last seen ${when(d.lastSeenAt)}` : null,
   ]
     .filter((part) => part !== null)
@@ -229,6 +228,19 @@ export const TONE_FAMILIES = [
   ["glass", "Glass Drop"],
   ["felt", "Warm Felt"],
 ] as const;
+/** A Tessel's name as he reads it: the one he gave it, or Tessel and the four digits its setup network shows. */
+export const tesselName = (d: Pick<DeviceView, "id" | "name">): string =>
+  d.name === `${DEVICE} (${d.id})` ? `${DEVICE} ${d.id.replace(/^r1-/i, "").slice(0, 4)}` : d.name;
+
+/**
+ * Whether a Tessel's own manifest offers an item (`audio.volume`) or a group (`eye.`), so its controls follow what
+ * this firmware can do. A Tessel that has not reported its manifest yet offers everything.
+ */
+export const tesselOffers = (r: RegisteredDevice | undefined, item: string): boolean =>
+  r === undefined ||
+  r.items.length === 0 ||
+  r.items.some((i) => (item.endsWith(".") ? i.id.startsWith(item) : i.id === item));
+
 /** The family a Tessel reports (null until it does), or null for the whole row when its firmware has no families. */
 export const toneFamilyOf = (r: RegisteredDevice | undefined): { value: unknown } | null =>
   r?.items.some((i) => i.id === "tone.family") === true

@@ -7,9 +7,9 @@ import type { DevicesOverview } from "@t3tools/tessaya-contracts";
 import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
 import * as Device from "expo-device";
 import { useEffect, useState } from "react";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../../components/ui/AppText";
+import { useListEndPadding } from "../layout/screenInsets";
 import { ScreenScrollView } from "../../../components/ui/ScreenScrollView";
 import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
@@ -32,7 +32,7 @@ export const thisPhoneId = () =>
 
 export function DevicesRouteScreen() {
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
-  const insets = useSafeAreaInsets();
+  const endPadding = useListEndPadding();
   const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, { reportFailure: false });
   const [view, setView] = useState<DevicesOverview | null>(null);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows the registry's online states while the list shows
@@ -56,7 +56,7 @@ export function DevicesRouteScreen() {
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="gap-6 px-5 pt-4"
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+        contentContainerStyle={{ paddingBottom: endPadding }}
       >
         <Text className="text-sm text-foreground-muted">
           Where she lives, and what each body is doing.

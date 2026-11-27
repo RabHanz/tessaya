@@ -1,4 +1,5 @@
 import type { RegisteredDevice } from "@t3tools/tessaya-contracts";
+import { when } from "@t3tools/tessaya-shared/deviceView";
 
 export interface DeviceListRow {
   readonly id: string;
@@ -36,7 +37,15 @@ export const deviceRows = (
     .map((d): DeviceListRow => {
       const kind = kindOf(d);
       const here = d.deviceId === thisPhone;
-      const state = here ? "this phone" : d.asleep === true ? "asleep" : d.online ? "on" : "off";
+      const state = here
+        ? "here"
+        : d.asleep === true
+          ? "asleep"
+          : d.online
+            ? "on"
+            : d.lastSeenAt === null
+              ? "offline"
+              : `last heard ${when(d.lastSeenAt)}`;
       return {
         id: d.deviceId,
         name: here ? "This phone" : d.name,

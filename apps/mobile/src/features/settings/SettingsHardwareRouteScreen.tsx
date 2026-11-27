@@ -16,6 +16,7 @@ import {
   type DeviceView,
   type DevicesOverview,
   type R1Mood,
+  type RegisteredDevice,
 } from "@t3tools/tessaya-contracts";
 import {
   DISPLAY_CHOICES,
@@ -28,6 +29,8 @@ import {
   deviceStatusLine,
   tesselHosts,
   toneFamilyOf,
+  tesselName,
+  tesselOffers,
   EYE_STYLE_CHOICES,
   eyeStyleLine,
   type TesselSeen,
@@ -56,12 +59,12 @@ import {
 } from "@t3tools/tessaya-shared/deviceView";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useEffect, useState, type ReactNode } from "react";
-import { Alert, Image, StyleSheet, TextInput, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Alert, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
 import { Path, Svg } from "react-native-svg";
 import { useResolveClassNames } from "uniwind";
 
 import { AppText as Text } from "../../components/ui/AppText";
+import { useListEndPadding } from "../tessaya/layout/screenInsets";
 import { ControlPill } from "../../components/ui/ControlPill";
 import { Menu } from "../../components/ui/Menu";
 import { ScreenScrollView } from "../../components/ui/ScreenScrollView";
@@ -75,6 +78,7 @@ import { useEnvironments } from "../../state/environments";
 import { connectedSettingsTargets } from "./settings-environment-filter";
 import { BodiesSection } from "./BodiesSection";
 import { R1SetupSection } from "./R1SetupSection";
+import { Disclosure } from "../tessaya/layout/Disclosure";
 import { VoiceEnrolCard } from "./VoiceEnrolCard";
 import { WifiSection } from "./WifiSection";
 import {
@@ -129,7 +133,7 @@ const lineOf = (v: unknown) =>
 export function SettingsHardwareRouteScreen() {
   // the household's devices on every connected server, with no server to pick (D-038); rows name their machine
   const selectedTargets = connectedSettingsTargets(useEnvironments().environments);
-  const insets = useSafeAreaInsets();
+  const endPadding = useListEndPadding();
   // What each server hears, so a Tessel several servers reach (a bridged broker) shows once, on its primary host.
   const [seen, setSeen] = useState<ReadonlyMap<EnvironmentId, ReadonlyArray<TesselSeen>>>(
     new Map(),
@@ -152,9 +156,8 @@ export function SettingsHardwareRouteScreen() {
         className="flex-1"
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="gap-6 px-5 pt-4"
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 18) + 18 }}
+        contentContainerStyle={{ paddingBottom: endPadding }}
       >
-        <PhoneVesselSection />
         {selectedTargets.length === 0 ? (
           <Text className="text-foreground-muted">Connect an environment to see its devices.</Text>
         ) : (
@@ -173,6 +176,7 @@ export function SettingsHardwareRouteScreen() {
             />
           ))
         )}
+        <PhoneVesselSection />
       </ScreenScrollView>
     </SettingsScreen>
   );
@@ -223,7 +227,7 @@ function MoodEyes({ mood }: { readonly mood: R1Mood }) {
     StyleSheet.flatten(useResolveClassNames("text-foreground"))?.color ?? "currentColor",
   );
   return (
-    <Svg width={33} height={15} viewBox="0 0 80 36" accessible={false}>
+    <Svg width={44} height={20} viewBox="0 0 80 36" accessible={false}>
       {[...EYE_SCREENS, ...MOOD_EYES[mood]].map((mark, i) => (
         <Path
           // oxlint-disable-next-line react/no-array-index-key -- a fixed drawing; marks never reorder
@@ -361,35 +365,18 @@ function HardwareSections({
   const devices = heard.filter((d) => owns(d.id));
   return (
     <>
-      <SettingsSection title={`${prefix}Hardware devices`}>
-        <Row
-          title="Broker"
-          description={
-            view === null
-              ? "Reading…"
-              : view.broker.state === "off"
-                ? `No device is set up. Set up a ${DEVICE} below.`
-                : `${view.broker.state === "connected" ? "Connected to" : "Connecting to"} ${view.broker.host ?? "the broker"}.`
-          }
-        />
-        {reach === null || view?.broker.host?.includes("this server") !== true ? null : (
-          <Row divider title="Away from home" description={reach.line}>
-            {[true, false].map((enabled) => (
-              <ControlPill
-                key={String(enabled)}
-                variant={reach.away === enabled ? "primary" : "pill"}
-                label={enabled ? "On" : "Home only"}
-                accessibilityLabel={enabled ? "Away from home: on" : "Away from home: home only"}
-                disabled={busy}
-                onPress={() => {
-                  const id = heard.find((d) => d.configured)?.id;
-                  if (id !== undefined)
-                    void run("owner", "away", { id, enabled }).then(() => readReach());
-                }}
-              />
-            ))}
-          </Row>
-        )}
+      <SettingsSection title={`${prefix}Your ${DEVICE}s`}>
+        {view !== null && devices.length === 0 ? (
+          <Row title={`No ${DEVICE} yet`} description="Add one below, or ask her to set one up." />
+        ) : null}
+        {devices.map((d, i) => (
+          <Row
+            key={d.id}
+            divider={i > 0}
+            title={`${tesselName(d)}${d.muted ? " · muted" : ""}${d.camera.armedUntil === null ? "" : " · camera on"}`}
+            description={deviceStatusLine(d) + reachableLine(alsoOn(d.id))}
+          />
+        ))}
         {(updatesView?.devices ?? [])
           .filter((u) => owns(u.id))
           .map((u) => {
@@ -458,14 +445,6 @@ function HardwareSections({
               </Row>
             );
           })}
-        {devices.map((d) => (
-          <Row
-            key={d.id}
-            divider
-            title={`${d.name}${d.muted ? " · muted" : ""}${d.camera.armedUntil === null ? "" : " · camera on"}`}
-            description={deviceStatusLine(d) + reachableLine(alsoOn(d.id))}
-          />
-        ))}
         {view?.pending.map((p) => (
           <Row
             key={p.id}
@@ -488,7 +467,8 @@ function HardwareSections({
         <DeviceControls
           key={d.id}
           device={d}
-          toneFamily={toneFamilyOf(view?.registry?.find((r) => r.deviceId === d.id))}
+          heading={devices.length > 1 ? tesselName(d) : null}
+          registered={view?.registry?.find((r) => r.deviceId === d.id)}
           tags={view?.tags ?? []}
           busy={busy}
           run={run}
@@ -497,82 +477,127 @@ function HardwareSections({
         />
       ))}
 
-      <SettingsSection title={`${prefix}Room brain`}>
-        <Row
-          title={ROOM_BRAIN_LABELS[roomBrain]}
-          description={`Automatic uses your Anthropic key from Settings → APIs for the quickest answers, and your Claude subscription if the key fails. Changes apply from the next thing you say, on every ${DEVICE} this server answers.`}
-        >
-          {ROOM_BRAINS.map((way) => (
-            <ControlPill
-              key={way}
-              variant={way === roomBrain ? "primary" : "pill"}
-              label={ROOM_BRAIN_LABELS[way]}
-              onPress={() =>
-                void updateSettings({ environmentId, input: { patch: { roomBrain: way } } })
-              }
-            />
-          ))}
-        </Row>
-      </SettingsSection>
+      <Disclosure
+        title={`${prefix}Add a ${DEVICE}`}
+        summary="Scan the code on its right eye, then give it your Wi-Fi."
+        initiallyOpen={view !== null && devices.length === 0}
+      >
+        <R1SetupSection
+          prefix={prefix}
+          call={async (kind, op, args) => {
+            const result = await devicesCall({ environmentId, input: { kind, op, args } });
+            return result._tag === "Success" ? result.value : null;
+          }}
+          // Unknown until read: never ask twice by mistake.
+          awayOffered={reach?.offered ?? true}
+          onChanged={() => {
+            void refresh();
+            void readReach();
+          }}
+        />
+      </Disclosure>
 
-      <BodiesSection
-        prefix={prefix}
-        call={async (kind, op, args) => {
-          const result = await devicesCall({ environmentId, input: { kind, op, args } });
-          return result._tag === "Success" ? result.value : null;
-        }}
-        seat={async (tags) => {
-          const result = await publishPhone([{ itemId: "body.tags", value: tags }]);
-          return result._tag !== "Success" || !result.value.ok
-            ? "Couldn’t reach this environment. Try again."
-            : tags.length === 0
-              ? "This phone is out of its body."
-              : "Seated. If the tag is one of yours, this phone takes that body's settings.";
-        }}
-      />
+      <Disclosure
+        title={`${prefix}Connection and brain`}
+        summary="The broker, away from home, which brain answers, and its bodies."
+      >
+        <SettingsSection title="Connection">
+          <Row
+            title="Broker"
+            description={
+              view === null
+                ? "Reading…"
+                : view.broker.state === "off"
+                  ? `No device is set up. Set up a ${DEVICE} below.`
+                  : `${view.broker.state === "connected" ? "Connected to" : "Connecting to"} ${view.broker.host ?? "the broker"}.`
+            }
+          />
+          {reach === null || view?.broker.host?.includes("this server") !== true ? null : (
+            <Row divider title="Away from home" description={reach.line}>
+              {[true, false].map((enabled) => (
+                <ControlPill
+                  key={String(enabled)}
+                  variant={reach.away === enabled ? "primary" : "pill"}
+                  label={enabled ? "On" : "Home only"}
+                  accessibilityLabel={enabled ? "Away from home: on" : "Away from home: home only"}
+                  disabled={busy}
+                  onPress={() => {
+                    const id = heard.find((d) => d.configured)?.id;
+                    if (id !== undefined)
+                      void run("owner", "away", { id, enabled }).then(() => readReach());
+                  }}
+                />
+              ))}
+            </Row>
+          )}
+        </SettingsSection>
+        <SettingsSection title={`${prefix}Room brain`}>
+          <Row
+            title={ROOM_BRAIN_LABELS[roomBrain]}
+            description={`Automatic uses your Anthropic key from Settings → APIs for the quickest answers, and your Claude subscription if the key fails. Changes apply from the next thing you say, on every ${DEVICE} this server answers.`}
+          >
+            {ROOM_BRAINS.map((way) => (
+              <ControlPill
+                key={way}
+                variant={way === roomBrain ? "primary" : "pill"}
+                label={ROOM_BRAIN_LABELS[way]}
+                onPress={() =>
+                  void updateSettings({ environmentId, input: { patch: { roomBrain: way } } })
+                }
+              />
+            ))}
+          </Row>
+        </SettingsSection>
 
-      <R1SetupSection
-        prefix={prefix}
-        call={async (kind, op, args) => {
-          const result = await devicesCall({ environmentId, input: { kind, op, args } });
-          return result._tag === "Success" ? result.value : null;
-        }}
-        // Unknown until read: never ask twice by mistake.
-        awayOffered={reach?.offered ?? true}
-        onChanged={() => {
-          void refresh();
-          void readReach();
-        }}
-      />
+        <BodiesSection
+          prefix={prefix}
+          call={async (kind, op, args) => {
+            const result = await devicesCall({ environmentId, input: { kind, op, args } });
+            return result._tag === "Success" ? result.value : null;
+          }}
+          seat={async (tags) => {
+            const result = await publishPhone([{ itemId: "body.tags", value: tags }]);
+            return result._tag !== "Success" || !result.value.ok
+              ? "Couldn’t reach this environment. Try again."
+              : tags.length === 0
+                ? "This phone is out of its body."
+                : "Seated. If the tag is one of yours, this phone takes that body's settings.";
+          }}
+        />
 
-      <SetupSection
-        prefix={prefix}
-        busy={busy}
-        configured={heard.some((d) => d.configured)}
-        onSave={async (args) => {
-          setBusy(true);
-          const result = await homeCall({
-            environmentId,
-            input: { kind: "act", op: "r1Setup", args },
-          });
-          setBusy(false);
-          setNote(
-            result._tag === "Success" && result.value.ok
-              ? "Saved. The server connects to its broker within a few seconds."
-              : result._tag === "Success"
-                ? (result.value.error ?? "That was not saved.")
-                : "Couldn’t reach this environment. Try again.",
-          );
-          await refresh();
-        }}
-      />
+        <SetupSection
+          prefix={prefix}
+          busy={busy}
+          configured={heard.some((d) => d.configured)}
+          onSave={async (args) => {
+            setBusy(true);
+            const result = await homeCall({
+              environmentId,
+              input: { kind: "act", op: "r1Setup", args },
+            });
+            setBusy(false);
+            setNote(
+              result._tag === "Success" && result.value.ok
+                ? "Saved. The server connects to its broker within a few seconds."
+                : result._tag === "Success"
+                  ? (result.value.error ?? "That was not saved.")
+                  : "Couldn’t reach this environment. Try again.",
+            );
+            await refresh();
+          }}
+        />
+      </Disclosure>
     </>
   );
 }
 
+const soundSummary = (d: DeviceView) =>
+  `${d.muted ? "Muted" : "Listening for its wake word"}${d.volume == null ? "" : ` · volume ${d.volume}`}.`;
+
 function DeviceControls({
   device: d,
-  toneFamily,
+  heading,
+  registered,
   tags,
   busy,
   run,
@@ -580,7 +605,10 @@ function DeviceControls({
   environmentId,
 }: {
   readonly device: DeviceView;
-  readonly toneFamily: { value: unknown } | null;
+  /** Its name above its controls, when several Tessels share the page. */
+  readonly heading: string | null;
+  /** Its registry entry: its own manifest of what it offers. */
+  readonly registered: RegisteredDevice | undefined;
   readonly tags: DevicesOverview["tags"];
   readonly busy: boolean;
   readonly run: Run;
@@ -589,6 +617,7 @@ function DeviceControls({
 }) {
   const id = d.id;
   const off = busy || d.online !== true;
+  const toneFamily = toneFamilyOf(registered);
   const [say, setSay] = useState("");
   const [picture, setPicture] = useState<{ at: string; dataUrl: string } | null>(null);
   const confirm = (title: string, body: string, action: string, onYes: () => void) =>
@@ -599,51 +628,100 @@ function DeviceControls({
 
   return (
     <>
-      <SettingsSection title={`${prefix}Live controls · ${id}`}>
-        <Row title="Eyes" description={`Showing ${d.mood ?? "unknown"}. Pick a mood to show it.`}>
-          {R1_MOODS.map((mood) => (
-            <ControlPill
-              key={mood}
-              variant={d.mood === mood ? "primary" : "pill"}
-              label={mood}
-              accessibilityLabel={`Eyes: ${mood}`}
-              disabled={off}
-              iconNode={<MoodEyes mood={mood} />}
-              onPress={() => void run("act", "eye", { id, mood })}
-            />
-          ))}
-        </Row>
-        <Row divider title="Light" description="The firmware shows three light states.">
-          {LEDS.map(([color, text]) => (
-            <ControlPill
-              key={color}
-              variant="pill"
-              label={text}
-              disabled={off}
-              onPress={() => void run("act", "led", { id, color })}
-            />
-          ))}
-        </Row>
-        <Row divider title="Vibration" description="One short buzz, to check the motor.">
-          <ControlPill
-            variant="pill"
-            label="Test"
-            disabled={off}
-            onPress={() => void run("act", "vibrate", { id, ms: 150 })}
-          />
-        </Row>
-        <Row
-          divider
-          title="Volume"
-          description={
-            d.volume == null
-              ? "This firmware has no volume command. Its own buttons still change it."
-              : `${d.volume} of 100. Asking her also works: “speak up”, “too loud”, “normal volume”.`
-          }
+      {heading === null ? null : (
+        <Text textRole="footnote" className="px-2 font-t3-medium text-foreground-muted">
+          {heading}
+        </Text>
+      )}
+      {tesselOffers(registered, "eye.") ? (
+        <Disclosure
+          title="Eyes"
+          summary={d.mood === null ? "Pick a mood for its eyes." : `Showing ${d.mood}.`}
         >
-          {d.volume == null
-            ? null
-            : (
+          <SettingsSection>
+            <Row
+              title="Mood"
+              description="Tap one to show it on its eyes now. Or ask her: “look happy”."
+            >
+              {R1_MOODS.map((mood) => (
+                <Pressable
+                  key={mood}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Eyes: ${mood}`}
+                  accessibilityState={{ selected: d.mood === mood, disabled: off }}
+                  disabled={off}
+                  onPress={() => void run("act", "eye", { id, mood })}
+                  className={`w-[30%] min-w-24 grow items-center gap-1.5 rounded-xl py-2.5 ${d.mood === mood ? "bg-primary/15" : "bg-secondary"} ${off ? "opacity-50" : "active:opacity-65"}`}
+                >
+                  <MoodEyes mood={mood} />
+                  <Text textRole="footnote" className="capitalize text-foreground">
+                    {mood}
+                  </Text>
+                </Pressable>
+              ))}
+            </Row>
+            <Row divider title="Style" description={eyeStyleLine(d)}>
+              {EYE_STYLE_CHOICES.map(([value, label]) => (
+                <ControlPill
+                  key={value}
+                  variant={value === (d.eyeStyle ?? "alive") ? "primary" : "pill"}
+                  label={label}
+                  disabled={off}
+                  onPress={() => void run("act", "eyeStyle", { id, style: value })}
+                />
+              ))}
+            </Row>
+            <Row divider title="Screen" description={displayLine(d)}>
+              {DISPLAY_CHOICES.map(([value, label]) => (
+                <ControlPill
+                  key={value}
+                  variant={value === displayChoiceOf(d) ? "primary" : "pill"}
+                  label={label}
+                  disabled={off || !displaySupported(d.display)}
+                  onPress={() => void run("act", "display", { id, set: value })}
+                />
+              ))}
+              <ControlPill
+                variant="pill"
+                label="Set upright"
+                disabled={off || !displaySupported(d.display)}
+                onPress={() => void run("act", "display", { id, set: "calibrate" })}
+              />
+            </Row>
+          </SettingsSection>
+        </Disclosure>
+      ) : null}
+      <Disclosure title="Light and touch" summary="Its light, and a buzz to check the motor.">
+        <SettingsSection>
+          <Row title="Light" description="Set its light now.">
+            {LEDS.map(([color, text]) => (
+              <ControlPill
+                key={color}
+                variant="pill"
+                label={text}
+                disabled={off}
+                onPress={() => void run("act", "led", { id, color })}
+              />
+            ))}
+          </Row>
+          <Row divider title="Vibration" description="One short buzz, to check the motor.">
+            <ControlPill
+              variant="pill"
+              label="Test"
+              disabled={off}
+              onPress={() => void run("act", "vibrate", { id, ms: 150 })}
+            />
+          </Row>
+        </SettingsSection>
+      </Disclosure>
+      <Disclosure title="Sound" summary={soundSummary(d)}>
+        <SettingsSection>
+          {tesselOffers(registered, "audio.volume") ? (
+            <Row
+              title="Volume"
+              description={`${d.volume == null ? "" : `${d.volume} of 100. `}Or ask her: “speak up”, “too loud”, “normal volume”.`}
+            >
+              {(
                 [
                   ["down", "Quieter"],
                   ["default", "Normal"],
@@ -658,352 +736,325 @@ function DeviceControls({
                   onPress={() => void run("act", "volume", { id, to })}
                 />
               ))}
-        </Row>
-        <View className="gap-2 border-t border-border-subtle px-4 py-3">
-          <Text textRole="body" className="text-foreground">
-            Say something
-          </Text>
-          <TextInput
-            accessibilityLabel="What the device says"
-            className={INPUT_CLASS}
-            placeholderTextColorClassName="accent-foreground-muted"
-            placeholder="Dinner is ready."
-            maxLength={400}
-            editable={!off}
-            value={say}
-            onChangeText={setSay}
-          />
-          <View className="flex-row">
-            <ControlPill
-              variant="primary"
-              label="Say"
-              disabled={off || say.trim() === ""}
-              onPress={() =>
-                void run("act", "say", { id, text: say.trim() }).then((v) => {
-                  if (v !== null) setSay("");
-                })
-              }
+            </Row>
+          ) : null}
+          <View className="gap-2 border-t border-border-subtle px-4 py-3">
+            <Text textRole="body" className="text-foreground">
+              Say something
+            </Text>
+            <TextInput
+              accessibilityLabel="What the device says"
+              className={INPUT_CLASS}
+              placeholderTextColorClassName="accent-foreground-muted"
+              placeholder="Dinner is ready."
+              maxLength={400}
+              editable={!off}
+              value={say}
+              onChangeText={setSay}
             />
-          </View>
-        </View>
-        <Row
-          divider
-          title="Mute"
-          description={
-            d.muted
-              ? "Muted: it neither listens nor speaks."
-              : "It listens for its wake word and answers."
-          }
-        >
-          <ControlPill
-            variant="pill"
-            label={d.muted ? "Unmute" : "Mute"}
-            disabled={off}
-            onPress={() => void run("act", "mute", { id, muted: !d.muted })}
-          />
-        </Row>
-        <Row
-          divider
-          title="Earcons"
-          description="A soft sound when it starts listening and when it closes."
-        >
-          <ControlPill
-            variant="pill"
-            label={d.earcons ? "Turn off" : "Turn on"}
-            disabled={off}
-            onPress={() => void run("act", "earcons", { id, on: !d.earcons })}
-          />
-        </Row>
-        <Row
-          divider
-          title="Talk over her"
-          description="Any voice of your household stops her mid-sentence. Off: only her name or a stop phrase does."
-        >
-          <ControlPill
-            variant="pill"
-            label={d.talkOver !== false ? "Turn off" : "Turn on"}
-            disabled={off}
-            onPress={() => void run("act", "talkOver", { id, open: d.talkOver === false })}
-          />
-        </Row>
-        <Row divider title="Eyes" description={eyeStyleLine(d)}>
-          {EYE_STYLE_CHOICES.map(([value, label]) => (
-            <ControlPill
-              key={value}
-              variant={value === (d.eyeStyle ?? "alive") ? "primary" : "pill"}
-              label={label}
-              disabled={off}
-              onPress={() => void run("act", "eyeStyle", { id, style: value })}
-            />
-          ))}
-        </Row>
-        <Row divider title="Screen" description={displayLine(d)}>
-          {DISPLAY_CHOICES.map(([value, label]) => (
-            <ControlPill
-              key={value}
-              variant={value === displayChoiceOf(d) ? "primary" : "pill"}
-              label={label}
-              disabled={off || !displaySupported(d.display)}
-              onPress={() => void run("act", "display", { id, set: value })}
-            />
-          ))}
-          <ControlPill
-            variant="pill"
-            label="Set upright"
-            disabled={off || !displaySupported(d.display)}
-            onPress={() => void run("act", "display", { id, set: "calibrate" })}
-          />
-        </Row>
-      </SettingsSection>
-
-      {toneFamily === null ? null : (
-        <SettingsSection title={`${prefix}Sounds · ${id}`}>
-          <Row title="Button sounds" description="The sound of a button or volume tap.">
-            {TONE_FAMILIES.map(([value, label]) => (
+            <View className="flex-row">
               <ControlPill
-                key={value}
-                variant={value === toneFamily.value ? "primary" : "pill"}
-                label={label}
-                disabled={off}
-                onPress={() => void run("act", "set", { id, itemId: "tone.family", value })}
+                variant="primary"
+                label="Say"
+                disabled={off || say.trim() === ""}
+                onPress={() =>
+                  void run("act", "say", { id, text: say.trim() }).then((v) => {
+                    if (v !== null) setSay("");
+                  })
+                }
               />
-            ))}
+            </View>
+          </View>
+          <Row
+            divider
+            title="Mute"
+            description={
+              d.muted
+                ? "Muted: it neither listens nor speaks."
+                : "It listens for its wake word and answers."
+            }
+          >
+            <ControlPill
+              variant="pill"
+              label={d.muted ? "Unmute" : "Mute"}
+              disabled={off}
+              onPress={() => void run("act", "mute", { id, muted: !d.muted })}
+            />
+          </Row>
+          <Row
+            divider
+            title="Earcons"
+            description="A soft sound when it starts listening and when it closes."
+          >
+            <ControlPill
+              variant="pill"
+              label={d.earcons ? "Turn off" : "Turn on"}
+              disabled={off}
+              onPress={() => void run("act", "earcons", { id, on: !d.earcons })}
+            />
+          </Row>
+          <Row
+            divider
+            title="Talk over her"
+            description="Any voice of your household stops her mid-sentence. Off: only her name or a stop phrase does."
+          >
+            <ControlPill
+              variant="pill"
+              label={d.talkOver !== false ? "Turn off" : "Turn on"}
+              disabled={off}
+              onPress={() => void run("act", "talkOver", { id, open: d.talkOver === false })}
+            />
           </Row>
         </SettingsSection>
-      )}
-
-      <SettingsSection title={`${prefix}Voice · ${id}`}>
-        <Row title="Voice transport" description={transportLine(d)}>
-          {d.revertAt === null ? null : (
-            <ControlPill
-              variant="primary"
-              label="Keep"
-              disabled={off}
-              onPress={() => void run("act", "transportConfirm", { id })}
-            />
-          )}
-          {d.transport === "inhouse" ? (
+        {toneFamily === null ? null : (
+          <SettingsSection title={`${prefix}Sounds`}>
+            <Row title="Button sounds" description="The sound of a button or volume tap.">
+              {TONE_FAMILIES.map(([value, label]) => (
+                <ControlPill
+                  key={value}
+                  variant={value === toneFamily.value ? "primary" : "pill"}
+                  label={label}
+                  disabled={off}
+                  onPress={() => void run("act", "set", { id, itemId: "tone.family", value })}
+                />
+              ))}
+            </Row>
+          </SettingsSection>
+        )}
+        <SettingsSection title={`${prefix}Voice`}>
+          <Row title="Voice transport" description={transportLine(d)}>
+            {d.revertAt === null ? null : (
+              <ControlPill
+                variant="primary"
+                label="Keep"
+                disabled={off}
+                onPress={() => void run("act", "transportConfirm", { id })}
+              />
+            )}
+            {d.transport === "inhouse" ? (
+              <ControlPill
+                variant="pill"
+                label="Try Agora"
+                disabled={off}
+                onPress={() => void run("act", "transport", { id, transport: "agora" })}
+              />
+            ) : (
+              <ControlPill
+                variant="pill"
+                label="Revert to in-house"
+                disabled={busy}
+                onPress={() => void run("act", "transportRevert", { id })}
+              />
+            )}
+          </Row>
+          <Row
+            divider
+            title="Voice ID"
+            description={
+              d.enrolling
+                ? "Enrolling: read the sentences on the card aloud to the device."
+                : "Teach the device your voice, through its own microphones."
+            }
+          >
             <ControlPill
               variant="pill"
-              label="Try Agora"
+              label={d.enrolling ? "Cancel" : "Enrol"}
               disabled={off}
-              onPress={() => void run("act", "transport", { id, transport: "agora" })}
+              onPress={() => void run("act", "enrol", { id, cancel: d.enrolling })}
             />
-          ) : (
-            <ControlPill
-              variant="pill"
-              label="Revert to in-house"
-              disabled={busy}
-              onPress={() => void run("act", "transportRevert", { id })}
+          </Row>
+          {d.enrol === null ? null : (
+            <VoiceEnrolCard
+              card={d.enrol}
+              onClose={() => void run("act", "enrol", { id, cancel: true })}
+              onRedo={() => void run("act", "enrol", { id, cancel: false })}
             />
           )}
-        </Row>
-        <Row
-          divider
-          title="Persona and voice"
-          description="Tessaya, speaking with the voice anna. Her voice is set in Voice; the room follows it once that setting lives on the server."
-        />
-        <Row
-          divider
-          title="Voice ID"
-          description={
-            d.enrolling
-              ? "Enrolling: read the sentences on the card aloud to the device."
-              : "Teach the device your voice, through its own microphones."
-          }
-        >
-          <ControlPill
-            variant="pill"
-            label={d.enrolling ? "Cancel" : "Enrol"}
-            disabled={off}
-            onPress={() => void run("act", "enrol", { id, cancel: d.enrolling })}
-          />
-        </Row>
-        {d.enrol === null ? null : (
-          <VoiceEnrolCard
-            card={d.enrol}
-            onClose={() => void run("act", "enrol", { id, cancel: true })}
-            onRedo={() => void run("act", "enrol", { id, cancel: false })}
+        </SettingsSection>
+        {d.speaker === null ? null : (
+          <SpeakerSection
+            device={d}
+            busy={busy}
+            run={run}
+            prefix={prefix}
+            environmentId={environmentId}
           />
         )}
-      </SettingsSection>
+      </Disclosure>
+      <Disclosure title="Advanced" summary="Wi-Fi, buttons, NFC tags, camera and diagnostics.">
+        <WifiSection device={d} busy={busy} run={run} prefix={prefix} />
 
-      {d.speaker === null ? null : (
-        <SpeakerSection
+        <TagsSection device={d} tags={tags} busy={busy} run={run} prefix={prefix} />
+
+        <KeysSection
           device={d}
           busy={busy}
           run={run}
           prefix={prefix}
           environmentId={environmentId}
         />
-      )}
 
-      <WifiSection device={d} busy={busy} run={run} prefix={prefix} />
-
-      <TagsSection device={d} tags={tags} busy={busy} run={run} prefix={prefix} />
-
-      <KeysSection device={d} busy={busy} run={run} prefix={prefix} environmentId={environmentId} />
-
-      <SettingsSection title={`${prefix}Camera · ${id}`}>
-        <Row
-          title={d.camera.armedUntil === null ? "Snapshot" : "Snapshot · camera on"}
-          description={
-            d.camera.armedUntil !== null
-              ? `The camera is on until ${clock(d.camera.armedUntil)}, for one picture.`
-              : (d.camera.line ??
-                "One picture, only when you ask. It is held in memory for 10 minutes and never stored.")
-          }
-        >
-          {d.camera.shotAt === null ? null : (
-            <ControlPill
-              variant="pill"
-              label="Show"
-              disabled={busy}
-              onPress={() =>
-                void run("owner", "cameraView", { id }, () => "").then((v) =>
-                  setPicture(v as { at: string; dataUrl: string } | null),
-                )
-              }
-            />
-          )}
-          <ControlPill
-            variant="pill"
-            label="Take one"
-            disabled={off || d.camera.armedUntil !== null}
-            onPress={() => void run("owner", "camera", { id })}
-          />
-        </Row>
-        {picture === null ? null : (
-          <View className="gap-2 border-t border-border-subtle px-4 py-3">
-            <Text textRole="footnote" className="text-foreground-muted">
-              Taken {when(picture.at)}
-            </Text>
-            <Image
-              source={{ uri: picture.dataUrl }}
-              accessibilityLabel={`The ${DEVICE}'s camera picture`}
-              className="aspect-[4/3] w-full rounded-lg"
-            />
-            <View className="flex-row">
+        <SettingsSection title={`${prefix}Camera`}>
+          <Row
+            title={d.camera.armedUntil === null ? "Snapshot" : "Snapshot · camera on"}
+            description={
+              d.camera.armedUntil !== null
+                ? `The camera is on until ${clock(d.camera.armedUntil)}, for one picture.`
+                : (d.camera.line ??
+                  "One picture, only when you ask. It is held in memory for 10 minutes and never stored.")
+            }
+          >
+            {d.camera.shotAt === null ? null : (
               <ControlPill
-                variant="danger"
-                label="Delete now"
+                variant="pill"
+                label="Show"
                 disabled={busy}
                 onPress={() =>
-                  void run("owner", "cameraClear", { id }, () => "Deleted.").then(() =>
-                    setPicture(null),
+                  void run("owner", "cameraView", { id }, () => "").then((v) =>
+                    setPicture(v as { at: string; dataUrl: string } | null),
                   )
                 }
               />
-            </View>
-          </View>
-        )}
-      </SettingsSection>
-
-      <SettingsSection title={`${prefix}Diagnostics · ${id}`}>
-        <Row
-          title="Firmware update"
-          description={
-            d.ota === null
-              ? `No update running${d.firmware === null ? "" : `; on ${d.firmware}`}. Updates come with the firmware work.`
-              : `Last update: ${d.ota.line}`
-          }
-        />
-        {d.stages.map((s) => (
-          <Row
-            key={s.name}
-            divider
-            title={s.name}
-            description={`Last ${msText(s.lastMs)} · typical ${msText(s.p50Ms)} · ${s.samples} turns`}
-          />
-        ))}
-        <Row divider title="Log" description="What the device said most recently.">
-          <ControlPill
-            variant="pill"
-            label="Snapshot"
-            disabled={off}
-            onPress={() => void run("act", "diag", { id })}
-          />
-        </Row>
-        {d.log.length === 0 ? null : (
-          <View className="gap-1 px-4 pb-3">
-            {d.log.slice(0, 15).map((l, i) => (
-              <Text
-                // oxlint-disable-next-line react/no-array-index-key -- log lines can repeat exactly
-                key={`${l.at}-${i}`}
-                textRole="footnote"
-                numberOfLines={1}
-                className="font-mono text-foreground-muted"
-              >
-                {clock(l.at)} {l.topic} {l.text}
+            )}
+            <ControlPill
+              variant="pill"
+              label="Take one"
+              disabled={off || d.camera.armedUntil !== null}
+              onPress={() => void run("owner", "camera", { id })}
+            />
+          </Row>
+          {picture === null ? null : (
+            <View className="gap-2 border-t border-border-subtle px-4 py-3">
+              <Text textRole="footnote" className="text-foreground-muted">
+                Taken {when(picture.at)}
               </Text>
-            ))}
-          </View>
-        )}
-        <Row divider title="Restart" description="Back in about half a minute.">
-          <ControlPill
-            variant="pill"
-            label="Restart"
-            disabled={off}
-            onPress={() =>
-              confirm(
-                `Restart ${id}?`,
-                "It stops listening while it restarts. In-house voice comes back on by itself.",
-                "Restart",
-                () => void run("owner", "reboot", { id }),
-              )
+              <Image
+                source={{ uri: picture.dataUrl }}
+                accessibilityLabel={`The ${DEVICE}'s camera picture`}
+                className="aspect-[4/3] w-full rounded-lg"
+              />
+              <View className="flex-row">
+                <ControlPill
+                  variant="danger"
+                  label="Delete now"
+                  disabled={busy}
+                  onPress={() =>
+                    void run("owner", "cameraClear", { id }, () => "Deleted.").then(() =>
+                      setPicture(null),
+                    )
+                  }
+                />
+              </View>
+            </View>
+          )}
+        </SettingsSection>
+
+        <SettingsSection title={`${prefix}Diagnostics`}>
+          <Row
+            title="Firmware update"
+            description={
+              d.ota === null
+                ? `No update running${d.firmware === null ? "" : `; on ${d.firmware}`}. Updates come with the firmware work.`
+                : `Last update: ${d.ota.line}`
             }
           />
-        </Row>
-        <Row
-          divider
-          title="New device key"
-          description={`Sends the ${DEVICE} a new key over its link; the old one stops working once it uses the new one.`}
-        >
-          <ControlPill
-            variant="pill"
-            label="Rotate key"
-            disabled={off}
-            onPress={() =>
-              confirm(
-                `New key for ${id}?`,
-                `It keeps working: the ${DEVICE} saves the new key and uses it from its next connection.`,
-                "Rotate key",
-                () =>
-                  void run("owner", "rotate", { id, confirmed: false }).then((v) => {
-                    const r = v as { status?: string; line?: string } | null;
-                    // Something on another machine uses the key: one more yes.
-                    if (r?.status === "confirm")
-                      confirm(
-                        `New key for ${id}?`,
-                        r.line ?? "",
-                        "Rotate anyway",
-                        () => void run("owner", "rotate", { id, confirmed: true }),
-                      );
-                  }),
-              )
-            }
-          />
-        </Row>
-        <Row
-          divider
-          title="Forget this device"
-          description="Removes its settings and its key from this server."
-        >
-          <ControlPill
-            variant="danger"
-            label="Forget"
-            disabled={busy}
-            onPress={() =>
-              confirm(
-                `Forget ${id}?`,
-                "Its key, broker and tag settings are removed from this server. Nothing on the device changes.",
-                "Forget",
-                () => void run("act", "forget", { id }),
-              )
-            }
-          />
-        </Row>
-      </SettingsSection>
+          {d.stages.map((s) => (
+            <Row
+              key={s.name}
+              divider
+              title={s.name}
+              description={`Last ${msText(s.lastMs)} · typical ${msText(s.p50Ms)} · ${s.samples} turns`}
+            />
+          ))}
+          <Row divider title="Log" description="What the device said most recently.">
+            <ControlPill
+              variant="pill"
+              label="Snapshot"
+              disabled={off}
+              onPress={() => void run("act", "diag", { id })}
+            />
+          </Row>
+          {d.log.length === 0 ? null : (
+            <View className="gap-1 px-4 pb-3">
+              {d.log.slice(0, 15).map((l, i) => (
+                <Text
+                  // oxlint-disable-next-line react/no-array-index-key -- log lines can repeat exactly
+                  key={`${l.at}-${i}`}
+                  textRole="footnote"
+                  numberOfLines={1}
+                  className="font-mono text-foreground-muted"
+                >
+                  {clock(l.at)} {l.topic} {l.text}
+                </Text>
+              ))}
+            </View>
+          )}
+          <Row divider title="Restart" description="Back in about half a minute.">
+            <ControlPill
+              variant="pill"
+              label="Restart"
+              disabled={off}
+              onPress={() =>
+                confirm(
+                  `Restart ${id}?`,
+                  "It stops listening while it restarts. In-house voice comes back on by itself.",
+                  "Restart",
+                  () => void run("owner", "reboot", { id }),
+                )
+              }
+            />
+          </Row>
+          <Row
+            divider
+            title="New device key"
+            description={`Sends the ${DEVICE} a new key over its link; the old one stops working once it uses the new one.`}
+          >
+            <ControlPill
+              variant="pill"
+              label="Rotate key"
+              disabled={off}
+              onPress={() =>
+                confirm(
+                  `New key for ${id}?`,
+                  `It keeps working: the ${DEVICE} saves the new key and uses it from its next connection.`,
+                  "Rotate key",
+                  () =>
+                    void run("owner", "rotate", { id, confirmed: false }).then((v) => {
+                      const r = v as { status?: string; line?: string } | null;
+                      // Something on another machine uses the key: one more yes.
+                      if (r?.status === "confirm")
+                        confirm(
+                          `New key for ${id}?`,
+                          r.line ?? "",
+                          "Rotate anyway",
+                          () => void run("owner", "rotate", { id, confirmed: true }),
+                        );
+                    }),
+                )
+              }
+            />
+          </Row>
+          <Row
+            divider
+            title="Forget this device"
+            description="Removes its settings and its key from this server."
+          >
+            <ControlPill
+              variant="danger"
+              label="Forget"
+              disabled={busy}
+              onPress={() =>
+                confirm(
+                  `Forget ${id}?`,
+                  "Its key, broker and tag settings are removed from this server. Nothing on the device changes.",
+                  "Forget",
+                  () => void run("act", "forget", { id }),
+                )
+              }
+            />
+          </Row>
+        </SettingsSection>
+      </Disclosure>
     </>
   );
 }
@@ -1174,7 +1225,7 @@ function KeysSection({
   const bind = keyBindingFrom(picked, text, pickedThread);
   const free = KEY_ROWS.filter((r) => r.fixed === null);
   return (
-    <SettingsSection title={`${prefix}Buttons · ${d.id}`}>
+    <SettingsSection title={`${prefix}Buttons`}>
       {(Object.keys(KEY_NAMES) as Array<keyof typeof KEY_NAMES>).map((key, i) => (
         <Row
           key={key}
@@ -1392,7 +1443,7 @@ function SpeakerSection({
   const off = busy || d.online !== true;
   const linked = s.state === "connected" || s.state === "streaming";
   return (
-    <SettingsSection title={`${prefix}Bluetooth audio · ${id}`}>
+    <SettingsSection title={`${prefix}Bluetooth audio`}>
       <Row
         title={
           s.saved === null
