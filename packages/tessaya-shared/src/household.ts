@@ -150,17 +150,6 @@ export const memberOfSpeaker = (speaker: SpeakerLike | null): string | null =>
         : null;
 
 /**
- * Whether the owner's own plan (his subscription) may answer this voice (ACCOUNTS-IDENTITY C-1, decision 11): not when
- * Voice ID says it is someone else, a guest or another member. A voice it could not judge (too short) stays his, so
- * his "lights off" still works; it is the one gap, closed when others' turns run on the household key by default.
- */
-export const onOwnersPlan = (speaker: SpeakerLike | null): boolean =>
-  speaker === null ||
-  speaker.kind === "owner" ||
-  speaker.kind === "unverified" ||
-  (speaker.kind === "saved" && speaker.personId === OWNER_MEMBER_ID);
-
-/**
  * How sure a voice is (ACCOUNTS-IDENTITY-DESIGN §3.1): A2 only at the act cut-off on this turn's own audio, A1 for a
  * listen-level or carried-over match, A0 otherwise. A voice never reaches A3.
  */
