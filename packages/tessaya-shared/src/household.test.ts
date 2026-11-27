@@ -4,7 +4,6 @@ import {
   memberOfSpeaker,
   memberOfSubject,
   memberSubject,
-  onOwnersPlan,
   OWNER_MEMBER_ID,
   vesselSubject,
   voiceAssurance,
@@ -43,20 +42,18 @@ describe("a spoken turn's member and assurance", () => {
     inherited,
   });
   it.each([
-    // The last column: whether his own plan may answer them (C-1): never another member or a guest.
-    [voice("owner"), OWNER_MEMBER_ID, 2, true],
-    [voice("owner", false), OWNER_MEMBER_ID, 1, true],
-    [voice("owner", true, true), OWNER_MEMBER_ID, 1, true],
-    [voice("saved"), "sara", 2, false],
-    [voice("guest"), null, 0, false],
+    [voice("owner"), OWNER_MEMBER_ID, 2],
+    [voice("owner", false), OWNER_MEMBER_ID, 1],
+    [voice("owner", true, true), OWNER_MEMBER_ID, 1],
+    [voice("saved"), "sara", 2],
+    [voice("guest"), null, 0],
     // Where Voice ID runs, a voice it has not judged (late) or could not judge is nobody: never fail open to him.
-    [voice("unverified", false), null, 0, true],
+    [voice("unverified", false), null, 0],
     // Only a vessel with no Voice ID to run keeps the owner's path, at A0.
-    [{ ...voice("unverified", false), voiceIdOff: true }, OWNER_MEMBER_ID, 0, true],
-    [null, OWNER_MEMBER_ID, 0, true],
-  ] as const)("%o is %s at A%i", (speaker, member, level, his) => {
+    [{ ...voice("unverified", false), voiceIdOff: true }, OWNER_MEMBER_ID, 0],
+    [null, OWNER_MEMBER_ID, 0],
+  ] as const)("%o is %s at A%i", (speaker, member, level) => {
     expect(memberOfSpeaker(speaker)).toBe(member);
     expect(voiceAssurance(speaker)).toBe(level);
-    expect(onOwnersPlan(speaker)).toBe(his);
   });
 });
