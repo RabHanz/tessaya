@@ -27,7 +27,7 @@ describe("the phone's push-to-talk", () => {
       wav,
       env: { BATON_DICTATION: "/bin/side", BATON_STT_MODEL: "/m/model.gguf" },
       userdataDir: "/x",
-      vocabulary: ["Tessaya", "VentureOS"],
+      vocabulary: ["Tessaya", "Northwind"],
       exists: () => true,
       run: async (_b, args) => {
         seen.push([...args]);
@@ -42,7 +42,7 @@ describe("the phone's push-to-talk", () => {
       "/m/model.gguf",
       "--vocabulary-file",
     ]);
-    expect(terms).toBe("Tessaya\nVentureOS");
+    expect(terms).toBe("Tessaya\nNorthwind");
   });
   it("tells him when the model fails or hears nothing", async () => {
     const base = {

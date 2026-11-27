@@ -286,10 +286,10 @@ mod tests {
         assert!(client(&addr, "wrong").is_err());
         let mut socket = client(&addr, "secret").unwrap();
         let long = "x".repeat(MAX_TERM_CHARS + 1);
-        let begin = json!({"cmd": "begin", "vocabulary": [" Tessaya ", "", 3, long, "VentureOS"]});
+        let begin = json!({"cmd": "begin", "vocabulary": [" Tessaya ", "", 3, long, "Northwind"]});
         socket.send(Message::text(begin.to_string())).unwrap();
         let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
-        assert_eq!(job.vocabulary, ["Tessaya", "VentureOS"]);
+        assert_eq!(job.vocabulary, ["Tessaya", "Northwind"]);
         socket.send(Message::text(r#"{"cmd":"begin"}"#)).unwrap();
         assert_eq!(next_text(&mut socket)["ev"], "error");
     }
