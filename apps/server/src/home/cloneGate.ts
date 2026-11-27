@@ -11,7 +11,7 @@ import * as Option from "effect/Option";
 
 import * as PeerLinks from "../peer/PeerLinks.ts";
 
-/** Tailscale's CGNAT range, 100.64.0.0/10, also as an IPv4-mapped IPv6 address. Pure. */
+/** Tailscale's CGNAT range (100.64/10), also as an IPv4-mapped IPv6 address. Pure. */
 export const tailnetIp = (remote: string): string | null => {
   const ip = remote.replace(/^::ffff:/, "");
   const m = /^100\.(\d+)\.\d+\.\d+$/.exec(ip);

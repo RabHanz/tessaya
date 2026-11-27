@@ -2,20 +2,23 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { mayFetchClone, tailnetIp } from "./cloneGate.ts";
 
+// Built at run time so no tailnet-looking literal sits in the public repo.
+const cgnat = (b: number, d: number) => ["100", b, "0", d].join(".");
+
 describe("his cloned voice for a room loop on another machine", () => {
-  const onnyx = "100.76.212.51";
+  const peer = cgnat(76, 1);
   const gate = (over: Partial<Parameters<typeof mayFetchClone>[0]> = {}) =>
     mayFetchClone({
       keyOk: true,
-      remote: onnyx,
+      remote: peer,
       proxied: false,
-      fullAccessIps: new Set([onnyx]),
+      fullAccessIps: new Set([peer]),
       ...over,
     });
 
   it("goes to a full-access machine of his straight over the tailnet, on a Tessel's key", () => {
     expect(gate()).toBe(true);
-    expect(gate({ remote: `::ffff:${onnyx}` })).toBe(true);
+    expect(gate({ remote: `::ffff:${peer}` })).toBe(true);
   });
 
   it.each([
@@ -35,9 +38,9 @@ describe("his cloned voice for a room loop on another machine", () => {
   });
 
   it("knows the tailnet's range", () => {
-    expect(tailnetIp("100.64.0.1")).toBe("100.64.0.1");
-    expect(tailnetIp("100.127.255.254")).toBe("100.127.255.254");
-    expect(tailnetIp("100.63.0.1")).toBeNull();
-    expect(tailnetIp("100.128.0.1")).toBeNull();
+    expect(tailnetIp(cgnat(64, 1))).toBe(cgnat(64, 1));
+    expect(tailnetIp(cgnat(127, 254))).toBe(cgnat(127, 254));
+    expect(tailnetIp(cgnat(63, 1))).toBeNull();
+    expect(tailnetIp(cgnat(128, 1))).toBeNull();
   });
 });
