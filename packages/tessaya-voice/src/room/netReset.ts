@@ -50,7 +50,8 @@ export interface LinkWatchDeps {
   /** One provenance row per reset sent (the hub logs a Tessel's events as actions). */
   readonly report: (id: string, body: object) => void;
   readonly log: (line: string) => void;
-  readonly deviceKey: string;
+  /** What the Tessel logs in with (its device key, or an adopted one's old broker password); none: not reset from here. */
+  readonly keyFor: (id: string) => string | undefined;
   readonly silentMs?: number;
 }
 
@@ -95,9 +96,10 @@ export const createLinkWatch = (deps: LinkWatchDeps) => {
         }
         if (t.n > BACKOFF_MS.length || (t.n > 0 && now - t.at < BACKOFF_MS[t.n - 1]!)) continue;
         const target = row ?? known.get(id);
-        if (target === undefined) continue; // never seen on this LAN: nothing to reset from here
+        const key = deps.keyFor(id);
+        if (target === undefined || key === undefined) continue; // never seen on this LAN, or no key for it
         tries.set(id, { n: t.n + 1, at: now, checked: false });
-        deps.send(target.ip, resetFrame(deps.deviceKey, target.mac, now));
+        deps.send(target.ip, resetFrame(key, target.mac, now));
       }
     },
   };

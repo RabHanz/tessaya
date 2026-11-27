@@ -818,6 +818,13 @@ const main = async () => {
   const online = new Set<string>();
   let room: ReturnType<typeof createRoomVoice> | null = null;
   // A Tessel silent on the hub but still answering ARP on this LAN gets the firmware's remote reset (netReset.ts).
+  const resetKeys = ((): Record<string, string> => {
+    try {
+      return JSON.parse(secret("R1_RESET_KEYS_FILE")) as Record<string, string>;
+    } catch {
+      return {}; // an older server wrote none: the device key, which a claimed Tessel logs in with
+    }
+  })();
   const resetSocket = NodeDgram.createSocket("udp4");
   resetSocket.on("error", (e) => log(`remote reset socket: ${e.message}`));
   const linkWatch = createLinkWatch({
@@ -829,7 +836,7 @@ const main = async () => {
     send: (ip, frame) => resetSocket.send(frame, 9, ip),
     report: (id, body) => mqtt.publish(`freya/r1/${id}/event/link/dead`, JSON.stringify(body)),
     log,
-    deviceKey,
+    keyFor: (id) => resetKeys[id] ?? deviceKey,
   });
   setInterval(() => linkWatch.tick(), 30_000).unref();
   const buses = loopBuses(env("R1_BRAIN_URL"), process.env["R1_HUB_URL"]);

@@ -203,12 +203,21 @@ export const loopPlan = (input: {
       R1_MQTT_PASS_FILE: NodePath.join(secrets, "hub-bus"),
       R1_BRAIN_URL: `http://${base}${DEVICE_API}/chat/completions`,
       R1_DEVICE_KEY_FILE: NodePath.join(secrets, "device-key"),
+      R1_RESET_KEYS_FILE: NodePath.join(secrets, "reset-keys.json"),
       // Every R1 on this hub speaks through this loop.
       R1_INHOUSE: onHub.map((d) => d.deviceId!).join(","),
     },
     secrets: [
       { path: NodePath.join(secrets, "hub-bus"), value: input.busKey },
       { path: NodePath.join(secrets, "device-key"), value: first.deviceKey },
+      // What each R1 logs in with, which keys its remote reset (firmware r1bt_netreset.h): an adopted R1 still on its
+      // old broker password has not taken its device key yet (Tumble, 27 Nov).
+      {
+        path: NodePath.join(secrets, "reset-keys.json"),
+        value: JSON.stringify(
+          Object.fromEntries(onHub.map((d) => [d.deviceId!, d.devicePass ?? d.deviceKey])),
+        ),
+      },
     ],
   };
 };

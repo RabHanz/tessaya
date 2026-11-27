@@ -24,7 +24,7 @@ it("resets a silent Tessel that still answers ARP, backs off, and stops once it 
     send: (ip) => sent.push(ip),
     report: (_id, body) => reports.push(body),
     log: () => {},
-    deviceKey: "00".repeat(32),
+    keyFor: () => "00".repeat(32),
   });
   w.heard("r1-3d57b3");
   now = 149_000;

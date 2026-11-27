@@ -146,7 +146,14 @@ it("runs the loop against this server's own hub and brain, for every R1 on the h
     R1_BRAIN_URL: "http://127.0.0.1:3773/api/devices/tessel/v1/chat/completions",
     R1_INHOUSE: "r1-a,r1-b",
   });
-  expect(plan.secrets.map((s) => s.value)).toEqual(["bus", "r1-a-key-0123456789abcdef"]);
+  expect(plan.secrets.map((s) => s.value)).toEqual([
+    "bus",
+    "r1-a-key-0123456789abcdef",
+    JSON.stringify({ "r1-a": "r1-a-key-0123456789abcdef", "r1-b": "r1-b-key-0123456789abcdef" }),
+  ]);
+  // an adopted R1 still logs in with its old broker password, so its reset is keyed by that
+  const adopted = loopPlan({ ...base, devices: [{ ...r1("r1-a"), devicePass: "old-pass" }] })!;
+  expect(JSON.parse(adopted.secrets[2]!.value)).toEqual({ "r1-a": "old-pass" });
 });
 
 it("hears a phone vessel like a Tessel, so the loop runs for it with no Tessel connected", () => {
