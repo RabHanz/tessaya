@@ -446,7 +446,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   }, [listening, pending]);
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingTop: sleeve ? 0 : insets.top }}>
+    <View className="flex-1 bg-screen" style={{ paddingTop: sleeve ? 0 : insets.top }}>
       {drawing ? (
         <WebView<object>
           ref={webView}
@@ -491,7 +491,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
             contentFit="contain"
             accessibilityIgnoresInvertColors
           />
-          <Text className="text-center text-base text-muted-foreground">
+          <Text className="text-center text-base text-foreground-muted">
             {environmentId === null
               ? "Pair a computer to talk to her"
               : bodyless
@@ -501,7 +501,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
         </View>
       )}
       <View
-        className={`absolute inset-x-0 bottom-0 gap-3 pt-4 ${sleeve ? "" : "rounded-t-3xl bg-background"}`}
+        className={`absolute inset-x-0 bottom-0 gap-3 pt-4 ${sleeve ? "" : "rounded-t-3xl bg-screen"}`}
         style={{
           paddingBottom: bottom + 12,
           paddingLeft: insets.left + 20,
@@ -550,7 +550,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
             className="items-center gap-1 rounded-full bg-secondary py-4"
           >
             <Text className="text-foreground">Let {persona?.name ?? "her"} hear you</Text>
-            <Text className="text-xs text-muted-foreground">
+            <Text className="text-xs text-foreground-muted">
               She listens only while you hold the button.
             </Text>
           </Pressable>
@@ -571,7 +571,7 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
               />
             </View>
             <Pressable accessibilityRole="link" onPress={() => void Linking.openSettings()}>
-              <Text className="text-center text-xs text-muted-foreground">
+              <Text className="text-center text-xs text-foreground-muted">
                 The microphone is off for Tessaya. Turn it on in Settings to talk.
               </Text>
             </Pressable>
@@ -636,14 +636,14 @@ function TalkHistory(props: {
     >
       {props.earlier === null ? null : (
         <Pressable accessibilityRole="button" onPress={props.earlier} className="py-1">
-          <Text className="text-center text-xs text-muted-foreground">Earlier</Text>
+          <Text className="text-center text-xs text-foreground-muted">Earlier</Text>
         </Pressable>
       )}
       {rows.map((r, i) =>
         r.kind === "day" ? (
           <Text
             key={r.key}
-            className="pt-2 text-center text-xs uppercase tracking-wide text-muted-foreground"
+            className="pt-2 text-center text-xs uppercase tracking-wide text-foreground-muted"
           >
             {r.label}
           </Text>
@@ -652,9 +652,9 @@ function TalkHistory(props: {
             <Text
               className={
                 r.private
-                  ? "text-sm italic text-muted-foreground"
+                  ? "text-sm italic text-foreground-muted"
                   : r.role === "them"
-                    ? "text-sm text-muted-foreground"
+                    ? "text-sm text-foreground-muted"
                     : i === lastHer && props.pending === null
                       ? "text-xl text-foreground"
                       : "text-base text-foreground"

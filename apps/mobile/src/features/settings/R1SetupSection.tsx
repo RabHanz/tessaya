@@ -201,7 +201,7 @@ export function R1SetupSection(props: {
   );
 
   return (
-    <SettingsSection title={`${props.prefix}Add a ${DEVICE}`}>
+    <SettingsSection>
       <View className="gap-2 px-4 py-3">
         <PairingScanCard
           cameraActive={scanning}

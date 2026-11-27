@@ -57,7 +57,7 @@ export function UnlockSheet(props: {
     <KeyboardAvoidingView behavior="padding" className="absolute inset-0 justify-end bg-black/40">
       <Pressable accessibilityLabel="Cancel" className="flex-1" onPress={props.onCancel} />
       <View
-        className="gap-3 rounded-t-3xl bg-background px-5 pt-5"
+        className="gap-3 rounded-t-3xl bg-screen px-5 pt-5"
         style={{
           paddingBottom: Math.max(insets.bottom, 16) + 8,
           paddingLeft: insets.left + 20,

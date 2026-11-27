@@ -26,7 +26,7 @@ export function SleeveHost() {
   }, []);
   if (!covering) return null;
   return (
-    <View className="absolute inset-0 bg-background">
+    <View className="absolute inset-0 bg-screen">
       <StatusBar hidden />
       <TalkView focused={active} sleeve />
       <Pressable

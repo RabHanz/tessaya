@@ -51,7 +51,7 @@ const PRIVATE_ROOMS = [
 ] as const;
 
 const QUIET = { reportFailure: false } as const;
-const INPUT = "rounded-lg bg-background px-3 py-2 text-foreground";
+const INPUT = "rounded-lg bg-screen px-3 py-2 text-foreground";
 
 export function SettingsPersonasRouteScreen() {
   // one household on one brain (D-038): her personas come from the household's environment, never a picked one
