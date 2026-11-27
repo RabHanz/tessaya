@@ -47,6 +47,8 @@ export const transcribeWav = async (input: {
   readonly wav: Uint8Array;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly userdataDir: string;
+  /** His dictionary's terms, for the decoder's phrase boosting (`recogniserTerms`). */
+  readonly vocabulary?: ReadonlyArray<string>;
   readonly run?: RunSidecar;
   readonly exists?: (path: string) => boolean;
 }): Promise<Transcription> => {
@@ -61,8 +63,17 @@ export const transcribeWav = async (input: {
   const file = NodePath.join(dir, "say.wav");
   try {
     NodeFS.writeFileSync(file, input.wav, { mode: 0o600 });
+    const terms = NodePath.join(dir, "terms.txt");
+    const vocabulary = input.vocabulary ?? [];
+    if (vocabulary.length > 0) NodeFS.writeFileSync(terms, vocabulary.join("\n"), { mode: 0o600 });
     const text = parseTranscript(
-      await (input.run ?? execSidecar)(binary, ["transcribe", "--model", model, file]),
+      await (input.run ?? execSidecar)(binary, [
+        "transcribe",
+        "--model",
+        model,
+        ...(vocabulary.length > 0 ? ["--vocabulary-file", terms] : []),
+        file,
+      ]),
     );
     return text === null || text === ""
       ? { ok: false, why: "I could not hear anything in that." }

@@ -157,12 +157,13 @@ pub struct Dictation {
 impl Dictation {
     /// Opens the connection and says `begin`; the socket then lives on its own thread.
     pub fn start(server: &Server, language: Option<String>, timeout: Duration) -> Result<Dictation, String> {
-        Dictation::begin(connect(server, timeout)?, language)
+        Dictation::begin(connect(server, timeout)?, language, &[])
     }
 
     /// Says `begin` on a socket already open (the health check's).
-    pub fn begin(mut socket: Socket, language: Option<String>) -> Result<Dictation, String> {
-        socket.send(Message::text(json!({"cmd": "begin", "language": language}).to_string())).map_err(|e| e.to_string())?;
+    pub fn begin(mut socket: Socket, language: Option<String>, vocabulary: &[String]) -> Result<Dictation, String> {
+        let begin = json!({"cmd": "begin", "language": language, "vocabulary": vocabulary});
+        socket.send(Message::text(begin.to_string())).map_err(|e| e.to_string())?;
         if let MaybeTlsStream::Plain(tcp) = socket.get_ref() {
             // Short reads, so audio going out is never held up waiting for words coming in.
             let _ = tcp.set_read_timeout(Some(Duration::from_millis(5)));
@@ -279,7 +280,7 @@ pub fn replay(url: &str, token_file: &str, wavs: &[String]) -> Result<(), String
         let health_ms = health_at.elapsed().as_millis() as u64;
         let health = checked.as_ref().map(|(h, _)| *h);
         let started = match checked {
-            Some((_, socket)) => Dictation::begin(socket, None),
+            Some((_, socket)) => Dictation::begin(socket, None, &[]),
             None => Err("no health answer within 400 ms".to_string()),
         };
         let line = match started {

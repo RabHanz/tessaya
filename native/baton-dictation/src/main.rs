@@ -116,6 +116,9 @@ struct Config {
     #[serde(default)]
     paste: PasteMethod,
     language: Option<String>,
+    /// His dictionary's terms, his own first: the decoder favours one once the model has begun it (phrase boosting).
+    #[serde(default)]
+    vocabulary: Vec<String>,
     /// `input-bindings.json`: the mouse buttons Baton listens for. Absent or empty: no hook at all.
     #[serde(default)]
     mouse: Option<PathBuf>,
@@ -323,6 +326,7 @@ enum Work {
         id: u64,
         model: PathBuf,
         language: Option<String>,
+        vocabulary: Vec<String>,
         external: Option<PathBuf>,
         keep: Option<PathBuf>,
         live: bool,
@@ -416,13 +420,15 @@ fn infer(
     session: &mut Session,
     pcm: &mut Vec<f32>,
     language: Option<String>,
+    vocabulary: &[String],
 ) -> Result<(String, u64, u64, Scored), String> {
     let audio_ms = pcm.len() as u64 / 16;
     lift_gain(pcm);
     pcm.resize(pcm.len() + TAIL_SAMPLES, 0.0);
     let started = Instant::now();
     // Token timestamps: the same words, plus each token's confidence (Word alone leaves `tokens` empty).
-    let options = RunOptions { language, timestamps: TimestampKind::Token, ..Default::default() };
+    let options =
+        RunOptions { language, vocabulary: vocabulary.to_vec(), timestamps: TimestampKind::Token, ..Default::default() };
     let result = session.run(pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
     let infer_ms = started.elapsed().as_millis() as u64;
     let text = result.text.trim().to_string();
@@ -450,8 +456,8 @@ fn spelled(text: &str, words: Scored) -> Scored {
 }
 
 /// The new words of one piece; the context before them only helps the model hear them.
-fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>) -> Result<String, String> {
-    decode_words(session, piece, language, None).map(|(text, _)| text)
+fn decode_piece(session: &mut Session, piece: Piece, language: Option<String>, vocabulary: &[String]) -> Result<String, String> {
+    decode_words(session, piece, language, vocabulary, None).map(|(text, _)| text)
 }
 
 /// A preview's words with where each ends, in samples of the uncut audio (`Live::preview_words`).
@@ -489,13 +495,15 @@ fn decode_words(
     session: &mut Session,
     piece: Piece,
     language: Option<String>,
+    vocabulary: &[String],
     after: Option<&str>,
 ) -> Result<(String, EndedWords), String> {
     let Piece { mut pcm, context, .. } = piece;
     lift_gain(&mut pcm);
     let heard = pcm.len();
     pcm.resize(heard + TAIL_SAMPLES, 0.0);
-    let options = RunOptions { language, timestamps: TimestampKind::Word, ..Default::default() };
+    let options =
+        RunOptions { language, vocabulary: vocabulary.to_vec(), timestamps: TimestampKind::Word, ..Default::default() };
     let result = session.run(&pcm, &options).map_err(|e| format!("transcribe: {e}"))?;
     if context == 0 {
         let words = words_past(&result.words, 0).into_iter().map(|(_, end, w)| (end, w)).collect();
@@ -526,6 +534,7 @@ struct Live {
     /// Everything heard: a piece that fails falls back to the whole recording.
     heard: Vec<f32>,
     language: Option<String>,
+    vocabulary: Vec<String>,
     text: Vec<String>,
     load_ms: u64,
     infer_ms: u64,
@@ -575,12 +584,12 @@ struct Remote {
 
 impl Remote {
     /// Picks the server and opens the dictation off the engine's thread; audio waits in `heard` meanwhile.
-    fn connect(id: u64, servers: Vec<remote::Server>, language: Option<String>) -> Remote {
+    fn connect(id: u64, servers: Vec<remote::Server>, language: Option<String>, vocabulary: Vec<String>) -> Remote {
         let (tx, rx) = channel();
         thread::spawn(move || {
             // The health check's own socket begins the dictation, so the whole choice stays inside REMOTE_CONNECT.
             let chosen = remote::pick(&servers, REMOTE_CONNECT)
-                .and_then(|(_, socket)| remote::Dictation::begin(socket, language).ok());
+                .and_then(|(_, socket)| remote::Dictation::begin(socket, language, &vocabulary).ok());
             let _ = tx.send(chosen);
         });
         Remote { id, connecting: Some(rx), dictation: None, sent: 0 }
@@ -652,6 +661,7 @@ impl Live {
             chunker: Chunker::new(ChunkParams::from_env()),
             heard: Vec::new(),
             language,
+            vocabulary: Vec::new(),
             text: Vec::new(),
             load_ms,
             infer_ms: 0,
@@ -668,7 +678,7 @@ impl Live {
         }
         let started = Instant::now();
         let at_pause = piece.at_pause;
-        match decode_words(session, piece, self.language.clone(), after) {
+        match decode_words(session, piece, self.language.clone(), &self.vocabulary, after) {
             Ok((text, _)) if text.is_empty() => {}
             Ok((text, _)) => {
                 self.text.push(text);
@@ -738,7 +748,7 @@ impl Live {
         };
         let started = Instant::now();
         // A preview that fails costs nothing: the piece it looked at is decoded properly when it is cut.
-        let decoded = decode_words(session, piece, self.language.clone(), None).ok();
+        let decoded = decode_words(session, piece, self.language.clone(), &self.vocabulary, None).ok();
         self.preview_words = decoded.as_ref().map(|(_, words)| words.clone()).unwrap_or_default();
         self.preview = decoded.map(|(text, _)| text);
         // At his pause the words may be all of it: the desktop starts their cleanup now, so a release finds it done.
@@ -838,7 +848,7 @@ impl Live {
         let session = session.ok_or_else(|| self.failed.clone().unwrap_or_else(|| "no model".to_string()))?;
         self.settle(session);
         let text = if self.failed.is_some() {
-            infer(session, &mut self.heard, self.language.clone())?.0
+            infer(session, &mut self.heard, self.language.clone(), &self.vocabulary)?.0
         } else {
             join_pieces(&self.text)
         };
@@ -1017,7 +1027,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 let model = job.model.file_name().map(|name| name.to_string_lossy().into_owned());
                 let result = ensure_loaded(slot, &job.model).and_then(|load_ms| {
                     let session = &mut slot.as_mut().expect("loaded above").1;
-                    infer(session, &mut job.pcm, job.language.take()).map(|(text, audio_ms, infer_ms, words)| Done {
+                    infer(session, &mut job.pcm, job.language.take(), &[]).map(|(text, audio_ms, infer_ms, words)| Done {
                         text,
                         audio_ms,
                         infer_ms,
@@ -1047,7 +1057,7 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 };
                 emit(line);
             }
-            Ok(Work::Begin { id, model, language, external: Some(dir), live: words, .. }) => {
+            Ok(Work::Begin { id, model, language, vocabulary, external: Some(dir), live: words, .. }) => {
                 // Unloaded after idle: read again in the background for the next one; this one never waits for it.
                 if words && wanted.as_ref() == Some(&model) {
                     let _ = me.send(Work::Warm(model.clone()));
@@ -1055,13 +1065,14 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                 // The cloud hears the recording. The local model shows his words as he speaks only when it is already
                 // loaded: never loaded for them, so the key's release never waits on a load.
                 let words = words && path_of(&loaded) == Some(model.as_path());
-                live = Some(Live { id, external: Some(dir), live_words: words, ..Live::new(language, 0, None) });
+                live = Some(Live { id, external: Some(dir), live_words: words, vocabulary, ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers })
+            Ok(Work::Begin { id, model, language, vocabulary, external: None, keep, live: words, remote: servers })
                 if path_of(&gpu) == Some(model.as_path()) =>
             {
                 // On the card: the CPU's model is not read for it, and is read only if the card fails.
-                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, language.clone()));
+                let remote =
+                    (!servers.is_empty()).then(|| Remote::connect(id, servers, language.clone(), vocabulary.clone()));
                 // Woken while he speaks, so release does not pay for it; a failure here shows at his own decode.
                 if gpu_at.elapsed() >= gpu::IDLE {
                     if let Some((_, session)) = gpu.as_mut() {
@@ -1069,9 +1080,10 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                     }
                 }
                 gpu_at = Instant::now();
-                live = Some(Live { id, keep, live_words: words, remote, on_gpu: true, ..Live::new(language, 0, None) });
+                live =
+                    Some(Live { id, keep, live_words: words, remote, on_gpu: true, vocabulary, ..Live::new(language, 0, None) });
             }
-            Ok(Work::Begin { id, model, language, external: None, keep, live: words, remote: servers }) => {
+            Ok(Work::Begin { id, model, language, vocabulary, external: None, keep, live: words, remote: servers }) => {
                 if plan_slot(false, path_of(&loaded), path_of(&other), &model) == Slot::SwapThenMain {
                     std::mem::swap(&mut loaded, &mut other);
                 }
@@ -1083,8 +1095,9 @@ fn engine_thread(work: Receiver<Work>, out: Sender<Msg>, me: Sender<Work>) {
                         Live::new(language, 0, Some(e))
                     }
                 };
-                let remote = (!servers.is_empty()).then(|| Remote::connect(id, servers, fresh.language.clone()));
-                live = Some(Live { id, keep, live_words: words, remote, ..fresh });
+                let remote = (!servers.is_empty())
+                    .then(|| Remote::connect(id, servers, fresh.language.clone(), vocabulary.clone()));
+                live = Some(Live { id, keep, live_words: words, remote, vocabulary, ..fresh });
             }
             Ok(Work::Audio(id, mut pcm)) => {
                 loaded_at = Instant::now();
@@ -2063,6 +2076,7 @@ fn begin_work(config: &Config, id: u64, model: PathBuf) -> Work {
         id,
         model,
         language: config.language.clone(),
+        vocabulary: config.vocabulary.clone(),
         external: config.external.clone(),
         keep: config.keep_audio.clone(),
         live: config.live_words,
@@ -2785,9 +2799,17 @@ fn flag(args: &[String], name: &str) -> Option<String> {
     args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned()
 }
 
+/// `--vocabulary-file`: dictionary terms, one per line, as the desktop sends them.
+fn cli_vocabulary(args: &[String]) -> Result<Vec<String>, String> {
+    let Some(path) = flag(args, "--vocabulary-file") else { return Ok(Vec::new()) };
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    Ok(text.lines().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string).collect())
+}
+
 fn cli_transcribe(args: &[String]) -> Result<(), String> {
     let model = flag(args, "--model").ok_or("--model is required")?;
     let language = flag(args, "--language");
+    let vocabulary = cli_vocabulary(args)?;
     let (mut session, load_ms) = load(Path::new(&model))?;
     emit(json!({"ev": "loaded", "loadMs": load_ms}));
     let list = flag(args, "--list");
@@ -2801,7 +2823,7 @@ fn cli_transcribe(args: &[String]) -> Result<(), String> {
     };
     for file in files {
         let result = read_wav(Path::new(&file))
-            .and_then(|mut pcm| infer(&mut session, &mut pcm, language.clone()));
+            .and_then(|mut pcm| infer(&mut session, &mut pcm, language.clone(), &vocabulary));
         match result {
             Ok((text, audio_ms, infer_ms, _)) => {
                 emit(json!({"file": file, "text": text, "audioMs": audio_ms, "inferMs": infer_ms}))
@@ -2817,6 +2839,7 @@ fn cli_transcribe(args: &[String]) -> Result<(), String> {
 fn cli_chunked(args: &[String]) -> Result<(), String> {
     let model = flag(args, "--model").ok_or("--model is required")?;
     let language = flag(args, "--language");
+    let vocabulary = cli_vocabulary(args)?;
     let (mut session, load_ms) = load(Path::new(&model))?;
     let loaded = gpu::cpu_model(Path::new(&model)).map_err(|e| e.to_string())?;
     let caps = loaded.capabilities().map_err(|e| e.to_string())?;
@@ -2836,7 +2859,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
         let started = Instant::now();
         for chunk in pcm.chunks(480) {
             if let Some(piece) = chunker.push(chunk) {
-                text.push(decode_piece(&mut session, piece, language.clone())?);
+                text.push(decode_piece(&mut session, piece, language.clone(), &vocabulary)?);
             }
         }
         let busy = started.elapsed().as_millis() as u64;
@@ -2844,7 +2867,7 @@ fn cli_chunked(args: &[String]) -> Result<(), String> {
         let last_seconds = last.as_ref().map_or(0.0, |p| p.pcm.len() as f64 / 16_000.0);
         let released = Instant::now();
         if let Some(piece) = last {
-            text.push(decode_piece(&mut session, piece, language.clone())?);
+            text.push(decode_piece(&mut session, piece, language.clone(), &vocabulary)?);
         }
         emit(json!({"file": file, "text": join_pieces(&text), "audioMs": pcm.len() as u64 / 16, "inferMs": busy,
             "finalMs": released.elapsed().as_millis() as u64, "lastSeconds": last_seconds, "pieces": text.len()}));
@@ -3105,6 +3128,7 @@ mod tests {
             id,
             model: PathBuf::from("parakeet-test.gguf"),
             language: None,
+            vocabulary: Vec::new(),
             external: Some(dir.clone()),
             keep: None,
             live: false,
@@ -3159,6 +3183,7 @@ mod tests {
                 id: 1,
                 model,
                 language: None,
+                vocabulary: Vec::new(),
                 external: Some(dir.clone()),
                 keep: None,
                 live: true,

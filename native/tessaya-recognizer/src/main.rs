@@ -4,7 +4,7 @@
 //! source). Audio is never written to disk here.
 //!
 //! Protocol: the request carries `Authorization: Bearer <token>`. Text frames from the client: {"cmd":"health"},
-//! {"cmd":"begin","language":null}, {"cmd":"end"}; binary frames are PCM16 LE samples. From the server:
+//! {"cmd":"begin","language":null,"vocabulary":["term"]}, {"cmd":"end"}; binary frames are PCM16 LE samples. From the server:
 //! {"ev":"health","queue":n,"busy":bool}, {"ev":"partial","text","pause"}, {"ev":"text","text","inferMs","pieces",
 //! "reused","releaseMs"}, {"ev":"error","message"}.
 #[path = "../../baton-dictation/src/live.rs"]
@@ -76,6 +76,22 @@ fn accept_loop(listener: TcpListener, token: Arc<String>, jobs: Sender<Job>, que
             open.fetch_sub(1, Ordering::SeqCst);
         });
     }
+}
+
+/// The most dictionary terms taken from a client, and the longest term: his is about 60, the 1,000-term check passes.
+const MAX_TERMS: usize = 1_000;
+const MAX_TERM_CHARS: usize = 50;
+
+/// A begin's `vocabulary`: its non-empty strings within the limits, in its order; anything else is no terms.
+fn terms(value: &Value) -> Vec<String> {
+    let Some(list) = value.as_array() else { return Vec::new() };
+    list.iter()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|t| !t.is_empty() && t.chars().count() <= MAX_TERM_CHARS)
+        .take(MAX_TERMS)
+        .map(str::to_string)
+        .collect()
 }
 
 /// Equal in time whatever the bytes: a wrong token takes as long to refuse as a nearly right one.
@@ -174,8 +190,9 @@ fn serve(stream: TcpStream, token: &str, jobs: Sender<Job>, queue: Arc<AtomicUsi
                     Some("begin") => {
                         let (feed, audio) = sync_channel(FEED_BOUND);
                         let language = value["language"].as_str().map(str::to_string);
+                        let vocabulary = terms(&value["vocabulary"]);
                         queue.fetch_add(1, Ordering::SeqCst);
-                        if jobs.send(Job { audio, replies: replies.clone(), language }).is_err() {
+                        if jobs.send(Job { audio, replies: replies.clone(), language, vocabulary }).is_err() {
                             queue.fetch_sub(1, Ordering::SeqCst);
                             send(&mut socket, json!({"ev": "error", "message": "recogniser stopped"}));
                             break;
@@ -268,8 +285,11 @@ mod tests {
         let (addr, jobs) = listen();
         assert!(client(&addr, "wrong").is_err());
         let mut socket = client(&addr, "secret").unwrap();
-        socket.send(Message::text(r#"{"cmd":"begin"}"#)).unwrap();
-        let _job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        let long = "x".repeat(MAX_TERM_CHARS + 1);
+        let begin = json!({"cmd": "begin", "vocabulary": [" Tessaya ", "", 3, long, "VentureOS"]});
+        socket.send(Message::text(begin.to_string())).unwrap();
+        let job = jobs.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(job.vocabulary, ["Tessaya", "VentureOS"]);
         socket.send(Message::text(r#"{"cmd":"begin"}"#)).unwrap();
         assert_eq!(next_text(&mut socket)["ev"], "error");
     }

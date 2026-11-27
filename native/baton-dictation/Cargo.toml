@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Handy's engine, microphone and hotkey crates (all MIT). Static CPU build: one exe, no DLLs.
-transcribe-cpp = { version = "=0.4.1", default-features = false }
+transcribe-cpp = { version = "=0.5.0", default-features = false }
 handy-recorder = "=0.1.0"
 handy-keys = "=0.3.4"
 enigo = "0.6.1"
