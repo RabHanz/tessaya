@@ -23,6 +23,7 @@ import {
   TessayaPrivateMemoryService,
   PrivateCaller,
   PrivateKdf,
+  StoreMembership,
   layer as privateLayer,
 } from "./TessayaPrivateMemoryService.ts";
 import { HouseholdCaller, TessayaHousehold, layer as householdLayer } from "./TessayaHousehold.ts";
@@ -275,6 +276,84 @@ describe("TessayaHousehold", () => {
       );
       assert.deepStrictEqual(no, ["Owner"]);
     }));
+
+  test("a child's own store opens for their guardian; on their day they become an adult and it seals (choice 5)", () =>
+    run(
+      null,
+      Effect.gen(function* () {
+        const h = yield* TessayaHousehold;
+        const stores = yield* TessayaPrivateMemoryService;
+        const desk = { session: "desk", desktop: true } as const;
+        yield* Effect.provideService(
+          stores
+            .setup({ name: "Owner", pin: "27182818" })
+            .pipe(Effect.flatMap((o) => stores.confirmSetup(o))),
+          PrivateCaller,
+          desk,
+        );
+        // Adam turns 16 on 1 May 1966, before the test clock's 1 Jan 1970; Zoe, set to 18, on 1 May 1970.
+        yield* as(owner)(call({ op: "invite", name: "Adam", role: "child", born: "1950-05-01" }));
+        yield* as(owner)(
+          call({ op: "invite", name: "Zoe", role: "child", born: "1952-05-01", adultAge: 18 }),
+        );
+        const ids = Object.fromEntries(
+          (yield* as(owner)(call({ op: "list" }))).members!.map((m) => [m.name, m.id]),
+        );
+        const adam = ids["Adam"]!;
+        const membership = StoreMembership.of({
+          isMember: (id) => Effect.map(h.roleOf(id), (r) => r !== null),
+          isChild: (id) => Effect.map(h.roleOf(id), (r) => r === "child"),
+        });
+        // Adam makes his own on his phone: sealed to his PIN, and (a child's) to his guardian, the owner.
+        const made = yield* stores.setup({ personId: adam, name: "Adam", pin: "314159" }).pipe(
+          Effect.flatMap((o) => stores.confirmSetup(o)),
+          Effect.provideService(PrivateCaller, {
+            session: "adam-phone",
+            desktop: false,
+            member: adam,
+          }),
+          Effect.provideService(StoreMembership, membership),
+        );
+        const openAsOwner = Effect.provideService(
+          stores.unlock({ storeId: made.id }).pipe(
+            Effect.map((r) => r.open),
+            Effect.orElseSucceed(() => false),
+          ),
+          PrivateCaller,
+          desk,
+        );
+        yield* Effect.provideService(
+          stores.unlock({
+            storeId: (yield* Effect.provideService(stores.people, PrivateCaller, desk)).find(
+              (s) => s.personId === "owner",
+            )!.id,
+            pin: "27182818",
+          }),
+          PrivateCaller,
+          desk,
+        );
+        assert.isTrue(yield* openAsOwner);
+
+        assert.deepStrictEqual(yield* h.growUp, ["Adam"]);
+        assert.strictEqual(yield* h.roleOf(adam), "adult");
+        assert.strictEqual(yield* h.roleOf(ids["Zoe"]!), "child");
+        const grown = (yield* as(owner)(call({ op: "list" }))).members!.find((m) => m.id === adam)!;
+        assert.deepStrictEqual(grown.guardians, []);
+        // This home never chose to open adults' stores, so the owner's copy of his key is gone.
+        yield* Effect.provideService(stores.lock(), PrivateCaller, desk);
+        yield* Effect.provideService(
+          stores.unlock({
+            storeId: (yield* Effect.provideService(stores.people, PrivateCaller, desk)).find(
+              (s) => s.personId === "owner",
+            )!.id,
+            pin: "27182818",
+          }),
+          PrivateCaller,
+          desk,
+        );
+        assert.isFalse(yield* openAsOwner);
+      }),
+    ));
 
   test("removing signs out every device at once, keeps the data 7 days for export, then destroys it; restore undoes", () =>
     run(

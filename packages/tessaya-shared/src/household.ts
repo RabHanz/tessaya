@@ -227,3 +227,9 @@ export const keptAbout = (
                 ? "The owner can open your private memories; everyone else sees only that they exist."
                 : "Nobody else can open your private memories, not even the owner.",
       };
+
+/** The day (YYYY-MM-DD) a child born on `born` becomes an adult at `age`; null without a well-formed birth date. */
+export const adultOn = (born: string | null, age: number): string | null => {
+  const m = born === null ? null : /^(\d{4})-(\d{2})-(\d{2})$/.exec(born);
+  return m === null ? null : `${String(Number(m[1]) + age).padStart(4, "0")}-${m[2]}-${m[3]}`;
+};

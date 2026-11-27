@@ -365,6 +365,9 @@ const servicesInner = Layer.mergeAll(
           isMember: Effect.fn("StoreMembership.isMember")((personId: string) =>
             Effect.map(household.grantsOf(personId), (grants) => grants !== null),
           ),
+          isChild: Effect.fn("StoreMembership.isChild")((personId: string) =>
+            Effect.map(household.roleOf(personId), (role) => role === "child"),
+          ),
         }),
       ),
     ),
