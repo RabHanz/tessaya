@@ -71,6 +71,9 @@ export const BrainOp = Schema.Literals([
   "hubLogin",
   // a worker's own Record events, for her one Record (21 Nov): each kept once under its id and origin
   "actions",
+  // the household's settings (dictation cleanup and its key, model preferences, feedback, expression): kept on her
+  // brain, cached by workers; full access only, as the key travels with them, and never queued
+  "householdSettings",
 ]);
 export type BrainOp = typeof BrainOp.Type;
 
