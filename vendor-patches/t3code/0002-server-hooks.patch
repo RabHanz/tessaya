@@ -369,7 +369,7 @@ index 39952a385ba87fac32a1abde1192d0e51ae34252..f8962a07f6eb1da4290454f6961a0e0c
            Effect.catchIf(EnvironmentAuth.isServerAuthInternalError, (error) =>
              failEnvironmentInternal("pairing_credential_issuance_failed", error),
 diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
-index 2ae78f272cd6be1f9a84fb4da7f147c00e4d9f1f..11b46d8ab11ce60cd134e25544a854fe09ad5d09 100644
+index 2ae78f272cd6be1f9a84fb4da7f147c00e4d9f1f..26b20769a5b26a5fa41e2c0eeb4f33c395a294a8 100644
 --- a/apps/server/src/binCli.ts
 +++ b/apps/server/src/binCli.ts
 @@ -23,6 +23,8 @@ import { projectCommand } from "./cli/project.ts";
@@ -406,6 +406,23 @@ index 2ae78f272cd6be1f9a84fb4da7f147c00e4d9f1f..11b46d8ab11ce60cd134e25544a854fe
        speechWorkerCommand,
        sshHelperCommand,
  
+@@ -121,7 +127,15 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
+     ]),
+   );
+ 
+-export const cli = makeCli();
++// Declared: inferring every command's type inside one statement of a file that runs the CLI went past the checker's
++// instantiation budget, which made its requirements `any` and dropped the error into another file (27 Nov).
++export const cli: Command.Command<
++  "t3",
++  never,
++  unknown,
++  Error,
++  Layer.Success<typeof layerCliRuntime> | Command.Environment
++> = makeCli();
+ 
+ export function runCli() {
+   extendConnectionAttemptTimeout();
 diff --git a/apps/server/src/cli/app.test.ts b/apps/server/src/cli/app.test.ts
 index 627c644f053af9722e2192cbc71bc669f18cdc7e..e7ecdf8355cb1d8f33576dd76a617c20fac74cd6 100644
 --- a/apps/server/src/cli/app.test.ts
