@@ -409,6 +409,17 @@ const NEAR_HIM: SpeakerLike = {
   inherited: false,
   confidence: 0.55,
 };
+/** Voice ID could not tell, but he typed on his own desktop a minute ago (TessayaTurn.place). */
+const PLACED_HIM: SpeakerLike = {
+  kind: "owner",
+  personId: "owner",
+  verified: false,
+  inherited: false,
+  placed: "you typed on your own device, 1 min ago",
+};
+/** She tells him she can't place him, or asks him to speak more. */
+const VOICE_DOUBTS_HIM =
+  /recogni[sz]e|can'?t (yet )?(confirm|tell|be sure)|speak (a (little|bit) )?(more|longer)|say (a (little|bit) )?more|not sure (it'?s|it is) you|unverified|household member/i;
 /** She doubts it is him: right only on a turn Voice ID did not verify. */
 const VOICE_DOUBT =
   /(\bnot|n't)\b[^.?!]{0,24}\b(sure|certain|verified|confirmed|firm)|unverified|unconfirmed|nothing has confirmed|safe side|can'?t (yet )?(tell|be sure|confirm)|a guess/i;
@@ -2381,6 +2392,14 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     speakers: [{ ...NEAR_HIM, verified: true }],
     lastSays: [/\b(yes|verified|confirmed|recogni[sz]e|it'?s you)\b/i],
     lastNotSays: [VOICE_HEDGE, VOICE_FOREVER],
+  },
+  {
+    id: "voice-placed-no-doubt",
+    source:
+      'Director 21 Nov 21:23 and 22 Nov 00:30 GMT+5 (REQ-13-206): "I don\'t recognise your voice" on a plain request while his own device placed him',
+    said: ["What's the status?", "How about now? Can you identify me now?"],
+    speakers: [PLACED_HIM, PLACED_HIM],
+    lastNotSays: [VOICE_DOUBTS_HIM],
   },
   {
     id: "voice-no-false-retraction",
