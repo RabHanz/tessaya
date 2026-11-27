@@ -233,7 +233,16 @@ export const helpControls = (i: HelpInput): ReadonlyArray<HomeControl> => [
     label: "Ctrl+K in this window",
     kind: "check",
     status: "ok",
-    detail: "Search every page, setting and command, then press Enter.",
+    detail:
+      "Search every page, setting, command and help page, then press Enter. Type a question and choose Ask Tessaya, and she answers from her help.",
+  },
+  {
+    id: "help.say:f1",
+    section: SAYING,
+    label: "F1 in this window",
+    kind: "check",
+    status: "ok",
+    detail: "Opens Help beside the page you are on, showing what that page is for.",
   },
   ...i.bindings.map((b, n): HomeControl => ({
     id: `help.key:${n}`,

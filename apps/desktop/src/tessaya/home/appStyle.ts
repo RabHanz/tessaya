@@ -334,6 +334,10 @@ webview.embed{display:flex;width:100%;height:calc(100vh - 210px);min-height:420p
 #mbody{padding:26px 32px;overflow:auto;position:relative}
 #mbody h1{font-size:28px;margin-bottom:16px}
 #mclose{position:absolute;top:14px;right:14px}
+.helpside{position:fixed;top:0;right:0;bottom:0;width:min(420px,45vw);display:flex;flex-direction:column;background:var(--sheet-fill);border-left:1px solid var(--edge);box-shadow:var(--modal-shadow);z-index:40}
+.helpbar{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 8px 16px;border-bottom:1px solid var(--line)}
+webview.helpweb{display:flex;flex:1;width:100%;border:0}
+html.helpopen #app{margin-right:min(420px,45vw)}
 .palveil{position:fixed;inset:0;background:var(--veil);display:flex;justify-content:center;align-items:flex-start;padding-top:12vh;z-index:50}
 .palbox{width:min(640px,92vw);background:var(--sheet-fill);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border:1px solid var(--edge);border-radius:18px;box-shadow:var(--modal-shadow);overflow:hidden}
 .palbox .palin{width:100%;height:auto;border:0;border-bottom:1px solid var(--line);border-radius:0;box-shadow:none;padding:16px 18px;font-size:16px;background:transparent}

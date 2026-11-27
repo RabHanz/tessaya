@@ -1411,6 +1411,14 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     clean: ["tessaya_note_add", "tessaya_note_search"],
   },
   {
+    // docs-centre (approved 27 Nov): "how do I…" about her is answered from her own help pages.
+    id: "help",
+    proves: ["tessaya_help"],
+    said: ["How do I make a snippet?"],
+    uses: [["tessaya_help"]],
+    clean: ["tessaya_help"],
+  },
+  {
     // 07:28 to 07:31, 13 Nov: "I'll say it that way from now on" with nothing to keep it.
     id: "pronounce",
     proves: ["tessaya_pronounce"],

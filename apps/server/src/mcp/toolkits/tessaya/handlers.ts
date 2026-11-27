@@ -44,6 +44,7 @@ import * as Schema from "effect/Schema";
 
 import { accountByWords } from "@t3tools/tessaya-shared/accountRoom";
 import { recordText } from "@t3tools/tessaya-shared/audit";
+import { helpAnswer } from "@t3tools/tessaya-shared/docs";
 import { countdownText } from "@t3tools/tessaya-shared/upcoming";
 import { OWNER_MEMBER_ID } from "@t3tools/tessaya-shared/household";
 import { ownerDoc } from "@t3tools/tessaya-shared/ownerProfile";
@@ -1171,6 +1172,9 @@ export const layer = McpToolAccess.toLayer(
                 : `${found.length} found.`,
           };
         }),
+      ),
+      tessaya_help: McpToolAccess.reads((input) =>
+        Effect.succeed({ text: helpAnswer(input.query) }),
       ),
       tessaya_whats_new_record: McpToolAccess.writes((input) =>
         Effect.gen(function* () {

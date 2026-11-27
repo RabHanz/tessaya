@@ -118,6 +118,8 @@ const ROOM_TOOLS = [
   // His Scratchpad, the same notes as the desktop's: "note that the invoice is due Friday".
   "tessaya_note_add",
   "tessaya_note_search",
+  // "How do I make a snippet?": her answer from her own help pages (docs/user).
+  "tessaya_help",
   // One meaning on every vessel: the device it is heard on, or the one he names; the room runs it itself (VOLUME).
   "set_device_volume",
   // His standing yeses by voice: "stop letting you look at my screen".
