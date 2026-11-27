@@ -6,6 +6,7 @@ import { AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
@@ -286,108 +287,144 @@ describe("TessayaHousehold", () => {
   test("a child's own store opens for their guardian; on their day they become an adult and it seals (choice 5)", () =>
     run(
       null,
-      Effect.gen(function* () {
-        const h = yield* TessayaHousehold;
-        const stores = yield* TessayaPrivateMemoryService;
-        const desk = { session: "desk", desktop: true } as const;
-        yield* Effect.provideService(
-          stores
-            .setup({ name: "Owner", pin: "27182818" })
-            .pipe(Effect.flatMap((o) => stores.confirmSetup(o))),
-          PrivateCaller,
-          desk,
-        );
-        // Adam turns 16 on 1 May 1966, before the test clock's 1 Jan 1970; Zoe, set to 18, on 1 May 1970.
-        yield* as(owner)(call({ op: "invite", name: "Adam", role: "child", born: "1950-05-01" }));
-        yield* as(owner)(
-          call({ op: "invite", name: "Zoe", role: "child", born: "1952-05-01", adultAge: 18 }),
-        );
-        const ids = Object.fromEntries(
-          (yield* as(owner)(call({ op: "list" }))).members!.map((m) => [m.name, m.id]),
-        );
-        const adam = ids["Adam"]!;
-        const membership = StoreMembership.of({
-          isMember: (id) => Effect.map(h.roleOf(id), (r) => r !== null),
-          isChild: (id) => Effect.map(h.roleOf(id), (r) => r === "child"),
-        });
-        // Adam makes his own on his phone: sealed to his PIN, and (a child's) to his guardian, the owner.
-        const made = yield* stores.setup({ personId: adam, name: "Adam", pin: "314159" }).pipe(
-          Effect.flatMap((o) => stores.confirmSetup(o)),
-          Effect.provideService(PrivateCaller, {
+      Effect.scoped(
+        Effect.gen(function* () {
+          const h = yield* TessayaHousehold;
+          const stores = yield* TessayaPrivateMemoryService;
+          const desk = { session: "desk", desktop: true } as const;
+          yield* Effect.provideService(
+            stores
+              .setup({ name: "Owner", pin: "27182818" })
+              .pipe(Effect.flatMap((o) => stores.confirmSetup(o))),
+            PrivateCaller,
+            desk,
+          );
+          // Adam turns 16 on 1 May 1966, before the test clock's 1 Jan 1970; Zoe, set to 18, on 1 May 1970.
+          yield* as(owner)(call({ op: "invite", name: "Adam", role: "child", born: "1950-05-01" }));
+          yield* as(owner)(
+            call({ op: "invite", name: "Zoe", role: "child", born: "1952-05-01", adultAge: 18 }),
+          );
+          const ids = Object.fromEntries(
+            (yield* as(owner)(call({ op: "list" }))).members!.map((m) => [m.name, m.id]),
+          );
+          const adam = ids["Adam"]!;
+          const membership = StoreMembership.of({
+            isMember: (id) => Effect.map(h.roleOf(id), (r) => r !== null),
+            isChild: (id) => Effect.map(h.roleOf(id), (r) => r === "child"),
+          });
+          // Adam makes his own on his phone: sealed to his PIN, and (a child's) to his guardian, the owner.
+          const made = yield* stores.setup({ personId: adam, name: "Adam", pin: "314159" }).pipe(
+            Effect.flatMap((o) => stores.confirmSetup(o)),
+            Effect.provideService(PrivateCaller, {
+              session: "adam-phone",
+              desktop: false,
+              member: adam,
+            }),
+            Effect.provideService(StoreMembership, membership),
+          );
+          const openAsOwner = Effect.provideService(
+            stores.unlock({ storeId: made.id }).pipe(
+              Effect.map((r) => r.open),
+              Effect.orElseSucceed(() => false),
+            ),
+            PrivateCaller,
+            desk,
+          );
+          yield* Effect.provideService(
+            stores.unlock({
+              storeId: (yield* Effect.provideService(stores.people, PrivateCaller, desk)).find(
+                (s) => s.personId === "owner",
+              )!.id,
+              pin: "27182818",
+            }),
+            PrivateCaller,
+            desk,
+          );
+          assert.isTrue(yield* openAsOwner);
+          // He forgot his PIN: his guardian, the owner with his own store open here, sets a new one without the old.
+          const reset = (by: { session: string; desktop: boolean; member?: string }) =>
+            stores.changePin({ storeId: made.id, newPin: "271828" }).pipe(
+              Effect.provideService(PrivateCaller, by),
+              Effect.provideService(StoreMembership, membership),
+              Effect.as("done"),
+              Effect.orElseSucceed(() => "refused"),
+            );
+          assert.strictEqual(
+            yield* reset({ session: "adam-phone", desktop: false, member: adam }),
+            "refused",
+          );
+          assert.strictEqual(yield* reset(desk), "done");
+          yield* Effect.provideService(stores.lock(), PrivateCaller, {
             session: "adam-phone",
             desktop: false,
             member: adam,
-          }),
-          Effect.provideService(StoreMembership, membership),
-        );
-        const openAsOwner = Effect.provideService(
-          stores.unlock({ storeId: made.id }).pipe(
-            Effect.map((r) => r.open),
-            Effect.orElseSucceed(() => false),
-          ),
-          PrivateCaller,
-          desk,
-        );
-        yield* Effect.provideService(
-          stores.unlock({
-            storeId: (yield* Effect.provideService(stores.people, PrivateCaller, desk)).find(
-              (s) => s.personId === "owner",
-            )!.id,
-            pin: "27182818",
-          }),
-          PrivateCaller,
-          desk,
-        );
-        assert.isTrue(yield* openAsOwner);
+          });
+          assert.isTrue(
+            (yield* stores.unlock({ storeId: made.id, pin: "271828" }).pipe(
+              Effect.provideService(PrivateCaller, {
+                session: "adam-phone",
+                desktop: false,
+                member: adam,
+              }),
+            )).open,
+          );
+          const told = yield* h.grownUpdates;
 
-        // A guardian's limits on Zoe: set, seen by her, refused from her, lifted the same way.
-        const zoe = ids["Zoe"]!;
-        const limit = (
-          who: typeof owner | { member: string; assurance: 2; via: string },
-          input: object,
-        ) => as(who)(call({ op: "setLimit", id: zoe, ...input } as never));
-        assert.strictEqual(
-          (yield* limit(owner, { limit: "quiet", value: "9pm-7am" })).status,
-          "refused",
-        );
-        assert.strictEqual(
-          (yield* limit(owner, { limit: "quiet", value: "21:00-07:00" })).status,
-          "done",
-        );
-        assert.strictEqual(
-          (yield* limit(owner, { limit: "messages", value: "guardians" })).status,
-          "done",
-        );
-        const asZoe = { member: zoe, assurance: 2, via: "her phone" } as const;
-        assert.strictEqual(
-          (yield* limit(asZoe, { limit: "quiet", value: null })).status,
-          "refused",
-        );
-        const seen = (yield* as(asZoe)(call({ op: "list" }))).members!.find((m) => m.id === zoe)!;
-        assert.deepStrictEqual(seen.limits, { quiet: "21:00-07:00", messages: "guardians" });
-        assert.deepStrictEqual((yield* h.grantsOf(zoe))?.messagesTo, ["owner"]);
-        yield* limit(owner, { limit: "messages", value: null });
-        assert.isNull((yield* h.grantsOf(zoe))?.messagesTo);
+          // A guardian's limits on Zoe: set, seen by her, refused from her, lifted the same way.
+          const zoe = ids["Zoe"]!;
+          const limit = (
+            who: typeof owner | { member: string; assurance: 2; via: string },
+            input: object,
+          ) => as(who)(call({ op: "setLimit", id: zoe, ...input } as never));
+          assert.strictEqual(
+            (yield* limit(owner, { limit: "quiet", value: "9pm-7am" })).status,
+            "refused",
+          );
+          assert.strictEqual(
+            (yield* limit(owner, { limit: "quiet", value: "21:00-07:00" })).status,
+            "done",
+          );
+          assert.strictEqual(
+            (yield* limit(owner, { limit: "messages", value: "guardians" })).status,
+            "done",
+          );
+          const asZoe = { member: zoe, assurance: 2, via: "her phone" } as const;
+          assert.strictEqual(
+            (yield* limit(asZoe, { limit: "quiet", value: null })).status,
+            "refused",
+          );
+          const seen = (yield* as(asZoe)(call({ op: "list" }))).members!.find((m) => m.id === zoe)!;
+          assert.deepStrictEqual(seen.limits, { quiet: "21:00-07:00", messages: "guardians" });
+          assert.deepStrictEqual((yield* h.grantsOf(zoe))?.messagesTo, ["owner"]);
+          yield* limit(owner, { limit: "messages", value: null });
+          assert.isNull((yield* h.grantsOf(zoe))?.messagesTo);
 
-        assert.deepStrictEqual(yield* h.growUp, ["Adam"]);
-        assert.strictEqual(yield* h.roleOf(adam), "adult");
-        assert.strictEqual(yield* h.roleOf(ids["Zoe"]!), "child");
-        const grown = (yield* as(owner)(call({ op: "list" }))).members!.find((m) => m.id === adam)!;
-        assert.deepStrictEqual(grown.guardians, []);
-        // This home never chose to open adults' stores, so the owner's copy of his key is gone.
-        yield* Effect.provideService(stores.lock(), PrivateCaller, desk);
-        yield* Effect.provideService(
-          stores.unlock({
-            storeId: (yield* Effect.provideService(stores.people, PrivateCaller, desk)).find(
-              (s) => s.personId === "owner",
-            )!.id,
-            pin: "27182818",
-          }),
-          PrivateCaller,
-          desk,
-        );
-        assert.isFalse(yield* openAsOwner);
-      }),
+          assert.deepStrictEqual(yield* h.growUp, ["Adam"]);
+          // Comms tells him, from his guardian; his guardian's phone hears it too.
+          assert.deepInclude(yield* PubSub.take(told), { name: "Adam", guardians: ["owner"] });
+          // Grown up, nobody resets his PIN but him.
+          assert.strictEqual(yield* reset(desk), "refused");
+          assert.strictEqual(yield* h.roleOf(adam), "adult");
+          assert.strictEqual(yield* h.roleOf(ids["Zoe"]!), "child");
+          const grown = (yield* as(owner)(call({ op: "list" }))).members!.find(
+            (m) => m.id === adam,
+          )!;
+          assert.deepStrictEqual(grown.guardians, []);
+          // This home never chose to open adults' stores, so the owner's copy of his key is gone.
+          yield* Effect.provideService(stores.lock(), PrivateCaller, desk);
+          yield* Effect.provideService(
+            stores.unlock({
+              storeId: (yield* Effect.provideService(stores.people, PrivateCaller, desk)).find(
+                (s) => s.personId === "owner",
+              )!.id,
+              pin: "27182818",
+            }),
+            PrivateCaller,
+            desk,
+          );
+          assert.isFalse(yield* openAsOwner);
+        }),
+      ),
     ));
 
   test("removing signs out every device at once, keeps the data 7 days for export, then destroys it; restore undoes", () =>

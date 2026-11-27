@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import type { MemberRole } from "@t3tools/tessaya-shared/household";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as PubSub from "effect/PubSub";
 import * as TestClock from "effect/testing/TestClock";
 
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
@@ -89,6 +90,7 @@ const household = Layer.succeed(
               messagesTo: member === "maya" ? ["owner"] : null,
             },
       ),
+    grownUpdates: Effect.flatMap(PubSub.unbounded<never>(), PubSub.subscribe),
     call: () =>
       Effect.succeed({
         status: "done" as const,

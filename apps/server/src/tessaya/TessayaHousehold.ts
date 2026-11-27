@@ -36,6 +36,8 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import type * as Scope from "effect/Scope";
 import * as Random from "effect/Random";
 import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
@@ -210,6 +212,16 @@ export class TessayaHousehold extends Context.Service<
     readonly consented: (person: string) => Effect.Effect<boolean>;
     /** Children whose day has come become adults (identity I-5); their names. */
     readonly growUp: Effect.Effect<ReadonlyArray<string>>;
+    /** Each child who just became an adult, with who their guardians were: comms tells them (replays the last few). */
+    readonly grownUpdates: Effect.Effect<
+      PubSub.Subscription<{
+        readonly id: string;
+        readonly name: string;
+        readonly guardians: ReadonlyArray<string>;
+      }>,
+      never,
+      Scope.Scope
+    >;
     /** Another of this home's servers destroyed this member's data: this server's vessels forget their voice too. */
     readonly forgetVoiceHere: (member: string) => Effect.Effect<void>;
     /** On the home: another server's copy of a member's voice, joined to this one; false when it can't be joined. */
@@ -545,10 +557,15 @@ export const make = Effect.gen(function* () {
     );
   });
 
+  const grown = yield* PubSub.unbounded<{
+    readonly id: string;
+    readonly name: string;
+    readonly guardians: ReadonlyArray<string>;
+  }>({ replay: 16 });
   const growUp = Effect.gen(function* () {
     const today = iso(yield* Clock.currentTimeMillis).slice(0, 10);
     const opens = yield* ownerOpensMemberStores;
-    const grown: Array<string> = [];
+    const names: Array<string> = [];
     for (const row of yield* rows) {
       if (row.role !== "child" || row.removed_at !== null) continue;
       const day = adultOn(row.born, row.adult_age ?? HOUSEHOLD_DEFAULTS.childAdultAge);
@@ -558,9 +575,22 @@ export const make = Effect.gen(function* () {
       );
       if (!opens && Option.isSome(stores)) yield* stores.value.sealFromOwner(row.id);
       yield* Effect.logInfo("household: a child became an adult", { member: row.id });
-      grown.push(row.name);
+      yield* PubSub.publish(grown, { id: row.id, name: row.name, guardians: guardiansOf(row) });
+      // Their guardian hears it on their phone; the store's rule is said plainly.
+      if (Option.isSome(inbox))
+        yield* inbox.value.mirror({
+          id: `household-grown-${row.id}`,
+          title: `${row.name} is an adult in this home today`,
+          detail: opens
+            ? `${row.name} has no guardians or limits now. As this home is set up, you can still open their private memories; they are told so.`
+            : `${row.name} has no guardians or limits now, and their private memories are theirs alone: only their own PIN opens them.`,
+          buttons: ["OK"],
+          yes: 0,
+          cancel: 0,
+        });
+      names.push(row.name);
     }
-    return grown;
+    return names;
   });
 
   const windowsAccounts = Effect.map(
@@ -1448,6 +1478,7 @@ export const make = Effect.gen(function* () {
     grantsOf,
     purgeDue,
     growUp,
+    grownUpdates: PubSub.subscribe(grown),
     consented,
     forgetVoiceHere,
     mergeVoice,
