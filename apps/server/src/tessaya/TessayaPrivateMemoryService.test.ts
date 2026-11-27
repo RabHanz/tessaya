@@ -437,7 +437,10 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
   const members = (ids: ReadonlyArray<string>) =>
     Layer.succeed(
       StoreMembership,
-      StoreMembership.of({ isMember: (id) => Effect.succeed(ids.includes(id)) }),
+      StoreMembership.of({
+        isMember: (id) => Effect.succeed(ids.includes(id)),
+        isChild: () => Effect.succeed(false),
+      }),
     );
   test("is sealed from the owner in a home that never chose otherwise (decision 1)", () =>
     Effect.gen(function* () {

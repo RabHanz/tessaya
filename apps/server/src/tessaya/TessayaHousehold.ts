@@ -7,6 +7,7 @@ import {
   ADMIN_ASSURANCE,
   OWNER_MEMBER_ID,
   type Assurance,
+  adultOn,
   HOUSEHOLD_DEFAULTS,
   keptAbout,
   manageRefusal,
@@ -189,6 +190,8 @@ export class TessayaHousehold extends Context.Service<
     readonly homeOn: Effect.Effect<string | null>;
     /** Destroys the data of members whose export window ended. */
     readonly purgeDue: Effect.Effect<number>;
+    /** Children whose day has come become adults (identity I-5); their names. */
+    readonly growUp: Effect.Effect<ReadonlyArray<string>>;
     /** Another of this home's servers destroyed this member's data: this server's vessels forget their voice too. */
     readonly forgetVoiceHere: (member: string) => Effect.Effect<void>;
     /** On the home: another server's copy of a member's voice, joined to this one; false when it can't be joined. */
@@ -471,6 +474,28 @@ export const make = Effect.gen(function* () {
         n++;
       }
     return n;
+  });
+
+  /**
+   * On the day a child reaches their age (16 unless a guardian set 10 to 25), they become an adult: guardians end, and
+   * the owner's copy of their store's key goes unless this home opens every adult's store (choice 1).
+   */
+  const growUp = Effect.gen(function* () {
+    const today = iso(yield* Clock.currentTimeMillis).slice(0, 10);
+    const opens = yield* ownerOpensMemberStores;
+    const grown: Array<string> = [];
+    for (const row of yield* rows) {
+      if (row.role !== "child" || row.removed_at !== null) continue;
+      const day = adultOn(row.born, row.adult_age ?? HOUSEHOLD_DEFAULTS.childAdultAge);
+      if (day === null || day > today) continue;
+      yield* sql`UPDATE tessaya_household_members SET role = 'adult', guardians_json = '[]' WHERE id = ${row.id}`.pipe(
+        Effect.orDie,
+      );
+      if (!opens && Option.isSome(stores)) yield* stores.value.sealFromOwner(row.id);
+      yield* Effect.logInfo("household: a child became an adult", { member: row.id });
+      grown.push(row.name);
+    }
+    return grown;
   });
 
   const windowsAccounts = Effect.map(
@@ -1309,7 +1334,10 @@ export const make = Effect.gen(function* () {
     }
   });
 
-  yield* Effect.andThen(purgeDue, Effect.andThen(moveVoicesUp, shareVoices)).pipe(
+  yield* Effect.andThen(
+    Effect.andThen(purgeDue, growUp),
+    Effect.andThen(moveVoicesUp, shareVoices),
+  ).pipe(
     Effect.repeat(Schedule.spaced("1 hour")),
     Effect.catchCause(() => Effect.void),
     Effect.forkScoped,
@@ -1322,6 +1350,7 @@ export const make = Effect.gen(function* () {
     roleOf,
     grantsOf,
     purgeDue,
+    growUp,
     forgetVoiceHere,
     mergeVoice,
   });

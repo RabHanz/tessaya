@@ -92,7 +92,11 @@ export const PrivateCaller = Context.Reference<{
  */
 export class StoreMembership extends Context.Service<
   StoreMembership,
-  { readonly isMember: (personId: string) => Effect.Effect<boolean> }
+  {
+    readonly isMember: (personId: string) => Effect.Effect<boolean>;
+    /** A child's own store is always opened by their guardian, the owner (identity choice 5). */
+    readonly isChild: (personId: string) => Effect.Effect<boolean>;
+  }
 >()("t3/tessaya/TessayaPrivateMemoryService/StoreMembership") {}
 
 /** scrypt's cost for new stores; tests lower it. Stored per store, so it can be raised later. */
@@ -263,6 +267,8 @@ export class TessayaPrivateMemoryService extends Context.Service<
      */
     readonly endLeasesOf: (member: string) => Effect.Effect<number>;
     readonly shred: (personId: string) => Effect.Effect<boolean>;
+    /** Grown up (identity I-5): the owner's copy of their key goes, so only their own PIN opens it from now on. */
+    readonly sealFromOwner: (personId: string) => Effect.Effect<boolean>;
     readonly remove: (input: {
       readonly storeId: string;
       readonly pin?: string | undefined;
@@ -786,8 +792,10 @@ export const make = Effect.gen(function* () {
         // A member making their own store when they accept: sealed to their PIN, and wrapped to the owner's public
         // key only where this home chose so (decision 1); the owner's store need not be open.
         const owner = yield* storeOfPerson(OWNER_PERSON_ID);
+        const membership = yield* Effect.serviceOption(StoreMembership);
+        const child = Option.isSome(membership) && (yield* membership.value.isChild(personId));
         adminPublic =
-          (yield* ownerOpensMemberStores) && Option.isSome(owner)
+          ((yield* ownerOpensMemberStores) || child) && Option.isSome(owner)
             ? keysOf(owner.value).box.publicKey
             : null;
       } else {
@@ -1205,6 +1213,17 @@ export const make = Effect.gen(function* () {
       return Option.isSome(row) ? yield* removeStore(row.value, true) : false;
     }, serial),
 
+    sealFromOwner: Effect.fn("BatonPrivateMemoryService.sealFromOwner")(function* (personId) {
+      const row = yield* storeOfPerson(personId);
+      if (Option.isNone(row) || keysOf(row.value).admin === null) return false;
+      const next = { ...keysOf(row.value), admin: null };
+      yield* sql`UPDATE tessaya_private_stores SET keys_json = ${JSON.stringify(next)} WHERE id = ${row.value.id}`.pipe(
+        Effect.orDie,
+      );
+      yield* audit(row.value, "sealed from the owner", "ok", 0, false);
+      return true;
+    }, serial),
+
     remove: Effect.fn("BatonPrivateMemoryService.remove")(function* (input) {
       const row = yield* needStore(input.storeId);
       const admin = kindOf(row) === "person" && Option.isSome(yield* ownerOpenFor);
@@ -1488,6 +1507,7 @@ export const make = Effect.gen(function* () {
     remember: act("remember", service.remember),
     markMoment: act("markMoment", service.markMoment),
     shred: act("shred", service.shred),
+    sealFromOwner: act("sealFromOwner", service.sealFromOwner),
     setup: act("setup", service.setup),
     confirmSetup: act("confirmSetup", service.confirmSetup),
     changePin: act("changePin", service.changePin),
