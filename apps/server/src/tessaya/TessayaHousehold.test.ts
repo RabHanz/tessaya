@@ -340,6 +340,35 @@ describe("TessayaHousehold", () => {
         );
         assert.isTrue(yield* openAsOwner);
 
+        // A guardian's limits on Zoe: set, seen by her, refused from her, lifted the same way.
+        const zoe = ids["Zoe"]!;
+        const limit = (
+          who: typeof owner | { member: string; assurance: 2; via: string },
+          input: object,
+        ) => as(who)(call({ op: "setLimit", id: zoe, ...input } as never));
+        assert.strictEqual(
+          (yield* limit(owner, { limit: "quiet", value: "9pm-7am" })).status,
+          "refused",
+        );
+        assert.strictEqual(
+          (yield* limit(owner, { limit: "quiet", value: "21:00-07:00" })).status,
+          "done",
+        );
+        assert.strictEqual(
+          (yield* limit(owner, { limit: "messages", value: "guardians" })).status,
+          "done",
+        );
+        const asZoe = { member: zoe, assurance: 2, via: "her phone" } as const;
+        assert.strictEqual(
+          (yield* limit(asZoe, { limit: "quiet", value: null })).status,
+          "refused",
+        );
+        const seen = (yield* as(asZoe)(call({ op: "list" }))).members!.find((m) => m.id === zoe)!;
+        assert.deepStrictEqual(seen.limits, { quiet: "21:00-07:00", messages: "guardians" });
+        assert.deepStrictEqual((yield* h.grantsOf(zoe))?.messagesTo, ["owner"]);
+        yield* limit(owner, { limit: "messages", value: null });
+        assert.isNull((yield* h.grantsOf(zoe))?.messagesTo);
+
         assert.deepStrictEqual(yield* h.growUp, ["Adam"]);
         assert.strictEqual(yield* h.roleOf(adam), "adult");
         assert.strictEqual(yield* h.roleOf(ids["Zoe"]!), "child");
@@ -520,7 +549,14 @@ describe("a home's members on one server, asked by its others", () => {
       }).pipe(Effect.provide(limbOf(home, carried)));
       assert.deepStrictEqual(yield* fromLimb, {
         names: ["Owner", "Sara"],
-        grants: { role: "child", machine: false, name: "Sara" },
+        // A child's limits travel to the limb too: none set here.
+        grants: {
+          role: "child",
+          machine: false,
+          name: "Sara",
+          quietNow: false,
+          messagesTo: null,
+        },
       });
       assert.deepInclude(carried[0] as object, { member: "owner", assurance: 3 });
       // The home unreachable: nothing is done there, and nobody is known.

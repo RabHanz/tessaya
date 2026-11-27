@@ -255,6 +255,12 @@ export const STRINGS: Readonly<Record<Locale, Readonly<Record<string, string>>>>
     "hh.machine.warning":
       "{name} will be able to do anything on this computer: every session, terminal, file and provider account here. They pair again with the code shown.",
     "hh.adultAt": "adult at {n}",
+    "hh.limit.quiet": "{name}'s quiet hours",
+    "hh.limit.quiet.hint": "In these hours Tessaya only talks with them. Remove lifts it.",
+    "hh.limit.set": "Set",
+    "hh.limit.messages": "Who {name} can message",
+    "hh.limit.messages.anyone": "Anyone in the home",
+    "hh.limit.messages.guardians": "Only their guardians",
     "hh.you": "you",
     "hh.remove": "Remove",
     "hh.restore": "Restore",

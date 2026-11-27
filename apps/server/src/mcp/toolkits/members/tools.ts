@@ -79,6 +79,20 @@ const ConsentTool = Tool.make("member_consent", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
+const LimitTool = Tool.make("member_limit", {
+  ...shared,
+  description:
+    'A guardian\'s limit on their child, or lifting it: `quiet` hours as "HH:MM-HH:MM" (in them she only talks with the child), or `messages` "guardians" (they message only their guardians). `value` null lifts it. Only their guardian, the owner or an admin; say the line back, and that saying so again changes it.',
+  parameters: Schema.Struct({
+    id: Id,
+    limit: Schema.Literals(["quiet", "messages"]),
+    value: Schema.NullOr(Schema.String.check(Schema.isMaxLength(20))),
+  }),
+})
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
 const SetRoleTool = Tool.make("member_set_role", {
   ...shared,
   description:
@@ -222,6 +236,7 @@ export const MembersTools = [
   InviteTool,
   WhoAmITool,
   ConsentTool,
+  LimitTool,
   SetRoleTool,
   RemoveTool,
   RestoreTool,

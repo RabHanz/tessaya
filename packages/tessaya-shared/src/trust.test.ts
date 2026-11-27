@@ -392,6 +392,23 @@ describe("who is asking narrows Trust (identity I-2)", () => {
     else expect(mine.verdict).toBe(verdict);
   });
 
+  it("in a child's quiet hours she only talks: the house and their own things wait for a guardian", () => {
+    const quiet = { ...as("child", 2), quiet: true };
+    expect(
+      decideTrust({
+        call: tool("home_do", { action: "turn on the lamp" }),
+        context: ctx,
+        principal: quiet,
+      }).verdict,
+    ).toBe("deny");
+    expect(
+      decideTrust({ call: tool("tessaya_memory_search"), context: ctx, principal: quiet }).verdict,
+    ).toBe("deny");
+    expect(decideTrust({ call: tool("member_whoami"), context: ctx, principal: quiet })).toEqual(
+      decideTrust({ call: tool("member_whoami"), context: ctx }),
+    );
+  });
+
   it("gives the machine grant's holder this computer's base verdict, and never a child a risky act", () => {
     const bash = { tool: "Bash", input: { command: "ls" } };
     expect(decideTrust({ call: bash, context: ctx, principal: as("adult", 2, true) })).toEqual(

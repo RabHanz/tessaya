@@ -8,10 +8,14 @@ import {
   OWNER_MEMBER_ID,
   type Assurance,
   adultOn,
+  type ChildLimits,
   HOUSEHOLD_DEFAULTS,
+  inQuiet,
   keptAbout,
   manageRefusal,
   memberOfSubject,
+  NO_LIMITS,
+  quietRange,
   memberSubject,
   type MemberRole,
   type PrincipalRole,
@@ -43,6 +47,7 @@ import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
 import { ownerOpensMemberStores } from "./HouseholdSettings.ts";
 import { destroyOf, exportOf, releaseOf } from "./memberData.ts";
 import { mergeVoiceProfiles } from "./voiceMerge.ts";
+import { TessayaMemoryService } from "./TessayaMemoryService.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
 import { TessayaPhoneInbox } from "./TessayaPhoneInbox.ts";
 import { TessayaPrivateMemoryService } from "./TessayaPrivateMemoryService.ts";
@@ -100,6 +105,7 @@ interface Row {
   readonly removed_at: string | null;
   readonly purge_after: string | null;
   readonly consented_at?: string | null;
+  readonly limits_json?: string | null;
 }
 
 /** The linked-server tool a forwarded request runs on the home (`household_peer`). */
@@ -129,6 +135,12 @@ const guardiansOf = (row: Row): ReadonlyArray<string> =>
   JSON.parse(row.guardians_json) as Array<string>;
 // A plain list of strings: a child's guardians, a voice profile's sources.
 const guardiansJson = (ids: ReadonlyArray<string>) => JSON.stringify(ids);
+// Written only by setLimit: never malformed.
+const limitsOf = (row: Row): ChildLimits =>
+  row.limits_json == null
+    ? NO_LIMITS
+    : { ...NO_LIMITS, ...(JSON.parse(row.limits_json) as object) };
+const limitsJson = (limits: ChildLimits) => JSON.stringify(limits);
 const isPasskeyError = Schema.is(PasskeyError);
 const accountsJson = (accounts: Readonly<Record<string, string>>) => JSON.stringify(accounts);
 /** A passkey ceremony's challenge lasts this long. */
@@ -185,6 +197,10 @@ export class TessayaHousehold extends Context.Service<
       readonly role: MemberRole;
       readonly machine: boolean;
       readonly name: string;
+      /** A child in their quiet hours now: she only talks with them. */
+      readonly quietNow?: boolean;
+      /** Only these members may they message (a guardian's limit); null: anyone the role allows. */
+      readonly messagesTo?: ReadonlyArray<string> | null;
     } | null>;
     /** The linked server holding the household (its label), or null: this one. Also where a desk turn goes (S4c). */
     readonly homeOn: Effect.Effect<string | null>;
@@ -287,6 +303,32 @@ export const make = Effect.gen(function* () {
     return Option.isSome(row) && row.value.removed_at === null ? row.value.role : null;
   });
 
+  /** A child's limits as they stand now, on the home's clock. */
+  const limitsNow = Effect.fn("TessayaHousehold.limitsNow")(function* (
+    role: MemberRole,
+    limits: ChildLimits,
+    guardians: ReadonlyArray<string>,
+  ) {
+    if (role !== "child") return {};
+    const memory = yield* Effect.serviceOption(TessayaMemoryService);
+    const zone =
+      (Option.isNone(memory) ? null : yield* memory.value.meta("timeZone")) ??
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const [h, m] = new Intl.DateTimeFormat("en-GB", {
+      timeZone: zone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .format(yield* Clock.currentTimeMillis)
+      .split(":")
+      .map(Number);
+    return {
+      quietNow: inQuiet(limits.quiet, (h ?? 0) * 60 + (m ?? 0)),
+      messagesTo: limits.messages === "guardians" ? guardians : null,
+    };
+  });
+
   const grantsOf = Effect.fn("TessayaHousehold.grantsOf")(function* (member: string) {
     const on = yield* homeOn;
     if (on !== null) {
@@ -304,11 +346,23 @@ export const make = Effect.gen(function* () {
         grantsCache = { at: now, members: listed?.members ?? [] };
       }
       const m = grantsCache.members.find((x) => x.id === member && x.state !== "leaving");
-      return m === undefined ? null : { role: m.role, machine: m.machine, name: m.name };
+      return m === undefined
+        ? null
+        : {
+            role: m.role,
+            machine: m.machine,
+            name: m.name,
+            ...(yield* limitsNow(m.role, m.limits ?? NO_LIMITS, m.guardians)),
+          };
     }
     const row = yield* rowOf(member);
     return Option.isSome(row) && row.value.removed_at === null
-      ? { role: row.value.role, machine: row.value.machine === 1, name: row.value.name }
+      ? {
+          role: row.value.role,
+          machine: row.value.machine === 1,
+          name: row.value.name,
+          ...(yield* limitsNow(row.value.role, limitsOf(row.value), guardiansOf(row.value))),
+        }
       : null;
   });
 
@@ -571,6 +625,8 @@ export const make = Effect.gen(function* () {
         purgeAfter: row.purge_after,
         you: c.member === row.id,
         ...(manager || c.member === row.id ? { windowsAccount: windows[row.id] ?? null } : {}),
+        // A limit is seen by everyone in the home, the child included: the way to see it, beside the way out.
+        ...(row.role === "child" ? { limits: limitsOf(row) } : {}),
       };
     });
   });
@@ -1197,6 +1253,36 @@ export const make = Effect.gen(function* () {
             return done(`${row.name} is now ${input.role}.`);
           }),
         );
+      }
+      case "setLimit": {
+        const row = yield* target(input.id);
+        if (row === null || row.role !== "child" || row.removed_at !== null)
+          return refused("Only a child has limits here.");
+        // Their guardian, or the owner or an admin; never the child, and never on a voice we're not sure of.
+        const guardian = c.member !== null && guardiansOf(row).includes(c.member);
+        if (!guardian && role !== "owner" && role !== "admin")
+          return refused(`Only ${row.name}'s guardian sets their limits.`);
+        if (c.service === true || c.assurance < 2)
+          return refused("I need to be sure it's you to change a child's limits.");
+        const value = input.value?.trim() ?? null;
+        if (input.limit === "quiet" && value !== null && quietRange(value) === null)
+          return refused('Say quiet hours as a start and an end, like "21:00-07:00".');
+        if (input.limit === "messages" && value !== null && value !== "guardians")
+          return refused('The one message limit is "guardians": only their guardians.');
+        const next = { ...limitsOf(row), [input.limit]: value };
+        yield* sql`UPDATE tessaya_household_members SET limits_json = ${limitsJson(next)} WHERE id = ${row.id}`.pipe(
+          Effect.orDie,
+        );
+        grantsCache = null;
+        const what =
+          input.limit === "quiet"
+            ? value === null
+              ? `${row.name} has no quiet hours now.`
+              : `${row.name}'s quiet hours are ${value}: then I only talk with them.`
+            : value === null
+              ? `${row.name} can message anyone in the home again.`
+              : `${row.name} can message only their guardians now.`;
+        return done(`${what} Say so again to change it.`);
       }
       case "setAdultAge": {
         const row = yield* target(input.id);
