@@ -42,7 +42,7 @@ export const createSessionTap = (opts: {
     }
   };
   // Off the event loop, one write at a time so records keep their order: a sync append blocked the loop for up to
-  // 989 ms on onnyx's busy disk (27 Nov), and the tap writes between sessions too.
+  // 989 ms on a busy disk (27 Nov), and the tap writes between sessions too.
   let writing: Promise<void> = Promise.resolve();
   const flush = () => {
     if (pending.length === 0 || file === "" || failed) return;

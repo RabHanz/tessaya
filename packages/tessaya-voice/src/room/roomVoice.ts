@@ -3119,6 +3119,8 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
      * (rx - q, firmware 0.3.92), so her playback lines up with the mic to the sample, and his voice rising over what
      * is left of hers stops her at once. The words then go through the same echo and addressing checks as any turn.
      */
+    let benchOverAt = Number.NEGATIVE_INFINITY;
+    let benchOver = 0;
     const heardOver = (pcm: Int16Array, seq: number, rx: number, q: number) => {
       voiceLevel.push(pcm);
       heardLately = [...heardLately, { seq, pcm }].slice(-60);
@@ -3144,7 +3146,6 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         !heard ||
         deps.now() >= playUntil + config.downDelayMs ||
         enrolling() ||
-        bench.has(id) ||
         lastProb < config.turn.stopProb
       )
         return;
@@ -3157,6 +3158,15 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         return;
       // Only a household voice may stop her, so with nobody enrolled it stays keyword.
       if (deps.member === undefined || deps.members?.() !== true) return;
+      // A bench never pauses her, but says when it would have, so an echo fix can be counted on her own playback.
+      if (bench.has(id)) {
+        benchOver += 1;
+        if (deps.now() - benchOverAt < 1_000) return;
+        deps.log(`[${id}] bench: a voice over hers (would pause; ${benchOver} frames)`);
+        benchOverAt = deps.now();
+        benchOver = 0;
+        return;
+      }
       let release = () => undefined as void;
       const released = new Promise<void>((r) => (release = r));
       // Only the feed pauses, no flush: her echo in a case passes the detector, and a flush drops what the R1 holds
