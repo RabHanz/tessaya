@@ -109,3 +109,10 @@ export const prLine = (pr: GhPr): string => {
           : "merge state still being worked out";
   return `open, ${checkText}, ${review}, ${merge}`;
 };
+
+/** A session's answer to a turn from the desk, as its Record row's outcome: the desk's own voice says it. */
+export const STEER_REPLIED_AT_DESK = "replied at the desk";
+
+/** Every turn's line while he talks with one of his sessions through her, so "who am I talking to?" needs no tool. */
+export const talkingLine = (session: string): string =>
+  `You are talking with his session ${session} for him now: what he tells it goes straight to it, and "that's all" ends it.`;

@@ -271,7 +271,7 @@ const SessionInsightTool = Tool.make("tessaya_session_insight", {
 const SessionSteerTool = Tool.make("tessaya_session_steer", {
   ...shared,
   description:
-    'Send his words to one of his coding sessions ("tell the build session to rerun the tests"), on any linked machine, marked as from him via Tessaya. First call without `confirmed`: it returns the exact text; read it back to him word for word and ask. Call again with `confirmed: true` only when he says yes to that text, or when he said "send" in the same request. Never add to his words or put a secret in them. A job answers is_job: pass his words with job_refine instead.',
+    'Send his words to one of his coding sessions ("tell the build session to rerun the tests"), on any linked machine, marked as from him via Tessaya. First call without `confirmed`: it returns the exact text; read it back to him word for word and ask. Call again with `confirmed: true` only when he says yes to that text, or when he said "send" in the same request. Once one went, he is talking with that session through you: what he tells it next goes straight (call it as he says it; no read-back), and its answer is said to him when it comes, in short. "Read it all" is tessaya_session_insight. When he says "that\'s all" or "stop talking to it", call it with `end: true` (his words as `text`) and say you are done with it. Never add to his words or put a secret in them. A job answers is_job: pass his words with job_refine instead.',
   parameters: TessayaSessionSteerInput,
   success: TessayaSessionSteerResult,
 })
@@ -441,7 +441,7 @@ const MemoryForgetTool = Tool.make("tessaya_memory_forget", {
 const MyStateTool = Tool.make("tessaya_my_state", {
   ...shared,
   description:
-    "Your own state now, live: every body you are in (the desk body on his screen or hidden, Tumble, the phone) and who wears each, your mood, what each body's face shows, what your desk body is doing, who is around, your devices, and what is new in you lately (what your releases let you do now). Call it when asked about yourself, your other bodies or what is new in you ('any new capabilities?', 'what is new?') and the lines you were given do not cover it; never answer that from memory. What one body is doing or how it is posed right now is tessaya_body_state.",
+    "Your own state now, live: every body you are in (the desk body on his screen or hidden, Tumble, the phone) and who wears each, your mood, what each body's face shows, what your desk body is doing, who is around, your devices, which of his sessions you are talking with for him (\"who am I talking to?\"), and what is new in you lately (what your releases let you do now). Call it when asked about yourself, your other bodies or what is new in you ('any new capabilities?', 'what is new?') and the lines you were given do not cover it; never answer that from memory. What one body is doing or how it is posed right now is tessaya_body_state.",
   success: Schema.Struct({ line: Schema.String }),
 })
   .annotate(McpSchema.EnabledWhen, outsideAgentsOnly)
