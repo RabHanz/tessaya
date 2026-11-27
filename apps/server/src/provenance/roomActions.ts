@@ -87,6 +87,17 @@ export const roomActionOf = (id: string, tail: string, payload: string): ActionI
       data: { run: String(b?.run ?? "").slice(0, 60), vessel: id },
     };
   }
+  // Her room loop, not the Tessel: silent on the hub but still answering ARP, so it sent the remote reset (27 Nov).
+  if (tail === "event/link/dead") {
+    return {
+      kind: "room.link.dead",
+      actor: { kind: "system", id: "room-loop", certainty: 1 },
+      subject: id,
+      outcome: "reset sent",
+      evidence: [{ kind: "device", ref: id }],
+      data: { ...facts(body), vessel: id },
+    };
+  }
   if (tail === "event/voice/metrics") {
     const m = body as { speaker?: string; speakerScore?: number | null } | null;
     const speaker = (m?.speaker ?? "unverified") as keyof typeof SPEAKER_ACTOR;

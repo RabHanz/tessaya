@@ -135,6 +135,14 @@ describe("every action reaches the log", () => {
         JSON.stringify({ heap: 51504, low: { task: "wdrv_thread", size: 32 } }),
       )?.data,
     ).toMatchObject({ low: { task: "wdrv_thread", size: 32 } });
+    // the loop's remote reset of a wedged link is the loop's act, not the Tessel's
+    expect(
+      roomActionOf("t1", "event/link/dead", JSON.stringify({ silent_s: 180, try: 1, arp: true })),
+    ).toMatchObject({
+      kind: "room.link.dead",
+      actor: { kind: "system", id: "room-loop" },
+      data: { silent_s: 180, try: 1 },
+    });
     expect(roomActionOf("t1", "event/enrol", "{}")).toBeNull();
     expect(roomActionOf("t1", "state/battery", "80")).toBeNull();
     expect(roomActionOf("t1", "state/online", "0")?.outcome).toBe("offline");
