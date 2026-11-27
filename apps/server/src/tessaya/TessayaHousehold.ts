@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off
+// @effect-diagnostics globalDate:off nodeBuiltinImport:off
 /**
  * The household's members (ACCOUNTS-IDENTITY-DESIGN I-1). A member's devices are sessions whose subject names them, so
  * revoking a member is a query over sessions T3 already keeps. Admin-class acts need A3, or the owner's yes.
@@ -29,6 +29,7 @@ import {
   type TessayaVoiceProfile,
 } from "@t3tools/tessaya-contracts";
 import type { AuthClientSession, AuthEnvironmentScope } from "@t3tools/contracts";
+import * as NodeCrypto from "node:crypto";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
@@ -108,6 +109,7 @@ interface Row {
   readonly purge_after: string | null;
   readonly consented_at?: string | null;
   readonly limits_json?: string | null;
+  readonly export_token?: string | null;
 }
 
 /** The linked-server tool a forwarded request runs on the home (`household_peer`). */
@@ -143,6 +145,8 @@ const limitsOf = (row: Row): ChildLimits =>
     ? NO_LIMITS
     : { ...NO_LIMITS, ...(JSON.parse(row.limits_json) as object) };
 const limitsJson = (limits: ChildLimits) => JSON.stringify(limits);
+/** An export link's token is kept only as its hash, so the database alone can't be used to fetch anyone's data. */
+const tokenHash = (token: string) => NodeCrypto.createHash("sha256").update(token).digest("hex");
 const isPasskeyError = Schema.is(PasskeyError);
 const accountsJson = (accounts: Readonly<Record<string, string>>) => JSON.stringify(accounts);
 /** A passkey ceremony's challenge lasts this long. */
@@ -208,6 +212,12 @@ export class TessayaHousehold extends Context.Service<
     readonly homeOn: Effect.Effect<string | null>;
     /** Destroys the data of members whose export window ended. */
     readonly purgeDue: Effect.Effect<number>;
+    /** A removed member's one-use export link: everything of theirs, once, while their data waits; else None. */
+    readonly exportByLink: (
+      token: string,
+    ) => Effect.Effect<
+      Option.Option<Readonly<Record<string, ReadonlyArray<Record<string, unknown>>>>>
+    >;
     /** Whether she may keep what is about this person: the owner, or a member who said yes (identity I-4). */
     readonly consented: (person: string) => Effect.Effect<boolean>;
     /** Children whose day has come become adults (identity I-5); their names. */
@@ -548,6 +558,21 @@ export const make = Effect.gen(function* () {
    * On the day a child reaches their age (16 unless a guardian set 10 to 25), they become an adult: guardians end, and
    * the owner's copy of their store's key goes unless this home opens every adult's store (choice 1).
    */
+  const exportByLink = Effect.fn("TessayaHousehold.exportByLink")(function* (token: string) {
+    if (!/^[A-Za-z0-9_-]{32}$/.test(token)) return Option.none();
+    const now = iso(yield* Clock.currentTimeMillis);
+    const [row] = yield* sql<Row>`
+      SELECT * FROM tessaya_household_members
+      WHERE export_token = ${tokenHash(token)} AND removed_at IS NOT NULL AND purge_after > ${now}`.pipe(
+      Effect.orDie,
+    );
+    if (row === undefined) return Option.none();
+    yield* sql`UPDATE tessaya_household_members SET export_token = NULL WHERE id = ${row.id}`.pipe(
+      Effect.orDie,
+    );
+    return Option.some(yield* exportOf(sql, row.id));
+  });
+
   const consented = Effect.fn("TessayaHousehold.consented")(function* (person: string) {
     const row = yield* rowOf(person);
     return (
@@ -1346,11 +1371,14 @@ export const make = Effect.gen(function* () {
             return done(`Removed ${row.name} and destroyed their data.`);
           }
           const until = iso(now + HOUSEHOLD_DEFAULTS.exportWindowDays * DAY_MS);
-          yield* sql`UPDATE tessaya_household_members SET removed_at = ${iso(now)}, purge_after = ${until} WHERE id = ${row.id}`.pipe(
+          // Their devices are signed out, so their export goes by a link: one use, until their data goes.
+          const token = NodeCrypto.randomBytes(24).toString("base64url");
+          yield* sql`UPDATE tessaya_household_members SET removed_at = ${iso(now)}, purge_after = ${until}, export_token = ${tokenHash(token)} WHERE id = ${row.id}`.pipe(
             Effect.orDie,
           );
           return done(
-            `${row.name} is signed out everywhere. Their data is kept until ${until.slice(0, 10)} so they can export it, then destroyed; restore them before then to undo.`,
+            `${row.name} is signed out everywhere. Their data is kept until ${until.slice(0, 10)}: give them their export link, which works once; then it is destroyed. Restore them before then to undo.`,
+            { exportLink: `/tessaya/export/${token}` },
           );
         });
         // Leaving is narrowing for the person themselves: their own device may do it without the owner.
@@ -1367,7 +1395,7 @@ export const make = Effect.gen(function* () {
           manageRefusal(role, row.role, null),
           `Restore ${row.name}`,
           Effect.as(
-            sql`UPDATE tessaya_household_members SET removed_at = NULL, purge_after = NULL WHERE id = ${row.id}`.pipe(
+            sql`UPDATE tessaya_household_members SET removed_at = NULL, purge_after = NULL, export_token = NULL WHERE id = ${row.id}`.pipe(
               Effect.orDie,
             ),
             done(`${row.name} is back; they pair their devices again with a new code.`),
@@ -1479,6 +1507,7 @@ export const make = Effect.gen(function* () {
     purgeDue,
     growUp,
     grownUpdates: PubSub.subscribe(grown),
+    exportByLink,
     consented,
     forgetVoiceHere,
     mergeVoice,

@@ -732,6 +732,35 @@ export const routes = HttpRouter.use((router) =>
     const commsCall = memberRoute(Schema.decodeUnknownEffect(CommsCallInput), (input) =>
       Effect.flatMap(TessayaComms, (c) => c.call(input)),
     );
+    // A removed member's one-use export link (identity I-6): their devices are signed out, so the token is the key.
+    const exportByLink = Effect.gen(function* () {
+      const request = yield* HttpServerRequest.HttpServerRequest;
+      const token = new URL(request.url, "http://local").pathname.split("/").pop() ?? "";
+      const found = yield* Effect.promise(() =>
+        run(Effect.flatMap(TessayaHousehold, (h) => h.exportByLink(token))),
+      );
+      return Option.isNone(found)
+        ? HttpServerResponse.jsonUnsafe(
+            { message: "This export link has been used, or has run out." },
+            { status: 404, headers: PAGE_HEADERS },
+          )
+        : HttpServerResponse.jsonUnsafe(found.value, {
+            headers: {
+              ...PAGE_HEADERS,
+              "content-disposition": 'attachment; filename="my-tessaya-data.json"',
+            },
+          });
+    }).pipe(
+      Effect.catchCause(() =>
+        Effect.succeed(
+          HttpServerResponse.jsonUnsafe(
+            { message: "That did not work." },
+            { status: 500, headers: PAGE_HEADERS },
+          ),
+        ),
+      ),
+    );
+    yield* router.add("GET", "/tessaya/export/*", exportByLink);
     yield* router.add("POST", "/tessaya/household", householdCall);
     yield* router.add("POST", "/tessaya/comms", commsCall);
     yield* router.add("POST", "/tessaya/private", privateCall);

@@ -6,6 +6,7 @@ import { AuthStandardClientScopes } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as TestClock from "effect/testing/TestClock";
 
@@ -478,6 +479,16 @@ describe("TessayaHousehold", () => {
 
         const removed = yield* as(owner)(call({ op: "remove", id }));
         assert.include(removed.line, "signed out everywhere");
+        // Signed out, she still gets her data: once, by the link, and never by a guess or a second try.
+        const h = yield* TessayaHousehold;
+        const token = removed.exportLink!.split("/").pop()!;
+        assert.isTrue(Option.isNone(yield* h.exportByLink("A".repeat(32))));
+        const byLink = yield* h.exportByLink(token);
+        assert.deepStrictEqual(
+          Option.getOrThrow(byLink)["tessaya_household_members"]!.map((r) => r["id"]),
+          [id],
+        );
+        assert.isTrue(Option.isNone(yield* h.exportByLink(token)));
         const live = (yield* auth.listSessions()).filter((s) => s.subject === memberSubject(id));
         assert.lengthOf(live, 0);
         assert.isFalse(
@@ -595,7 +606,9 @@ describe("a home's members on one server, asked by its others", () => {
           messagesTo: null,
         },
       });
-      assert.deepInclude(carried[0] as object, { member: "owner", assurance: 3 });
+      // The list went with who asked (a background preferences read may go first).
+      const listCall = carried.find((a) => (a as { input?: { op?: string } }).input?.op === "list");
+      assert.deepInclude(listCall as object, { member: "owner", assurance: 3 });
       // The home unreachable: nothing is done there, and nobody is known.
       const gone = yield* Effect.gen(function* () {
         const limb = yield* TessayaHousehold;
