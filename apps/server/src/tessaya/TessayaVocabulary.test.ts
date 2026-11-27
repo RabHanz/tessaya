@@ -4,7 +4,7 @@ import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import { SpeechCustomWords } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, SpeechCustomWords } from "@t3tools/contracts";
 import { customWordsOf, type VocabularyEntry } from "@t3tools/tessaya-shared/vocabulary";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -22,7 +22,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as PeerLinks from "../peer/PeerLinks.ts";
 import { descriptorOf } from "../peer/PeerLinks.testkit.ts";
 import * as PeerMcpClient from "../peer/PeerMcpClient.ts";
-import { HOME_KEY } from "./BrainHost.ts";
+import { HOME_KEY, makeBrainLink } from "./BrainHost.ts";
 import { layerMemory as SqlitePersistenceMemory } from "./TessayaDatabase.ts";
 import * as Vocabulary from "./TessayaVocabulary.ts";
 import { serveVoiceCall, TessayaVoiceLibrary } from "./TessayaVoiceLibrary.ts";
@@ -231,12 +231,15 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         const workerFile = yield* fileIn(dirs.worker);
         write(brainFile, [{ phrase: "kodi", replacement: null, source: "added", count: 1 }]);
         write(workerFile, HIS_WORDS.slice(0, 3));
+        // Its own database, so a call from the worker's link never reads the worker's (where she is not the brain).
         const brain = yield* Layer.build(
           Vocabulary.layer.pipe(
             Layer.provideMerge(ServerSettingsService.layerTest()),
             Layer.provide(ServerConfig.layerTest(process.cwd(), dirs.brain)),
+            Layer.provideMerge(SqlitePersistenceMemory),
           ),
         );
+        let reachable = true;
         const peers = Layer.mergeAll(
           Layer.succeed(PeerLinks.PeerLinks, {
             enabled: Effect.succeed(true),
@@ -248,9 +251,14 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
             PeerMcpClient.PeerMcpClient,
             PeerMcpClient.PeerMcpClient.of({
               call: (input) =>
-                receiveAtBrain(input.arguments["op"] as never, input.arguments["payload"]).pipe(
-                  Effect.provideContext(brain),
-                ) as never,
+                reachable
+                  ? (receiveAtBrain(
+                      input.arguments["op"] as never,
+                      input.arguments["payload"],
+                    ).pipe(Effect.provideContext(brain)) as never)
+                  : Effect.fail(
+                      new OrchestratorMcpFailure({ code: "orchestration_error", message: "away" }),
+                    ),
             }),
           ),
         );
@@ -258,7 +266,7 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
           Vocabulary.layer.pipe(
             Layer.provideMerge(ServerSettingsService.layerTest()),
             Layer.provide(ServerConfig.layerTest(process.cwd(), dirs.worker)),
-            Layer.provide(peers),
+            Layer.provideMerge(peers),
             Layer.provideMerge(SqlitePersistenceMemory),
           ),
         );
@@ -273,6 +281,17 @@ it.layer(NodeServices.layer)("his one dictionary", (it) => {
         expect(
           phrases(NodePath.join(NodePath.dirname(workerFile), "dictionary.before-brain.json")),
         ).toEqual(["btw", "deplok", "google"]);
+        // A word he removes on the worker while the brain is away reaches it once it is back, and does not return.
+        reachable = false;
+        yield* Context.get(worker, TessayaVocabulary).change({ verb: "remove", phrase: "google" });
+        expect(phrases(brainFile)).toContain("google");
+        reachable = true;
+        yield* Effect.flatMap(makeBrainLink, (link) => link.replay()).pipe(
+          Effect.provideContext(worker),
+        );
+        yield* Context.get(worker, TessayaVocabulary).read;
+        expect(phrases(brainFile).toSorted()).toEqual(["btw", "deplok", "kodi"]);
+        expect(phrases(workerFile).toSorted()).toEqual(["btw", "deplok", "kodi"]);
       }).pipe(Effect.scoped),
   );
 
