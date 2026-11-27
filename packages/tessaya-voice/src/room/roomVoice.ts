@@ -139,6 +139,7 @@ const UP_HEADER = 16;
 const UP_FLAG_HEADSET = 16;
 /** The R1's own latency on its onboard speaker (firmware lane, 14 Nov): her sample under it is rx - q - this. */
 const R1_LATENCY = 1972;
+
 /** Talking over her counts once she has sounded this long: the device's echo cancelling settles in that time. */
 const ONSET_GRACE_MS = 400;
 /** How many times a persona look is sent before the loop logs it as failed. */
@@ -480,6 +481,11 @@ export interface RoomDeps {
       readonly conversation?: string;
     } | null>;
     readonly report: (op: "speaking" | "ended", deviceId: string, untilMs?: number) => void;
+  };
+  /** Raw aligned uplink frames and her downlink, for replaying the echo path offline (`R1_SESSION_TAP_DIR`). */
+  readonly tap?: {
+    readonly up: (deviceId: string, frame: Uint8Array, atMs: number) => void;
+    readonly down: (deviceId: string, frame: Uint8Array, sample: number, atMs: number) => void;
   };
   /** A bench turn kept for a regression case (`cmd/voice/no-reply` with `keep`): never his, only while the bench asks. */
   readonly keep?: (turn: BenchTurn) => void;
@@ -1463,6 +1469,10 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         const wait = playUntil - deps.now() - config.leadMs;
         if (wait > 0) await deps.sleep(wait);
         if (signal.aborted) return;
+        // The R1 ran out by this loop's clock mid-reply: a frame in hand is this loop late, a new chunk the voice late.
+        const late = deps.now() - playUntil;
+        if (late > 20 && deps.now() - lastDownAt < 2_000)
+          deps.log(`[${id}] downlink late ${Math.round(late)} ms (${at === 0 ? "voice" : "loop"})`);
         emit(bytes.subarray(at, at + DOWN_FRAME_BYTES));
         onFirst();
       }
@@ -1471,6 +1481,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
       const start = Math.max(deps.now(), playUntil);
       if (start > playUntil) soundingFrom = start + config.downDelayMs;
       deps.publish(topic(id, "voice/down"), frame);
+      deps.tap?.down(id, frame, downSamples, deps.now());
       herVoice.set(id, deps.now());
       const samples = fromBytes(frame);
       echo.reference(samples, start + config.downDelayMs);
@@ -3290,6 +3301,7 @@ export const createRoomVoice = (deps: RoomDeps, config: RoomConfig = ROOM_CONFIG
         lastUpAt = arrivedAt;
         const aligned =
           bytes.length > UP_HEADER && (bytes.length - UP_HEADER) % DOWN_FRAME_BYTES === 0;
+        if (aligned) deps.tap?.up(id, bytes, arrivedAt);
         const pcm = fromBytes(aligned ? bytes.subarray(UP_HEADER) : bytes);
         const head = aligned ? new DataView(bytes.buffer, bytes.byteOffset, UP_HEADER) : null;
         if (head !== null)

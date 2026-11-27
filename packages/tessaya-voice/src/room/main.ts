@@ -11,6 +11,7 @@ import * as NodeFS from "node:fs";
 import * as NodeHttp from "node:http";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodePerfHooks from "node:perf_hooks";
 
 import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
 import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
@@ -80,6 +81,7 @@ import { createPlaybackWindows, PLAYBACK_TOPIC } from "./playbackWindow.ts";
 import { createHealthReport, readHost } from "./healthReport.ts";
 import { createLinkWatch, parseArp } from "./netReset.ts";
 import { createTurnCapture } from "./turnCapture.ts";
+import { createSessionTap } from "./sessionTap.ts";
 import { farCentroid } from "./farVoice.ts";
 import { createMicWatch } from "./micWatch.ts";
 import { createWakeCapture } from "./wakeCapture.ts";
@@ -815,6 +817,34 @@ const main = async () => {
           maxAgeMs: Number(process.env["R1_TURN_CAPTURE_DAYS"] ?? "30") * 86_400_000,
           log,
         });
+  // Off unless named: the raw aligned uplink and her downlink, for replaying the echo path (R1_SESSION_TAP_DIR,
+  // R1_SESSION_TAP_MB default 2048, R1_SESSION_TAP_DAYS default 7).
+  const tapDir = process.env["R1_SESSION_TAP_DIR"] ?? "";
+  const sessionTap =
+    tapDir === ""
+      ? undefined
+      : createSessionTap({
+          dir: tapDir,
+          capBytes: Number(process.env["R1_SESSION_TAP_MB"] ?? "2048") * 1_048_576,
+          maxAgeMs: Number(process.env["R1_SESSION_TAP_DAYS"] ?? "7") * 86_400_000,
+          log,
+        });
+  // How late this loop's timers run, to split the R1 running dry between this loop and Wi-Fi.
+  const lag = NodePerfHooks.monitorEventLoopDelay({ resolution: 10 });
+  lag.enable();
+  // The garbage collector's longest pause in the same minute: a stall it does not explain is this loop's own work.
+  let gcMax = 0;
+  new NodePerfHooks.PerformanceObserver((list) => {
+    for (const e of list.getEntries()) gcMax = Math.max(gcMax, e.duration);
+  }).observe({ entryTypes: ["gc"] });
+  setInterval(() => {
+    if (lag.max / 1e6 >= 50)
+      log(
+        `loop lag p99 ${Math.round(lag.percentile(99) / 1e6)} ms, max ${Math.round(lag.max / 1e6)} ms, longest gc ${Math.round(gcMax)} ms, heap ${Math.round(process.memoryUsage().heapUsed / 1_048_576)} MB (1 min)`,
+      );
+    lag.reset();
+    gcMax = 0;
+  }, 60_000).unref();
   // Always on, no audio: every segment and kws verdict, capped at R1_WAKE_TRACE_MB (default 50) in two files.
   const trace = createWakeTrace({
     file: NodePath.join(state, "wake-trace.ndjson"),
@@ -1459,6 +1489,7 @@ const main = async () => {
         );
       },
       speak,
+      ...(sessionTap === undefined ? {} : { tap: sessionTap }),
       enrolOwner: async (windows) => {
         const vectors = (await Promise.all(windows.map((w) => embedder.embed(w)))).filter(
           (v) => v !== null,
