@@ -301,6 +301,10 @@ export const make = Effect.gen(function* () {
       yield* allow("cleanup");
       // Cleanup never reads the cheap model: any value does here.
       const route = brainRoute(yield* settings.getSettings, "cleanup", DEFAULT_ROUTING.cheap);
+      // shortcut: the server has no warm plan session, so a row with his key as first or fallback login runs on the key;
+      // a row that names no key is not configured here. Upgrade when the warm pool (B1b) can answer cleanup in time.
+      if (route.use !== KEY_CREDENTIAL && route.fallback !== KEY_CREDENTIAL)
+        return { configured: false } as const;
       const request = yield* authorized(
         HttpClientRequest.post(`${API}/messages`).pipe(
           HttpClientRequest.bodyJsonUnsafe({

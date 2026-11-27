@@ -63,8 +63,10 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     const [url, init] = upstream.mock.calls[0]!;
     expect(String(url)).toBe("https://api.anthropic.com/v1/messages");
     expect(new Headers(init?.headers).get("x-api-key")).toBe("sk-ant-fixture");
+    // His 16 Nov rule: Sonnet, the key being his plan's fallback here.
     expect(JSON.parse(yield* Effect.promise(() => new Response(init?.body).text()))).toMatchObject({
-      model: "claude-haiku-5-5",
+      model: "claude-sonnet-5-5",
+      thinking: { type: "between_tools" },
       max_tokens: 64,
       system: [{ type: "text", text: input.system, cache_control: { type: "ephemeral" } }],
       messages: [{ role: "user", content: "um hello" }],
@@ -101,7 +103,7 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
       dollars: null,
     });
 
-    // The one cleanup setting's model, when it is Claude's; another provider's model keeps Haiku.
+    // The one cleanup setting's model, when it is Claude's; another provider's model keeps Sonnet.
     const bodyModel = (call: number) =>
       Effect.promise(() => new Response(upstream.mock.calls[call]![1]?.body).text()).pipe(
         Effect.map((text) => JSON.parse(text).model),
@@ -120,7 +122,7 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     expect(yield* bodyModel(1)).toBe("claude-sonnet-5");
     yield* choose("codex", "gpt-6-luna", 2);
     yield* fetching(api.cleanup(input));
-    expect(yield* bodyModel(2)).toBe("claude-haiku-5-5");
+    expect(yield* bodyModel(2)).toBe("claude-sonnet-5-5");
 
     // The one retry: the refused answer and why go as their own turns after the dictation.
     yield* fetching(api.cleanup({ ...input, refused: { answer: "Hello.", why: "lost name Ann" } }));
@@ -158,6 +160,13 @@ it.effect("cleans up with the saved Anthropic key only, and says when none is sa
     yield* settings.updateSettings({ brainModels: { cleanup: { model: "sonnet" } } });
     yield* fetching(api.cleanup(input));
     expect(yield* bodyModel(sent + 1)).toBe("claude-sonnet-5-5");
+    // A row on his plan alone names no key: this key-only path is not configured for it, and sends nothing.
+    yield* settings.updateSettings({ brainCredentials: { cleanup: { use: "subscription" } } });
+    expect(yield* fetching(api.cleanup(input))).toEqual({ configured: false });
+    expect(upstream.mock.calls.length).toBe(sent + 2);
+    yield* settings.updateSettings({
+      brainCredentials: { cleanup: { use: "subscription", fallback: "apiKey:anthropic" } },
+    });
 
     upstream.mockResolvedValueOnce(new Response("nope", { status: 401 }));
     expect(yield* Effect.flip(fetching(api.cleanup(input)))).toMatchObject({
