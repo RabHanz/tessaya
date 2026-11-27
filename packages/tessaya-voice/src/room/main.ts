@@ -838,7 +838,13 @@ const main = async () => {
     log,
     keyFor: (id) => resetKeys[id] ?? deviceKey,
   });
-  setInterval(() => linkWatch.tick(), 30_000).unref();
+  // Only while this loop's own bus has been up as long as a Tessel may stay silent: with the hub down she is on another
+  // hub (the failover), not wedged, and is heard here again soon after it returns.
+  let busUpAt: number | null = null;
+  setInterval(() => {
+    busUpAt = mqtt.connected() ? (busUpAt ?? Date.now()) : null;
+    if (busUpAt !== null && Date.now() - busUpAt >= 150_000) linkWatch.tick();
+  }, 30_000).unref();
   const buses = loopBuses(env("R1_BRAIN_URL"), process.env["R1_HUB_URL"]);
   const bus = buses.hub;
   log(`bus: ${bus}${buses.brain === null ? "" : `; brain's hub: ${buses.brain}`}`);
