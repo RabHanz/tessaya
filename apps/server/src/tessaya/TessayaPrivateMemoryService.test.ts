@@ -478,8 +478,12 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
       yield* as(phone)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN }));
       assert.isTrue((yield* as(phone)(p.unlock({ storeId: mayas.store.id }))).open);
     }).pipe(
-      Effect.provide(members(["maya"])),
-      Effect.provide(ServerSettingsService.layerTest({ tessayaOwnerOpensMemberStores: true })),
+      Effect.provide(
+        Layer.mergeAll(
+          members(["maya"]),
+          ServerSettingsService.layerTest({ tessayaOwnerOpensMemberStores: true }),
+        ),
+      ),
     ));
 });
 
