@@ -253,6 +253,22 @@ describe("TessayaHousehold", () => {
         const pending = yield* as(owner)(call({ op: "pair", id }));
         assert.strictEqual(pending.status, "done");
 
+        // Her export: her own device, confirmed it's her (A3); never an agent's, never at A2.
+        const hers = { member: id, assurance: 3, via: "her phone" } as const;
+        assert.strictEqual(
+          (yield* as({ ...hers, assurance: 2 })(call({ op: "exportMine" }))).status,
+          "refused",
+        );
+        assert.strictEqual(
+          (yield* as({ ...hers, service: true })(call({ op: "exportMine" }))).status,
+          "refused",
+        );
+        const exported = yield* as(hers)(call({ op: "exportMine" }));
+        assert.deepStrictEqual(
+          exported.export!["tessaya_household_members"]!.map((r) => r["id"]),
+          [id],
+        );
+
         const removed = yield* as(owner)(call({ op: "remove", id }));
         assert.include(removed.line, "signed out everywhere");
         const live = (yield* auth.listSessions()).filter((s) => s.subject === memberSubject(id));
