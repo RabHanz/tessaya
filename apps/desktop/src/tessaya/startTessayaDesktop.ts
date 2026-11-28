@@ -701,6 +701,8 @@ export const startTessayaDesktop = Effect.gen(function* () {
           url: `${at.origin}${page}/mascot${layerLink.persona() === null ? "" : `?soul=${encodeURIComponent(layerLink.persona()!)}`}`,
           session: at.session,
           waitShown: !layerLink.isOpen(),
+          // his chosen full body (no private moment): her character hands over to it as her 3D cartoon
+          handOff: !layerLink.isOpen(),
         });
     };
     // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer, and its

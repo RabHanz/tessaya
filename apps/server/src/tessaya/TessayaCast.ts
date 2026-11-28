@@ -321,9 +321,11 @@ const make = Effect.gen(function* () {
     const before = yield* bodies;
     const body =
       "body" in input && input.body !== undefined
-        ? before.bodies.find(
+        ? (before.bodies.find(
             (b) => b.id === input.body || b.name.toLowerCase() === input.body?.toLowerCase(),
-          )
+          ) ??
+          // "desktop" is this server's desk body, as in `form`
+          (input.body === "desktop" ? desks(before)[0] : undefined))
         : undefined;
     if ("body" in input && input.body !== undefined && body === undefined)
       return yield* Effect.fail(`There is no body called ${input.body}.`);

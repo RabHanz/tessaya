@@ -157,6 +157,14 @@ export interface LayerHost {
     readonly kind: "poke" | "pat" | "stroke" | "hold" | "squeeze" | "clap";
     readonly self?: true;
   }) => Promise<void>;
+  /**
+   * Her form for a body page outside the desk (the web window): her full body ("human") or her cartoon, as his desktop
+   * wears it, and her change's look between them (`tessayaMorph`).
+   */
+  readonly bodyForm?: () => Promise<{
+    readonly form: "human" | "cartoon";
+    readonly look: "original" | "water" | "off";
+  }>;
   /** What this system can do today: its personas and the tools a turn can reach, read live from the server. */
   readonly capabilities?: () => Promise<{
     readonly personas: ReadonlyArray<{

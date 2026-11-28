@@ -81,7 +81,13 @@ import { TessayaVocabulary } from "./TessayaVocabulary.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
 import { changePersona } from "./PersonaChanges.ts";
 import { playgroundRoutes } from "./PlaygroundRoutes.ts";
-import { feel, interruptBody, noteDeskWorld, privateBodyEnded } from "./TessayaBody.ts";
+import {
+  feel,
+  interruptBody,
+  noteDeskWorld,
+  privateBodyEnded,
+  webBodyForm,
+} from "./TessayaBody.ts";
 
 /** Each direct-door method's payload decoder and result encoder, compiled once. */
 const DESK_CODECS = new Map(
@@ -1030,6 +1036,7 @@ const personaLayerRoutes = Effect.fn("TessayaRoutes.personaLayers")(function* (
       run(
         Effect.asVoid(feel({ vessel: "desktop", part, kind, ...(self === true ? { self } : {}) })),
       ),
+    bodyForm: () => run(webBodyForm()),
     capabilities: async () => ({
       personas: readPack(userdata).personas.map((p) => ({
         id: p.id,

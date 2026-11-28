@@ -212,6 +212,10 @@ export const parseMascotCharacter = (value: unknown): MascotCharacter =>
 export type MascotHands = "arms" | "float";
 export const parseMascotHands = (value: unknown): MascotHands =>
   value === "float" ? "float" : "arms";
+/** Her shapeshift between her character and her full body: its look (formMorph), or straight across without one. */
+export type MascotMorph = "original" | "water" | "off";
+export const parseMascotMorph = (value: unknown): MascotMorph =>
+  value === "water" || value === "off" ? value : "original";
 
 /** How loud her body's sounds and her bed are (Settings → Desktop companion); Off plays nothing. */
 export type MascotSound = "off" | "soft" | "normal" | "full";
@@ -393,6 +397,7 @@ export interface MascotOptions {
   /** Her body: the persona's own character, or one he picked from the Studio's. */
   readonly character: MascotCharacter;
   readonly hands: MascotHands;
+  readonly morph?: MascotMorph;
   /** Her body's sounds as he pokes, drags and drops her, and the bed under her presence (one per desktop: hers). */
   readonly sounds: MascotSound;
   readonly bed: MascotSound;
@@ -437,6 +442,8 @@ export interface DesktopMascot {
       readonly url: string;
       readonly session: Electron.Session;
       readonly waitShown?: boolean;
+      /** Her full body takes over from her character as its 3D cartoon, which morphs into her body, and back. */
+      readonly handOff?: boolean;
     } | null,
   ) => void;
   /** A cue for the layer's body (her speech and mood as they happen); nothing while none is shown. */
@@ -462,6 +469,8 @@ const NEAR_PX = 60;
 const FRAME_MS = 16;
 /** Her shapeshift out (mascotPage `morph`): the window hides once it has played. */
 const MORPH_MS = 360;
+/** Her body morphing back into her cartoon (formMorph, about 1.3 s): past this her character comes back anyway. */
+const HAND_BACK_MS = 3_000;
 const DRAG_MS = 16;
 /** A landing or a wall at least this fast is felt as an impact (a squash by its speed). */
 const IMPACT_SPEED = 300;
@@ -717,8 +726,11 @@ export const createDesktopMascot = (input: {
         const at = Electron.screen.getCursorScreenPoint();
         target.setBounds({ ...b, x: b.x + at.x - from.x, y: b.y + at.y - from.y });
       }, DRAG_MS);
-    } else if ("shown" in ask) morph(ask.shown ? "out" : "in");
-    else if ("shape" in ask) {
+    } else if ("shown" in ask) {
+      // handing her back: her cartoon has played its change out and stands where her character comes back
+      if (handOff === "back" && !ask.shown) return dropVeil(true);
+      morph(ask.shown ? "out" : "in", "worn", handOff === "on");
+    } else if ("shape" in ask) {
       // Windows and Linux shape a window; macOS has no setShape, and there her whole box takes clicks
       if (typeof target.setShape === "function")
         target.setShape(
@@ -766,25 +778,41 @@ export const createDesktopMascot = (input: {
       .executeJavaScript(`window.tessayaDeskPlaces?.(${JSON.stringify(places)})`)
       .catch(() => undefined);
   };
-  const dropVeil = () => {
+  /** What her full body's page needs to stand as her cartoon first: the character she wears and its hands. */
+  const handOffQuery = () =>
+    new URLSearchParams({
+      form:
+        options.character in MASCOT_CHARACTERS
+          ? options.character
+          : (options.persona.character ?? options.persona.persona),
+      hands: options.hands === "float" ? "floating" : "none",
+      look: options.morph === "water" ? "water" : "original",
+    }).toString();
+  // her full body standing in for her character (handOff): set while its page has her, and while it hands her back
+  let handOff: "on" | "back" | null = null;
+  let backTimer: ReturnType<typeof setTimeout> | undefined;
+  const dropVeil = (instant = false) => {
+    clearTimeout(backTimer);
+    handOff = null;
     putDown();
     if (placesTimer !== null) clearInterval(placesTimer);
     placesTimer = null;
     if (veil !== null && !veil.isDestroyed()) veil.destroy();
     veil = null;
-    morph("in");
+    morph("in", "worn", instant);
   };
   /** Her shapeshift on the desk (M-122): sent at once, so it starts on the frame it is asked for. */
-  const morph = (dir: "out" | "in", why: "worn" | "aside" = "worn") => {
+  /** `instant`: another drawing of her takes over on this frame (her 3D cartoon), so her own plays no change of its own. */
+  const morph = (dir: "out" | "in", why: "worn" | "aside" = "worn", instant = false) => {
     const out = dir === "out";
     const was = wanted();
     if (why === "worn") worn = out;
     else aside = out;
     // back, her window shows first and she springs in on it
     if (was !== wanted()) clearTimeout(morphTimer);
-    if (was && !wanted()) morphTimer = setTimeout(apply, MORPH_MS);
+    if (was && !wanted()) morphTimer = setTimeout(apply, instant ? 0 : MORPH_MS);
     else if (!was && wanted()) apply();
-    call(`window.mascot.morph(${JSON.stringify(worn || aside ? "out" : "in")})`);
+    if (!instant) call(`window.mascot.morph(${JSON.stringify(worn || aside ? "out" : "in")})`);
   };
 
   const call = (code: string) => {
@@ -1703,6 +1731,15 @@ export const createDesktopMascot = (input: {
     morph: (dir) => morph(dir),
     aside: (on) => morph(on ? "out" : "in", "aside"),
     layerBody: (page) => {
+      if (page === null && handOff === "on" && veil !== null && !veil.isDestroyed()) {
+        // her body morphs back into her cartoon first; her character takes over when the page says it stands
+        handOff = "back";
+        void veil.webContents
+          .executeJavaScript(`window.tessayaBodyCue?.({kind:"morph",dir:"out"})`)
+          .catch(() => dropVeil());
+        backTimer = setTimeout(() => dropVeil(), HAND_BACK_MS);
+        return;
+      }
       if (page === null) return dropVeil();
       if (veil !== null && !veil.isDestroyed()) return;
       const shown = new Electron.BrowserWindow({
@@ -1733,6 +1770,7 @@ export const createDesktopMascot = (input: {
         if (veil === shown) dropVeil();
       });
       veil = shown;
+      handOff = page.handOff === true && options.morph !== "off" ? "on" : null;
       shown.webContents.on("page-title-updated", (event, title) => {
         const ask = readBodyAsk(title);
         if (ask === null) return;
@@ -1740,10 +1778,24 @@ export const createDesktopMascot = (input: {
         askVeil(shown, ask);
       });
       void shown
-        .loadURL(page.url)
+        .loadURL(
+          handOff === "on"
+            ? `${page.url}${page.url.includes("?") ? "&" : "?"}${handOffQuery()}`
+            : page.url,
+        )
         .then(() => {
           if (veil !== shown) return;
           placeVeil();
+          // her cartoon stands exactly where her character stands
+          const feet = self.feet();
+          if (handOff === "on" && feet !== null) {
+            const b = shown.getBounds();
+            shown.setBounds({
+              ...b,
+              x: Math.round(feet.x - b.width / 2),
+              y: Math.round(feet.y - b.height),
+            });
+          }
           shown.showInactive();
           sendPlaces();
           // shortcut: every 2 s, not on each crew move; a walk aims at where she was then

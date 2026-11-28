@@ -54,6 +54,19 @@ describe("formMorph clock", () => {
     expect(morphAt("in", late, "water").wipe).toBeGreaterThan(morphAt("in", late, "original").wipe);
   });
 
+  it("hands one form to another while both halves are still moving, with no still column between", () => {
+    const { COVER, IN0 } = MORPH.M2M;
+    // the first form is all but covered as "out" stops, and the skin was still closing over it
+    expect(wPart(MORPH.LEAD.wipe, MORPH.DURS.wipe, COVER, "out")).toBeLessThan(0.1);
+    expect(wPart(MORPH.LEAD.wipe, MORPH.DURS.wipe, COVER - 1, "out")).toBeGreaterThan(
+      wPart(MORPH.LEAD.wipe, MORPH.DURS.wipe, COVER, "out"),
+    );
+    // "in" starts with the skin already on its way to the second form
+    const hug = (u: number) => wPart(MORPH.LEAD.hug, MORPH.DURS.hug, u, "in");
+    expect(hug(IN0)).toBeGreaterThan(0);
+    expect(hug(IN0 + 1)).toBeGreaterThan(hug(IN0));
+  });
+
   it("matches v4's w_part at its ends", () => {
     expect(wPart(0, 14, 0, "in")).toBe(0);
     expect(wPart(0, 14, 14, "in")).toBe(1);
