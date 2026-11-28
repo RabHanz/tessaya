@@ -1,19 +1,24 @@
 diff --git a/android/build.gradle b/android/build.gradle
-index 41b4359..1b5e7e7 100644
+index 41b4359..8343bfb 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
-@@ -247,11 +247,6 @@ dependencies {
-     extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
-   }
+@@ -242,14 +242,9 @@ dependencies {
+   implementation "junit:junit:4.12"
  
+   if (useQnn) {
+-    extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:latest.integration@aar"
++    extractLibs "com.microsoft.onnxruntime:onnxruntime-android-qnn:1.24.3@aar"
+   } else {
+-    extractLibs "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+-  }
+-
 -  if (VersionNumber.parse(REACT_NATIVE_VERSION) < VersionNumber.parse("0.71")) {
 -    extractLibs "com.facebook.fbjni:fbjni:+:headers"
 -    extractLibs "com.facebook.fbjni:fbjni:+"
--  }
--
++    extractLibs "com.microsoft.onnxruntime:onnxruntime-android:1.24.3@aar"
+   }
+ 
    // By default it will just include onnxruntime full aar package
-   if (ortExtensionsEnabled) {
-     implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
 diff --git a/ios/OnnxruntimeModule.mm b/ios/OnnxruntimeModule.mm
 index 8155f92..36f9ec1 100644
 --- a/ios/OnnxruntimeModule.mm
