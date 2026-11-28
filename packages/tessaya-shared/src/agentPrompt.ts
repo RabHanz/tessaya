@@ -108,11 +108,11 @@ const dayIn = (ms: number, timeZone: string | undefined): number => {
 
 /**
  * How long since this persona and he last spoke, and what he said then (PRESENCE step 2), so hours later sounds like
- * picking up again and a minute later like the same conversation. Nothing within two minutes. Under six hours it is
+ * picking up again and a minute later like the same conversation, with her answer when given. Nothing within two minutes. Under six hours it is
  * counted in minutes or hours; past that, by his calendar ("yesterday", "3 days ago"). His words are quoted as data.
  */
 export const sinceLine = (
-  last: { readonly at: string; readonly said: string } | undefined,
+  last: { readonly at: string; readonly said: string; readonly replied?: string } | undefined,
   nowMs: number,
   timeZone?: string,
 ): string | null => {
@@ -133,7 +133,12 @@ export const sinceLine = (
           ? "yesterday"
           : `${days} days ago`;
   const said = last.said.length > 80 ? `${last.said.slice(0, 79)}…` : last.said;
-  return `you last spoke with him ${ago}; he had said (data): ${JSON.stringify(said)}`;
+  // Hers too: "did you say…?" after a quiet spell asks about her last words, not his (27 Nov: "I lost the thread").
+  const replied =
+    last.replied === undefined || last.replied.trim() === ""
+      ? ""
+      : `; you had answered (data): ${JSON.stringify(last.replied.length > 200 ? `${last.replied.slice(0, 199)}…` : last.replied)}`;
+  return `you last spoke with him ${ago}; he had said (data): ${JSON.stringify(said)}${replied}`;
 };
 
 const personaLine = (p: TurnPersona) =>

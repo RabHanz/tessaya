@@ -145,6 +145,30 @@ export const memberOfSpeaker = (speaker: SpeakerLike | null): string | null =>
         : null;
 
 /**
+ * A voice on a member's own signed-in desktop, phone or browser (PVD identity: known by sign-in there, by voice on a
+ * shared Tessel). Only Voice ID verifying someone else on this turn's own audio moves the turn off the device's member;
+ * a guest's, unsure or unjudged verdict (a laptop mic that clips) is that member placed by sign-in, never verified.
+ */
+export const signedInSpeaker = <S extends SpeakerLike>(
+  speaker: S,
+  vessel: string,
+  member: string | null | undefined,
+): S => {
+  if (vessel !== "desktop" && vessel !== "phone" && vessel !== "web") return speaker;
+  if (speaker.verified && !speaker.inherited && speaker.test !== true) return speaker;
+  const { session: _s, lifted: _l, voiceIdOff: _v, test: _t, ...rest } = speaker;
+  const id = member ?? OWNER_MEMBER_ID;
+  return {
+    ...rest,
+    kind: id === OWNER_MEMBER_ID ? "owner" : "saved",
+    personId: id,
+    verified: false,
+    inherited: false,
+    placed: `this is their own signed-in ${vessel}`,
+  } as S;
+};
+
+/**
  * How sure a voice is (ACCOUNTS-IDENTITY-DESIGN §3.1): A2 only at the act cut-off on this turn's own audio, A1 for a
  * listen-level or carried-over match, A0 otherwise. A voice never reaches A3.
  */

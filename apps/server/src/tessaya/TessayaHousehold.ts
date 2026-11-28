@@ -1105,7 +1105,7 @@ export const make = Effect.gen(function* () {
       const links = me === null ? [] : linksOf(me);
       return done(
         me === null
-          ? "I don't know you yet, so you're a guest here: nothing you say is kept."
+          ? "Your voice didn't match anyone's on this turn, so you're a guest here for now: nothing you say is kept. Voice ID judges each turn afresh, so this says nothing about whether a voice profile exists."
           : `You're ${me.name}, ${asRole === "adult" || asRole === "admin" || asRole === "owner" ? "an" : "a"} ${asRole} here; I'm ${sure} it's you.${
               links.length === 0
                 ? ""
