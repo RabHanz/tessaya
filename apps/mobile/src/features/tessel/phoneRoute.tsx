@@ -14,6 +14,7 @@ import { File, Paths } from "expo-file-system";
 import * as Network from "expo-network";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { AppState } from "react-native";
 
 import { Haptics } from "../../../modules/t3-haptics";
 import { PhoneAudio, type PhoneAudioRoute } from "../../../modules/t3-phone-audio";
@@ -23,6 +24,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { environmentSession } from "../../state/session";
 import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
 import { useIsSleeve } from "../tessaya/sleeve/useSleeve";
+import { loadSleeveWake, type SleeveWake } from "./sleeveWake";
 
 export interface PhoneRouteChoice {
   readonly environmentId: EnvironmentId;
@@ -153,10 +155,19 @@ export function PhoneRouteHost() {
         ? { environmentId, deviceId: PHONE_VESSEL_DEVICE }
         : null;
   // Keyed: another environment or Tessel is a fresh link with fresh tickets.
-  return c === null ? null : <PhoneRouteLink key={`${c.environmentId}/${c.deviceId}`} choice={c} />;
+  return c === null ? null : (
+    <PhoneRouteLink key={`${c.environmentId}/${c.deviceId}`} choice={c} wake={sleeve} />
+  );
 }
 
-function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
+function PhoneRouteLink({
+  choice: c,
+  wake,
+}: {
+  readonly choice: PhoneRouteChoice;
+  /** A Sleeve listens for her wake word on this phone while it is on screen (iOS gives no mic once locked). */
+  readonly wake: boolean;
+}) {
   const [attempt, setAttempt] = useState(0);
   /** Tries refused in a row since the link last opened. */
   const refused = useRef(0);
@@ -174,6 +185,30 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
     const ws = new WebSocket(`${access.wsBase}?${query.toString()}`);
     ws.binaryType = "arraybuffer";
     let retry: ReturnType<typeof setTimeout> | null = null;
+    let started = false;
+    let closed = false;
+    // her room loop asked for the mic (a talk is open): frames go to her, not to the wake word
+    let listening = false;
+    let sleeveWake: SleeveWake | null = null;
+    let wakeOn = false;
+    const syncMic = () => {
+      if (started) void audio.setMic(listening || wakeOn).catch(() => undefined);
+    };
+    const appSub = AppState.addEventListener("change", (state) => {
+      wakeOn = sleeveWake !== null && state === "active";
+      sleeveWake?.reset();
+      syncMic();
+    });
+    // a model that fails to load leaves the tap and the headset button as the way in
+    if (wake)
+      void loadSleeveWake()
+        .then((w) => {
+          if (closed) return;
+          sleeveWake = w;
+          wakeOn = AppState.currentState === "active";
+          syncMic();
+        })
+        .catch(() => undefined);
     const sendRoute = (r: PhoneAudioRoute) =>
       void Network.getIpAddressAsync()
         .catch(() => null)
@@ -192,7 +227,11 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
     const subs = [
       audio.addListener("onRoute", sendRoute),
       audio.addListener("onMic", (e) => {
-        if (ws.readyState === WebSocket.OPEN) ws.send(decode(e.pcm).buffer);
+        const pcm = decode(e.pcm);
+        if (ws.readyState !== WebSocket.OPEN) return;
+        if (listening || !wakeOn) ws.send(pcm.buffer);
+        else if (sleeveWake?.heard(new Int16Array(pcm.buffer)) === true)
+          ws.send(JSON.stringify({ t: "talk" }));
       }),
       audio.addListener("onButton", () => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "talk" }));
@@ -204,13 +243,21 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
       refused.current = 0;
       void audio
         .start()
-        .then(sendRoute)
+        .then((r) => {
+          started = true;
+          syncMic();
+          sendRoute(r);
+        })
         .catch(() => ws.close());
     };
     ws.onmessage = (e) => {
       if (typeof e.data !== "string") return audio.play(new Uint8Array(e.data as ArrayBuffer));
       const m = parse(e.data);
-      if (m.t === "listen") void audio.setMic(m.on === true);
+      if (m.t === "listen") {
+        listening = m.on === true;
+        if (!listening) sleeveWake?.reset();
+        syncMic();
+      }
       // She was interrupted: what the player still holds goes now.
       else if (m.t === "flush") audio.flush();
       else if (m.t === "haptic" && m.r !== undefined) Haptics?.play(m.r);
@@ -225,6 +272,10 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
     };
     return () => {
       ws.onclose = null;
+      appSub.remove();
+      closed = true;
+      sleeveWake = null;
+      wakeOn = false;
       setLinked(false);
       sendNow = null;
       if (retry !== null) clearTimeout(retry);
@@ -232,6 +283,6 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
       ws.close();
       void audio.stop();
     };
-  }, [access, c.deviceId]);
+  }, [access, c.deviceId, wake]);
   return null;
 }
