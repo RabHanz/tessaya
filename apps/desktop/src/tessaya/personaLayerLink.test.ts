@@ -137,6 +137,12 @@ describe("createLayerHello", () => {
     ]);
   });
 
+  it("opens the moment for the asking window's soul, not the store's own", async () => {
+    const t = make("verified");
+    expect(await t.ask("chat", "freya")).toBe(true);
+    expect(t.posts[0]).toEqual(["window", { surface: "desktop", soul: "freya" }]);
+  });
+
   it("sends nothing when Hello is declined or unavailable, so the page keeps its PIN", async () => {
     for (const result of ["declined", "unavailable"] as const) {
       const t = make(result);

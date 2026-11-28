@@ -152,14 +152,18 @@ export const createLayerHello = (deps: {
   readonly account: string;
 }) => {
   let busy = false;
-  return async (kind: string): Promise<boolean> => {
+  /** `soul`: the soul the asking window is for, so the moment Hello opens is that soul's, never the store's first one. */
+  return async (kind: string, soul?: string): Promise<boolean> => {
     if (busy) return false;
     busy = true;
     try {
       if ((await deps.hello()) !== "verified") return false;
       const stepUp = { hello: deps.account };
       if (kind === "lab") return (await deps.post("unlock", { stepUp })) !== null;
-      const w = await deps.post("window", { surface: "desktop" });
+      const w = await deps.post("window", {
+        surface: "desktop",
+        ...(soul === undefined ? {} : { soul }),
+      });
       if (typeof w?.["vessel"] !== "string") return false;
       return (
         (await deps.post("activate", { surface: "desktop", vessel: w["vessel"], stepUp })) !== null

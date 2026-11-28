@@ -1582,6 +1582,8 @@ export interface DesktopTessayaVoice {
   readonly onNote: (message: string | null) => void;
   /** The companion on the desk wearing this persona (the lead's when none is, or none is named). */
   readonly mascotOf: (persona: string | null) => DesktopMascot;
+  /** The pack id of the persona his lead companion wears now, or null. */
+  readonly leadPersona: () => string | null;
   /** His private layer shows its form of `who`: every other on the desk steps away, and comes back after (M-122). */
   readonly aside: (on: boolean, who: DesktopMascot | null) => void;
 }
@@ -10360,6 +10362,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       );
       return (p === undefined ? undefined : crew.get(p.id)) ?? mascot;
     },
+    leadPersona: () => mascotPersonaArg().persona ?? null,
     aside: (on, who) => {
       asideFor = on ? who : null;
       for (const m of everyMascot()) m.aside(on && m !== who);

@@ -444,6 +444,8 @@ export interface DesktopMascot {
       readonly waitShown?: boolean;
       /** Her full body takes over from her character as its 3D cartoon, which morphs into her body, and back. */
       readonly handOff?: boolean;
+      /** A private moment's form: always out of capture, whatever his capture setting says. */
+      readonly private?: boolean;
     } | null,
   ) => void;
   /** A cue for the layer's body (her speech and mood as they happen); nothing while none is shown. */
@@ -703,6 +705,9 @@ export const createDesktopMascot = (input: {
   };
 
   let veil: Electron.BrowserWindow | null = null;
+  let veilPrivate = false;
+  /** Logs a step of her body window's showing (in-page marks too), in ms since that window was made. */
+  let markVeil = (_mark: string): void => undefined;
   /** Her private body's place: where he left her on the display it is on, else her size's default on the main one. */
   const veilDisplay = () =>
     veil !== null && !veil.isDestroyed()
@@ -813,8 +818,10 @@ export const createDesktopMascot = (input: {
     while (Date.now() < until) {
       if (veil !== target || target.isDestroyed() || handOff !== "on") return;
       const image = await target.webContents.capturePage().catch(() => null);
-      if (image !== null && drawnShare(image.toBitmap()) > DRAWN_SHARE)
+      if (image !== null && drawnShare(image.toBitmap()) > DRAWN_SHARE) {
+        markVeil("seen drawn");
         return morph("out", "worn", true);
+      }
       await new Promise((ok) => setTimeout(ok, 250));
     }
     // nothing of her drew: her character stays, and no invisible window is left taking his clicks
@@ -1773,7 +1780,11 @@ export const createDesktopMascot = (input: {
         return;
       }
       if (page === null) return dropVeil();
-      if (veil !== null && !veil.isDestroyed()) return;
+      // her everyday body standing when a private moment opens (or the reverse): her character takes the new form
+      // through the same change, never a different body swapped in place
+      if (veil !== null && !veil.isDestroyed() && veilPrivate === (page.private === true)) return;
+      if (veil !== null && !veil.isDestroyed()) dropVeil(true);
+      veilPrivate = page.private === true;
       const shown = new Electron.BrowserWindow({
         ...privateBodyBounds(
           Electron.screen.getPrimaryDisplay().workArea,
@@ -1790,9 +1801,9 @@ export const createDesktopMascot = (input: {
         webPreferences: { session: page.session, contextIsolation: true, sandbox: true },
       });
       // Opened for a private moment: always out of capture. Her everyday body follows his capture setting like her
-      // character, and the private shield still covers it if a moment opens in this same window.
-      if (page.handOff === true) protectFromCapture(shown);
-      else shown.setContentProtection(true);
+      // character.
+      if (page.private === true) shown.setContentProtection(true);
+      else protectFromCapture(shown);
       shown.setAlwaysOnTop(true, "floating");
       markCompanionWindow(shown);
       void onEveryDesktop(shown);
@@ -1805,6 +1816,20 @@ export const createDesktopMascot = (input: {
       });
       veil = shown;
       handOff = page.handOff === true && options.morph !== "off" ? "on" : null;
+      // her page's own steps (model up, cartoon standing, change played), timed from this window's making
+      const madeAt = performance.now();
+      markVeil = (mark) =>
+        input.onNote?.("mascot_body_mark", {
+          mark: mark.slice(0, 60),
+          ms: Math.round(performance.now() - madeAt),
+          private: page.private === true,
+        });
+      shown.webContents.on("console-message", (...args: ReadonlyArray<unknown>) => {
+        const first = args[0] as { message?: unknown } | undefined;
+        const message = typeof args[2] === "string" ? args[2] : first?.message;
+        if (veil === shown && typeof message === "string" && message.startsWith("tessaya-mark:"))
+          markVeil(message.slice("tessaya-mark:".length));
+      });
       shown.webContents.on("page-title-updated", (event, title) => {
         const ask = readBodyAsk(title);
         if (ask === null) return;
@@ -1819,6 +1844,7 @@ export const createDesktopMascot = (input: {
         )
         .then(() => {
           if (veil !== shown) return;
+          markVeil("page loaded");
           placeVeil();
           // her cartoon stands exactly where her character stands
           const feet = self.feet();
