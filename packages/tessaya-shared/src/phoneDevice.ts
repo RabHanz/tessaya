@@ -14,6 +14,8 @@ export interface PhoneFacts {
   readonly app?: { readonly version: string | null; readonly update: string | null };
   /** It is her Sleeve: a body of hers, which feels and can act for him (M-158, REQ-25-168). */
   readonly sleeve?: boolean;
+  /** His private layer answers on this server, so the Sleeve can open it (M-133). */
+  readonly private?: boolean;
 }
 
 /**
@@ -96,6 +98,18 @@ const SLEEVE_ITEMS: DeviceManifest["items"] = [
   },
 ];
 
+const PRIVATE_ITEM: DeviceManifest["items"][number] = {
+  id: "phone.private",
+  label: "Private",
+  type: "string",
+  access: "write",
+  safety: "free",
+  report: "on-change",
+  group: "phone",
+  description:
+    "'open' asks for his private space on this phone: it opens only after his Face ID or PIN there; 'close' shuts it and you are back on his screen",
+};
+
 /** A value in a vessel publish that says where its member is (B-043), noted as presence and never kept as an item. */
 export const HERE_ITEM = "presence.here";
 export const HERE_SIGNALS = ["foreground", "background", "home", "away"] as const;
@@ -168,6 +182,7 @@ export const phoneManifest = (facts: PhoneFacts): DeviceManifest => ({
       description: "the body tag the phone was last seated on, read by its own NFC",
     },
     ...(facts.sleeve === true ? SLEEVE_ITEMS : []),
+    ...(facts.sleeve === true && facts.private === true ? [PRIVATE_ITEM] : []),
   ],
 });
 

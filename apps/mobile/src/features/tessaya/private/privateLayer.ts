@@ -9,7 +9,7 @@ import { useSyncExternalStore } from "react";
 
 import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
-import { thisPhoneId } from "../devices/thisPhone";
+import { setThisPhonePrivate, thisPhoneId } from "../devices/thisPhone";
 import type { StepUpCall } from "../lock/stepUp";
 
 export interface LayerAnswer {
@@ -56,11 +56,13 @@ export function usePrivateLayer() {
     if (r === null) return null;
     if (r.status === 404) {
       known = false;
+      setThisPhonePrivate(false);
       tell();
       return null;
     }
     if (!r.ok) return null;
     known = (await r.json().catch(() => null)) as LayerAnswer | null;
+    setThisPhonePrivate(known?.page != null);
     tell();
     return known === null ? null : known;
   };
