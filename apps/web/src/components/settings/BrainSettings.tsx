@@ -305,6 +305,7 @@ const MOTION_LABELS: Readonly<Record<string, string>> = {
 };
 
 const LIVELINESS = { still: "Still", calm: "Calm", lively: "Lively" } as const;
+const MORPH_LOOKS = { original: "Original", water: "Water", off: "Off" } as const;
 
 /** Her lines on every device: written by her brain or the plain ones, and how much she says unprompted. */
 function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
@@ -319,6 +320,7 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const outsideBody = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyOutsideAgents);
   const physicsClips = useEnvironmentSettings(environmentId, (s) => s.tessayaBodyPhysicsClips);
   const brows = useEnvironmentSettings(environmentId, (s) => s.tessayaBrows);
+  const morph = useEnvironmentSettings(environmentId, (s) => s.tessayaMorph);
   const update = useUpdateEnvironmentSettings(environmentId);
   return (
     <SettingsSection title="Her lines">
@@ -385,6 +387,19 @@ function Lines({ environmentId }: { readonly environmentId: EnvironmentId }) {
             aria-label="Brows over her fringe"
             checked={brows !== "off"}
             onCheckedChange={(on) => update({ tessayaBrows: on ? "auto" : "off" })}
+          />
+        }
+      />
+      <SettingsRow
+        title="Her change"
+        description="How her cartoon turns into her full body and back on the web and your phone. The desktop has its own, in its Appearance settings."
+        control={
+          <Choice
+            label="Her change"
+            value={morph}
+            options={["original", "water", "off"]}
+            labels={MORPH_LOOKS}
+            onChange={(v) => update({ tessayaMorph: v })}
           />
         }
       />
