@@ -546,7 +546,7 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       const fails = setFailsOf.get(house);
       if (fails !== undefined) return { ok: false, error: fails };
       const item = String(args["itemId"] ?? "");
-      if (item.startsWith("phone.") && sleevePhones.has(house))
+      if ((item.startsWith("phone.") || item.startsWith("sleeve.")) && sleevePhones.has(house))
         return { ok: true, value: { status: "done", line: "Done on his phone." } };
       if (item === "net.add")
         return {

@@ -15,9 +15,11 @@ import { Linking, Platform, Share } from "react-native";
 import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
-import { thisPhoneManifest } from "../devices/thisPhone";
+import { phoneValues } from "@t3tools/tessaya-shared/phoneDevice";
+import { thisPhoneFacts, thisPhoneManifest } from "../devices/thisPhone";
 import { setPrivateShown } from "../private/privateLayer";
-import { callUrl, messageUrl } from "./sleeveActs.logic";
+import { callUrl, messageUrl, switchOf } from "./sleeveActs.logic";
+import { setSleeveSetting } from "./sleeveSettings";
 import { sleeveStage } from "./sleeveStage";
 
 type Ack = { readonly id: string; readonly ok: boolean; readonly error?: string };
@@ -112,6 +114,13 @@ const run = async (
       if (!/^\s*open/i.test(text)) return { ok: false, error: "Say open or close." };
       setPrivateShown(true);
       return { ok: true };
+    case "sleeve.awake":
+    case "sleeve.quiet": {
+      const on = switchOf(w.value);
+      if (on === null) return { ok: false, error: "Say on or off." };
+      setSleeveSetting(w.itemId === "sleeve.awake" ? "awake" : "quiet", on);
+      return { ok: true };
+    }
     default:
       return { ok: false, error: "This phone does not do that." };
   }
@@ -152,7 +161,14 @@ export function useSleeveActs(on: boolean, come: (wearing: string | null) => voi
           input: {
             kind: "vessel",
             op: "publish",
-            args: { deviceId: manifest.deviceId, manifest, acks, waitMs: WAIT_MS },
+            // its settings as they stand now, so the registry reads them back
+            args: {
+              deviceId: manifest.deviceId,
+              manifest,
+              values: phoneValues(thisPhoneFacts()),
+              acks,
+              waitMs: WAIT_MS,
+            },
           },
         });
         acks = [];

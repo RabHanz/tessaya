@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 
+import { sleeveQuietBehavior } from "../tessaya/sleeve/sleeveSettings";
 import { setAndroidThreadOnScreen } from "./androidNotifications";
 import { foregroundNotificationBehavior } from "./foregroundNotificationBehavior";
 import { routeAgentNotificationResponseOnce, threadDeepLinkOnScreen } from "./notificationPayload";
@@ -22,7 +23,9 @@ export function installAgentNotificationNavigation(navigate: (href: string) => v
   const handledResponseIds = new Set<string>();
   Notifications.setNotificationHandler({
     handleNotification: (notification) =>
-      Promise.resolve(foregroundNotificationBehavior(notification, deepLinkOnScreen)),
+      Promise.resolve(
+        sleeveQuietBehavior(foregroundNotificationBehavior(notification, deepLinkOnScreen)),
+      ),
   });
 
   const handleResponse = (response: Notifications.NotificationResponse): void => {

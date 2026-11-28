@@ -152,7 +152,7 @@ index 5333af3ea577abda416b1a386bdd77b393e6066a..50d96919343e4be74495dbf7f8ad1059
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 2a0edba8a3cead7921dfad513829a6573ae60952..03af4c56e24123e49072d872f67cf035afb833af 100644
+index 2a0edba8a3cead7921dfad513829a6573ae60952..3d264412c8f3dc3566a737f2cdbee3b0568831f0 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 @@ -17,7 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
@@ -164,16 +164,17 @@ index 2a0edba8a3cead7921dfad513829a6573ae60952..03af4c56e24123e49072d872f67cf035
  import { useNativeColumnLayoutMetrics } from "../../native/native-layout-metrics";
  import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
  import { useSafeAreaInsets } from "react-native-safe-area-context";
-@@ -27,6 +27,8 @@ import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context
+@@ -27,6 +27,9 @@ import { useAdaptiveWorkspaceLayout } from "../layout/adaptive-workspace-context
  import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
  import { SettingsRow } from "./components/SettingsRow";
  import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
 +import { setSleeveUnlocked, useSleeve } from "../tessaya/sleeve/useSleeve";
++import { setSleeveSetting, useSleeveSettings } from "../tessaya/sleeve/sleeveSettings";
 +import { setPrivateShown, useLayerKnown } from "../tessaya/private/privateLayer";
  import { SettingsScreen } from "./components/SettingsScreen";
  import type { SettingsPageTarget } from "./components/settings-page-targets";
  import { useSettingsEnvironmentMenu } from "./components/SettingsEnvironmentFilterHeader";
-@@ -81,7 +83,7 @@ export function SettingsListScreen(props: {
+@@ -81,7 +84,7 @@ export function SettingsListScreen(props: {
      <SettingsSidebarContext value={props.sidebar ? { selected: props.selected } : null}>
        <View className="flex-1 bg-screen">
          <SettingsScreen
@@ -182,7 +183,7 @@ index 2a0edba8a3cead7921dfad513829a6573ae60952..03af4c56e24123e49072d872f67cf035
            workspaceRoot={props.sidebar}
            menus={[environmentMenu]}
            search={
-@@ -177,13 +179,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
+@@ -177,13 +180,13 @@ function SettingsList(props: { readonly connections: readonly SettingsListRow[]
    const bottomSafeArea = useNativeColumnLayoutMetrics()?.safeArea.bottom ?? insets.bottom;
    const workspace = useWorkspaceTabs();
    const query = workspace?.state.tabs.settings.query ?? "";
@@ -199,17 +200,18 @@ index 2a0edba8a3cead7921dfad513829a6573ae60952..03af4c56e24123e49072d872f67cf035
      ],
      query,
      m,
-@@ -245,6 +247,9 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -245,6 +248,10 @@ function useSettingsIndexSections(): SettingsListSection[] {
            members: scopedProjectMembers,
          })
        : (selectedProject?.label ?? gt("Unavailable project"));
 +  const overflowRows = useOverflowRows();
 +  const sleeve = useSleeve();
++  const sleeveSet = useSleeveSettings();
 +  const layerKnown = useLayerKnown();
    const page = (
      target: SettingsPageTarget,
      icon: SettingsListRow["icon"],
-@@ -253,31 +258,40 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -253,31 +260,40 @@ function useSettingsIndexSections(): SettingsListSection[] {
    ): SettingsListRow => ({ id: target, icon, label, target, ...extra });
    const serverPage = (target: SettingsPageTarget, icon: SettingsListRow["icon"], label: string) =>
      page(target, icon, label, { disabled: noServerTargets });
@@ -265,7 +267,7 @@ index 2a0edba8a3cead7921dfad513829a6573ae60952..03af4c56e24123e49072d872f67cf035
          page(
            "SettingsProjectOverview",
            "folder",
-@@ -292,6 +306,46 @@ function useSettingsIndexSections(): SettingsListSection[] {
+@@ -292,6 +308,77 @@ function useSettingsIndexSections(): SettingsListSection[] {
          serverPage("SettingsWorktrees", "square.on.square", gt("Worktrees")),
        ],
      },
@@ -299,6 +301,37 @@ index 2a0edba8a3cead7921dfad513829a6573ae60952..03af4c56e24123e49072d872f67cf035
 +              ],
 +            ),
 +        },
++        // her Sleeve's own settings (REQ-25-096), each also by voice ("keep the sleeve awake while it charges")
++        ...(sleeve.sleeve
++          ? [
++              {
++                id: "sleeve-awake",
++                icon: "bolt.circle" as const,
++                label: gt("Stay awake while charging"),
++                value: sleeveSet.awake ? gt("On") : gt("Off"),
++                onPress: () => setSleeveSetting("awake", !sleeveSet.awake),
++              },
++              {
++                id: "sleeve-quiet",
++                icon: "bell.badge" as const,
++                label: gt("Quiet notifications"),
++                value: sleeveSet.quiet ? gt("On") : gt("Off"),
++                onPress: () => setSleeveSetting("quiet", !sleeveSet.quiet),
++              },
++              {
++                id: "sleeve-who",
++                icon: "person.crop.circle" as const,
++                label: gt("Who she is here"),
++                onPress: () =>
++                  Alert.alert(
++                    gt("Who she is here"),
++                    gt(
++                      "Say “be Alfred on my phone”, or any persona, on any device. You can also pick one in Talk.",
++                    ),
++                  ),
++              },
++            ]
++          : []),
 +        page("SettingsVoice", "mic", "Voice and microphone"),
 +        page("SettingsAppearance", "paintbrush", gt("Appearance")),
 +        page("SettingsOrganization", "gearshape", gt("General")),

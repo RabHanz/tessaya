@@ -7,6 +7,8 @@ import * as Application from "expo-application";
 import * as Device from "expo-device";
 import * as Updates from "expo-updates";
 
+import { sleeveSettings } from "../sleeve/sleeveSettings";
+
 // whether this phone is her Sleeve now, kept by useSleeve as her brain answers
 let sleeve = false;
 export const setThisPhoneSleeve = (on: boolean) => {
@@ -26,6 +28,7 @@ export const thisPhoneFacts = (): PhoneFacts => ({
   app: { version: Application.nativeApplicationVersion, update: Updates.updateId },
   sleeve,
   private: layer,
+  settings: sleeveSettings(),
 });
 
 export const thisPhoneManifest = () => phoneManifest(thisPhoneFacts());
