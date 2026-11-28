@@ -471,6 +471,18 @@ const FRAME_MS = 16;
 const MORPH_MS = 360;
 /** Her body morphing back into her cartoon (formMorph, about 1.3 s): past this her character comes back anyway. */
 const HAND_BACK_MS = 3_000;
+/** Her full body must be seen drawn on its window within this, or her character stays and the window goes. */
+const HAND_IN_MS = 5_000;
+/** The share of the body window's pixels that must be drawn to count as her standing there. */
+const DRAWN_SHARE = 0.002;
+
+/** The share of a BGRA bitmap's pixels that are drawn (not transparent): her body window seen, not taken on its word. */
+export const drawnShare = (bgra: Uint8Array): number => {
+  const pixels = Math.floor(bgra.length / 4);
+  let drawn = 0;
+  for (let i = 3; i < pixels * 4; i += 4) if (bgra[i]! > 8) drawn++;
+  return pixels === 0 ? 0 : drawn / pixels;
+};
 const DRAG_MS = 16;
 /** A landing or a wall at least this fast is felt as an impact (a squash by its speed). */
 const IMPACT_SPEED = 300;
@@ -729,6 +741,8 @@ export const createDesktopMascot = (input: {
     } else if ("shown" in ask) {
       // handing her back: her cartoon has played its change out and stands where her character comes back
       if (handOff === "back" && !ask.shown) return dropVeil(true);
+      // her character gives way only once her full body is seen drawn (28 Nov: it vanished with nothing in its place)
+      if (handOff === "on" && ask.shown) return void handIn(target);
       morph(ask.shown ? "out" : "in", "worn", handOff === "on");
     } else if ("shape" in ask) {
       // Windows and Linux shape a window; macOS has no setShape, and there her whole box takes clicks
@@ -791,6 +805,21 @@ export const createDesktopMascot = (input: {
   // her full body standing in for her character (handOff): set while its page has her, and while it hands her back
   let handOff: "on" | "back" | null = null;
   let backTimer: ReturnType<typeof setTimeout> | undefined;
+  const handIn = async (target: Electron.BrowserWindow) => {
+    const until = Date.now() + HAND_IN_MS;
+    while (Date.now() < until) {
+      if (veil !== target || target.isDestroyed() || handOff !== "on") return;
+      const image = await target.webContents.capturePage().catch(() => null);
+      if (image !== null && drawnShare(image.toBitmap()) > DRAWN_SHARE)
+        return morph("out", "worn", true);
+      await new Promise((ok) => setTimeout(ok, 250));
+    }
+    // nothing of her drew: her character stays, and no invisible window is left taking his clicks
+    if (veil === target) {
+      input.onNote?.("mascot_full_body_unseen", { waitedMs: HAND_IN_MS });
+      dropVeil(true);
+    }
+  };
   const dropVeil = (instant = false) => {
     clearTimeout(backTimer);
     handOff = null;

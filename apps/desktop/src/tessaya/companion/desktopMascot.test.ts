@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { bodyPlaceOf, privateBodyBounds, readBodyAsk, shapeOnScreen } from "./desktopMascot.ts";
+import {
+  bodyPlaceOf,
+  drawnShare,
+  privateBodyBounds,
+  readBodyAsk,
+  shapeOnScreen,
+} from "./desktopMascot.ts";
 
 // a 1920×1080 screen with a 48 px taskbar along the bottom
 const work = { x: 0, y: 0, width: 1920, height: 1032 };
@@ -50,5 +56,15 @@ describe("her private body on the desk", () => {
     expect(readBodyAsk("Tessaya")).toBeNull();
     expect(readBodyAsk('tessaya-body:{"move":[1e9,0]}')).toBeNull();
     expect(readBodyAsk("tessaya-body:{nope")).toBeNull();
+  });
+});
+
+describe("drawnShare", () => {
+  it("sees her body only where pixels are drawn: an empty window is not her standing there", () => {
+    const px = (alphas: ReadonlyArray<number>) =>
+      Uint8Array.from(alphas.flatMap((a) => [0, 0, 0, a]));
+    expect(drawnShare(px([0, 0, 0, 0]))).toBe(0);
+    expect(drawnShare(px([0, 255, 3, 200]))).toBe(0.5);
+    expect(drawnShare(new Uint8Array(0))).toBe(0);
   });
 });
