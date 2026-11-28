@@ -471,8 +471,11 @@ const FRAME_MS = 16;
 const MORPH_MS = 360;
 /** Her body morphing back into her cartoon (formMorph, about 1.3 s): past this her character comes back anyway. */
 const HAND_BACK_MS = 3_000;
-/** Her full body must be seen drawn on its window within this, or her character stays and the window goes. */
-const HAND_IN_MS = 5_000;
+/**
+ * Her full body must be seen drawn on its window within this, or her character stays and the window goes. Its in-memory
+ * session keeps no shader cache, so her first frame compiles cold: about 10 s on an Intel UHD 620 (28 Nov).
+ */
+const HAND_IN_MS = 25_000;
 /** The share of the body window's pixels that must be drawn to count as her standing there. */
 const DRAWN_SHARE = 0.002;
 
