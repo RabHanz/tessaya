@@ -1,5 +1,4 @@
 import { useCameraPermissions } from "expo-camera";
-import { useFonts } from "expo-font";
 import { Image } from "expo-image";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useSyncExternalStore } from "react";
@@ -13,7 +12,6 @@ import Animated, {
   ZoomIn,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 
 import { AppText as Text } from "../../../components/ui/AppText";
 import { SymbolView } from "../../../components/ui/AppSymbol";
@@ -24,14 +22,8 @@ import { SettingsRow } from "../../settings/components/SettingsRow";
 import { SettingsSection } from "../../settings/components/SettingsSection";
 import { openSettings } from "../../settings/settings-navigation";
 import { useTessayaStingHandedOff } from "../launch/TessayaLaunchSting";
+import { DYE, PAPER, SERIF, useSerif, WOAD, WoadGlow } from "../layout/woad";
 
-// The sting's tile, so its fade reveals the same woad; paper and woad's light dye from the logo kit.
-const WOAD = "#14505A";
-const WOAD_LIGHT = "#1F6C77";
-const WOAD_DEEP = "#0A2F36";
-const PAPER = "#EEEDE4";
-const DYE = "#5FB3B3";
-const SERIF = "Newsreader";
 // Stills of the production rig (apps/web/public/companion), 3x: her resting face, then the smile she meets you with.
 const FACE = { width: 195, height: 158 };
 const SEEN_KEY = "tessaya.welcome.v1";
@@ -86,7 +78,7 @@ function Welcome() {
   const insets = useSafeAreaInsets();
   const handedOff = useTessayaStingHandedOff();
   const reducedMotion = useReducedMotion();
-  const [fontsLoaded, fontError] = useFonts({ [SERIF]: require("./Newsreader-Regular.ttf") });
+  const [fontsLoaded, fontError] = useSerif();
   const [, requestCameraPermission] = useCameraPermissions();
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Android's back button sits outside React: it closes the welcome rather than the app
@@ -115,20 +107,7 @@ function Welcome() {
       style={[StyleSheet.absoluteFill, styles.root]}
       accessibilityViewIsModal
     >
-      <Svg
-        style={StyleSheet.absoluteFill}
-        accessibilityElementsHidden
-        importantForAccessibility="no"
-      >
-        <Defs>
-          <RadialGradient id="tessaya-welcome-glow" cx="50%" cy="34%" rx="75%" ry="55%">
-            <Stop offset="0%" stopColor={WOAD_LIGHT} />
-            <Stop offset="55%" stopColor={WOAD} />
-            <Stop offset="100%" stopColor={WOAD_DEEP} />
-          </RadialGradient>
-        </Defs>
-        <Rect width="100%" height="100%" fill="url(#tessaya-welcome-glow)" />
-      </Svg>
+      <WoadGlow id="tessaya-welcome-glow" />
       {enter ? (
         <View
           style={[

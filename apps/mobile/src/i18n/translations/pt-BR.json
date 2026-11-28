@@ -5759,5 +5759,15 @@
   "ad208e3e32c85029": "Ocultar todas",
   "3328503592789bed": "Zen",
   "856812e7e1fc445e": "Chamadas de ferramentas no chat",
-  "8d545d54c0a9e950": "Oculta os comandos, edições e pesquisas que os agentes executam. \"Ocultar bem-sucedidas\" mantém as falhas. Zen mostra só as respostas finais. Aprovações, perguntas e erros sempre aparecem."
+  "8d545d54c0a9e950": "Oculta os comandos, edições e pesquisas que os agentes executam. \"Ocultar bem-sucedidas\" mantém as falhas. Zen mostra só as respostas finais. Aprovações, perguntas e erros sempre aparecem.",
+  "a206b1e6043c7751": "Charging {pct}",
+  "4cb0e1dbda1cce36": "Back to your phone",
+  "e740d29d733d2686": "Asks for Face ID or your PIN",
+  "b8424302708b9646": "Your phone",
+  "d07abc1de7ba3d45": "steady",
+  "d6d5635d77a596db": "Stay with her",
+  "425dcf248ee7a05d": "This phone is her Sleeve",
+  "c9f696a24c08b6f0": "Take it back, or open settings for five minutes. Face ID or your PIN first. You can also say “give me my phone back” on any of your devices.",
+  "52b20df5e3e24466": "Give me my phone back",
+  "168d93df8a9115a1": "Just settings, for five minutes"
 }
