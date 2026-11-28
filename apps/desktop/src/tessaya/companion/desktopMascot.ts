@@ -1798,7 +1798,14 @@ export const createDesktopMascot = (input: {
         alwaysOnTop: true,
         hasShadow: false,
         show: false,
-        webPreferences: { session: page.session, contextIsolation: true, sandbox: true },
+        // never paused as a background page: Windows can count this see-through, out-of-capture window as covered, and
+        // her change then stood still (0.1.201, private: 19 s for a 1.3 s change)
+        webPreferences: {
+          session: page.session,
+          contextIsolation: true,
+          sandbox: true,
+          backgroundThrottling: false,
+        },
       });
       // Opened for a private moment: always out of capture. Her everyday body follows his capture setting like her
       // character.
