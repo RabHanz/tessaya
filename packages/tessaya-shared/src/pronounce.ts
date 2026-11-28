@@ -12,8 +12,6 @@ const TESSAYA_SAID = "Tessayya";
 
 /** Built in. Acronyms match only in capitals ("PR", never "pr" in "print"); names match in any case. */
 const RESPELLINGS: Readonly<Record<string, string>> = {
-  // How he says it (British): FRAY-uh.
-  Freya: "Fray-uh",
   Tessaya: TESSAYA_SAID,
   Baton: "Batton",
   T3: "T three",
