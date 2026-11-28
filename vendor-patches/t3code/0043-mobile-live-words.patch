@@ -1,0 +1,153 @@
+Tessaya: the phone composer and Talk show his words as he speaks, streaming T3PhoneAudio frames to the server speech stream.
+
+diff --git a/apps/mobile/src/features/voice-input/VoiceInputProvider.test.ts b/apps/mobile/src/features/voice-input/VoiceInputProvider.test.ts
+index 6e5a83de1eba45bdb67ea9e738fa8ded0ea70263..f04d29cd7f547e41abc3ec74267ec160e7e369c2 100644
+--- a/apps/mobile/src/features/voice-input/VoiceInputProvider.test.ts
++++ b/apps/mobile/src/features/voice-input/VoiceInputProvider.test.ts
+@@ -24,6 +24,10 @@ vi.mock("expo-audio", () => ({
+   setIsAudioActiveAsync: async () => {},
+ }));
+ vi.mock("../../native/voiceRecorder", () => ({ createVoiceRecorder: vi.fn() }));
++vi.mock("./liveCapture", () => ({
++  createLiveRecorder: vi.fn(),
++  liveCaptureAvailable: () => false,
++}));
+ vi.mock("../../native/voiceTranscription", () => ({ getLocalVoiceTranscriber: async () => null }));
+ vi.mock("../../state/preferences", async () => {
+   const { AsyncResult, Atom } = await import("effect/reactivity");
+diff --git a/apps/mobile/src/features/voice-input/VoiceInputProvider.tsx b/apps/mobile/src/features/voice-input/VoiceInputProvider.tsx
+index 882191260a8cdb0ade070c3e9ad8640eea595fd6..d67a43fcb23dbf08539d954a861219569b8f9be5 100644
+--- a/apps/mobile/src/features/voice-input/VoiceInputProvider.tsx
++++ b/apps/mobile/src/features/voice-input/VoiceInputProvider.tsx
+@@ -24,6 +24,7 @@ import {
+   type VoiceTranscriber,
+ } from "@t3tools/client-runtime/voice-input";
+ import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
++import { createLiveRecorder, liveCaptureAvailable } from "./liveCapture";
+ import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
+ import { VoiceInputSession } from "./voiceInputSession";
+ import { createVoiceRecordingPermission } from "./voiceRecordingPermission";
+@@ -91,11 +92,17 @@ export const voiceInputAtom = Atom.make((get) => {
+     void session.controller.appMovedToBackground();
+   });
+   const recorder = createLazyVoiceRecorder({
+-    getDestination: () => (registry.get(voiceRouteAtom) === null ? "local" : "environment"),
++    getDestination: () => {
++      const route = registry.get(voiceRouteAtom);
++      if (route === null) return "local";
++      return route.live && liveCaptureAvailable() ? "live" : "environment";
++    },
+     create: (destination) =>
+       destination === "local"
+         ? createVoiceRecorder(VOICE_RECORDING_OPTIONS)
+-        : new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS),
++        : destination === "live"
++          ? createLiveRecorder()
++          : new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS),
+     onStatus: (status: RecordingStatus) => {
+       session.controller.handleRecorderStatus({
+         isFinished: status.isFinished,
+diff --git a/apps/mobile/src/features/voice-input/environmentTranscriber.ts b/apps/mobile/src/features/voice-input/environmentTranscriber.ts
+index 3f51516d09121e07438b5e1983fcf7e38cd8e2c9..bf13b3800bea33cca8c63d0d869cbbb53c26990e 100644
+--- a/apps/mobile/src/features/voice-input/environmentTranscriber.ts
++++ b/apps/mobile/src/features/voice-input/environmentTranscriber.ts
+@@ -16,6 +16,8 @@ export function createEnvironmentTranscriber(input: {
+   readonly prepare: (signal: AbortSignal) => Promise<string>;
+   readonly decode: (uri: string) => Promise<Uint8Array>;
+   readonly upload: (pcm: Uint8Array, signal: AbortSignal) => Promise<string>;
++  /** Transcribes while he speaks; null leaves the recording to `transcribe` after it stops. */
++  readonly stream?: (signal: AbortSignal) => Promise<string | null>;
+ }): VoiceTranscriber {
+   function check(signal: AbortSignal) {
+     throwIfVoiceTranscriptionAborted(signal);
+@@ -42,7 +44,7 @@ export function createEnvironmentTranscriber(input: {
+         async start(_uri, { signal }) {
+           await ready;
+           check(signal);
+-          return null;
++          return input.stream ? input.stream(signal) : null;
+         },
+         async transcribe(uri, { signal }) {
+           await ready;
+diff --git a/apps/mobile/src/features/voice-input/lazyVoiceRecorder.ts b/apps/mobile/src/features/voice-input/lazyVoiceRecorder.ts
+index 48ef107506d8c8ec2775d37a6778e87c1a381d69..438b87690550bb7baa66b7412435c76081757c6a 100644
+--- a/apps/mobile/src/features/voice-input/lazyVoiceRecorder.ts
++++ b/apps/mobile/src/features/voice-input/lazyVoiceRecorder.ts
+@@ -7,7 +7,7 @@ import {
+ } from "@t3tools/client-runtime/voice-input";
+ 
+ type Subscription = { remove(): void };
+-type RecordingDestination = "local" | "environment";
++type RecordingDestination = "local" | "environment" | "live";
+ 
+ export interface VoiceRecordingInput {
+   readonly uid: string;
+diff --git a/apps/mobile/src/features/voice-input/voiceDestination.test.ts b/apps/mobile/src/features/voice-input/voiceDestination.test.ts
+index d5baf1d1c85870ef59074b9528d2bcf719414c4f..86786165af427b13164cb680ff375a48e66b6182 100644
+--- a/apps/mobile/src/features/voice-input/voiceDestination.test.ts
++++ b/apps/mobile/src/features/voice-input/voiceDestination.test.ts
+@@ -132,7 +132,7 @@ it("keeps local as the default and never reuses consent for an offline or resele
+     expect(appAtomRegistry.get(voiceRouteAtom)).toBeNull();
+     expect(mocks.probe).not.toHaveBeenCalled();
+     chooseVoiceDestination(EnvironmentId.make("offline"));
+-    expect(appAtomRegistry.get(voiceRouteAtom)).toEqual({ transcriber: null });
++    expect(appAtomRegistry.get(voiceRouteAtom)).toEqual({ live: true, transcriber: null });
+     const host = EnvironmentId.make("my-server");
+     chooseVoiceDestination(host);
+     const first = appAtomRegistry.get(voiceRouteAtom)?.transcriber;
+diff --git a/apps/mobile/src/features/voice-input/voiceDestination.ts b/apps/mobile/src/features/voice-input/voiceDestination.ts
+index 1a1c1e9396175faf5c3b466fd867306bdc0691d6..85ca6b0a0136f9f3a9a657bd64c8dc60d8aa8813 100644
+--- a/apps/mobile/src/features/voice-input/voiceDestination.ts
++++ b/apps/mobile/src/features/voice-input/voiceDestination.ts
+@@ -16,6 +16,7 @@ import {
+   requireCloudSpeechKey,
+   transcribeCloudPcm,
+   getEnvironmentSpeechStatus,
++  getEnvironmentSpeechStreamUrl,
+   transcribeEnvironmentPcm,
+   VoiceTranscriptionError,
+ } from "@t3tools/client-runtime/voice-input";
+@@ -34,6 +35,7 @@ import { environmentSession, sessionHasScope } from "../../state/session";
+ import { connectionAtomRuntime } from "../../connection/runtime";
+ import { uuidv4 } from "../../lib/uuid";
+ import { createEnvironmentTranscriber } from "./environmentTranscriber";
++import { liveRecording, streamLiveCapture } from "./liveCapture";
+ import { readVoiceGrant, writeVoiceGrant, type VoiceGrant } from "./voiceGrantStorage";
+ 
+ const storedGrant = Atom.make(Effect.promise(readVoiceGrant)).pipe(Atom.keepAlive);
+@@ -175,6 +177,8 @@ function environmentTranscriber(
+         : "auto";
+     },
+     decode: (uri) => {
++      const live = liveRecording(uri);
++      if (live) return Promise.resolve(live);
+       if (!native?.decodeRecording)
+         throw new VoiceTranscriptionError({
+           code: "unavailable",
+@@ -182,6 +186,17 @@ function environmentTranscriber(
+         });
+       return native.decodeRecording(uri);
+     },
++    // The server's own speech stream (as web uses it); a cloud provider has none, so it uploads after.
++    ...(provider
++      ? {}
++      : {
++          stream: (signal: AbortSignal) =>
++            streamLiveCapture({
++              url: () => runSpeech(getEnvironmentSpeechStreamUrl(prepared), signal, canSend),
++              signal,
++              canSend,
++            }),
++        }),
+     upload: async (pcm, signal) =>
+       (
+         await runSpeech(
+@@ -256,6 +271,8 @@ export const voiceRouteAtom = Atom.make((get) => {
+   const connection = get(connectionAtom);
+   const registry = get.registry;
+   return {
++    // Live words come from the environment's speech stream, which a cloud destination does not have.
++    live: !cloud,
+     transcriber:
+       connection &&
+       environmentTranscriber(

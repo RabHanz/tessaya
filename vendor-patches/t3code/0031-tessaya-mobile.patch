@@ -1390,7 +1390,7 @@ index f6e5ae62836c3c67f7187aa957940b78d1ab295e..a744edbf8867f5373186d56f9126f6d3
  // composer that stays mounted under display: none (e.g. behind an agent question) must unfocus.
  it("unfocuses a hidden composer so the global dictation controls can show", () => {
 diff --git a/apps/mobile/src/features/voice-input/useVoiceInputController.ts b/apps/mobile/src/features/voice-input/useVoiceInputController.ts
-index 98188b0becdc8d3772b1dd0d58344aa04560aae4..085bd7ee003ff078d96532df40a8e4af3656d096 100644
+index 98188b0becdc8d3772b1dd0d58344aa04560aae4..fdf51059124915a6f7dceb5fea262aa7186a0443 100644
 --- a/apps/mobile/src/features/voice-input/useVoiceInputController.ts
 +++ b/apps/mobile/src/features/voice-input/useVoiceInputController.ts
 @@ -1,5 +1,5 @@
@@ -1401,7 +1401,15 @@ index 98188b0becdc8d3772b1dd0d58344aa04560aae4..085bd7ee003ff078d96532df40a8e4af
  import {
    voiceInputBlocksSubmission,
    type VoiceInputState,
-@@ -35,14 +35,29 @@ export function useVoiceInputController(input: {
+@@ -7,6 +7,7 @@ import {
+ 
+ import type { ComposerEditorSelection } from "../../components/ComposerEditor";
+ import { useGlobalVoiceInput } from "./VoiceInputProvider";
++import { getLiveWords, subscribeLiveWords } from "./liveWords";
+ import { createVoiceInputTarget } from "./voiceInputSession";
+ 
+ const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
+@@ -35,14 +36,29 @@ export function useVoiceInputController(input: {
      };
    }, []);
  
@@ -1438,6 +1446,24 @@ index 98188b0becdc8d3772b1dd0d58344aa04560aae4..085bd7ee003ff078d96532df40a8e4af
  
    const start = useCallback(() => {
      const captured = latestInput.current;
+@@ -64,10 +80,17 @@ export function useVoiceInputController(input: {
+   }, [session]);
+   const state = global.ownerKey === input.ownerKey ? global.state : IDLE_STATE;
+   const isBusy = voiceInputBlocksSubmission(state);
++  const heard = useSyncExternalStore(subscribeLiveWords, getLiveWords);
++  // His words so far, while this owner records or the last of them is written out.
++  const liveWords =
++    heard !== null && (state.phase === "recording" || state.phase === "transcribing")
++      ? heard
++      : null;
+   return {
+     isAvailable: global.isAvailable && (!global.isBusy || global.ownerKey === input.ownerKey),
+     state,
+     audioLevels: global.audioLevels,
++    liveWords,
+     elapsedSeconds: global.elapsedSeconds,
+     isBusy,
+     freezesEditor: isBusy,
 diff --git a/apps/mobile/src/state/use-remote-environment-registry.ts b/apps/mobile/src/state/use-remote-environment-registry.ts
 index f8495bd3c3888bbb1d38084f6aeb2ddcd8c4452d..65d770b8f6e0612c0ad82b16a2aaa3aab91075a9 100644
 --- a/apps/mobile/src/state/use-remote-environment-registry.ts
