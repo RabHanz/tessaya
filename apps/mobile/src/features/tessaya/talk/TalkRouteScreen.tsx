@@ -159,8 +159,10 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
     pressure?: unknown;
     cmPerS?: unknown;
     durationMs?: unknown;
+    areaCm2?: unknown;
   }) => {
-    // carried about her screen is felt as the desk's carry; every other kind as the one touch path reads it
+    // carried about her screen is the desk's carry; every other kind as the one touch path reads it
+    // shortcut: a grab goes as hold until every server takes "grab" (an older one refuses the touch)
     const kind =
       t.kind === "carry" ? "carry" : typeof t.kind === "string" ? touchOpKind(t.kind) : null;
     if (environmentId === null || persona === null || kind === null || typeof t.part !== "string")
@@ -177,6 +179,9 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
           cmPerS: typeof t.cmPerS === "number" ? Math.min(2000, Math.max(0, t.cmPerS)) : 0,
           durationMs:
             typeof t.durationMs === "number" ? Math.min(600_000, Math.max(0, t.durationMs)) : 0,
+          ...(typeof t.areaCm2 === "number"
+            ? { areaCm2: Math.min(400, Math.max(0.1, t.areaCm2)) }
+            : {}),
           persona: persona.id,
           device: manifestNow().deviceId,
         },

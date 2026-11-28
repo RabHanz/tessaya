@@ -1123,10 +1123,22 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
       const a = decode(
         Schema.Struct({
           part: Text(24),
-          kind: Schema.Literals(["poke", "stroke", "pat", "hold", "squeeze", "throw", "carry"]),
+          kind: Schema.Literals([
+            "poke",
+            "stroke",
+            "pat",
+            "hold",
+            "grab",
+            "squeeze",
+            "throw",
+            "carry",
+          ]),
           pressure: between(0, 1),
           cmPerS: between(0, 2000),
           durationMs: between(0, 600_000),
+          // skin under his hand, when the body can measure it: a fingertip ~1 cm², a palm ~60; and how far it pulled
+          areaCm2: Schema.optionalKey(between(0.1, 400)),
+          stretch: Schema.optionalKey(between(0, 1)),
           persona: Schema.optionalKey(Text(60)),
           // the body it was on (a phone's id); the desk's when unsaid
           device: Schema.optionalKey(Text(120)),
@@ -1144,6 +1156,8 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
         pressure: t.pressure,
         cmPerS: t.cmPerS,
         durationMs: t.durationMs,
+        areaCm2: t.areaCm2,
+        stretch: t.stretch,
         persona: t.persona,
       }).pipe(
         Effect.provideService(AffectCause, {
@@ -1166,7 +1180,8 @@ export const serveVoiceCall = Effect.fn("baton.voice.call")(function* (
         pressure: t.pressure,
         sinceWordsMs: last === undefined ? Infinity : now - last,
       });
-      const event = t.kind === "carry" || t.kind === "hold" ? null : TOUCH_EVENT[t.kind];
+      const event =
+        t.kind === "carry" || t.kind === "hold" || t.kind === "grab" ? null : TOUCH_EVENT[t.kind];
       const lines = yield* Effect.serviceOption(TessayaExpression);
       const said =
         reaction.speak && event !== null && Option.isSome(lines)

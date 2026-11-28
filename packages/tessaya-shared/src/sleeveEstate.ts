@@ -45,3 +45,28 @@ export const wanderSpot = (s: Spot, size: number, box: StageBox, random: () => n
     box,
   );
 };
+
+/** CSS px in a centimetre on a phone (about 160 points to the inch). */
+export const PX_PER_CM = 63;
+/** A fingertip's contact, for a screen that reports no contact size. */
+const FINGERTIP_CM2 = 1.2;
+
+/**
+ * What a touchscreen tells of his finger on her skin: the contact area (its reported ellipse, in cm²) and its force
+ * where the screen measures one (null: no force sensor, as on most phones, and her nerves take their default).
+ */
+export const fingerSkin = (
+  widthPx: number,
+  heightPx: number,
+  pressure: number,
+): { readonly areaCm2: number; readonly pressure: number | null } => {
+  const area =
+    widthPx > 1 && heightPx > 1
+      ? (Math.PI / 4) * (widthPx / PX_PER_CM) * (heightPx / PX_PER_CM)
+      : 0;
+  return {
+    areaCm2: Math.round(Math.min(400, Math.max(area, FINGERTIP_CM2)) * 100) / 100,
+    // browsers report 0.5 for a touch with no force sensor, and 0 once it lifts
+    pressure: pressure > 0 && pressure !== 0.5 ? Math.min(1, pressure) : null,
+  };
+};

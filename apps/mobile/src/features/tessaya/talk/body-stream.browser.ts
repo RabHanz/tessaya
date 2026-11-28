@@ -36,6 +36,7 @@ const body = mountBody(canvas, {
       kind: t.kind,
       pressure: t.pressure ?? t.intensity,
       cmPerS: t.felt?.cmPerS ?? 0,
+      ...(t.area === undefined ? {} : { areaCm2: t.area }),
       ...(t.self === true ? { self: true } : {}),
     }),
   // her model has loaded and drawn: the app takes away her face placeholder

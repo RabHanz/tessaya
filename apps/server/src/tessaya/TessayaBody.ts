@@ -866,6 +866,7 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
       vessel: f.vessel,
       ...(f.pressure === undefined ? {} : { pressure: f.pressure }),
       ...(f.durationMs === undefined ? {} : { durationMs: f.durationMs }),
+      ...(f.areaCm2 === undefined ? {} : { areaCm2: f.areaCm2 }),
     },
     ...(f.private === true ? { private: true } : {}),
   });
