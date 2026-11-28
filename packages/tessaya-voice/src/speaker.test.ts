@@ -8,6 +8,7 @@ import {
   cosine,
   decideSpeaker,
   enrol,
+  deskSpeaker,
   forWire,
   HOLD_MS,
   holdVoice,
@@ -595,6 +596,17 @@ describe("the speaker identity", () => {
     expect(teaches({ ...him({}), kind: "guest", personId: null })).toBeNull();
     // The embedding never leaves the device with the identity.
     expect(forWire(him({})).own).toEqual({ score: 0.4, ms: 2_000 });
+  });
+
+  it("a desk turn carries Voice ID being off, so the brain keeps him on his path", () => {
+    expect(deskSpeaker({ ...UNVERIFIED(0), voiceIdOff: true })).toMatchObject({
+      kind: "unverified",
+      voiceIdOff: true,
+    });
+    expect(deskSpeaker(UNVERIFIED(0))).not.toHaveProperty("voiceIdOff");
+    expect(
+      deskSpeaker({ ...UNVERIFIED(0), kind: "owner", personId: "owner", test: true }).test,
+    ).toBe(true);
   });
 
   it("scores a clip against a person's room centroid too, the better of the two", () => {

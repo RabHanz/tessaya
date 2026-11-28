@@ -266,6 +266,21 @@ export const forWire = (identity: SpeakerIdentity): SpeakerIdentity =>
     ? identity
     : { ...identity, own: { score: identity.own.score, ms: identity.own.ms } };
 
+/**
+ * The identity as a desk turn carries it to the brain (DeskTurnBody's speaker). `voiceIdOff` must travel: without it a
+ * desktop with Voice ID switched off reads on the brain as a voice that matched nobody (28 Nov: "treated as a guest").
+ */
+export const deskSpeaker = (identity: SpeakerIdentity) => ({
+  kind: identity.kind,
+  personId: identity.personId,
+  verified: identity.verified,
+  inherited: identity.inherited,
+  confidence: identity.confidence,
+  ...(identity.voiceIdOff === true ? { voiceIdOff: true } : {}),
+  ...(identity.test === true ? { test: true } : {}),
+  ...(identity.print === undefined ? {} : { print: identity.print }),
+});
+
 /** A stranger's clip shorter than this is too unsure to file (his own 2.2 s turns scored 0.27 against his profile). */
 export const PRINT_MIN_MS = 2_000;
 

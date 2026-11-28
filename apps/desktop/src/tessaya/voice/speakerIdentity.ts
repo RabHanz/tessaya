@@ -64,6 +64,7 @@ export const createSpeakerIdentity = (input: {
         identity.confidence === null ? null : Math.round(identity.confidence * 1000) / 1000,
       verified: identity.verified,
       inherited: identity.inherited,
+      ...(identity.voiceIdOff === true ? { voiceIdOff: true } : {}),
       ms,
     });
     return identity;
@@ -86,7 +87,11 @@ export const createSpeakerIdentity = (input: {
           : UNVERIFIED(at);
       return decided(kept, use, ms);
     }
-    const vector = await embedder.embed(pcm).catch(() => null);
+    // Why a turn went unscored is in the log, so an embedder that fails can't hide behind "unverified" again.
+    const vector = await embedder.embed(pcm).catch((error: unknown) => {
+      input.onNote?.("speaker_failed", { error: String(error).slice(0, 200), ms });
+      return null;
+    });
     if (vector === null) return decided(UNVERIFIED(at), use, ms);
     const clip = { vector, ms };
     const base = {
