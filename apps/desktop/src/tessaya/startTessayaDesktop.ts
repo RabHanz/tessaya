@@ -663,13 +663,18 @@ export const startTessayaDesktop = Effect.gen(function* () {
         void showLayerBody(on);
       },
     });
-    /** The layer's pages load in their own in-memory session that carries this server's token, and nothing else. */
-    const layerSession = async () => {
+    /**
+     * The layer's pages load in their own in-memory session that carries this server's token, and nothing else. Her desk
+     * body keeps one on disk with no HTTP cache, only so her shaders stay compiled: cold, her first frame took 11 s.
+     */
+    const layerSession = async (deskBody = false) => {
       const token = await Effect.runPromiseWith(context)(localAuth.getBearerToken);
       const config = await run(Effect.flatMap(pool.primary, (primary) => primary.currentConfig));
       if (config._tag === "None") return null;
       const origin = new URL(config.value.httpBaseUrl).origin;
-      const session = Electron.session.fromPartition(`layer-${NodeCrypto.randomUUID()}`);
+      const session = deskBody
+        ? Electron.session.fromPartition("persist:tessaya-desk-body", { cache: false })
+        : Electron.session.fromPartition(`layer-${NodeCrypto.randomUUID()}`);
       session.webRequest.onBeforeSendHeaders(
         { urls: [`${origin}/tessaya/layer/*`] },
         (details, done) =>
@@ -693,7 +698,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
       if (!(open || deskFullBody) || page === null) return who?.layerBody(null);
       // her shapeshift starts on the open itself; the private form finishes it once its page is up
       if (open) who?.morph("out");
-      const at = await layerSession();
+      const at = await layerSession(true);
       if (at === null && open) who?.morph("in");
       if (at !== null && (layerLink.isOpen() || deskFullBody))
         who?.layerBody({
