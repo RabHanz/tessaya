@@ -28,6 +28,7 @@ export const bodyLine = (items: ReadonlyArray<{ readonly id: string }>): string 
     has("phone.stage")
       ? "call up a live thing beside you on its screen and hold it (his timer, today, a note, the weather, music, a call)"
       : null,
+    has("phone.private") ? "open his private space there, behind his Face ID or PIN" : null,
   ].filter((x): x is string => x !== null);
   const parts = [
     desk,

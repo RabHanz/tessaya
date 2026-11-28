@@ -12,6 +12,11 @@ let sleeve = false;
 export const setThisPhoneSleeve = (on: boolean) => {
   sleeve = on;
 };
+// whether his private layer answers on this server (privateLayer's report)
+let layer = false;
+export const setThisPhonePrivate = (on: boolean) => {
+  layer = on;
+};
 
 export const thisPhoneFacts = (): PhoneFacts => ({
   installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
@@ -20,6 +25,7 @@ export const thisPhoneFacts = (): PhoneFacts => ({
   motion: Device.isDevice,
   app: { version: Application.nativeApplicationVersion, update: Updates.updateId },
   sleeve,
+  private: layer,
 });
 
 export const thisPhoneManifest = () => phoneManifest(thisPhoneFacts());

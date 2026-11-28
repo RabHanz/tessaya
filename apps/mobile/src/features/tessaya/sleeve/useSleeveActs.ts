@@ -16,6 +16,7 @@ import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { thisPhoneManifest } from "../devices/thisPhone";
+import { setPrivateShown } from "../private/privateLayer";
 import { callUrl, messageUrl } from "./sleeveActs.logic";
 import { sleeveStage } from "./sleeveStage";
 
@@ -102,6 +103,15 @@ const run = async (
     }
     case "phone.stage":
       return stage(text, feed);
+    case "phone.private":
+      // the step-up on the phone is the gate: her brain only asks for it, or shuts it
+      if (/^\s*(close|shut|off|leave)/i.test(text)) {
+        setPrivateShown(false);
+        return { ok: true };
+      }
+      if (!/^\s*open/i.test(text)) return { ok: false, error: "Say open or close." };
+      setPrivateShown(true);
+      return { ok: true };
     default:
       return { ok: false, error: "This phone does not do that." };
   }

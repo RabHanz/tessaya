@@ -54,7 +54,7 @@ function PrivateFlow(props: { readonly layer: ReturnType<typeof usePrivateLayer>
   const [open, setOpen] = useState(false);
   if (!open)
     return (
-      <View className="absolute inset-0 bg-black">
+      <View className="absolute inset-0 bg-black/60">
         <UnlockSheet
           title="Private"
           detail="Use Face ID or your PIN. It opens on this phone only, until you close it or put the phone away."
@@ -75,10 +75,7 @@ function PrivateView(props: { readonly layer: ReturnType<typeof usePrivateLayer>
   const [covered, setCovered] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const wasOpen = useRef(false);
-  const close = () => {
-    void layer.report(["windowClosed"]);
-    setPrivateShown(false);
-  };
+  const close = () => setPrivateShown(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the app switcher's snapshot and the background are outside React
   useEffect(() => {
     const change = AppState.addEventListener("change", (s) => {
@@ -91,8 +88,10 @@ function PrivateView(props: { readonly layer: ReturnType<typeof usePrivateLayer>
       change.remove();
       blur.remove();
       focus.remove();
+      // every way out (his Close, the background, idle, or her brain asked by voice) tells the layer, so her form snaps back
+      void layer.report(["windowClosed"]);
     };
-    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- close only reports and hides
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- close only hides; the layer is this screen's own
   }, []);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- follows who is home, where the sound goes, and the moment ending
   useEffect(() => {

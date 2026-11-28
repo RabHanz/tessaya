@@ -456,6 +456,7 @@ const SLEEVE_PHONE = phoneManifest({
   os: "iOS 26",
   motion: true,
   sleeve: true,
+  private: true,
 });
 const sleevePhones = new WeakSet<House>();
 const wifiOf = (house: House) => {

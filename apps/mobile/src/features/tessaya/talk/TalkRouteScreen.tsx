@@ -47,7 +47,7 @@ import { useVoiceInputController } from "../../voice-input/useVoiceInputControll
 import { askOutcome, askRefused, bodyCacheName, talkPersona } from "./talk.logic";
 import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
 import { setHerPhase, useHerPhase } from "../island/herPhase";
-import { phoneSoulIs } from "../private/privateLayer";
+import { phoneSoulIs, usePrivateShown } from "../private/privateLayer";
 import { useBottomClearance } from "../layout/screenInsets";
 import { phoneTalk, usePhoneVesselReady } from "../../tessel/phoneRoute";
 import { setSleeveListen } from "../sleeve/sleeveListen";
@@ -97,6 +97,7 @@ export function TalkView(props: {
   const insets = useSafeAreaInsets();
   const { height: screenHeight, width: screenWidth } = useWindowDimensions();
   const { focused, sleeve, away } = props;
+  const privateOpen = usePrivateShown();
   // a Sleeve turned on its side (on a stand, charging) is her dock: her on the left, her words on the right
   const dock = sleeve && screenWidth > screenHeight;
   const [active, setActive] = useState(AppState.currentState === "active");
@@ -525,10 +526,11 @@ export function TalkView(props: {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- her stage (a WebView, outside React) plays her leaving this body and coming back
   useEffect(() => {
     if (!sleeve) return;
-    post({ type: "morph", dir: away ? "out" : "in" });
-    if (away && listening) void voice.stop();
+    // into his private space she morphs out of this form; when it closes she springs back
+    post({ type: "morph", dir: away || privateOpen ? "out" : "in" });
+    if ((away || privateOpen) && listening) void voice.stop();
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- only her going and coming back moves her
-  }, [sleeve, away]);
+  }, [sleeve, away, privateOpen]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- her stage (a WebView, outside React) holds what her brain calls up
   useEffect(() => {
     if (!cartoon || !drawing) return;

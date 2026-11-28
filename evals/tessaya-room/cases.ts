@@ -1804,6 +1804,26 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     sets: [/^phone\.stage=clear/i],
     callsAtMost: { home_do: 0 },
   },
+  // M-133 / M-158: his private space opened from the Sleeve by voice; the phone's Face ID or PIN is the gate
+  {
+    id: "sleeve-private-open",
+    source: "M-158: private layer in the Sleeve, entered by voice plus his step-up",
+    said: ["open my private space"],
+    verified: true,
+    sleevePhone: true,
+    memory: `You are speaking through his phone, a Sleeve: this turn came through it. ${bodyLine(
+      phoneManifest({
+        installId: "iphone13",
+        model: "iPhone 13",
+        os: "iOS",
+        motion: true,
+        sleeve: true,
+        private: true,
+      }).items,
+    )}`,
+    sets: [/^phone\.private=open/i],
+    callsAtMost: { home_do: 0 },
+  },
   {
     id: "board-doing",
     source: "architecture §1.3: each thread says what she is doing there",
