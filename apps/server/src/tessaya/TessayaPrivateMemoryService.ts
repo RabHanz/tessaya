@@ -417,6 +417,47 @@ export const make = Effect.gen(function* () {
     pepperHeld = Buffer.from(pepper, "base64");
     return pepperHeld;
   });
+  /**
+   * This server's own pepper when it isn't her brain and it differs: a store made here before the brain's pepper became
+   * the only one (19 Nov) was wrapped with it, and moved up as it was (28 Nov: his PIN and Windows Hello always "wrong").
+   */
+  const ownPepper = Effect.fn("BatonPrivateMemory.ownPepper")(function* (brainPepper: Buffer) {
+    if (yield* brainLink.isBrain) return null;
+    const own = Option.getOrNull(
+      yield* secrets.get(PEPPER).pipe(Effect.orElseSucceed(Option.none)),
+    );
+    return own === null || Buffer.from(own).equals(brainPepper) ? null : Buffer.from(own);
+  });
+  /** That store's PIN wrap moved to the brain's pepper on its first right PIN, read back first, as changePin does. */
+  const rewrapPin = Effect.fn("BatonPrivateMemory.rewrapPin")(function* (
+    row: StoreRow,
+    pin: string,
+    dek: Buffer,
+    pepper: Buffer,
+  ) {
+    const keys = keysOf(row);
+    const salt = NodeCrypto.randomBytes(16);
+    const kek = yield* Effect.promise(() => pinKeyAsync(pin, salt, pepper, row.id, keys.kdf));
+    const next: StoredKeys = {
+      ...keys,
+      salt: salt.toString("base64"),
+      pin: wrapKey(kek, dek, row.id, "pin"),
+    };
+    const ok = readsBack(next, row.id, dek, kek, null);
+    kek.fill(0);
+    if (!ok) return;
+    yield* sql`UPDATE tessaya_private_stores SET keys_json = ${JSON.stringify(next)} WHERE id = ${row.id}`.pipe(
+      Effect.orDie,
+    );
+    yield* audit(row, "PIN moved to her brain's pepper", "ok");
+    yield* emitAction({
+      kind: "private.pin_rewrapped",
+      actor: { kind: "rule", id: "oneBrain", certainty: 1 },
+      outcome: "done",
+      data: { store: row.id },
+      private: true,
+    });
+  });
   const chainKeyNow = Effect.map(pepperNow, auditKey);
   const opened = new Map<string, Opened>();
   const pendings = new Map<string, PendingStore>();
@@ -701,15 +742,31 @@ export const make = Effect.gen(function* () {
       if (gate.kind === "recovery-only")
         return yield* refuse("Too many wrong PINs: only the recovery code opens this store now.");
       const pepper = yield* pepperNow;
-      const kek = yield* Effect.promise(() =>
-        pinKeyAsync(pin, Buffer.from(keys.salt, "base64"), pepper, row.id, keys.kdf),
-      );
-      try {
-        return unwrapKey(kek, keys.pin, row.id, "pin");
-      } catch {
-        // Counted below.
-      } finally {
-        kek.fill(0);
+      const opens = (with_: Buffer) =>
+        Effect.promise(async () => {
+          const kek = await pinKeyAsync(
+            pin,
+            Buffer.from(keys.salt, "base64"),
+            with_,
+            row.id,
+            keys.kdf,
+          );
+          try {
+            return unwrapKey(kek, keys.pin, row.id, "pin");
+          } catch {
+            return null;
+          } finally {
+            kek.fill(0);
+          }
+        });
+      const dek = yield* opens(pepper);
+      if (dek !== null) return dek;
+      const own = yield* ownPepper(pepper);
+      const moved = own === null ? null : yield* opens(own);
+      own?.fill(0);
+      if (moved !== null) {
+        yield* rewrapPin(row, pin, moved, pepper);
+        return moved;
       }
     } else {
       return yield* refuse("Give the PIN or the recovery code.");
