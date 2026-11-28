@@ -18,7 +18,9 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -29,12 +31,15 @@ import {
   makeSpeechTextCorrector,
   normalizeSpeechCustomWords,
   speechRecognitionWords,
+  withServerWords,
 } from "./customWords.ts";
 import { removeSpeechFillerWords } from "./fillerWords.ts";
 import {
   DEFAULT_SPEECH_MODEL_ID,
   effectiveSpeechLanguage,
   getSpeechModel,
+  PERSONAL_SPEECH_MODEL_ID,
+  personalSpeechModel,
   SPEECH_MODELS,
   type SpeechModel,
 } from "./model.ts";
@@ -189,6 +194,9 @@ const make = Effect.gen(function* () {
   const architecture = yield* HostProcess.Architecture;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const store = yield* SpeechModelStore.SpeechModelStore;
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const home = yield* HostProcess.HomeDirectory;
   const scope = yield* Effect.scope;
   const clock = yield* Clock.Clock;
   const now = () => clock.currentTimeMillisUnsafe();
@@ -308,8 +316,39 @@ const make = Effect.gen(function* () {
     ServerSettings.ServerSettingsService["Service"]["getSettings"]
   >;
 
+  // The personal model counts only once its file is linked in and verified; re-read so a swapped model is picked up.
+  const personalDirectory = path.join(home, ".tessaya", "personal-models");
+  const personalModel = yield* fileSystem
+    .readFileString(path.join(personalDirectory, "manifest.json"))
+    .pipe(
+      Effect.flatMap((text) => Effect.try(() => personalSpeechModel(JSON.parse(text)))),
+      Effect.flatMap((definition) =>
+        definition
+          ? store.link([definition], personalDirectory).pipe(
+              Effect.andThen(store.installedPath(definition)),
+              Effect.map((installed) => (installed ? definition : undefined)),
+            )
+          : Effect.undefined,
+      ),
+      Effect.orElseSucceed(() => undefined),
+      Effect.cachedWithTTL("1 minute"),
+    );
+  // Refreshed by every settings read, which precedes each use below.
+  let personal: SpeechModel | undefined;
+  yield* personalModel.pipe(Effect.forkScoped);
+  const allModels = () => (personal ? [personal, ...SPEECH_MODELS] : SPEECH_MODELS);
+  const modelById = (modelId: string) =>
+    personal?.id === modelId ? personal : getSpeechModel(modelId);
+
+  // shortcut: the default id means the personal model while one is installed, since settings cannot tell an untouched
+  // default from a chosen one; picking any other model, or removing the manifest, uses the stock models.
   const selectedModel = (settings: SettingsSnapshot): SpeechModel =>
-    getSpeechModel(settings.speechModelId) ?? getSpeechModel(DEFAULT_SPEECH_MODEL_ID)!;
+    (settings.speechModelId === DEFAULT_SPEECH_MODEL_ID ||
+    settings.speechModelId === PERSONAL_SPEECH_MODEL_ID
+      ? personal
+      : undefined) ??
+    getSpeechModel(settings.speechModelId) ??
+    getSpeechModel(DEFAULT_SPEECH_MODEL_ID)!;
 
   let silenceRetryAt = 0;
   const acquireSilenceModel = Effect.fn("SpeechService.acquireSilenceModel")(function* (
@@ -330,7 +369,7 @@ const make = Effect.gen(function* () {
 
   // Publish the reservation before forking: a cached transfer can finish before forkIn returns.
   const downloadFiber = Effect.fn("SpeechService.downloadFiber")(function* (modelId: string) {
-    const definition = getSpeechModel(modelId);
+    const definition = modelById(modelId);
     if (!definition) return yield* new SpeechModelNotFoundError({ modelId });
     if (closing || activeOperation || (downloading && downloading.modelId !== modelId))
       return yield* new SpeechBusyError({ operation: "model download" });
@@ -457,7 +496,13 @@ const make = Effect.gen(function* () {
     );
 
   const readSettings = (operation: string) =>
-    serverSettings.getSettings.pipe(
+    personalModel.pipe(
+      Effect.tap((found) =>
+        Effect.sync(() => {
+          personal = found;
+        }),
+      ),
+      Effect.andThen(serverSettings.getSettings),
       Effect.tap((settings) =>
         Effect.sync(() => {
           if (settings.speechModelId !== autoCpuModel || settings.speechAcceleration !== "auto")
@@ -521,7 +566,7 @@ const make = Effect.gen(function* () {
   ): Effect.fn.Return<SpeechModels> {
     const selected = selectedModel(settings);
     const models = yield* Effect.forEach(
-      SPEECH_MODELS,
+      allModels(),
       (definition) =>
         Effect.all([store.isReady(definition), store.linkedFrom(definition)]).pipe(
           Effect.map(([ready, linkedFrom]): EnvironmentSpeechModel => {
@@ -621,8 +666,9 @@ const make = Effect.gen(function* () {
   });
 
   const transcribe: SpeechService["Service"]["transcribe"] = Effect.fn("SpeechService.transcribe")(
-    function* (pcmBytes, options) {
+    function* (pcmBytes, requested) {
       const settings = yield* readSettings("transcription");
+      const options = withServerWords(requested, settings.speechProjectCustomWords);
       return yield* exclusive(
         "transcription",
         Effect.gen(function* () {
@@ -732,7 +778,7 @@ const make = Effect.gen(function* () {
   );
 
   // Stream setup shares the public startStream span.
-  const openStream = Effect.fnUntraced(function* (options: SpeechTranscriptionOptions) {
+  const openStream = Effect.fnUntraced(function* (requested: SpeechTranscriptionOptions) {
     const operation = "streaming transcription";
     yield* requireSupported;
     const released = Promise.withResolvers<void>();
@@ -783,6 +829,7 @@ const make = Effect.gen(function* () {
       }),
     );
     const settings = yield* readSettings(operation);
+    const options = withServerWords(requested, settings.speechProjectCustomWords);
     const definition = selectedModel(settings);
     const language = effectiveSpeechLanguage(definition, options.speechLanguage);
     const dictionary = normalizeSpeechCustomWords(options.speechCustomWords);
@@ -948,7 +995,7 @@ const make = Effect.gen(function* () {
       exclusive(
         "model selection",
         Effect.gen(function* () {
-          const definition = getSpeechModel(modelId);
+          const definition = modelById(modelId);
           if (!definition || !(yield* store.isReady(definition)))
             return yield* new SpeechModelNotFoundError({ modelId });
           yield* attempt("model selection", () => disposeModel());
@@ -968,7 +1015,7 @@ const make = Effect.gen(function* () {
         "model removal",
         Effect.gen(function* () {
           const settings = yield* readSettings("model removal");
-          const definition = getSpeechModel(modelId);
+          const definition = modelById(modelId);
           if (!definition) return yield* new SpeechModelNotFoundError({ modelId });
           yield* attempt("model removal", async () => {
             await loading?.catch(() => undefined);
@@ -979,7 +1026,7 @@ const make = Effect.gen(function* () {
             .pipe(Effect.mapError((cause) => speechError("model removal", cause)));
           if (selectedModel(settings).id !== modelId) return;
           const candidates = yield* Effect.forEach(
-            SPEECH_MODELS.filter((candidate) => candidate.id !== modelId),
+            allModels().filter((candidate) => candidate.id !== modelId),
             (candidate) =>
               store.isReady(candidate).pipe(Effect.map((ready) => ({ candidate, ready }))),
             { concurrency: "unbounded" },

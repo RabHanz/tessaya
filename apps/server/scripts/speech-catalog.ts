@@ -49,7 +49,7 @@ export function generateSpeechCatalog(
   engineVersion: string,
 ) {
   if (data.schema !== 2) throw new Error("Unsupported speech catalog schema.");
-  if (engineVersion !== "0.4.1")
+  if (engineVersion !== "0.5.0")
     throw new Error("Review speech catalog loader support for this engine.");
   const ids = new Set<string>();
   const filenames = new Set<string>();

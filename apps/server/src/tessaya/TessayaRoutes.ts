@@ -75,9 +75,8 @@ import { handlePhone, readCapped, uploadRefusal, type PhoneDeps } from "./Tessay
 import { TessayaUpcoming } from "./TessayaUpcoming.ts";
 import { houseZone, isoIn } from "./houseZone.ts";
 import { countdownText } from "@t3tools/tessaya-shared/upcoming";
-import { recogniserTerms } from "@t3tools/tessaya-shared/vocabulary";
 import { transcribeWav } from "./TessayaPhoneVoice.ts";
-import { TessayaVocabulary } from "./TessayaVocabulary.ts";
+import { SpeechService } from "../speech/SpeechService.ts";
 import { HTML, MANIFEST, SCRIPT, SERVICE_WORKER } from "./TessayaPage.ts";
 import { changePersona } from "./PersonaChanges.ts";
 import { playgroundRoutes } from "./PlaygroundRoutes.ts";
@@ -128,10 +127,10 @@ export const routes = HttpRouter.use((router) =>
     const auth = yield* EnvironmentAuth.EnvironmentAuth;
     const config = yield* ServerConfig.ServerConfig;
 
+    const speech = yield* Effect.serviceOption(SpeechService);
+
     if (context === null) return;
     const run = Effect.runPromiseWith(context);
-    // One transcription at a time: each one runs the speech model on this computer.
-    let hearing = false;
     const deps: PhoneDeps = {
       state: () =>
         run(
@@ -198,28 +197,8 @@ export const routes = HttpRouter.use((router) =>
             upcoming.change(input, { who: "the Director", surface: "phone" }),
           ).pipe(Effect.catchTags({ UpcomingError: (e) => Effect.succeed(e.reason) })),
         ),
-      transcribe: async (wav) => {
-        if (hearing)
-          return { ok: false, why: "Still working on the last recording. Try again in a moment." };
-        hearing = true;
-        try {
-          const vocabulary = await run(
-            Effect.serviceOption(TessayaVocabulary).pipe(
-              Effect.flatMap((store) =>
-                Option.isSome(store) ? store.value.read : Effect.succeed([]),
-              ),
-            ),
-          );
-          return await transcribeWav({
-            wav,
-            env: process.env,
-            userdataDir: NodePath.dirname(config.dbPath),
-            vocabulary: recogniserTerms(vocabulary),
-          });
-        } finally {
-          hearing = false;
-        }
-      },
+      // SpeechService runs one transcription at a time and says so when busy.
+      transcribe: (wav) => run(transcribeWav(Option.getOrUndefined(speech), wav)),
     };
 
     const api = Effect.gen(function* () {
