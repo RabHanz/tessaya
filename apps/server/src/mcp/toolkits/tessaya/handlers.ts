@@ -105,6 +105,7 @@ import * as JobsHandlers from "../jobs/handlers.ts";
 import * as MembersHandlers from "../members/handlers.ts";
 import * as PeopleHandlers from "../people/handlers.ts";
 import * as CommsHandlers from "../comms/handlers.ts";
+import * as MarginHandlers from "../margin/handlers.ts";
 import * as PersonaOpsHandlers from "../personaOps/handlers.ts";
 import * as SettingsHandlers from "../settings/handlers.ts";
 import { asForwarded, fromPeers, onPeer } from "../../../peer/PeerVessels.ts";
@@ -424,6 +425,7 @@ export const layer = McpToolAccess.toLayer(
       ...(yield* PeopleHandlers.make),
       ...(yield* CommsHandlers.make),
       ...(yield* PersonaOpsHandlers.make),
+      ...(yield* MarginHandlers.make),
       ...(yield* JobsHandlers.make),
       // This machine, the ones he names, or all of them; each peer switches only itself (a linked call is never forwarded).
       tessaya_account_use: McpToolAccess.writes(

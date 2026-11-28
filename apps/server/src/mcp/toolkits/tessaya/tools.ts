@@ -73,6 +73,7 @@ import { JobTools } from "../jobs/tools.ts";
 import { MembersTools } from "../members/tools.ts";
 import { PeopleTools } from "../people/tools.ts";
 import { CommsTools } from "../comms/tools.ts";
+import { MarginTools } from "../margin/tools.ts";
 import { PersonaOpsTools } from "../personaOps/tools.ts";
 import { AccountTools } from "../accounts/tools.ts";
 import { SettingsTools } from "../settings/tools.ts";
@@ -1299,6 +1300,7 @@ export const TessayaToolkit = Toolkit.make(
   ...PeopleTools,
   ...CommsTools,
   ...PersonaOpsTools,
+  ...MarginTools,
   ...JobTools,
   ...AccountTools,
   JobsTool,

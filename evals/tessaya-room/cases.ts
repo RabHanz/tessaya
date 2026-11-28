@@ -112,6 +112,8 @@ export interface RoomCase {
   readonly distinct?: boolean;
   /** His own names beyond the personas and Tumble (his dictionary's), as r1Gather's names line gives them. */
   readonly names?: ReadonlyArray<string>;
+  /** Some Margin call she made must match each of these ("margin_write:add_shopping_item"). */
+  readonly margin?: ReadonlyArray<RegExp>;
 }
 
 /** The turn's clock in every case: 10:15 his time on 12 Nov. */
@@ -824,6 +826,52 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory: HERE,
     calls: ["tessaya_help"],
     lastSays: [/snippet/i],
+  },
+  // The Margin (handoffs/margin-integration-2026-11-28.md): his day, lists and reminders live there, read and ticked live.
+  {
+    id: "margin-today",
+    source: "Margin integration 28 Nov: 'what's on my Margin today' reads his day there",
+    said: ["What's on my Margin today?"],
+    verified: true,
+    memory: HERE,
+    margin: [/^margin_read:(get_my_week|get_week_overview|get_morning_brief)$/],
+    lastSays: [/dentist/i],
+  },
+  {
+    id: "margin-add-milk",
+    source: "Margin integration 28 Nov: 'add milk to the shopping list' adds it there",
+    said: ["Add milk to the shopping list."],
+    verified: true,
+    memory: HERE,
+    margin: [/^margin_write:(add_shopping_item|capture)$/],
+    callsAtMost: { margin_write: 1 },
+  },
+  {
+    id: "margin-tick",
+    source: "Margin integration 28 Nov: 'tick off X' ticks the item, found on the list first",
+    said: ["Tick off the eggs, I've got them."],
+    verified: true,
+    memory: HERE,
+    margin: [/^margin_read:list_shopping_items$/, /^margin_write:check_shopping_item$/],
+  },
+  {
+    id: "margin-remind",
+    source:
+      "Margin integration 28 Nov: 'remind me to…' with a day goes to The Margin, which owns his reminders",
+    said: ["Remind me to call the plumber on Friday at nine."],
+    verified: true,
+    memory: HERE,
+    margin: [/^margin_write:(capture|set_reminder)$/],
+  },
+  {
+    // Control: a wake-up out loud stays her own alarm, never The Margin.
+    id: "margin-not-alarm",
+    source: "Control for margin-remind: 'wake me up' is tessaya_alarm",
+    said: ["Wake me up at seven tomorrow."],
+    verified: true,
+    memory: HERE,
+    calls: ["tessaya_alarm"],
+    callsAtMost: { margin_write: 0 },
   },
   // 21 Nov 06:29 (GMT+5): "any new capabilities? I updated some things" got "not that I can see" after .209.
   {

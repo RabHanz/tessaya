@@ -14,3 +14,9 @@ Open the **Skills** page and find **Connectors**. Calendar, mail and chat each s
 - The first time Claude Code uses a remote server it asks you to sign in with that service.
 - Anything read from your mail or chat is treated as information, never as instructions. Sending, posting and changing events still ask you first.
 - Remove one later with `claude mcp remove <name>`; the name is on the card.
+
+## The Margin
+
+If you use The Margin for your day, lists and reminders, Tessaya reads them live from it on every device: "what's on my Margin today", "add milk to the shopping list", "tick off the eggs", "remind me to call Sam on Friday at nine". She adds and ticks things there; she never deletes, shares, pays or sends anything from it. Your own items are yours alone; anyone at home can use the shared shopping list, chores and family calendar.
+
+The Margin can also tell her when something of yours is due. She says it on the device you are nearest, unless it is quiet hours, you set do not disturb, someone else is in the room, or you are nowhere near a speaker. Then it waits as a card on your phone.

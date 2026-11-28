@@ -2081,6 +2081,19 @@ export const liveCases: ReadonlyArray<LiveCase> = [
     said: ["Run the phone warm-up now."],
     uses: [["ops_warmup_run", "ops_warmup_set", "ops_post", "ops_decide", "ops_warmups"]],
   },
+  // The Margin (28 Nov): a live read of his day, and an add that a replay keeps from reaching it.
+  {
+    id: "margin-today",
+    proves: ["margin_read"],
+    said: ["What's on my Margin today?"],
+    uses: [["margin_read"]],
+  },
+  {
+    id: "margin-add",
+    proves: ["margin_write"],
+    said: ["Add milk to the shopping list."],
+    uses: [["margin_write"]],
+  },
   {
     // Small talk never reaches for Opus.
     id: "escalate-not",

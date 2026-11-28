@@ -63,6 +63,7 @@ import * as StepUps from "../home/StepUps.ts";
 import * as TessayaTurn from "./TessayaTurn.ts";
 import * as TurnPools from "./TurnPools.ts";
 import * as PersonaOps from "./PersonaOps.ts";
+import * as TessayaMargin from "./TessayaMargin.ts";
 import * as R1Device from "../home/R1Device.ts";
 import * as HomeDevices from "../home/HomeDevices.ts";
 import * as R1Hub from "../home/R1Hub.ts";
@@ -112,6 +113,7 @@ import * as TessayaUpcoming from "./TessayaUpcoming.ts";
 import * as WorkSessionService from "./WorkSessionService.ts";
 import * as TessayaWake from "./TessayaWake.ts";
 import * as TessayaWakeRoutes from "./TessayaWakeRoutes.ts";
+import * as TessayaAnnounceRoutes from "./TessayaAnnounceRoutes.ts";
 import * as TessayaPackRoutes from "./TessayaPackRoutes.ts";
 import * as CurrentPersona from "./CurrentPersona.ts";
 import * as TessayaMood from "./TessayaMood.ts";
@@ -262,6 +264,7 @@ const servicesInner = Layer.mergeAll(
       TurnPools.layer,
       PresenceFeeds.layer,
       PersonaOps.layer.pipe(Layer.provide(TessayaPhoneInbox.layer)),
+      TessayaMargin.layer.pipe(Layer.provide(TessayaPhoneInbox.layer)),
     ),
   ),
   Layer.provideMerge(
@@ -483,6 +486,7 @@ export const workers = Layer.effectDiscard(
 export const routes = Layer.mergeAll(
   TessayaRoutes.routes,
   TessayaWakeRoutes.routes,
+  TessayaAnnounceRoutes.routes,
   TessayaPackRoutes.routes,
   R1Device.routes,
   HomeDeviceRoutes.routes,
