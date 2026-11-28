@@ -321,7 +321,8 @@ const make = Effect.gen(function* () {
   const personalModel = yield* fileSystem
     .readFileString(path.join(personalDirectory, "manifest.json"))
     .pipe(
-      Effect.flatMap((text) => Effect.try(() => personalSpeechModel(JSON.parse(text)))),
+      Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))),
+      Effect.map(personalSpeechModel),
       Effect.flatMap((definition) =>
         definition
           ? store.link([definition], personalDirectory).pipe(
