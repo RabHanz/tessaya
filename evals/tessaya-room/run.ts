@@ -956,7 +956,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   const replies: Array<string> = [];
   const lamp: Array<"on" | "off"> = [];
   const firstMs: Array<number | null> = [];
-  const history: Array<{ role: string; content: string }> = [];
+  const history: Array<{ role: string; content: string }> = [...(c.before ?? [])];
   const mcp =
     values.brain === "tools"
       ? await startTessayaMcp({

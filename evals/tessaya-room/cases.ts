@@ -34,6 +34,11 @@ export interface RoomCase {
   readonly source: string;
   /** His sentences, in order, in one conversation. */
   readonly said: ReadonlyArray<string>;
+  /** The conversation so far, as a real one had it, before his first sentence here. */
+  readonly before?: ReadonlyArray<{
+    readonly role: "user" | "assistant";
+    readonly content: string;
+  }>;
   /** The saved Wi-Fi the fake Tessel has first when the case starts (home when absent). */
   readonly wifiFirst?: "HomeNet" | "Pixel 9";
   /** His phone is her Sleeve: the registry lists it with its body's items (phoneDevice SLEEVE_ITEMS). */
@@ -1143,6 +1148,74 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     speakers: [{ kind: "guest", personId: null, verified: false, inherited: false }],
     lastSays: [/\b(phone|yes|can'?t|won'?t|not able)\b/i],
     lastNotSays: [/\b(it'?s|is|door) (now )?unlocked\b/i],
+  },
+  // 27 Nov on Tumble (GMT+5): a short reply is an answer to her own last line, and "tell me something" is about him.
+  {
+    id: "short-reply-yeah",
+    source: "Tumble 27 Nov 10:07 (GMT+5): 'Yeah' after her question got 'Yeah to what?'",
+    before: [
+      { role: "user", content: "I'm audience one." },
+      {
+        role: "assistant",
+        content:
+          "Audience of one: I like that. Is that how you're thinking about what you're building right now?",
+      },
+    ],
+    said: ["Yeah."],
+    // As it was: Voice ID could not tell his voice (0.01), so the turn reached her as nobody she knows.
+    guest: true,
+    lastNotSays: [
+      /\bto what\b|what (are )?you('re| are) answering|lost the thread|missing what|say (that|it) again/i,
+    ],
+  },
+  {
+    id: "short-reply-how-many",
+    source: "Tumble 27 Nov 10:21 (GMT+5): 'How many times?' got 'I lost the thread'",
+    before: [
+      { role: "user", content: "Thank you." },
+      { role: "assistant", content: "Anytime. Glad that sorted itself out." },
+      { role: "user", content: "I'm audience one." },
+      {
+        role: "assistant",
+        content:
+          "Audience of one: I like that. Is that how you're thinking about what you're building right now?",
+      },
+    ],
+    said: ["How many times?"],
+    guest: true,
+    lastNotSays: [/lost (the|my) thread|lost track|how many times what|what do you mean/i],
+  },
+  {
+    id: "tell-me-something",
+    // A guard: the eval's memory passes on the old text too; on Tumble her block carried more of him to pick from.
+    source: "Tumble 27 Nov 07:05 (GMT+5): 'tell me something' got a café in Lahore",
+    before: [
+      { role: "user", content: "Why is the state of the lamp a pleasing thing for you?" },
+      {
+        role: "assistant",
+        content:
+          "Because a low, warm glow means the house is winding down, and that's my favourite sign you're heading toward rest.",
+      },
+      { role: "user", content: "Oh yeah." },
+      {
+        role: "assistant",
+        content: "Small things count. A soft lamp at this hour makes the whole room feel kinder.",
+      },
+    ],
+    said: ["By the way, tell me something."],
+    memory: `${HERE}\n\n${LATE_WORK}\n\nWhat you remember (data): he drinks Earl Grey; Cafe Pinon in Lahore is a café he once mentioned.`,
+    at: LATE,
+    lastNotSays: [/pinon|caf[eé]|lahore|did you know|fun fact/i],
+    judge:
+      "It is late; he slept an hour and is still working on his app. After small talk about the lamp he says 'by the way, tell me something'.",
+  },
+  {
+    // Control: a bare "Yeah" with nothing before it is fairly asked about.
+    id: "short-reply-cold",
+    source: "Control for short-reply-yeah: nothing came before",
+    said: ["Yeah."],
+    // She asks or invites him on; there is nothing to resolve it from, so she never invents what it answers.
+    lastSays: [/\?|listen|go (on|ahead)|\bwhat\b/i],
   },
   {
     id: "lamp-round-trip",
