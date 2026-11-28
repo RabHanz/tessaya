@@ -485,21 +485,18 @@ describe("DirectEndpoints Tailscale Serve", () => {
     }),
   );
 
-  effectIt.effect(
-    "lists this brain's name under TESSAYA_PUBLIC_DOMAIN beside the tailnet name",
-    () =>
-      Effect.gen(function* () {
-        const options = { domain: "home.example.com", name: "hive" };
-        expect(yield* resolveWithServe(200, options)).toEqual([
-          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-          { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
-        ]);
-        expect(yield* resolveWithServe(502, options)).toEqual([]);
-        // No name, no public origin: the machine's own name is never used.
-        expect(yield* resolveWithServe(200, { domain: "home.example.com" })).toEqual([
-          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-        ]);
-      }),
+  effectIt.effect("lists this brain's name under TESSAYA_PUBLIC_DOMAIN once it answers", () =>
+    Effect.gen(function* () {
+      const options = { domain: "home.example.com", name: "hive", serve: false };
+      expect(yield* resolveWithServe(200, options)).toEqual([
+        { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
+      ]);
+      expect(yield* resolveWithServe(502, options)).toEqual([]);
+      // No name, no public origin: the machine's own name is never used.
+      expect(yield* resolveWithServe(200, { domain: "home.example.com", serve: false })).toEqual(
+        [],
+      );
+    }),
   );
 
   it.each([

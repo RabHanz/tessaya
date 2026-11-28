@@ -31,7 +31,7 @@ index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..abc9a523e723440b207a9a2eb53026dd
          pairingBaseUrl = resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform);
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
 diff --git a/apps/server/src/environment/DirectEndpoints.test.ts b/apps/server/src/environment/DirectEndpoints.test.ts
-index d6d2856635670f4be766722f3f20a49ac6a8878e..310a9ad2f6f1a1a59d465ea57e6d3467218b499d 100644
+index d6d2856635670f4be766722f3f20a49ac6a8878e..1e55643c713f3b879d66da5da0f3ef94ac06e433 100644
 --- a/apps/server/src/environment/DirectEndpoints.test.ts
 +++ b/apps/server/src/environment/DirectEndpoints.test.ts
 @@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -93,7 +93,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..310a9ad2f6f1a1a59d465ea57e6d3467
            ),
          ),
        ),
-@@ -458,4 +474,70 @@ describe("DirectEndpoints Tailscale Serve", () => {
+@@ -458,4 +474,67 @@ describe("DirectEndpoints Tailscale Serve", () => {
        expect(yield* resolveWithServe(502)).toEqual([]);
      }),
    );
@@ -108,21 +108,18 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..310a9ad2f6f1a1a59d465ea57e6d3467
 +    }),
 +  );
 +
-+  effectIt.effect(
-+    "lists this brain's name under TESSAYA_PUBLIC_DOMAIN beside the tailnet name",
-+    () =>
-+      Effect.gen(function* () {
-+        const options = { domain: "home.example.com", name: "hive" };
-+        expect(yield* resolveWithServe(200, options)).toEqual([
-+          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-+          { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
-+        ]);
-+        expect(yield* resolveWithServe(502, options)).toEqual([]);
-+        // No name, no public origin: the machine's own name is never used.
-+        expect(yield* resolveWithServe(200, { domain: "home.example.com" })).toEqual([
-+          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-+        ]);
-+      }),
++  effectIt.effect("lists this brain's name under TESSAYA_PUBLIC_DOMAIN once it answers", () =>
++    Effect.gen(function* () {
++      const options = { domain: "home.example.com", name: "hive", serve: false };
++      expect(yield* resolveWithServe(200, options)).toEqual([
++        { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
++      ]);
++      expect(yield* resolveWithServe(502, options)).toEqual([]);
++      // No name, no public origin: the machine's own name is never used.
++      expect(yield* resolveWithServe(200, { domain: "home.example.com", serve: false })).toEqual(
++        [],
++      );
++    }),
 +  );
 +
 +  it.each([
@@ -324,7 +321,7 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2
    });
  
 diff --git a/packages/client-runtime/src/connection/routes.test.ts b/packages/client-runtime/src/connection/routes.test.ts
-index e7299edd171adf57327fd27d6cc1cac6bd9bec33..24974ca5c1a5bf7be1c5bd6722311cd0e679fc5a 100644
+index e7299edd171adf57327fd27d6cc1cac6bd9bec33..366edbed7a56295959d3a78cd0f7f9a2bea08de5 100644
 --- a/packages/client-runtime/src/connection/routes.test.ts
 +++ b/packages/client-runtime/src/connection/routes.test.ts
 @@ -170,6 +170,25 @@ describe("learned routes", () => {
@@ -336,7 +333,7 @@ index e7299edd171adf57327fd27d6cc1cac6bd9bec33..24974ca5c1a5bf7be1c5bd6722311cd0
 +      entry: relayOnly,
 +      activeRoute: RELAY,
 +      reported: [
-+        { httpBaseUrl: "http://100.64.0.5:3773/", kind: "tailnet" },
++        { httpBaseUrl: "http://10.9.0.5:3773/", kind: "tailnet" },
 +        { httpBaseUrl: "https://box.home.example.com/", kind: "lan" },
 +        { httpBaseUrl: "http://192.168.1.10:3773/", kind: "lan" },
 +      ],
@@ -345,7 +342,7 @@ index e7299edd171adf57327fd27d6cc1cac6bd9bec33..24974ca5c1a5bf7be1c5bd6722311cd0
 +    expect(ids(routes)).toEqual([
 +      `learned:${ENVIRONMENT_ID}:http://192.168.1.10:3773`,
 +      `learned:${ENVIRONMENT_ID}:https://box.home.example.com`,
-+      `learned:${ENVIRONMENT_ID}:http://100.64.0.5:3773`,
++      `learned:${ENVIRONMENT_ID}:http://10.9.0.5:3773`,
 +      "relay",
 +    ]);
 +  });

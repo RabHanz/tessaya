@@ -175,7 +175,7 @@ describe("learned routes", () => {
       entry: relayOnly,
       activeRoute: RELAY,
       reported: [
-        { httpBaseUrl: "http://100.64.0.5:3773/", kind: "tailnet" },
+        { httpBaseUrl: "http://10.9.0.5:3773/", kind: "tailnet" },
         { httpBaseUrl: "https://box.home.example.com/", kind: "lan" },
         { httpBaseUrl: "http://192.168.1.10:3773/", kind: "lan" },
       ],
@@ -184,7 +184,7 @@ describe("learned routes", () => {
     expect(ids(routes)).toEqual([
       `learned:${ENVIRONMENT_ID}:http://192.168.1.10:3773`,
       `learned:${ENVIRONMENT_ID}:https://box.home.example.com`,
-      `learned:${ENVIRONMENT_ID}:http://100.64.0.5:3773`,
+      `learned:${ENVIRONMENT_ID}:http://10.9.0.5:3773`,
       "relay",
     ]);
   });
