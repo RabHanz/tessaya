@@ -1,5 +1,6 @@
 /**
- * What runs in the mascot's page (resources/tessaya/companion/stage.html): one rig, driven by cues from the main process.
+ * What runs in her character's page (apps/web/public/companion stage scripts): one rig, driven by cues from its host
+ * (`window.mascotIpc`): the desktop mascot's main process, or the phone Sleeve's stage (sleeve/stage-stream.browser.ts).
  * The rig draws only while something moves, so a change runs at the display's own rate, as in the Character Studio.
  * Only long-running states keep a ceiling: speaking 30 a second, thinking 15, her sleeping breath 6.
  */

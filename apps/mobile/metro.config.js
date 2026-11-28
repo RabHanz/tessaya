@@ -19,6 +19,7 @@ const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"
 const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-stream");
 const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
 const generatedBodyStreamRoot = path.join(__dirname, ".generated", "body-stream");
+const generatedStageStreamRoot = path.join(__dirname, ".generated", "stage-stream");
 
 // The Tessaya babel rewrite depends on APP_VARIANT, so a cached transform from another variant must not be reused.
 config.cacheVersion = `${config.cacheVersion ?? ""}:${process.env.APP_VARIANT ?? ""}:${process.env.TESSAYA_BRAND ?? ""}`;
@@ -39,6 +40,7 @@ config.resolver = {
     "@t3tools/mobile-device-stream": generatedDeviceStreamRoot,
     "@t3tools/mobile-preview-stream": generatedPreviewStreamRoot,
     "@t3tools/mobile-body-stream": generatedBodyStreamRoot,
+    "@t3tools/mobile-stage-stream": generatedStageStreamRoot,
   },
 };
 
@@ -75,13 +77,20 @@ async function generateMobileThirdPartyLicenses() {
 }
 
 async function prepareStreamScripts() {
-  const { generateDeviceStreamScript, generatePreviewStreamScript, generateBodyStreamScript } =
-    await import(pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href);
+  const {
+    generateDeviceStreamScript,
+    generatePreviewStreamScript,
+    generateBodyStreamScript,
+    generateStageStreamScript,
+  } = await import(
+    pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href
+  );
   const generateAll = () =>
     Promise.all([
       generateDeviceStreamScript(),
       generatePreviewStreamScript(),
       generateBodyStreamScript(),
+      generateStageStreamScript(),
     ]);
   await generateAll();
   if (process.env.NODE_ENV !== "production") {
@@ -101,6 +110,11 @@ async function prepareStreamScripts() {
         "apps/mobile/src/features/tessaya/talk",
         ["body-stream.browser.ts"],
         generateBodyStreamScript,
+      ],
+      [
+        "apps/mobile/src/features/tessaya/sleeve",
+        ["stage-stream.browser.ts"],
+        generateStageStreamScript,
       ],
       ["packages/client-runtime/src/device", ["stream.ts", "hubAccess.ts"], generateAll],
       [
