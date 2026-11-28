@@ -461,11 +461,14 @@ import {
   sendEnrolment,
   syncWakeModels,
   wakeChange as changeWake,
+  wakeChoices,
+  wakeChoicesToSeed,
   wakeLine,
   wakeStatus,
   type WakeServer,
 } from "./wakeSync.ts";
 import type { WakeWordView } from "@t3tools/tessaya-shared/wakeModels";
+import { withWakeChoices } from "@t3tools/tessaya-shared/wakeWords";
 import { runChecks, type CheckInput, type CheckResult } from "./selfChecks.ts";
 import type { BrainStatus } from "../screen/brainChoice.ts";
 import {
@@ -1832,6 +1835,22 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     if (done.words !== null || done.reload) void relisten();
     else pushHome();
   };
+  // His wake words live in her brain, so the phone, the Tessel and every desktop hear the same ones. Her brain holding
+  // none yet takes this desktop's choices, once.
+  const syncChoices = async () => {
+    if (input.wakeServer === undefined) return;
+    const at = await input.wakeServer();
+    const chosen = await wakeChoices(at);
+    if (chosen === null) return;
+    if (Object.keys(chosen).length === 0) {
+      for (const c of wakeChoicesToSeed(settings.wakeWords)) await changeWake(at, "choice", c);
+      return;
+    }
+    const next = withWakeChoices(settings.wakeWords, chosen);
+    if (JSON.stringify(next) === JSON.stringify(settings.wakeWords)) return;
+    save({ wakeWords: next });
+    void relisten();
+  };
   const wakeChange = async (path: string, body: unknown) => {
     if (input.wakeServer === undefined) return;
     wakeChangeNote = await changeWake(await input.wakeServer(), path, body);
@@ -1840,6 +1859,8 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
   if (input.wakeServer !== undefined) {
     setTimeout(() => void syncWake().catch(() => undefined), 20_000).unref?.();
     setInterval(() => void syncWake().catch(() => undefined), 30 * 60_000).unref?.();
+    setTimeout(() => void syncChoices().catch(() => undefined), 20_000).unref?.();
+    setInterval(() => void syncChoices().catch(() => undefined), 5 * 60_000).unref?.();
   }
   void input
     .household?.("preferences", { id: OWNER_MEMBER_ID })
@@ -9341,6 +9362,12 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         wakeWords: settings.wakeWords.map((w) => (w.word === word ? { ...w, enabled: on } : w)),
       });
       void relisten();
+      const threshold = settings.wakeWords.find((w) => w.word === word)?.threshold;
+      if (input.wakeServer !== undefined)
+        void input
+          .wakeServer()
+          .then((at) => changeWake(at, "choice", { word, on, threshold }))
+          .catch(() => undefined);
     } else if (id === "v.dictation" && (value === "baton" || value === "wispr"))
       setDictation(value);
     else if (id === "v.download") requestDictation();

@@ -4,7 +4,7 @@ Talk to Tessaya instead of typing.
 
 ## Start
 
-Turn on **Listen for my wake word** in Settings, Voice and wake words. Say a wake word (the ones that are on are listed there; each is a switch) and then your request, in the same breath or after a pause. It listens for about eight seconds for you to start, and a conversation stays open for 30 seconds after each answer, so follow-ups need no wake word.
+Turn on **Listen for my wake word** in Settings, Voice and wake words. Say a wake word (the ones that are on are listed there; each is a switch) and then your request, in the same breath or after a pause. The switches are one set for all your devices: a word you turn off on the desktop, or by asking ("stop answering to Freya"), is off on your phone and your Tessel too. It listens for about eight seconds for you to start, and a conversation stays open for 30 seconds after each answer, so follow-ups need no wake word.
 
 ## Personas
 

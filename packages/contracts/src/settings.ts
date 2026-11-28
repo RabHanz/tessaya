@@ -1438,6 +1438,17 @@ export const TessayaPersonaDials = Schema.Record(
   Schema.Record(Schema.String, Schema.Number.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
 );
 
+/** His wake words by word (tessaya-shared wakeWords.ts `chosenWakeWords`): on or off, and his threshold if he moved it. */
+export const TessayaWakeChoices = Schema.Record(
+  Schema.String.check(Schema.isMaxLength(40)),
+  Schema.Struct({
+    on: Schema.Boolean,
+    threshold: Schema.optionalKey(
+      Schema.Number.check(Schema.isBetween({ minimum: 0.3, maximum: 0.999 })),
+    ),
+  }),
+);
+
 /** Who wears each body by its id (tessaya-shared cast.ts): home persona, follows, others beside it. */
 /** The form she takes on a body (one self, any form): her cartoon, a human (VRM) body, or Tumble's own. */
 export const TessayaBodyForm = Schema.Literals(["cartoon", "human", "tumble"]);
@@ -1656,6 +1667,8 @@ export const ServerSettings = Schema.Struct({
   tessayaVoiceBreath: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: his phones hold her route as a vessel of their own (headset button, no Tessel near); opt-in, it holds an audio session.
   tessayaPhoneVessel: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Tessaya: his wake words, one choice every vessel follows (desktop, phone, Tessel); a word left out keeps the table's.
+  tessayaWakeWords: TessayaWakeChoices.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   // Tessaya: his own turns on the Tessel kept privately for his Voice ID and recogniser (turnCapture.ts); on, his consent.
   tessayaTurnCapture: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // Tessaya: her working mood per persona (tessaya-shared affect.ts): a general mood, and one relationship per member
@@ -2178,6 +2191,7 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaLiveliness: Schema.optionalKey(Schema.Literals(["still", "calm", "lively"])),
   tessayaVoiceBreath: Schema.optionalKey(Schema.Boolean),
   tessayaPhoneVessel: Schema.optionalKey(Schema.Boolean),
+  tessayaWakeWords: Schema.optionalKey(TessayaWakeChoices),
   tessayaAmbientPresence: Schema.optionalKey(Schema.Boolean),
   tessayaVesselAreas: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   tessayaTurnCapture: Schema.optionalKey(Schema.Boolean),

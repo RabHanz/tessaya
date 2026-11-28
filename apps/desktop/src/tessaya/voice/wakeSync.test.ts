@@ -7,7 +7,7 @@ import * as NodePath from "node:path";
 import { wakeSigned, type WakeWordView } from "@t3tools/tessaya-shared/wakeModels";
 import { expect, it } from "vite-plus/test";
 
-import { syncWakeModels } from "./wakeSync.ts";
+import { syncWakeModels, wakeChoicesToSeed } from "./wakeSync.ts";
 
 const keys = NodeCrypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
 const pub = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
@@ -78,4 +78,18 @@ it("loads only her signed model, adds the word once, keeps his threshold, and re
   } finally {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+it("seeds her brain with only what this desktop changed from the table", () => {
+  expect(
+    wakeChoicesToSeed([
+      { word: "Tessaya", enabled: true, threshold: 0.99 },
+      { word: "Freya", enabled: false, threshold: 0.95 },
+      { word: "Alfred", enabled: true, threshold: 0.85 },
+      { word: "Nova", enabled: true, threshold: 0.8 },
+    ]),
+  ).toEqual([
+    { word: "Freya", on: false, threshold: 0.95 },
+    { word: "Alfred", on: true, threshold: 0.85 },
+  ]);
 });

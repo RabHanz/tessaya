@@ -43,6 +43,15 @@ const decodeRollback = Schema.decodeUnknownOption(
   Schema.Struct({ word: Schema.String, version: Schema.Int }),
 );
 const decodeCancel = Schema.decodeUnknownOption(Schema.Struct({ word: Schema.String }));
+const decodeChoice = Schema.decodeUnknownOption(
+  Schema.Struct({
+    word: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(40)),
+    on: Schema.Boolean,
+    threshold: Schema.optionalKey(
+      Schema.Number.check(Schema.isBetween({ minimum: 0.3, maximum: 0.999 })),
+    ),
+  }),
+);
 
 const say = (status: number, message: string) =>
   HttpServerResponse.jsonUnsafe({ message }, { status });
@@ -76,11 +85,14 @@ export const wakeAccess = (
       ? r1 || scopes?.has(AuthSettingsWriteScope) === true
         ? null
         : { status: 401, message: "Only a vessel's enrolment sends audio here." }
-      : route === "GET models" || route === "GET status"
+      : route === "GET models" || route === "GET status" || route === "GET choice"
         ? scopes === null && !r1
           ? { status: 401, message: "Not paired." }
           : null
-        : route === "POST rollback" || route === "POST cancel" || route === "POST retrain"
+        : route === "POST rollback" ||
+            route === "POST cancel" ||
+            route === "POST retrain" ||
+            route === "POST choice"
           ? scopes?.has(AuthSettingsWriteScope) === true
             ? null
             : { status: 403, message: "Only a session that may change settings can do that." }
@@ -118,7 +130,8 @@ export const routes = HttpRouter.use((router) =>
       const denied = wakeAccess(
         route,
         scopes,
-        ((route === "GET models" || route === "GET status") && scopes === null) ||
+        ((route === "GET models" || route === "GET status" || route === "GET choice") &&
+          scopes === null) ||
           (route === "POST enrolment" && scopes === null)
           ? yield* isR1(request)
           : false,
@@ -148,6 +161,18 @@ export const routes = HttpRouter.use((router) =>
             "x-tessaya-wake-signature": found.artifact.signature ?? "",
           },
         });
+      }
+      if (route === "GET choice")
+        return answer(yield* service.choices.pipe(Effect.provideContext(context)), 502);
+      if (route === "POST choice") {
+        const input = decodeChoice(yield* request.json.pipe(Effect.orElseSucceed(() => ({}))));
+        return Option.isNone(input)
+          ? say(400, "That request is not valid.")
+          : answer(
+              yield* service
+                .choose(input.value.word, input.value.on, input.value.threshold)
+                .pipe(Effect.provideContext(context)),
+            );
       }
       if (route === "POST rollback" || route === "POST cancel" || route === "POST retrain") {
         const body = yield* request.json.pipe(Effect.orElseSucceed(() => ({})));

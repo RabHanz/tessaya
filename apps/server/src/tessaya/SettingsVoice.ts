@@ -65,6 +65,9 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaPhoneVessel: free(
     "keeping her on his phone: his headphones' button talks to her anywhere, with no Tessel near; off stops his phone listening for it",
   ),
+  tessayaWakeWords: free(
+    'which wake words she answers to (her name and her personas\' names), on every device at once: the desktop, the phone and the Tessel, each word on or off and how sure she must be before waking (threshold 0.3 to 0.999; higher wakes less by mistake). Its value is a map by word, merged into his choices: {"Freya": {"on": false}, "Sebastian": {"on": true, "threshold": 0.97}}; a word left out keeps what it was',
+  ),
   tessayaVesselAreas: free(
     'which room or Home Assistant area each of her devices is in, so room sensors know who is near it. Its value is the whole map by device id: {"<device id>": "<area name>"}; leave a device out to clear it',
   ),
