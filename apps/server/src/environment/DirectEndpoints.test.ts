@@ -377,8 +377,6 @@ const resolveWithServe = (
   probeStatus: number,
   options: {
     readonly publicHost?: string;
-    readonly domain?: string;
-    readonly name?: string;
     readonly serve?: boolean;
   } = {},
 ) =>
@@ -394,8 +392,6 @@ const resolveWithServe = (
             ConfigProvider.layer(
               ConfigProvider.fromUnknown({
                 TESSAYA_PUBLIC_HOST: options.publicHost ?? "",
-                TESSAYA_PUBLIC_DOMAIN: options.domain ?? "",
-                TESSAYA_PUBLIC_NAME: options.name ?? "",
               }),
             ),
           ),
@@ -485,18 +481,47 @@ describe("DirectEndpoints Tailscale Serve", () => {
     }),
   );
 
-  effectIt.effect("lists this brain's name under TESSAYA_PUBLIC_DOMAIN once it answers", () =>
+  effectIt.effect("lists the name it has behind the household's door once it answers", () =>
     Effect.gen(function* () {
-      const options = { domain: "home.example.com", name: "hive", serve: false };
-      expect(yield* resolveWithServe(200, options)).toEqual([
-        { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
+      const service = yield* DirectEndpoints.DirectEndpoints;
+      expect(yield* service.resolve()).toEqual([]);
+      yield* service.setDoorHost("nest.home.example.com");
+      expect(yield* service.resolve()).toEqual([
+        { kind: "lan", httpBaseUrl: "https://nest.home.example.com/" },
       ]);
-      expect(yield* resolveWithServe(502, options)).toEqual([]);
-      // No name, no public origin: the machine's own name is never used.
-      expect(yield* resolveWithServe(200, { domain: "home.example.com", serve: false })).toEqual(
-        [],
-      );
-    }),
+      yield* service.setDoorHost(null);
+      expect(yield* service.resolve()).toEqual([]);
+    }).pipe(
+      Effect.provide(
+        DirectEndpoints.layer.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              layerServeConfig("127.0.0.1", false),
+              layerTailscaleUp,
+              layerServeProbe(200),
+              NodeFileSystem.layer,
+              ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: "" })),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  effectIt.effect.each([
+    ["hive.home.example.com", "hive.home.example.com"],
+    ["hive.home.example.com:8443", "hive.home.example.com"],
+    // A tailnet name is not a door.
+    ["[fd7a:115c:a1e0::1]", null],
+    ["", null],
+  ] as const)("PublicDomainHost from TESSAYA_PUBLIC_HOST=%j", ([host, expected]) =>
+    Effect.gen(function* () {
+      expect(yield* DirectEndpoints.PublicDomainHost).toBe(expected);
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: host })),
+      ),
+    ),
   );
 
   it.each([

@@ -46,6 +46,7 @@ import {
   BATON_WS_METHODS,
   BATON_DESKTOP_SETTINGS_WS_METHODS,
   TESSAYA_ACTIVITY_WS_METHODS,
+  TESSAYA_DOOR_WS_METHODS,
   TESSAYA_HOUSEHOLD_WS_METHODS,
   TessayaFleetResult,
   type WorkSession,
@@ -629,6 +630,17 @@ export function createTessayaWorkSessionAtoms<R, E>(
     threadKeep: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:baton:thread-keep",
       tag: BATON_ACCOUNT_WS_METHODS.threadKeep,
+      scheduler,
+      concurrency,
+    }),
+    doorNamesQuery: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:tessaya:door-names",
+      tag: TESSAYA_DOOR_WS_METHODS.names,
+      staleTimeMs: 30_000,
+    }),
+    doorSetName: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:tessaya:door-set-name",
+      tag: TESSAYA_DOOR_WS_METHODS.setName,
       scheduler,
       concurrency,
     }),

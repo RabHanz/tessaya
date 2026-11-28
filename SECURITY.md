@@ -102,6 +102,10 @@ revocation and ceilings hold, not what a full-scope session can do once issued.
   the stated trust assumption; device approval is the mitigation.
 - `T3CODE_DEV_AUTH_TOKEN` and dev startup URLs are administrative by design and
   ignored outside development servers.
+- A Tessaya door brain sees, in transit, the tokens of requests it forwards to the machines it is linked with
+  (TLS ends at the door, as it does at Cloudflare for T3 Connect). It is a finding when the door forwards a path
+  off its allowlist, to an address not recorded on a live link or one that did not answer as that environment, or
+  when a forwarded request is treated by the machine behind as coming from its own network.
 - A webhook URL is a credential for one task. Unless the task requires a
   signature, whoever holds the URL can start that task's run, and the request's
   content, within the route's limits, is theirs to choose. It is a finding when

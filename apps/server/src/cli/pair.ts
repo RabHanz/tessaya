@@ -32,7 +32,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } fr
 
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerConfig from "../config.ts";
-import { PublicBaseUrl, PublicDomainHost, publicBaseUrl } from "../environment/DirectEndpoints.ts";
+import { PublicBaseUrl } from "../environment/DirectEndpoints.ts";
 import * as ManagedLimits from "../policy/managedLimits.ts";
 import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import { resolveBaseDir } from "../os-jank.ts";
@@ -565,10 +565,7 @@ export const pairCommand = Command.make("pair", {
       }
 
       const notes: Array<string> = [];
-      const domainHost = yield* PublicDomainHost;
-      // Tessaya: the base domain reaches this machine from anywhere, so a pairing link names it first.
-      const publicUrl =
-        (domainHost === null ? null : publicBaseUrl(domainHost)) ?? (yield* PublicBaseUrl);
+      const publicUrl = yield* PublicBaseUrl;
       let pairingBaseUrl: string;
       if (flags.tailscale) {
         // Serve stays on after this command exits, so refuse before turning it on.

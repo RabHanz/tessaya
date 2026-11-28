@@ -45,6 +45,23 @@ side lists and revokes it in Sharing & access like any other session, and owns i
   [`PeerThreadRelay`](../../apps/server/src/peer/PeerThreadRelay.ts) proxies the same stream format
   read-only so there is no second transcript schema to maintain.
 
+## Tessaya: the household's front door
+
+A brain whose `TESSAYA_PUBLIC_HOST` is an internet name (`hive.<domain>`) also answers for each machine it holds a
+peer link with, under the name given to that link (`nest.<domain>`), so a household needs one public address and
+adding a machine is pairing it ([`TessayaDoor`](../../apps/server/src/tessaya/TessayaDoor.ts),
+[`doorFront`](../../apps/server/src/tessaya/doorFront.ts)).
+
+- **The peer link is only the address book.** The door forwards to an address recorded on the link that answered
+  as that environment, never one taken from the request or one under the door's own domain, and sends no credential
+  of its own. A request keeps its Host, so the client's origin stays the environment.
+- **An allowlist, enforced in code.** Only sign-in, the client API, Tessel and announce paths are forwarded;
+  access management, MCP, peer links and Tessaya's own routes never are. The proxy in front carries the same list.
+- **Forwarded requests are internet requests.** The door marks them (`x-tessaya-door`) and names the caller in
+  `x-real-ip`, which the machine behind reads as Cloudflare's header (`internetCaller`).
+- **TLS ends at the door,** so the door's process sees the other machines' tokens in transit, as Cloudflare does
+  for T3 Connect.
+
 ## Hosted web is a client
 
 The hosted web app stores its connection catalog in the browser and connects directly to each

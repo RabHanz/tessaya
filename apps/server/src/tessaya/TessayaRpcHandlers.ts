@@ -47,6 +47,7 @@ import {
   BATON_ORCHESTRATION_WS_METHODS,
   BATON_RECORD_WS_METHODS,
   TESSAYA_ACTIVITY_WS_METHODS,
+  TESSAYA_DOOR_WS_METHODS,
   TESSAYA_HOUSEHOLD_WS_METHODS,
   BATON_BRAIN_WS_METHODS,
   BATON_PERSONAS_WS_METHODS,
@@ -70,6 +71,7 @@ import {
   tessayaSpelling,
   type TessayaSpelling,
 } from "@t3tools/tessaya-contracts";
+import { TessayaDoor } from "./TessayaDoor.ts";
 import { fleetForOutside } from "@t3tools/tessaya-shared/fleetForOutside";
 import { tessayaProjectKey, handoffTarget } from "@t3tools/tessaya-shared/jobPlacement";
 import { workAccount } from "@t3tools/tessaya-shared/tessayaProjects";
@@ -173,6 +175,7 @@ const DEFAULT_ROTATION_DRIVER = ProviderDriverKind.make("claudeAgent");
 const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
 export type TessayaServices =
+  | TessayaDoor
   | WorkSessionService
   | AccountPoolService
   | TessayaAccounts
@@ -752,6 +755,20 @@ export const makeHandlers = Effect.gen(function* () {
       ),
     [TESSAYA_ACTIVITY_WS_METHODS.list]: (input) => run(activityList(input)),
     [TESSAYA_ACTIVITY_WS_METHODS.why]: (input) => run(activityWhy(input)),
+    [TESSAYA_DOOR_WS_METHODS.names]: () => run(Effect.flatMap(TessayaDoor, (door) => door.names)),
+    [TESSAYA_DOOR_WS_METHODS.setName]: (input) =>
+      run(
+        Effect.flatMap(TessayaDoor, (door) =>
+          Effect.zipWith(
+            door.setName(input.environmentId, input.name),
+            door.names,
+            (error, names) => ({
+              error,
+              names,
+            }),
+          ),
+        ),
+      ),
     [TESSAYA_HOUSEHOLD_WS_METHODS.call]: (input) =>
       run(Effect.flatMap(TessayaHousehold, (household) => household.call(input))),
     [BATON_BRAIN_WS_METHODS.usage]: (input) => run(brainUsageReport(input, JobFlow.usageUnits)),

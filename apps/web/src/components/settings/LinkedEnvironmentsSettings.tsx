@@ -58,6 +58,7 @@ import { LinkAccessPicker } from "./LinkAccessPicker";
 import { LinkAddressWarning, LinkMachineSelect } from "./LinkMachineSelect";
 import { LinkSeveralEnvironmentsAction } from "./LinkSeveralEnvironments";
 import { SettingsRow, SettingsSection } from "./settingsLayout";
+import { TessayaDoorName } from "./TessayaDoorName";
 import { useLiveRefresh } from "../../hooks/useLiveRefresh";
 import { m as resolveMessage } from "../../i18n/messages";
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -179,6 +180,7 @@ function LinkedEnvironmentRow({
             {m(accessConfig[link.access].label)} · {status}
           </p>
           <p className="truncate text-xs text-muted-foreground/80">{link.urls.join(", ")}</p>
+          <TessayaDoorName environmentId={environmentId} machineId={link.environmentId} />
         </div>
         {canUnlink ? (
           <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">

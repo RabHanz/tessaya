@@ -229,6 +229,12 @@ import {
 import { BATON_CLOUD_WS_METHODS, TessayaCloudCallInput, TessayaCloudCallResult } from "./cloud.ts";
 import { BATON_HOME_WS_METHODS, TessayaHomeCallInput, TessayaHomeCallResult } from "./home.ts";
 import {
+  TESSAYA_DOOR_WS_METHODS,
+  TessayaDoorNames,
+  TessayaDoorSetNameInput,
+  TessayaDoorSetNameResult,
+} from "./door.ts";
+import {
   TESSAYA_HOUSEHOLD_WS_METHODS,
   TessayaHouseholdCallInput,
   TessayaHouseholdCallResult,
@@ -628,6 +634,18 @@ const WsTessayaCloudActRpc = Rpc.make(BATON_CLOUD_WS_METHODS.act, {
 const WsTessayaHomeCallRpc = Rpc.make(BATON_HOME_WS_METHODS.call, {
   payload: TessayaHomeCallInput,
   success: TessayaHomeCallResult,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaDoorNamesRpc = Rpc.make(TESSAYA_DOOR_WS_METHODS.names, {
+  payload: Schema.Struct({}),
+  success: TessayaDoorNames,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsTessayaDoorSetNameRpc = Rpc.make(TESSAYA_DOOR_WS_METHODS.setName, {
+  payload: TessayaDoorSetNameInput,
+  success: TessayaDoorSetNameResult,
   error: EnvironmentAuthorizationError,
 });
 
@@ -1357,4 +1375,6 @@ export const TessayaRpcGroup = RpcGroup.make(
   WsTessayaActivityListRpc,
   WsTessayaActivityWhyRpc,
   WsTessayaHouseholdCallRpc,
+  WsTessayaDoorNamesRpc,
+  WsTessayaDoorSetNameRpc,
 ).middleware(TessayaRpcScopeAuthorization);

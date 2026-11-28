@@ -1,27 +1,39 @@
+diff --git a/SECURITY.md b/SECURITY.md
+index 9c6391316930549358545438ba3808592559437e..37a140a177e72938cbe96d155e73d427c161dfc1 100644
+--- a/SECURITY.md
++++ b/SECURITY.md
+@@ -102,6 +102,10 @@ revocation and ceilings hold, not what a full-scope session can do once issued.
+   the stated trust assumption; device approval is the mitigation.
+ - `T3CODE_DEV_AUTH_TOKEN` and dev startup URLs are administrative by design and
+   ignored outside development servers.
++- A Tessaya door brain sees, in transit, the tokens of requests it forwards to the machines it is linked with
++  (TLS ends at the door, as it does at Cloudflare for T3 Connect). It is a finding when the door forwards a path
++  off its allowlist, to an address not recorded on a live link or one that did not answer as that environment, or
++  when a forwarded request is treated by the machine behind as coming from its own network.
+ - A webhook URL is a credential for one task. Unless the task requires a
+   signature, whoever holds the URL can start that task's run, and the request's
+   content, within the route's limits, is theirs to choose. It is a finding when
 diff --git a/apps/server/src/cli/pair.ts b/apps/server/src/cli/pair.ts
-index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..abc9a523e723440b207a9a2eb53026ddee171e33 100644
+index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..f37cfa8591ba3306559f0a4d9f56c4bb822794b0 100644
 --- a/apps/server/src/cli/pair.ts
 +++ b/apps/server/src/cli/pair.ts
 @@ -32,6 +32,7 @@ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } fr
  
  import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
  import * as ServerConfig from "../config.ts";
-+import { PublicBaseUrl, PublicDomainHost, publicBaseUrl } from "../environment/DirectEndpoints.ts";
++import { PublicBaseUrl } from "../environment/DirectEndpoints.ts";
  import * as ManagedLimits from "../policy/managedLimits.ts";
  import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
  import { resolveBaseDir } from "../os-jank.ts";
-@@ -564,6 +565,10 @@ export const pairCommand = Command.make("pair", {
+@@ -564,6 +565,7 @@ export const pairCommand = Command.make("pair", {
        }
  
        const notes: Array<string> = [];
-+      const domainHost = yield* PublicDomainHost;
-+      // Tessaya: the base domain reaches this machine from anywhere, so a pairing link names it first.
-+      const publicUrl =
-+        (domainHost === null ? null : publicBaseUrl(domainHost)) ?? (yield* PublicBaseUrl);
++      const publicUrl = yield* PublicBaseUrl;
        let pairingBaseUrl: string;
        if (flags.tailscale) {
          // Serve stays on after this command exits, so refuse before turning it on.
-@@ -580,6 +585,8 @@ export const pairCommand = Command.make("pair", {
+@@ -580,6 +582,8 @@ export const pairCommand = Command.make("pair", {
          });
          pairingBaseUrl = resolved.baseUrl;
          notes.push(...resolved.notes);
@@ -31,7 +43,7 @@ index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..abc9a523e723440b207a9a2eb53026dd
          pairingBaseUrl = resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform);
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
 diff --git a/apps/server/src/environment/DirectEndpoints.test.ts b/apps/server/src/environment/DirectEndpoints.test.ts
-index d6d2856635670f4be766722f3f20a49ac6a8878e..1e55643c713f3b879d66da5da0f3ef94ac06e433 100644
+index d6d2856635670f4be766722f3f20a49ac6a8878e..2071b4175ffd9620b36c56e6004deb5d2f30fe63 100644
 --- a/apps/server/src/environment/DirectEndpoints.test.ts
 +++ b/apps/server/src/environment/DirectEndpoints.test.ts
 @@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -59,7 +71,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e55643c713f3b879d66da5da0f3ef94
        tailscaleServePort: 443,
      })),
    ).pipe(
-@@ -372,16 +373,31 @@ const layerServeConfig = (host = "127.0.0.1") =>
+@@ -372,16 +373,27 @@ const layerServeConfig = (host = "127.0.0.1") =>
      ),
    );
  
@@ -68,8 +80,6 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e55643c713f3b879d66da5da0f3ef94
 +  probeStatus: number,
 +  options: {
 +    readonly publicHost?: string;
-+    readonly domain?: string;
-+    readonly name?: string;
 +    readonly serve?: boolean;
 +  } = {},
 +) =>
@@ -86,14 +96,12 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e55643c713f3b879d66da5da0f3ef94
 +            ConfigProvider.layer(
 +              ConfigProvider.fromUnknown({
 +                TESSAYA_PUBLIC_HOST: options.publicHost ?? "",
-+                TESSAYA_PUBLIC_DOMAIN: options.domain ?? "",
-+                TESSAYA_PUBLIC_NAME: options.name ?? "",
 +              }),
 +            ),
            ),
          ),
        ),
-@@ -458,4 +474,67 @@ describe("DirectEndpoints Tailscale Serve", () => {
+@@ -458,4 +470,96 @@ describe("DirectEndpoints Tailscale Serve", () => {
        expect(yield* resolveWithServe(502)).toEqual([]);
      }),
    );
@@ -108,18 +116,47 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e55643c713f3b879d66da5da0f3ef94
 +    }),
 +  );
 +
-+  effectIt.effect("lists this brain's name under TESSAYA_PUBLIC_DOMAIN once it answers", () =>
++  effectIt.effect("lists the name it has behind the household's door once it answers", () =>
 +    Effect.gen(function* () {
-+      const options = { domain: "home.example.com", name: "hive", serve: false };
-+      expect(yield* resolveWithServe(200, options)).toEqual([
-+        { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
++      const service = yield* DirectEndpoints.DirectEndpoints;
++      expect(yield* service.resolve()).toEqual([]);
++      yield* service.setDoorHost("nest.home.example.com");
++      expect(yield* service.resolve()).toEqual([
++        { kind: "lan", httpBaseUrl: "https://nest.home.example.com/" },
 +      ]);
-+      expect(yield* resolveWithServe(502, options)).toEqual([]);
-+      // No name, no public origin: the machine's own name is never used.
-+      expect(yield* resolveWithServe(200, { domain: "home.example.com", serve: false })).toEqual(
-+        [],
-+      );
-+    }),
++      yield* service.setDoorHost(null);
++      expect(yield* service.resolve()).toEqual([]);
++    }).pipe(
++      Effect.provide(
++        DirectEndpoints.layer.pipe(
++          Layer.provide(
++            Layer.mergeAll(
++              layerServeConfig("127.0.0.1", false),
++              layerTailscaleUp,
++              layerServeProbe(200),
++              NodeFileSystem.layer,
++              ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: "" })),
++            ),
++          ),
++        ),
++      ),
++    ),
++  );
++
++  effectIt.effect.each([
++    ["hive.home.example.com", "hive.home.example.com"],
++    ["hive.home.example.com:8443", "hive.home.example.com"],
++    // A tailnet name is not a door.
++    ["[fd7a:115c:a1e0::1]", null],
++    ["", null],
++  ] as const)("PublicDomainHost from TESSAYA_PUBLIC_HOST=%j", ([host, expected]) =>
++    Effect.gen(function* () {
++      expect(yield* DirectEndpoints.PublicDomainHost).toBe(expected);
++    }).pipe(
++      Effect.provide(
++        ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: host })),
++      ),
++    ),
 +  );
 +
 +  it.each([
@@ -162,7 +199,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e55643c713f3b879d66da5da0f3ef94
 +  });
  });
 diff --git a/apps/server/src/environment/DirectEndpoints.ts b/apps/server/src/environment/DirectEndpoints.ts
-index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2f6c46583 100644
+index 8112cded968aa863fc63b8c87d913943be5858aa..97c61af57ba936b83f436a3e96b890a9b382a3d7 100644
 --- a/apps/server/src/environment/DirectEndpoints.ts
 +++ b/apps/server/src/environment/DirectEndpoints.ts
 @@ -4,6 +4,7 @@ import {
@@ -173,7 +210,16 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2
  import * as Context from "effect/Context";
  import * as Duration from "effect/Duration";
  import * as Effect from "effect/Effect";
-@@ -141,6 +142,55 @@ export const readIsolatedLinuxBridges = Effect.fn("DirectEndpoints.readIsolatedL
+@@ -42,6 +43,8 @@ export class DirectEndpoints extends Context.Service<
+   {
+     readonly resolveAvailable: () => Effect.Effect<ReadonlyArray<ServerDirectEndpoint>>;
+     readonly resolve: () => Effect.Effect<ReadonlyArray<ServerDirectEndpoint>>;
++    /** Tessaya: this machine's name behind the household's door (TessayaDoor), advertised once it answers. */
++    readonly setDoorHost: (host: string | null) => Effect.Effect<void>;
+   }
+ >()("t3/environment/DirectEndpoints") {}
+ 
+@@ -141,6 +144,59 @@ export const readIsolatedLinuxBridges = Effect.fn("DirectEndpoints.readIsolatedL
    },
  );
  
@@ -204,14 +250,16 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2
 +};
 +
 +/**
-+ * Tessaya: `TESSAYA_PUBLIC_DOMAIN` is the one base domain every brain is reached at from the internet (through the
-+ * owner's reverse proxy), so moving to a new domain is this one value; `TESSAYA_PUBLIC_NAME` is this brain's own label
-+ * under it, a setting so no machine name goes public. Either unset, nothing changes.
++ * Tessaya: the public name `TESSAYA_PUBLIC_HOST` gives, when it is one on the internet rather than a tailnet name. It is
++ * the household's door (TessayaDoor): its machines are reached under the same parent domain, so moving to a new domain
++ * is that one value.
 + */
-+export const PublicDomainHost = Config.all({
-+  domain: Config.String("TESSAYA_PUBLIC_DOMAIN").pipe(Config.withDefault("")),
-+  name: Config.String("TESSAYA_PUBLIC_NAME").pipe(Config.withDefault("")),
-+}).pipe(Config.map(({ domain, name }) => publicDomainHost(domain, name)));
++export const PublicDomainHost = PublicBaseUrl.pipe(
++  Config.map((url) => {
++    const host = url === null ? null : new URL(url).hostname;
++    return host === null || isTailnetHost(host) ? null : host;
++  }),
++);
 +
 +/**
 + * Who called from the internet, or undefined for a caller on this machine's own networks. The owner's proxy for the
@@ -222,25 +270,27 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2
 +  headers: Readonly<Record<string, string | undefined>>,
 +  domainHost: string | null,
 +): string | undefined =>
-+  domainHost !== null && headers["host"]?.trim().toLowerCase().replace(/:443$/, "") === domainHost
++  // The door marks what it forwards; a caller who sets the mark itself is only treated more strictly.
++  headers["x-tessaya-door"] !== undefined ||
++  (domainHost !== null && headers["host"]?.trim().toLowerCase().replace(/:443$/, "") === domainHost)
 +    ? (headers["x-real-ip"] ?? "internet")
 +    : headers["cf-connecting-ip"];
 +
  /**
   * AWS, GCP, Azure, DigitalOcean, Hetzner, Linode, Vultr, and Oracle all serve
   * instance metadata at this address. A plain TCP connect skips HTTP proxies,
-@@ -184,7 +234,9 @@ export const make = Effect.gen(function* () {
+@@ -184,7 +240,9 @@ export const make = Effect.gen(function* () {
      : Effect.succeed(false);
    yield* Effect.forkDetach(onCloudVm);
  
 -  const servedEndpoint = yield* Ref.make<Option.Option<string>>(Option.none());
 +  const publicUrl = yield* PublicBaseUrl;
-+  const domainHost = yield* PublicDomainHost;
++  const doorHost = yield* Ref.make<string | null>(null);
 +  const servedEndpoints = yield* Ref.make<ReadonlyArray<ServerDirectEndpoint>>([]);
    const resolveAvailable = Effect.fn("DirectEndpoints.resolveAvailable")(function* () {
      const interfaces = NodeOS.networkInterfaces();
      const isolatedBridges =
-@@ -203,34 +255,64 @@ export const make = Effect.gen(function* () {
+@@ -203,34 +261,63 @@ export const make = Effect.gen(function* () {
          ...(isolatedBridges === undefined ? {} : { isolatedBridges }),
        }),
      ];
@@ -261,7 +311,9 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2
 -            magicDnsName,
 -            servePort: config.tailscaleServePort,
 -          });
-+    if (publicUrl === null && !config.tailscaleServeEnabled && domainHost === null) {
++    const nameHere = yield* Ref.get(doorHost);
++    if (publicUrl === null && !config.tailscaleServeEnabled && nameHere === null) {
++      yield* Ref.set(servedEndpoints, []);
 +      return yield* resolveAvailable();
 +    }
 +    const ownName =
@@ -307,10 +359,7 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2
 -      yield* Ref.set(servedEndpoint, servedUrl);
 -    }
 +    const found = yield* Effect.all(
-+      [
-+        served(ownName),
-+        served(Effect.succeed(domainHost === null ? null : publicBaseUrl(domainHost))),
-+      ],
++      [served(ownName), served(Effect.succeed(nameHere === null ? null : publicBaseUrl(nameHere)))],
 +      { concurrency: "unbounded" },
 +    );
 +    yield* Ref.set(
@@ -320,6 +369,64 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2
      return yield* resolveAvailable();
    });
  
+@@ -239,6 +326,9 @@ export const make = Effect.gen(function* () {
+     resolve: Effect.fn("DirectEndpoints.resolve")(function () {
+       return resolve;
+     }),
++    setDoorHost: Effect.fn("DirectEndpoints.setDoorHost")(function* (host: string | null) {
++      yield* Ref.set(doorHost, host);
++    }),
+   });
+ });
+ 
+diff --git a/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx b/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
+index 71afddaa33b3229202c059c9e3c6803849436716..b866105005473dfab1d14c91a954ed4c8662da4c 100644
+--- a/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
++++ b/apps/web/src/components/settings/LinkedEnvironmentsSettings.tsx
+@@ -58,6 +58,7 @@ import { LinkAccessPicker } from "./LinkAccessPicker";
+ import { LinkAddressWarning, LinkMachineSelect } from "./LinkMachineSelect";
+ import { LinkSeveralEnvironmentsAction } from "./LinkSeveralEnvironments";
+ import { SettingsRow, SettingsSection } from "./settingsLayout";
++import { TessayaDoorName } from "./TessayaDoorName";
+ import { useLiveRefresh } from "../../hooks/useLiveRefresh";
+ import { m as resolveMessage } from "../../i18n/messages";
+ import { useNowMinute } from "../../hooks/useNowMinute";
+@@ -179,6 +180,7 @@ function LinkedEnvironmentRow({
+             {m(accessConfig[link.access].label)} · {status}
+           </p>
+           <p className="truncate text-xs text-muted-foreground/80">{link.urls.join(", ")}</p>
++          <TessayaDoorName environmentId={environmentId} machineId={link.environmentId} />
+         </div>
+         {canUnlink ? (
+           <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto sm:justify-end">
+diff --git a/docs/internals/05_remote.md b/docs/internals/05_remote.md
+index 375ee83b2c60a700d4a477fa18bb6bb654d1ddc9..96c479595ea41b3f4c594cdca720803780d386e7 100644
+--- a/docs/internals/05_remote.md
++++ b/docs/internals/05_remote.md
+@@ -45,6 +45,23 @@ side lists and revokes it in Sharing & access like any other session, and owns i
+   [`PeerThreadRelay`](../../apps/server/src/peer/PeerThreadRelay.ts) proxies the same stream format
+   read-only so there is no second transcript schema to maintain.
+ 
++## Tessaya: the household's front door
++
++A brain whose `TESSAYA_PUBLIC_HOST` is an internet name (`hive.<domain>`) also answers for each machine it holds a
++peer link with, under the name given to that link (`nest.<domain>`), so a household needs one public address and
++adding a machine is pairing it ([`TessayaDoor`](../../apps/server/src/tessaya/TessayaDoor.ts),
++[`doorFront`](../../apps/server/src/tessaya/doorFront.ts)).
++
++- **The peer link is only the address book.** The door forwards to an address recorded on the link that answered
++  as that environment, never one taken from the request or one under the door's own domain, and sends no credential
++  of its own. A request keeps its Host, so the client's origin stays the environment.
++- **An allowlist, enforced in code.** Only sign-in, the client API, Tessel and announce paths are forwarded;
++  access management, MCP, peer links and Tessaya's own routes never are. The proxy in front carries the same list.
++- **Forwarded requests are internet requests.** The door marks them (`x-tessaya-door`) and names the caller in
++  `x-real-ip`, which the machine behind reads as Cloudflare's header (`internetCaller`).
++- **TLS ends at the door,** so the door's process sees the other machines' tokens in transit, as Cloudflare does
++  for T3 Connect.
++
+ ## Hosted web is a client
+ 
+ The hosted web app stores its connection catalog in the browser and connects directly to each
 diff --git a/packages/client-runtime/src/connection/routes.test.ts b/packages/client-runtime/src/connection/routes.test.ts
 index e7299edd171adf57327fd27d6cc1cac6bd9bec33..366edbed7a56295959d3a78cd0f7f9a2bea08de5 100644
 --- a/packages/client-runtime/src/connection/routes.test.ts
