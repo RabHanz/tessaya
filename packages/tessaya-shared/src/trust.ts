@@ -174,7 +174,24 @@ const REACH: Readonly<Record<string, ToolReach>> = {
     ].map((t) => [t, "household" as const]),
   ),
 };
-export const toolReach = (tool: string): ToolReach => REACH[tessayaToolName(tool)] ?? "machine";
+/**
+ * A one-off timer on the house ("turn it off in twenty minutes"): no trigger, condition or automation it replaces. It
+ * is everyday control like home_do, and the house still judges every call it makes (Director, 28 Nov).
+ */
+const isHomeTimer = (input: unknown): boolean => {
+  const i = (typeof input === "object" && input !== null ? input : {}) as Record<string, unknown>;
+  const none = (v: unknown) => v === undefined || (Array.isArray(v) && v.length === 0);
+  return (
+    typeof i["runInMinutes"] === "number" &&
+    i["id"] === undefined &&
+    none(i["triggers"]) &&
+    none(i["conditions"])
+  );
+};
+export const toolReach = (tool: string, input?: unknown): ToolReach =>
+  tessayaToolName(tool) === "home_automation_save" && isHomeTimer(input)
+    ? "home"
+    : (REACH[tessayaToolName(tool)] ?? "machine");
 
 /** What each role may reach at all (HOUSEHOLD-DESIGN §5); "machine" also needs the owner's grant below the owner. */
 const ROLE_REACH: Readonly<Record<MemberRole, ReadonlySet<ToolReach>>> = {
@@ -196,16 +213,21 @@ const REACH_ASSURANCE: Readonly<Record<ToolReach, Assurance>> = {
 };
 
 /** The least assurance this tool needs before it is done without a yes. */
-export const reachAssurance = (tool: string): Assurance => REACH_ASSURANCE[toolReach(tool)];
+export const reachAssurance = (tool: string, input?: unknown): Assurance =>
+  REACH_ASSURANCE[toolReach(tool, input)];
 
 /**
  * Why this principal may not use this tool at all, or null: outside their role's reach, this computer without the
  * owner's grant, or their own things below A2. The room's tool runner checks it at execution; Trust below adds asks.
  */
-export const principalRefusal = (principal: TrustPrincipal, tool: string): string | null => {
+export const principalRefusal = (
+  principal: TrustPrincipal,
+  tool: string,
+  input?: unknown,
+): string | null => {
   if (principal.role === "service") return null;
   const role = principal.role;
-  const reach = toolReach(tool);
+  const reach = toolReach(tool, input);
   if (
     !ROLE_REACH[role].has(reach) ||
     (reach === "machine" && role !== "owner" && principal.machine !== true)
@@ -227,14 +249,14 @@ const narrowFor = (
 ): TrustVerdict => {
   if (verdict.verdict === "deny" || principal.role === "service") return verdict;
   for (const tool of toolsUsed(call)) {
-    const why = principalRefusal(principal, tool);
+    const why = principalRefusal(principal, tool, inputOf(call, tool));
     if (why !== null) return { verdict: "deny", why };
   }
   const role = principal.role;
   // Locks, money, deletion and commands: never a child's or a guest's, asked or not.
   if (verdict.verdict === "ask" && verdict.risky === true && (role === "child" || role === "guest"))
     return { verdict: "deny", why: `A ${role} can't do this; ask a parent or the owner.` };
-  const needs = Math.max(...toolsUsed(call).map((t) => REACH_ASSURANCE[toolReach(t)]));
+  const needs = Math.max(...toolsUsed(call).map((t) => reachAssurance(t, inputOf(call, t))));
   if (principal.assurance >= needs || verdict.verdict === "ask") return verdict;
   return {
     verdict: "ask",
@@ -394,6 +416,9 @@ const leaseCovers = (ask: TrustAsk): boolean => {
 };
 
 /** The tools a call uses: a batch uses itself and each of its steps. */
+/** The call's own input for its own tool; a batch step's tool is judged by name. */
+const inputOf = (call: ToolCall, tool: string): unknown =>
+  tessayaToolName(call.tool) === tool ? call.input : undefined;
 const toolsUsed = (call: ToolCall): ReadonlyArray<string> => {
   const name = tessayaToolName(call.tool);
   return name === "act_batch" && isOwnTool(call.tool)

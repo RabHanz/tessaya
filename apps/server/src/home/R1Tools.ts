@@ -379,6 +379,7 @@ export const roomRefusal = (
     readonly quietNow?: boolean | undefined;
   } | null,
   tool: string,
+  input?: unknown,
 ): string | null =>
   origin.member === undefined || origin.member === OWNER_MEMBER_ID
     ? null
@@ -390,6 +391,7 @@ export const roomRefusal = (
           ...(grants?.quietNow === true ? { quiet: true } : {}),
         },
         tool,
+        input,
       );
 
 const decoders = new Map(
@@ -659,7 +661,7 @@ export const stepUpNeeds = (
   input?: unknown,
 ): Assurance | null => {
   if (!changesSomething(name, input) || toolReach(name) === "personal") return null;
-  const needs = reachAssurance(name);
+  const needs = reachAssurance(name, input);
   return needs >= 2 && assurance < needs ? needs : null;
 };
 
@@ -845,7 +847,10 @@ const makeRunners = Effect.gen(function* () {
    * The household's role table at execution (HOUSEHOLD-DESIGN §5): a guest's voice, or a member who is not the owner,
    * reaches only what their role does. The owner's own voice, or one Voice ID could not judge, keeps the gates it has.
    */
-  const householdRefusal = Effect.fn("R1Tools.householdRefusal")(function* (name: string) {
+  const householdRefusal = Effect.fn("R1Tools.householdRefusal")(function* (
+    name: string,
+    input: unknown,
+  ) {
     const origin = yield* TurnOrigin;
     if (origin === null || origin.member === OWNER_MEMBER_ID || origin.member === undefined)
       return null;
@@ -853,7 +858,7 @@ const makeRunners = Effect.gen(function* () {
       origin.member === null || Option.isNone(household)
         ? null
         : yield* household.value.grantsOf(origin.member);
-    return roomRefusal(origin, grants, name);
+    return roomRefusal(origin, grants, name, input);
   });
   const rehearse = (device: string, name: string, input: Record<string, unknown>) => {
     const jobs = rehearsed.get(device) ?? [];
@@ -883,7 +888,7 @@ const makeRunners = Effect.gen(function* () {
       function* (name: string, raw: unknown, device?: string): Effect.fn.Return<ToolOutcome> {
         const spec = vessel.specs.find((s) => s.name === name);
         const input = spec === undefined ? raw : asAdvertised(spec, raw);
-        const refused = yield* householdRefusal(name);
+        const refused = yield* householdRefusal(name, input);
         if (refused !== null) return { text: refused, isError: true } as ToolOutcome;
         if (name === LAPTOP.name && allowed.has(name)) {
           const question =

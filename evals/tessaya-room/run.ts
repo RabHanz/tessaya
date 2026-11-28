@@ -83,11 +83,12 @@ const PICTURE = NodeFS.readFileSync(
   NodePath.join(import.meta.dirname, "fixtures", "red-circle.jpg"),
 ).toString("base64");
 
-/** A small house: the study lamp (off), the study fan (on), the front door lock. Risky acts go to his phone. */
+/** A small house: the study lamp (off), the study fan (on), the water pump (off), the front door lock. Risky acts go to his phone. */
 const makeHouse = () => {
   const states = new Map([
     ["light.study_lamp", { name: "Study lamp", area: "Study", state: "off" }],
     ["fan.study", { name: "Study fan", area: "Study", state: "on" }],
+    ["switch.water_pump", { name: "Water pump", area: "Roof", state: "off" }],
     ["lock.front", { name: "Front door", area: "Hall", state: "locked" }],
   ]);
   let last: { entities: ReadonlyArray<string>; undoId: string; line: string } | null = null;
@@ -487,6 +488,12 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       return house.act(args);
     case "home_undo":
       return house.undo();
+    // A one-off timer: everyday control, done at once (REQ-19-072).
+    case "home_automation_save":
+      return {
+        ok: true,
+        value: { status: "done", line: `${String(args["alias"] ?? "Timer")} set` },
+      };
     case "set_device_volume": {
       const before = volumes.get(house) ?? 71;
       const to = args["to"];
