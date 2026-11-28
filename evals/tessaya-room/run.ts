@@ -434,6 +434,7 @@ const healthOf = new WeakMap<House, NonNullable<RoomCase["health"]>>();
 /** The problem reports she sent in each case, their arguments as JSON. */
 const reportedOf = new WeakMap<House, Array<string>>();
 const formsOf = new WeakMap<House, Array<string>>();
+const setsOf = new WeakMap<House, Array<string>>();
 /** The session he is talking with through her once one message went, as TessayaSessionInsight keeps it. */
 const talkingOf = new WeakMap<House, string>();
 /** The Tessel each case's turn came through, when it says. */
@@ -536,6 +537,11 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       };
     // His Wi-Fi as the server answers it (HomeDevices.wifi): the order and forget run, a password never by voice.
     case "device_set": {
+      const value = args["value"];
+      setsOf.set(house, [
+        ...(setsOf.get(house) ?? []),
+        `${String(args["itemId"] ?? "")}=${typeof value === "string" ? value : JSON.stringify(value)}`,
+      ]);
       const fails = setFailsOf.get(house);
       if (fails !== undefined) return { ok: false, error: fails };
       const item = String(args["itemId"] ?? "");
@@ -1066,6 +1072,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
       firstMs,
       reported: reportedOf.get(house) ?? [],
       forms: formsOf.get(house) ?? [],
+      sets: setsOf.get(house) ?? [],
     };
   } finally {
     await mcp?.close();

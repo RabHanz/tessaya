@@ -12,8 +12,10 @@ import {
   fingerSkin,
   pinchScale,
   PX_PER_CM,
+  timerLeft,
   wanderSpot,
   type Spot,
+  type StageCard,
 } from "@t3tools/tessaya-shared/sleeveEstate";
 
 import rig from "../../../../../web/public/companion/rig.js?raw";
@@ -28,6 +30,8 @@ interface Mascot {
   speak(on: boolean): void;
   line(text: string): void;
   play(name: string): void;
+  prop(name: string, on: boolean): void;
+  use(name: string): void;
   react(kind: string, speed: number): void;
   press(a: number): void;
   release(): void;
@@ -62,6 +66,107 @@ svg.style.cssText = "position:absolute;inset:0;width:100%;height:100%;overflow:v
 her.append(svg);
 document.body.append(her);
 
+// what she holds on her estate (REQ-25-167): a card beside her that goes where she goes, and the prop that means it
+const card = document.createElement("div");
+card.style.cssText =
+  "position:absolute;left:0;top:0;max-width:46vw;padding:10px 14px;border-radius:16px;background:#F7F2E7;color:#1f1b1d;font:500 15px/1.3 system-ui,sans-serif;box-shadow:0 6px 24px rgba(0,0,0,.28);opacity:0;pointer-events:none;will-change:transform";
+document.body.append(card);
+let held: StageCard | null = null;
+let heldProp: string | null = null;
+let ticking = 0;
+let leaving = 0;
+const STAGE_MS = 2 * 60_000;
+const RING_MS = 8_000;
+function placeCard(ms: number) {
+  if (held === null) return;
+  const r = (size * spot.scale) / 2;
+  const w = card.offsetWidth;
+  const h = card.offsetHeight;
+  // by the hand she holds it in (her right, his left as he looks) where it fits, else her other side, else over her head
+  const right = spot.x + r * 0.55;
+  const left = spot.x - r * 0.55 - w;
+  const beside = innerWidth - 8 - right >= w ? right : left >= 8 ? left : null;
+  const x = beside ?? Math.min(innerWidth - w - 8, Math.max(8, spot.x - w / 2));
+  const y = Math.max(
+    8,
+    Math.min(innerHeight - inset - h - 8, beside === null ? spot.y - r - h : spot.y - h / 2),
+  );
+  card.style.transition = `opacity .25s${ms > 0 && !reduced ? `, transform ${ms}ms cubic-bezier(.45,0,.25,1)` : ""}`;
+  card.style.transform = `translate(${x}px,${y}px)`;
+}
+const holdProp = (next: string | null) => {
+  if (heldProp === next) return;
+  if (heldProp !== null) mascot.prop(heldProp, false);
+  heldProp = next;
+  if (next !== null) mascot.prop(next, true);
+};
+const line = (text: string, css: string) => {
+  const d = document.createElement("div");
+  d.textContent = text;
+  d.style.cssText = css;
+  return d;
+};
+const drawCard = () => {
+  if (held === null) return;
+  const timer = held.endsAt !== null;
+  card.replaceChildren(
+    ...(held.title === "" ? [] : [line(held.title, "font-size:12px;opacity:.65;font-weight:600")]),
+    ...(timer
+      ? [
+          line(
+            timerLeft(held.endsAt!, Date.now()),
+            "font:700 34px/1.1 system-ui;font-variant-numeric:tabular-nums",
+          ),
+        ]
+      : held.lines.map((l) => line(l, "white-space:pre-wrap"))),
+  );
+};
+const putAway = () => {
+  clearInterval(ticking);
+  clearTimeout(leaving);
+  held = null;
+  holdProp(null);
+  card.style.opacity = "0";
+  card.style.pointerEvents = "none";
+};
+const hold = (next: StageCard) => {
+  putAway();
+  held = next;
+  drawCard();
+  placeCard(0);
+  card.style.opacity = "1";
+  card.style.pointerEvents = "auto";
+  holdProp(next.prop);
+  if (next.gesture !== null) mascot.play(next.gesture);
+  if (next.endsAt === null) {
+    leaving = window.setTimeout(putAway, STAGE_MS);
+    return;
+  }
+  // a timer counts down on the card once a second; at its end she rings it, then puts it away
+  ticking = window.setInterval(() => {
+    drawCard();
+    if (held === null || Date.now() < held.endsAt!) return;
+    clearInterval(ticking);
+    holdProp("alarmclock");
+    leaving = window.setTimeout(putAway, RING_MS);
+  }, 1000);
+};
+// his hand on what she holds: a tap and she uses it; flicked away, she puts it away
+let cardFrom: { readonly x: number; readonly y: number } | null = null;
+card.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  cardFrom = { x: e.clientX, y: e.clientY };
+});
+card.addEventListener("pointerup", (e) => {
+  e.stopPropagation();
+  if (cardFrom === null) return;
+  const moved = Math.hypot(e.clientX - cardFrom.x, e.clientY - cardFrom.y);
+  cardFrom = null;
+  if (moved > 60) putAway();
+  else if (heldProp !== null) mascot.use(heldProp);
+  else if (held?.gesture != null) mascot.play(held.gesture);
+});
+
 // the shared page script talks to its host through mascotIpc: here the host is the app
 let levelOf: ((v: number, shape?: object) => void) | null = null;
 window.mascotIpc = {
@@ -93,6 +198,7 @@ const place = (next: Spot, ms: number) => {
     ms > 0 && !reduced ? `transform ${ms}ms cubic-bezier(.45,0,.25,1)` : "none";
   her.style.width = her.style.height = `${size}px`;
   her.style.transform = `translate(${spot.x - size / 2}px,${spot.y - size / 2}px) scale(${spot.scale})`;
+  placeCard(ms);
 };
 place(spot, 0);
 addEventListener("resize", () => {
@@ -308,7 +414,14 @@ const onMessage = (raw: unknown) => {
     walkTo({ x: m["x"] * innerWidth, y: m["y"] * innerHeight });
   else if (m.type === "scale" && typeof m["scale"] === "number")
     place({ ...spot, scale: m["scale"] }, 400);
-  else if (m.type === "morph" && (m["dir"] === "in" || m["dir"] === "out")) mascot.morph(m["dir"]);
+  else if (m.type === "morph" && (m["dir"] === "in" || m["dir"] === "out")) {
+    if (m["dir"] === "out") putAway();
+    mascot.morph(m["dir"]);
+  } else if (m.type === "stage") {
+    const next = m["card"] as StageCard | null;
+    if (next === null) putAway();
+    else hold(next);
+  }
 };
 // iOS posts to window, Android to document
 window.addEventListener("message", (e) => onMessage(e.data));

@@ -18,8 +18,10 @@ describe("embodiment", () => {
     );
     expect(bodyLine(ids("power.battery_pct"))).toBe("");
     // his phone as her Sleeve: she feels his fingers and its handling, and knows what she can do for him there
-    expect(bodyLine(ids("imu.moments", "skin.screen", "phone.call", "phone.notify"))).toBe(
-      "Your body here is his phone, a Sleeve: you can open a call for him (he presses call) and leave a note on his lock screen, through device_set on its items; in this body you feel being picked up, carried or shaken and his fingers on you through the screen.",
+    expect(
+      bodyLine(ids("imu.moments", "skin.screen", "phone.call", "phone.notify", "phone.stage")),
+    ).toBe(
+      "Your body here is his phone, a Sleeve: you can open a call for him (he presses call), leave a note on his lock screen and call up a live thing beside you on its screen and hold it (his timer, today, a note, the weather, music, a call), through device_set on its items; in this body you feel being picked up, carried or shaken and his fingers on you through the screen.",
     );
   });
 

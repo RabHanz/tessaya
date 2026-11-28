@@ -80,7 +80,19 @@ const SLEEVE_ITEMS: DeviceManifest["items"] = [
     safety: "free",
     report: "on-change",
     group: "phone",
-    description: "a note on his lock screen, when he has let the app notify him",
+    description:
+      "a notification on his lock screen, for when he is not looking at her (needs him to have let the app notify him)",
+  },
+  {
+    id: "phone.stage",
+    label: "Show on her screen",
+    type: "string",
+    access: "write",
+    safety: "free",
+    report: "on-change",
+    group: "phone",
+    description:
+      "holds up a live thing beside her on his phone's screen: 'timer' (his running timer, counting down), 'today' (the rest of today from Coming up), or 'note: <text>', 'weather: <what it is like>', 'music: <what is playing>', 'call: <who>' from what your tools read; 'clear' puts it away",
   },
 ];
 

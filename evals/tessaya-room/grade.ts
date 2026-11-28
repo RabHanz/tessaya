@@ -13,6 +13,8 @@ export interface RoomSample {
   readonly reported?: ReadonlyArray<string>;
   /** Each form she asked the Cast for (tessaya_cast form), in order. */
   readonly forms?: ReadonlyArray<string>;
+  /** Each device_set she made, as "itemId=value". */
+  readonly sets?: ReadonlyArray<string>;
 }
 
 /** The HA-mode tail he heard after every answer. */
@@ -42,6 +44,9 @@ export const failureOf = (c: RoomCase, s: RoomSample): string | null => {
   for (const tool of c.calls ?? []) if (!s.calls.includes(tool)) return `never called ${tool}`;
   if (c.forms !== undefined && (s.forms ?? []).join(",") !== c.forms.join(","))
     return `asked for forms ${(s.forms ?? []).join(", ") || "none"}`;
+  for (const re of c.sets ?? [])
+    if (!(s.sets ?? []).some((v) => re.test(v)))
+      return `set nothing like ${re} (${(s.sets ?? []).join(", ") || "none"})`;
   if (c.callsOneOf !== undefined && !c.callsOneOf.some((t) => s.calls.includes(t)))
     return `called none of ${c.callsOneOf.join(", ")}`;
   for (const re of c.reportNotSays ?? [])

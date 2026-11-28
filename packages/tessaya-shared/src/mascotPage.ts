@@ -123,6 +123,9 @@ export const MASCOT_SCRIPT = String.raw`(() => {
    rig.speak(planOf(text), { mouth });
   },
   play(name) { if (rig) rig.play(name); },
+  // a prop her host hands her to hold apart from her mood's (the Sleeve's stage, REQ-25-167), and its use on his tap
+  prop(name, on) { if (rig && TCS.PROPS[name]) rig.prop(name, on); },
+  use(name) { if (rig && rig.use) rig.use(name); },
   motion(vx, vy) { if (rig && rig.motion) rig.motion(vx, vy); if (snd) snd.motion(vx, vy); },
   // her character's own body (bodies.js TCS.PHYSICS): her flight for the window's physics, and how she reacts
   physics() { return rig && rig.physics ? TCS.flightOf(rig.physics()) : null; },

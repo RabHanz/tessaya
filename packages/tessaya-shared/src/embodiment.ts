@@ -25,6 +25,9 @@ export const bodyLine = (items: ReadonlyArray<{ readonly id: string }>): string 
     has("phone.message") ? "open a text for him (he presses send)" : null,
     has("phone.share") ? "hand something to any app through his share sheet" : null,
     has("phone.notify") ? "leave a note on his lock screen" : null,
+    has("phone.stage")
+      ? "call up a live thing beside you on its screen and hold it (his timer, today, a note, the weather, music, a call)"
+      : null,
   ].filter((x): x is string => x !== null);
   const parts = [
     desk,
