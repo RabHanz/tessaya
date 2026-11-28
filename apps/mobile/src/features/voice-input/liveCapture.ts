@@ -23,7 +23,10 @@ type Capture = {
 let capture: Capture | null = null;
 
 /** Live capture needs the module and nobody else holding it (a Sleeve's or a Tessel's link). */
-export const liveCaptureAvailable = (): boolean => PhoneAudio !== null && !phoneAudioHeld();
+// A module that failed to start (an old build's, a busy route) is not tried again this launch: the next press records the old way.
+let broken = false;
+export const liveCaptureAvailable = (): boolean =>
+  PhoneAudio !== null && !broken && !phoneAudioHeld();
 
 const decodeBase64 = (b64: string) => {
   const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -85,7 +88,10 @@ export function createLiveRecorder(): NativeVoiceRecorder<RecordingStatus, Recor
       return mine?.uri ?? null;
     },
     async prepareToRecordAsync() {
-      await audio.start();
+      await audio.start().catch((error: unknown) => {
+        broken = true;
+        throw error;
+      });
       mine = {
         uri: new File(Paths.cache, `dictation-${uuidv4()}.pcm`).uri,
         frames: [],
@@ -122,6 +128,7 @@ export function createLiveRecorder(): NativeVoiceRecorder<RecordingStatus, Recor
       canRecord: mine !== null,
       isRecording: recording,
       durationMillis: recording ? Date.now() - startedAt : 0,
+      fileSize: 0,
       mediaServicesDidReset: false,
       metering,
       url: mine?.uri ?? null,
