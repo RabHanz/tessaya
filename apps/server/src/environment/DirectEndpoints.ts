@@ -43,6 +43,8 @@ export class DirectEndpoints extends Context.Service<
   {
     readonly resolveAvailable: () => Effect.Effect<ReadonlyArray<ServerDirectEndpoint>>;
     readonly resolve: () => Effect.Effect<ReadonlyArray<ServerDirectEndpoint>>;
+    /** Tessaya: this machine's name behind the household's door (TessayaDoor), advertised once it answers. */
+    readonly setDoorHost: (host: string | null) => Effect.Effect<void>;
   }
 >()("t3/environment/DirectEndpoints") {}
 
@@ -169,14 +171,16 @@ export const publicDomainHost = (domain: string, name: string): string | null =>
 };
 
 /**
- * Tessaya: `TESSAYA_PUBLIC_DOMAIN` is the one base domain every brain is reached at from the internet (through the
- * owner's reverse proxy), so moving to a new domain is this one value; `TESSAYA_PUBLIC_NAME` is this brain's own label
- * under it, a setting so no machine name goes public. Either unset, nothing changes.
+ * Tessaya: the public name `TESSAYA_PUBLIC_HOST` gives, when it is one on the internet rather than a tailnet name. It is
+ * the household's door (TessayaDoor): its machines are reached under the same parent domain, so moving to a new domain
+ * is that one value.
  */
-export const PublicDomainHost = Config.all({
-  domain: Config.String("TESSAYA_PUBLIC_DOMAIN").pipe(Config.withDefault("")),
-  name: Config.String("TESSAYA_PUBLIC_NAME").pipe(Config.withDefault("")),
-}).pipe(Config.map(({ domain, name }) => publicDomainHost(domain, name)));
+export const PublicDomainHost = PublicBaseUrl.pipe(
+  Config.map((url) => {
+    const host = url === null ? null : new URL(url).hostname;
+    return host === null || isTailnetHost(host) ? null : host;
+  }),
+);
 
 /**
  * Who called from the internet, or undefined for a caller on this machine's own networks. The owner's proxy for the
@@ -187,7 +191,9 @@ export const internetCaller = (
   headers: Readonly<Record<string, string | undefined>>,
   domainHost: string | null,
 ): string | undefined =>
-  domainHost !== null && headers["host"]?.trim().toLowerCase().replace(/:443$/, "") === domainHost
+  // The door marks what it forwards; a caller who sets the mark itself is only treated more strictly.
+  headers["x-tessaya-door"] !== undefined ||
+  (domainHost !== null && headers["host"]?.trim().toLowerCase().replace(/:443$/, "") === domainHost)
     ? (headers["x-real-ip"] ?? "internet")
     : headers["cf-connecting-ip"];
 
@@ -235,7 +241,7 @@ export const make = Effect.gen(function* () {
   yield* Effect.forkDetach(onCloudVm);
 
   const publicUrl = yield* PublicBaseUrl;
-  const domainHost = yield* PublicDomainHost;
+  const doorHost = yield* Ref.make<string | null>(null);
   const servedEndpoints = yield* Ref.make<ReadonlyArray<ServerDirectEndpoint>>([]);
   const resolveAvailable = Effect.fn("DirectEndpoints.resolveAvailable")(function* () {
     const interfaces = NodeOS.networkInterfaces();
@@ -261,7 +267,9 @@ export const make = Effect.gen(function* () {
 
   const resolve = Effect.gen(function* () {
     // Serve setup can fail without stopping startup; advertise only after it answers as this server.
-    if (publicUrl === null && !config.tailscaleServeEnabled && domainHost === null) {
+    const nameHere = yield* Ref.get(doorHost);
+    if (publicUrl === null && !config.tailscaleServeEnabled && nameHere === null) {
+      yield* Ref.set(servedEndpoints, []);
       return yield* resolveAvailable();
     }
     const ownName =
@@ -303,10 +311,7 @@ export const make = Effect.gen(function* () {
         Effect.provideService(HttpClient.HttpClient, httpClient),
       );
     const found = yield* Effect.all(
-      [
-        served(ownName),
-        served(Effect.succeed(domainHost === null ? null : publicBaseUrl(domainHost))),
-      ],
+      [served(ownName), served(Effect.succeed(nameHere === null ? null : publicBaseUrl(nameHere)))],
       { concurrency: "unbounded" },
     );
     yield* Ref.set(
@@ -321,6 +326,7 @@ export const make = Effect.gen(function* () {
     resolve: Effect.fn("DirectEndpoints.resolve")(function () {
       return resolve;
     }),
+    setDoorHost: (host) => Ref.set(doorHost, host),
   });
 });
 

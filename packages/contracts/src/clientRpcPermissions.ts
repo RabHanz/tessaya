@@ -1,6 +1,7 @@
 import * as Schema from "effect/Schema";
 import { GitPreparePullRequestThreadInput, GitRunStackedActionInput } from "./git.ts";
 import {
+  AuthAccessReadScope,
   AuthAccessWriteScope,
   AuthTessayaCloudApproveScope,
   AuthEnvironmentMaintainScope,
@@ -126,6 +127,9 @@ const CAST_CALL = "baton.cast.call";
 /** Coming up (`BATON_UPCOMING_WS_METHODS`): reading is a read; cancelling, pausing or moving an item is operate. */
 const UPCOMING_LIST = "baton.upcoming.list";
 const UPCOMING_CHANGE = "baton.upcoming.change";
+/** Tessaya's front door (`TESSAYA_DOOR_WS_METHODS`): naming a machine on it is access, as pairing links are. */
+const DOOR_NAMES = "tessaya.door.names";
+const DOOR_SET_NAME = "tessaya.door.setName";
 /** His reaction to one pulse decision (`BATON_PULSE_WS_METHODS.react`): it changes what she raises. */
 const PULSE_REACT = "baton.pulse.react";
 
@@ -177,6 +181,8 @@ export function clientRpcRequiredScopes(
   if (method === CAST_CALL || method === UPCOMING_CHANGE)
     return [AuthOrchestrationReadScope, AuthOrchestrationOperateScope];
   if (method === UPCOMING_LIST) return [AuthOrchestrationReadScope];
+  if (method === DOOR_NAMES) return [AuthAccessReadScope];
+  if (method === DOOR_SET_NAME) return [AuthAccessWriteScope];
   return Object.hasOwn(CLIENT_GUARDED_RPC_SCOPES, method)
     ? [CLIENT_GUARDED_RPC_SCOPES[method as ClientGuardedRpcTag]]
     : [];

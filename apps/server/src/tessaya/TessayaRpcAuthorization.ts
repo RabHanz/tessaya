@@ -15,6 +15,7 @@ import {
   AuthFilesystemReadScope,
   AuthOrchestrationOperateScope,
   AuthAccessReadScope,
+  AuthAccessWriteScope,
   AuthOrchestrationReadScope,
   AuthSettingsWriteScope,
   AuthEnvironmentMaintainScope,
@@ -63,6 +64,7 @@ import {
   type TessayaRpcGroup,
   BATON_METHOD_OF,
   TESSAYA_ACTIVITY_WS_METHODS,
+  TESSAYA_DOOR_WS_METHODS,
   TESSAYA_HOUSEHOLD_WS_METHODS,
 } from "@t3tools/tessaya-contracts";
 import {
@@ -225,6 +227,9 @@ export const BATON_RPC_REQUIRED_SCOPES = {
   [TESSAYA_ACTIVITY_WS_METHODS.list]: AuthOrchestrationReadScope,
   [TESSAYA_ACTIVITY_WS_METHODS.why]: AuthOrchestrationReadScope,
   // The household's rules are the service's, by the caller's member, role and assurance, as on its HTTP route.
+  // Who reaches which machine from the internet is access, like pairing links.
+  [TESSAYA_DOOR_WS_METHODS.names]: AuthAccessReadScope,
+  [TESSAYA_DOOR_WS_METHODS.setName]: AuthAccessWriteScope,
   [TESSAYA_HOUSEHOLD_WS_METHODS.call]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.list]: AuthOrchestrationReadScope,
   [BATON_COMMITMENT_WS_METHODS.upsert]: AuthOrchestrationOperateScope,
@@ -500,9 +505,7 @@ export const syncCredentialOf = (session: Pick<AuthenticatedSession, "scopes" | 
  * session; any token's are a device's, which may be an agent's, and so is any cookie whose pairing is not one of his own
  * (a token bought it, or a path not yet listed in OWN_PAIRING_SUBJECTS).
  */
-export const askSourceOf = (
-  session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">,
-) =>
+export const askSourceOf = (session: Pick<AuthenticatedSession, "method" | "scopes" | "subject">) =>
   session.scopes.includes(AuthTessayaHandsHostScope) ||
   (session.method === "browser-session-cookie" && OWN_PAIRING_SUBJECTS.has(session.subject))
     ? ("phone" as const)

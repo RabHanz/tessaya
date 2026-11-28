@@ -70,6 +70,7 @@ import * as R1Hub from "../home/R1Hub.ts";
 import * as R1Pairing from "../home/R1Pairing.ts";
 import * as R1Loop from "../home/R1Loop.ts";
 import * as R1Reach from "../home/R1Reach.ts";
+import * as TessayaDoor from "./TessayaDoor.ts";
 import * as DeviceSync from "../home/DeviceSync.ts";
 import * as R1Updates from "../home/R1Updates.ts";
 import * as DeviceRegistry from "../home/DeviceRegistry.ts";
@@ -444,7 +445,16 @@ const servicesInner = Layer.mergeAll(
   // The Record under everything above, so any service can write to it.
   Layer.provideMerge(TessayaRecordService.layer),
   Layer.provideMerge(
-    Layer.mergeAll(loopLayer, updatesLayer, pairingLayer, reachLayer, syncLayer, hubLayer),
+    Layer.mergeAll(
+      loopLayer,
+      updatesLayer,
+      pairingLayer,
+      reachLayer,
+      syncLayer,
+      hubLayer,
+      // The household's one front door (TessayaDoor.ts); its names travel in the shared records.
+      TessayaDoor.layer.pipe(Layer.provide(syncLayer)),
+    ),
   ),
   // Baton's tables live in baton.sqlite; this client never reaches upstream's layers.
   Layer.provide(TessayaDatabase.layer),

@@ -2008,7 +2008,7 @@ index 07da49c732539b7897129cad9251a7365e495631..9dc050738429d917fa10d75f16f83d5b
          assert.isTrue(Option.isNone(yield* scratch.scratchRoot));
          assert.equal(yield* requireRoot, path.resolve(baseDir, "scratch"));
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371aae5a63a 100644
+index 491669209f7bf5e4e149f378720a9ab2bb11c64b..d4e1623890c4f7ba3d4f19bfe0f3825b20e938ff 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -8,6 +8,7 @@ import * as WorkspacePreviewRevisions from "./assets/WorkspacePreviewRevisions.t
@@ -2019,7 +2019,15 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
  import * as PullRequestWatchReactor from "./orchestration-v2/PullRequestWatchReactor.ts";
  import * as DelegatedTaskQuestionReactor from "./orchestration-v2/DelegatedTaskQuestionReactor.ts";
  import * as MilestoneHub from "./milestones/MilestoneHub.ts";
-@@ -56,6 +57,7 @@ import * as PullRequestHttp from "./pullRequest/http.ts";
+@@ -44,6 +45,7 @@ import {
+   keepIdleConnections,
+   rejectRequestsUntilServing,
+ } from "./httpResponseErrorGuard.ts";
++import { withDoorFront } from "./tessaya/doorFront.ts";
+ import { resolveLauncherPath } from "./cloud/pinnedRuntime.ts";
+ import { fixPath } from "./os-jank.ts";
+ import * as Ws from "./ws.ts";
+@@ -56,6 +58,7 @@ import * as PullRequestHttp from "./pullRequest/http.ts";
  import * as SpeechModelStore from "./speech/SpeechModelStore.ts";
  import * as SpeechService from "./speech/SpeechService.ts";
  import * as CloudSpeech from "./speech/CloudSpeech.ts";
@@ -2027,7 +2035,7 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
  import { speechHttpApiLayer } from "./speech/http.ts";
  import { speechStreamRouteLayer } from "./speech/stream.ts";
  import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
-@@ -97,6 +99,9 @@ import * as ProviderHostPathWatcher from "./provider/ProviderHostPathWatcher.ts"
+@@ -97,6 +100,9 @@ import * as ProviderHostPathWatcher from "./provider/ProviderHostPathWatcher.ts"
  import * as ProjectSettingsOverrideSweep from "./provider/ProjectSettingsOverrideSweep.ts";
  import * as TerminalManager from "./terminal/Manager.ts";
  import * as McpHttpServer from "./mcp/McpHttpServer.ts";
@@ -2037,7 +2045,7 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
  import * as PeerForwarding from "./peer/PeerForwarding.ts";
  import * as RemoteDelegation from "./peer/RemoteDelegation.ts";
  import * as PeerClientPairing from "./peer/PeerClientPairing.ts";
-@@ -336,6 +341,7 @@ const layerUsage = UsageService.layer.pipe(
+@@ -336,6 +342,7 @@ const layerUsage = UsageService.layer.pipe(
        CursorUsageAccounts.layer.pipe(Layer.provide(CursorAccountReader.layer)),
      ).pipe(Layer.provide(ProviderHostLive.layer.pipe(Layer.provide(ServerSecretStore.layer)))),
    ),
@@ -2045,7 +2053,16 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
    Layer.provide(layerServerSettings),
  );
  
-@@ -784,7 +790,18 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -394,7 +401,7 @@ const layerHttpServer = Layer.unwrap(
+     return NodeHttpServer.layer(
+       () => {
+         const server = rejectRequestsUntilServing(
+-          keepIdleConnections(guardHttpResponseWriteErrors(NodeHttp.createServer())),
++          keepIdleConnections(guardHttpResponseWriteErrors(withDoorFront(NodeHttp.createServer()))),
+           () => Ref.getUnsafe(migrationProgress.current),
+         );
+         if (config.privateNetworkOnly) {
+@@ -784,7 +791,18 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    ProviderInstallation.layer,
    ReplayMarkers.layer,
    Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
@@ -2064,7 +2081,7 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
    Layer.provideMerge(layerOrchestrationApplication),
    // One hub, which the feeders above and the workflow store inside the runtime publish to.
    Layer.provideMerge(MilestoneHub.layer),
-@@ -797,8 +814,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
+@@ -797,8 +815,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
    Layer.provideMerge(EnvironmentTheme.layer),
    Layer.provideMerge(layerServerSettings),
    Layer.provideMerge(layerSourceControlProviderRegistry),
@@ -2075,7 +2092,7 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
    Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
    Layer.provideMerge(layerPersistence),
    Layer.provideMerge(Layer.mergeAll(Keybindings.layer, UsageLimitSources.layer)),
-@@ -924,11 +941,19 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -924,11 +942,19 @@ const layerMakeRoutes = Layer.mergeAll(
      DeviceHubProxy.layer,
      ServerBrowserStream.routeLayer,
      PreviewTunnel.routeLayer,
@@ -2096,7 +2113,7 @@ index 491669209f7bf5e4e149f378720a9ab2bb11c64b..b450677d4afd6b08a4676d5365dba371
      Layer.provide(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
      Layer.provide(McpOAuth.layerMcpClientAuthenticator),
      Layer.provide(ProjectionStoreV2.layer),
-@@ -970,6 +995,7 @@ const layerMakeRoutes = Layer.mergeAll(
+@@ -970,6 +996,7 @@ const layerMakeRoutes = Layer.mergeAll(
      ),
    ),
    Layer.provide(CloudSpeech.layer.pipe(Layer.provide(SecretResolver.layer))),

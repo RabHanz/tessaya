@@ -45,6 +45,7 @@ import {
   keepIdleConnections,
   rejectRequestsUntilServing,
 } from "./httpResponseErrorGuard.ts";
+import { withDoorFront } from "./tessaya/doorFront.ts";
 import { resolveLauncherPath } from "./cloud/pinnedRuntime.ts";
 import { fixPath } from "./os-jank.ts";
 import * as Ws from "./ws.ts";
@@ -400,7 +401,7 @@ const layerHttpServer = Layer.unwrap(
     return NodeHttpServer.layer(
       () => {
         const server = rejectRequestsUntilServing(
-          keepIdleConnections(guardHttpResponseWriteErrors(NodeHttp.createServer())),
+          keepIdleConnections(guardHttpResponseWriteErrors(withDoorFront(NodeHttp.createServer()))),
           () => Ref.getUnsafe(migrationProgress.current),
         );
         if (config.privateNetworkOnly) {
