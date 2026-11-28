@@ -107,7 +107,8 @@ const FREE_DOMAINS = new Set([
   "camera",
 ]);
 const RISKY_COVER_CLASSES = new Set(["garage", "gate", "door"]);
-// Substrings of a name or id: conservative on purpose (an "outdoor" light asks; a fryer never slips by).
+// Substrings of a name or id: conservative on purpose (an "outdoor" light asks; a fryer never slips by). A pump is an
+// everyday appliance, on and off by any voice in the home (Director, 28 Nov); "ask me" on it is his own override.
 const RISKY_WORDS = [
   "garage",
   "gate",
@@ -116,7 +117,6 @@ const RISKY_WORDS = [
   "alarm",
   "security",
   "camera",
-  "pump",
   "heater",
   "oven",
   "fryer",

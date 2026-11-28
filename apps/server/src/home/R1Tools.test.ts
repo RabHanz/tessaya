@@ -175,6 +175,16 @@ describe("the room's tools for a replay", () => {
   it("holds for a step-up only a change that needs more than the voice gave, never a read or their own memory", () => {
     expect(stepUpNeeds("settings_set", 1)).toBe(2);
     expect(stepUpNeeds("home_automation_save", 0)).toBe(2);
+    // A one-off timer ("off in twenty minutes") is everyday control; a standing automation still steps up.
+    const timer = { alias: "Pump off", kind: "timer", runInMinutes: 20, actions: [], request: "" };
+    expect(stepUpNeeds("home_automation_save", 0, timer)).toBeNull();
+    expect(stepUpNeeds("home_automation_save", 0, { ...timer, triggers: [{}] })).toBe(2);
+    expect(
+      roomRefusal({ member: null, assurance: 0 }, null, "home_automation_save", timer),
+    ).toBeNull();
+    expect(
+      roomRefusal({ member: null, assurance: 0 }, null, "home_automation_save"),
+    ).not.toBeNull();
     expect(stepUpNeeds("settings_set", 2)).toBeNull();
     // A lamp needs A1, a read nothing, and their own memory has its rule in the turn.
     expect(stepUpNeeds("home_do", 0)).toBeNull();

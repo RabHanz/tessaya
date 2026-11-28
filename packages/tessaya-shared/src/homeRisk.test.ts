@@ -39,7 +39,7 @@ describe("homeRisk", () => {
     [
       "the water pump",
       call("switch", "turn_on", [{ entityId: "switch.sonoff_1", name: "Water Pump" }]),
-      "ask",
+      "auto",
     ],
     ["the airfryer", call("switch", "turn_on", ["switch.philips_airfryer_power"]), "ask"],
     [
@@ -97,9 +97,10 @@ describe("homeRisk", () => {
     const pump = call("switch", "turn_on", [
       { entityId: "switch.water_pump_switch", name: "Water Pump" },
     ]);
-    // 19 Nov 22:25: "turn on the water pump for fifty minutes" asked him twice.
+    // 19 Nov 22:25: "turn on the water pump for fifty minutes" asked him twice; 28 Nov it asked a voice Voice ID missed.
     expect(homeRisk(pump, {}, true).tier).toBe("auto");
-    expect(homeRisk(pump).tier).toBe("ask");
+    expect(homeRisk(pump).tier).toBe("auto");
+    expect(homeRisk(call("switch", "turn_on", ["switch.router_restart"])).tier).toBe("ask");
     expect(homeRisk(call("lock", "unlock", ["lock.front"]), {}, true).tier).toBe("ask");
     for (const named of [
       "switch.philips_airfryer_power",
