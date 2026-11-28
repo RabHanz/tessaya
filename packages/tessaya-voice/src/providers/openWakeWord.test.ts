@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { streamingScorer } from "./onnx.ts";
+import { streamingScorer } from "./openWakeWord.ts";
 
 describe("streamingScorer", () => {
   it("reports how far behind the newest frame a late fire was", async () => {
