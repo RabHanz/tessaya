@@ -53,7 +53,7 @@ import {
   stageBodyCss,
   windowAround,
 } from "./mascotDock.ts";
-import { MASCOT_SCRIPT } from "./mascotPage.ts";
+import { MASCOT_SCRIPT } from "@t3tools/tessaya-shared/mascotPage";
 import type { VoiceShape } from "../voice/voiceSpeaker.ts";
 import {
   DEFAULT_PROFILE,
