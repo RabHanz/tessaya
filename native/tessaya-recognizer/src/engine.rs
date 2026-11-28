@@ -59,20 +59,47 @@ pub fn start(model: &Path, threads: i32) -> (Sender<Job>, Arc<AtomicUsize>) {
     (jobs, queue)
 }
 
-fn decode(session: &mut Session, piece: Piece, options: &RunOptions) -> Result<(String, Scored), String> {
-    decode_words(session, piece, options).map(|(text, _, scored)| (text, scored))
+fn decode(session: &mut Session, piece: Piece, start: usize, options: &RunOptions) -> Result<(String, Scored), String> {
+    decode_words(session, piece, start, options).map(|(text, _, scored)| (text, scored))
 }
 
 /// A preview's words with where each ends, in samples of the uncut audio.
 type EndedWords = Vec<(usize, String)>;
 
-/// Each kept word with its weakest token's confidence (NaN where the model gives none): transcript repair (V-018).
-pub type Scored = Vec<(String, f32)>;
+/// A kept word, its weakest token's confidence (NaN where the model gives none; transcript repair, V-018), and when it
+/// starts and ends in ms from the start of the dictation's audio.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Heard {
+    pub w: String,
+    pub p: f32,
+    pub s_ms: i64,
+    pub e_ms: i64,
+}
+
+pub type Scored = Vec<Heard>;
+
+/// A time in a piece (ms from its pcm's start, context included) as ms from the start of the dictation's audio, where
+/// the piece's new audio begins at sample `start`. A word straddling the seam may start just before it: clamped to 0.
+fn dictation_ms(start: usize, context_ms: i64, t_ms: i64) -> i64 {
+    (start as i64 / 16 + t_ms - context_ms).max(0)
+}
+
+/// The final text's own words with their scores and times, one for one; none when they do not line up (repair and
+/// timings stay off this turn). Each takes the text's spelling, so a stop `join_pieces` dropped keeps its word's times.
+fn final_words(text: &str, scored: Scored) -> Scored {
+    let written: Vec<&str> = text.split_whitespace().collect();
+    if written.len() != scored.len() {
+        return Vec::new();
+    }
+    scored.into_iter().zip(written).map(|(heard, w)| Heard { w: w.to_string(), ..heard }).collect()
+}
 
 /// `decode`, and each kept word with where it ends in the piece's new audio (the sidecar's `decode_words`, #726).
+/// `start` is where the piece's new audio begins in the dictation's audio, in samples.
 fn decode_words(
     session: &mut Session,
     piece: Piece,
+    start: usize,
     options: &RunOptions,
 ) -> Result<(String, EndedWords, Scored), String> {
     let Piece { mut pcm, context, .. } = piece;
@@ -93,7 +120,12 @@ fn decode_words(
         .iter()
         .map(|(i, w)| {
             let tokens = result.tokens.iter().filter(|t| t.word_index as usize == *i);
-            (w.text.trim().to_string(), tokens.map(|t| t.p).fold(f32::NAN, f32::min))
+            Heard {
+                w: w.text.trim().to_string(),
+                p: tokens.map(|t| t.p).fold(f32::NAN, f32::min),
+                s_ms: dictation_ms(start, context_ms, w.t0_ms),
+                e_ms: dictation_ms(start, context_ms, w.t1_ms),
+            }
         })
         .collect();
     if context == 0 || result.words.is_empty() {
@@ -164,8 +196,9 @@ fn recognise(session: &mut Session, job: Job) {
         heard.extend_from_slice(&block);
         if let Some(piece) = chunker.push(&block) {
             let at_pause = piece.at_pause;
+            let start = heard.len() - chunker.pending_len() - (piece.pcm.len() - piece.context);
             let t = Instant::now();
-            match decode(session, piece, &options) {
+            match decode(session, piece, start, &options) {
                 Ok((words, piece_scored)) if !words.is_empty() => {
                     text.push(words);
                     scored.extend(piece_scored);
@@ -197,7 +230,8 @@ fn recognise(session: &mut Session, job: Job) {
                 if !chunker.quiet_since(from, &heard) {
                     if let Some(piece) = chunker.preview() {
                         let t = Instant::now();
-                        let decoded = decode_words(session, piece, &options).ok();
+                        let start = heard.len() - chunker.pending_len();
+                        let decoded = decode_words(session, piece, start, &options).ok();
                         preview_words = decoded.as_ref().map(|(_, words, _)| words.clone()).unwrap_or_default();
                         preview_scored = decoded.as_ref().map(|(_, _, s)| s.clone()).unwrap_or_default();
                         preview = decoded.map(|(text, _, _)| text);
@@ -230,8 +264,9 @@ fn recognise(session: &mut Session, job: Job) {
                 }
                 chunker.finish()
             } {
+                let start = heard.len() - (piece.pcm.len() - piece.context);
                 let t = Instant::now();
-                match decode(session, piece, &options) {
+                match decode(session, piece, start, &options) {
                     Ok((words, piece_scored)) if !words.is_empty() => {
                         text.push(words);
                         scored.extend(piece_scored);
@@ -247,8 +282,7 @@ fn recognise(session: &mut Session, job: Job) {
             }
         }
         let text = join_pieces(&text);
-        // Scores only when they are the text's own words, one for one; otherwise none (repair stays off this turn).
-        let words = if scored.len() == text.split_whitespace().count() { scored } else { Vec::new() };
+        let words = final_words(&text, scored);
         let _ = replies.send(Reply::Text {
             text,
             words,
@@ -274,5 +308,28 @@ mod tests {
         // Nothing ended early enough: the whole uncut audio is decoded, as before.
         assert_eq!(safe_words(&words, RATE), None);
         assert_eq!(safe_words(&Vec::new(), 4 * RATE), None);
+    }
+
+    #[test]
+    fn a_word_s_times_count_from_the_dictation_s_start_and_survive_its_spelling_changing() {
+        // A second piece whose new audio begins 3 s in, with 1 s of context: 1.2 s into its pcm is 3.2 s in.
+        assert_eq!(dictation_ms(3 * RATE, 1_000, 1_200), 3_200);
+        // A word straddling the seam starts a little before it, never before the dictation.
+        assert_eq!(dictation_ms(0, 0, -40), 0);
+        let heard = |w: &str, s_ms, e_ms| Heard { w: w.into(), p: 0.9, s_ms, e_ms };
+        // join_pieces dropped the stop the first piece ended on: the word keeps its times, spelled as the text has it.
+        let text = "turn on the light please";
+        let scored = vec![
+            heard("turn", 0, 200),
+            heard("on", 200, 350),
+            heard("the", 350, 450),
+            heard("light.", 450, 900),
+            heard("please", 3_200, 3_700),
+        ];
+        let words = final_words(text, scored);
+        assert_eq!(words[3], heard("light", 450, 900));
+        assert_eq!(words.iter().map(|h| h.w.as_str()).collect::<Vec<_>>().join(" "), text);
+        // Words that do not line up with the text are left out, not guessed at.
+        assert!(final_words("turn on", vec![heard("turn", 0, 200)]).is_empty());
     }
 }

@@ -6,7 +6,8 @@
 //! Protocol: the request carries `Authorization: Bearer <token>`. Text frames from the client: {"cmd":"health"},
 //! {"cmd":"begin","language":null,"vocabulary":["term"]}, {"cmd":"end"}; binary frames are PCM16 LE samples. From the server:
 //! {"ev":"health","queue":n,"busy":bool}, {"ev":"partial","text","pause"}, {"ev":"text","text","inferMs","pieces",
-//! "reused","releaseMs"}, {"ev":"error","message"}.
+//! "reused","releaseMs","words":[{"w","p","s","e"}],"model"} (each word of the text, its confidence, and its start and end
+//! in seconds from the dictation's first sample; empty when they do not line up with the text), {"ev":"error","message"}.
 #[path = "../../baton-dictation/src/live.rs"]
 #[allow(dead_code)]
 mod live;
@@ -236,8 +237,12 @@ fn reply_line(reply: Reply) -> Value {
         Reply::Text { text, infer_ms, pieces, reused, release_ms, words } => json!({
             "ev": "text", "text": text, "inferMs": infer_ms, "pieces": pieces, "reused": reused,
             "releaseMs": release_ms,
-            // Each word's confidence, null where the model gives none, and the model they were heard by (V-018).
-            "words": words.iter().map(|(w, p)| json!({"w": w, "p": if p.is_finite() { json!(p) } else { Value::Null }})).collect::<Vec<_>>(),
+            // Each word's confidence, null where the model gives none, and the model they were heard by (V-018); its start
+            // and end in seconds from the start of the dictation's audio.
+            "words": words.iter().map(|h| json!({
+                "w": h.w, "p": if h.p.is_finite() { json!(h.p) } else { Value::Null },
+                "s": h.s_ms as f64 / 1000.0, "e": h.e_ms as f64 / 1000.0,
+            })).collect::<Vec<_>>(),
             "model": model_name(),
         }),
         Reply::Error(message) => json!({"ev": "error", "message": message}),
@@ -314,6 +319,23 @@ mod tests {
         assert_eq!(next_text(&mut socket)["text"], "what time is it");
         // A shared socket lock held by the reader kept this waiting 5 to 25 s on 14 Nov; well under the 2 s silence limit.
         assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[test]
+    fn the_final_event_carries_each_word_s_times_in_seconds() {
+        let heard = |w: &str, p, s_ms, e_ms| engine::Heard { w: w.into(), p, s_ms, e_ms };
+        let line = reply_line(Reply::Text {
+            text: "what time is it".into(),
+            infer_ms: 41,
+            pieces: 1,
+            reused: false,
+            release_ms: 52,
+            words: vec![heard("what", 0.98, 120, 360), heard("time", 0.95, 360, 640), heard("is", f32::NAN, 640, 760), heard("it", 0.99, 760, 980)],
+        });
+        println!("{line}");
+        assert_eq!(line["words"][1], json!({"w": "time", "p": 0.95f32, "s": 0.36, "e": 0.64}));
+        assert_eq!(line["words"][2]["p"], Value::Null);
+        assert_eq!(line["text"], "what time is it");
     }
 
     #[test]
