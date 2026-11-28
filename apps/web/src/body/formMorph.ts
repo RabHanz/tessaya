@@ -12,6 +12,8 @@ import {
 } from "@t3tools/tessaya-shared/formMorph";
 import * as THREE from "three";
 
+import { makeCartoonHands, type CartoonHands, type CartoonHandSpec } from "./cartoonHands";
+
 /** A cartoon skin's data (film-work build_cartoon.py): `<id>.bin` and its art beside it. */
 export interface CartoonSpec {
   readonly id: string;
@@ -22,7 +24,12 @@ export interface CartoonSpec {
   readonly plain: readonly [number, number, number];
   /** Parts standing apart from the body (hands, ears, threads): `<id>-parts.bin` and `-parts.jpg`. */
   readonly parts?: { readonly count: number; readonly index: number };
+  /** Her floating hands' places and colours (cartoonHands.ts); their drawn solids in `parts` then give way to them. */
+  readonly hands?: ReadonlyArray<CartoonHandSpec>;
 }
+
+/** The cartoon's hands: floating beside her as the 2D rig's floating hands, or none. */
+export type CartoonHandsMode = "floating" | "none";
 
 const GRID_A = 96;
 const GRID_R = 48;
@@ -62,10 +69,15 @@ export interface CartoonSkin {
     readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
     readonly vs: Int32Array;
   } | null;
+  readonly hands: CartoonHands | null;
 }
 
 /** Loads a cartoon skin from `base` (`<id>.bin`, `-front.jpg`, `-side.jpg`, and `-face.json`/`.png` when it has them). */
-export async function loadCartoonSkin(base: string, spec: CartoonSpec): Promise<CartoonSkin> {
+export async function loadCartoonSkin(
+  base: string,
+  spec: CartoonSpec,
+  hands: CartoonHandsMode = "floating",
+): Promise<CartoonSkin> {
   const buf = await (await fetch(`${base}/${spec.id}.bin`)).arrayBuffer();
   const n = spec.count;
   const q = new Uint16Array(buf, 0, n * 3);
@@ -174,7 +186,16 @@ export async function loadCartoonSkin(base: string, spec: CartoonSpec): Promise<
     );
     pg.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(pb, m * 12, m * 2), 2));
     pg.setAttribute("fr", new THREE.BufferAttribute(new Float32Array(m).fill(1), 1));
-    pg.setIndex(new THREE.BufferAttribute(new Uint32Array(pb, m * 32, spec.parts.index), 1));
+    const all = new Uint32Array(pb, m * 32, spec.parts.index);
+    // a byte per vertex after the index marks the drawn hands, which give way to the modelled ones
+    const isHand =
+      spec.hands && pb.byteLength >= m * 33 + spec.parts.index * 4
+        ? new Uint8Array(pb, m * 32 + spec.parts.index * 4, m)
+        : null;
+    const keep: number[] = [];
+    for (let f = 0; f < all.length; f += 3)
+      if (isHand === null || !isHand[all[f]!]) keep.push(all[f]!, all[f + 1]!, all[f + 2]!);
+    pg.setIndex(keep);
     const tp = await tex(`${base}/${spec.id}-parts.jpg`);
     const pm = new THREE.Mesh(pg, mat({ ...U, uFront: { value: tp }, uSide: { value: tp } }));
     pm.frustumCulled = false;
@@ -193,6 +214,8 @@ export async function loadCartoonSkin(base: string, spec: CartoonSpec): Promise<
     n,
     plain,
     face: await loadFace(base, spec.id, idx, uv, fr, tf),
+    hands:
+      spec.hands && hands === "floating" ? makeCartoonHands(spec.hands, loc, n, spec.max[1]) : null,
   };
 }
 
@@ -557,8 +580,8 @@ function placeParts(P: NonNullable<CartoonSkin["parts"]>, e: ArrayLike<number> |
 }
 
 export interface FormMorph {
-  /** Starts a change: "in" from the cartoon (placed by `loaf`, world) into her body, "out" back. */
-  readonly start: (dir: MorphDir, look: MorphLook, loaf: THREE.Matrix4) => void;
+  /** Starts a change: "in" from the cartoon (placed by `loaf`, world) into her body, "out" back; `instant` lands it. */
+  readonly start: (dir: MorphDir, look: MorphLook, loaf: THREE.Matrix4, instant?: boolean) => void;
   /** Draws the change `now` (ms); false once it has finished (then the host stops asking for frames). */
   readonly frame: (now: number) => boolean;
   readonly active: () => boolean;
@@ -575,6 +598,7 @@ export function createFormMorph(
   scene.add(skin.mesh);
   if (skin.face) scene.add(skin.face.mesh);
   if (skin.parts) scene.add(skin.parts.mesh);
+  if (skin.hands) scene.add(skin.hands.root);
   let run: { dir: MorphDir; look: MorphLook; t0: number | null; loaf: THREE.Matrix4 } | null = null;
   const pos = skin.mesh.geometry.attributes.position as THREE.BufferAttribute;
   const p0 = [0, 0, 0];
@@ -591,10 +615,11 @@ export function createFormMorph(
     skin.mesh.visible = dir === "out";
     if (skin.face) skin.face.mesh.visible = false;
     if (skin.parts) placeParts(skin.parts, run?.loaf.elements ?? null, dir === "out" ? 1 : 0);
+    if (skin.hands && run) skin.hands.place(run.loaf, dir === "out" ? 1 : 0);
   };
   return {
-    start: (dir, look, loaf) => {
-      run = { dir, look, t0: null, loaf: loaf.clone() };
+    start: (dir, look, loaf, instant = false) => {
+      run = { dir, look, t0: instant ? -Infinity : null, loaf: loaf.clone() };
     },
     active: () => run !== null,
     frame: (now) => {
@@ -680,6 +705,8 @@ export function createFormMorph(
       body.U.uWT!.value = t;
       if (f.wipe <= 1e-3 && hugAny <= 0.001) bodyRoot.visible = false;
       if (skin.parts) placeParts(skin.parts, e, 1 - f.plain);
+      // the hands melt into her shoulders as the drawing goes plain, and grow back out of them
+      skin.hands?.place(run.loaf, 1 - f.plain);
       const fc = skin.face;
       if (fc) {
         // the drawn face rides the forming skin and fades as the drawing goes plain (a face travelling up into hers
@@ -710,6 +737,7 @@ export function createFormMorph(
       (skin.mesh.material as THREE.Material).dispose();
       skin.face?.mesh.geometry.dispose();
       skin.face?.mesh.material.dispose();
+      skin.hands?.dispose();
     },
   };
 }
