@@ -8,6 +8,7 @@ import { addressBarHost } from "@t3tools/tessaya-shared/webPolicy";
 import type { PlanLease } from "@t3tools/tessaya-shared/planLease";
 import { volumeAfter, volumeLine } from "@t3tools/tessaya-shared/speakingVolume";
 import {
+  deskSpeaker,
   speakerPath,
   type HeardScores,
   type SpeakerIdentity,
@@ -3609,17 +3610,7 @@ export const startScreenCompanion = (input: {
             presence: (await actions?.presence?.()) ?? "",
           }),
           ...(where.persona === undefined ? {} : { persona: where.persona.id }),
-          speaker:
-            voiceTurn && heardFrom !== null
-              ? {
-                  kind: heardFrom.kind,
-                  personId: heardFrom.personId,
-                  verified: heardFrom.verified,
-                  inherited: heardFrom.inherited,
-                  confidence: heardFrom.confidence,
-                  ...(heardFrom.print === undefined ? {} : { print: heardFrom.print }),
-                }
-              : null,
+          speaker: voiceTurn && heardFrom !== null ? deskSpeaker(heardFrom) : null,
           ...(voiceTurn && heardWords !== null
             ? { words: heardWords.words, recogniser: heardWords.recogniser }
             : {}),
@@ -3656,10 +3647,7 @@ export const startScreenCompanion = (input: {
     return reply;
   };
   /** His sentence goes to his session; a device's to a fresh one of its own, ended with the turn. */
-  const sayFor = (
-    outside: boolean,
-    onCancel?: (stop: () => void) => void,
-  ): AssistantAgent["say"] =>
+  const sayFor = (outside: boolean, onCancel?: (stop: () => void) => void): AssistantAgent["say"] =>
     outside
       ? async (text, where, onDelta) => {
           const once = outsideAgentOf();
