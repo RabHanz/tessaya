@@ -659,6 +659,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
         return capturingApps(mic, ownDir).length > 0 || capturingApps(cam, ownDir).length > 0;
       },
       shield: (on) => {
+        turnLog.note("layer_open_heard", { open: on });
         setPrivateShield(on, Electron.BrowserWindow.getAllWindows());
         void showLayerBody(on);
       },
@@ -696,18 +697,17 @@ export const startTessayaDesktop = Effect.gen(function* () {
       if (veiled !== null && veiled !== who) veiled.layerBody(null);
       veiled = who;
       if (!(open || deskFullBody) || page === null) return who?.layerBody(null);
-      // her shapeshift starts on the open itself; the private form finishes it once its page is up
-      if (open) who?.morph("out");
       const at = await layerSession(true);
-      if (at === null && open) who?.morph("in");
       if (at !== null && (layerLink.isOpen() || deskFullBody))
         who?.layerBody({
           // the moment's soul wears it; with none open, the layer shows whichever soul has an everyday look
           url: `${at.origin}${page}/mascot${layerLink.persona() === null ? "" : `?soul=${encodeURIComponent(layerLink.persona()!)}`}`,
           session: at.session,
-          waitShown: !layerLink.isOpen(),
-          // his chosen full body (no private moment): her character hands over to it as her 3D cartoon
-          handOff: !layerLink.isOpen(),
+          // her character hands over to her 3D cartoon, which morphs into her body: her everyday body and her
+          // private form alike (M-122), so her character stays until that body is seen drawn
+          waitShown: true,
+          handOff: true,
+          private: layerLink.isOpen(),
         });
     };
     // The layer's own page in its own window, out of capture, with an in-memory session: tessaya://layer, and its
@@ -736,12 +736,25 @@ export const startTessayaDesktop = Effect.gen(function* () {
       // her private form leaves the desk on the close itself
       shown: (on) => void showLayerBody(on && layerLink.isOpen()),
     });
-    const openLayerPage = async (chat = false, soul?: string) => {
+    const openLayerPage = async (chat = false, named?: string) => {
       const page = layerLink.page();
       if (page === null) return;
       const at = await layerSession();
       if (at === null) return;
       const { origin, session } = at;
+      // the soul he is with on his desk unless he named one: never the store's own first soul (28 Nov)
+      const soul = named ?? voice?.leadPersona() ?? undefined;
+      // his PIN opened it: hear it now, so her form starts on the desk without waiting for the next 10 s report
+      session.webRequest.onCompleted(
+        { urls: [`${origin}${page}/activate`, `${origin}${page}/unlock`] },
+        (details) => {
+          if (details.statusCode !== 200) return;
+          turnLog.note("layer_unlock_answered", {
+            path: new URL(details.url).pathname.split("/").pop(),
+          });
+          void layerLink.report();
+        },
+      );
       // Its pages ask for Hello as they load: PowerShell and WinRT start now, beside the page.
       warmHello();
       // The pages offer Hello only where this marker says the app will answer their ask.
@@ -758,7 +771,7 @@ export const startTessayaDesktop = Effect.gen(function* () {
         const asked = new URL(url);
         if (asked.origin !== origin || asked.pathname !== `${page}/hello`)
           return { action: "allow" };
-        void layerHello(asked.searchParams.get("for") ?? "chat").then((opened) => {
+        void layerHello(asked.searchParams.get("for") ?? "chat", soul).then((opened) => {
           if (win.isDestroyed()) return;
           // ready again for when he locks it and opens it again from this window
           warmHello();
