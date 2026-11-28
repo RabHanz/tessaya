@@ -101,7 +101,7 @@ index 4866dd32d08f9c244ec848d6d4751162a89ff78c..d5aaa2bbe52fd33eba6669b8a86e2a7f
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..276d0094ef9a642a1df2055359c4d5b0b41b8204 100644
+index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..cd4a15df5cb80d7e53818c35942e3d782b5eaf3b 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -79,6 +79,8 @@
@@ -153,6 +153,16 @@ index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..276d0094ef9a642a1df2055359c4d5b0
      "react-native-nitro-modules": "0.37.2",
      "react-native-pdf-jsi": "6.1.0",
      "react-native-reanimated": "4.8.0",
+@@ -188,7 +196,8 @@
+       ],
+       "ios": {
+         "exclude": [
+-          "react-native-pdf-jsi"
++          "react-native-pdf-jsi",
++          "onnxruntime-react-native"
+         ]
+       }
+     }
 diff --git a/apps/server/package.json b/apps/server/package.json
 index 033a4e5dd726ab0014d36030f366d45d4458da8e..98ab91f76d8fb53af54bee32c4699ad12d93387a 100644
 --- a/apps/server/package.json

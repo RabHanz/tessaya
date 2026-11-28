@@ -196,7 +196,8 @@
       ],
       "ios": {
         "exclude": [
-          "react-native-pdf-jsi"
+          "react-native-pdf-jsi",
+          "onnxruntime-react-native"
         ]
       }
     }
