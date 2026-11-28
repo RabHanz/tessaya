@@ -194,6 +194,32 @@ it.effect("a turn's tools know which vessel heard it", () =>
     assert.isFalse(said({ inherited: true }));
     assert.isFalse(said({ verified: false }));
     assert.isFalse(said({ kind: "guest" }));
+    // His own signed-in desktop (28 Nov): a mic that misses his voice never makes him a guest there; a Tessel does.
+    const heard = (vessel: TurnEnvelope["vessel"], s: Partial<SpeakerLike>) => {
+      const o = originOf({ vessel, text: "hi", speaker: owner({ verified: false, ...s }) });
+      return [o.member, o.assurance, o.hisVoice] as const;
+    };
+    const guest = { kind: "guest", personId: null } as const;
+    assert.deepStrictEqual(heard(desktop, guest), ["owner", 2, false]);
+    assert.deepStrictEqual(heard(desktop, { kind: "unverified", personId: null }), [
+      "owner",
+      2,
+      false,
+    ]);
+    assert.deepStrictEqual(heard(desktop, { lifted: true }), ["owner", 2, false]);
+    assert.deepStrictEqual(heard(desktop, { kind: "saved", personId: "sara", verified: true }), [
+      "sara",
+      2,
+      false,
+    ]);
+    assert.deepStrictEqual(heard(device, guest), [null, 0, false]);
+    assert.include(
+      voiceLine(
+        originOf({ vessel: desktop, text: "hi", speaker: owner({ ...guest, verified: false }) })
+          .speaker,
+      ),
+      "answer him as him",
+    );
   }),
 );
 
@@ -918,7 +944,7 @@ layer("TessayaTurn", (it) => {
   );
 
   it.effect(
-    "hours later she hears how long it has been and what he said last; never a private moment's words",
+    "hours later she hears how long it has been and what was said last; never a private moment's words",
     () =>
       Effect.gen(function* () {
         const turn = yield* TessayaTurn;
@@ -933,6 +959,8 @@ layer("TessayaTurn", (it) => {
         assert.lengthOf(back.conversation.turns, 0);
         assert.include(back.feeling, "2 hours ago");
         assert.include(back.feeling, "I will sleep for a bit");
+        // Her own last words too, so "did you say…?" after a quiet spell has something to go on (27 Nov).
+        assert.include(back.feeling, 'you had answered (data): "Sleep well."');
         // Within the conversation it is the same talk going on: no line.
         yield* turn.end({ ...his, text: "turn off the fan" }, { reply: "Off." });
         assert.notInclude((yield* turn.begin({ ...his, text: "thanks" })).feeling, "ago");

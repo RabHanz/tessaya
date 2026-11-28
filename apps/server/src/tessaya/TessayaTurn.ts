@@ -14,6 +14,7 @@ import {
   OWNER_MEMBER_ID,
   isPreferenceKey,
   type PreferenceKey,
+  signedInSpeaker,
   vesselSubject,
   voiceAssurance,
 } from "@t3tools/tessaya-shared/household";
@@ -204,6 +205,15 @@ export interface ConversationTurn {
 const hisVoice = (speaker: SpeakerLike | null) =>
   speaker?.kind === "owner" && ownVoiceVerified(speaker);
 
+/** A voice placed by its device's sign-in is that device's member at the device's level, as typing there is (A2). */
+const spokenIdentity = (turn: Pick<TurnEnvelope, "vessel" | "member">, heard: SpeakerLike) => {
+  const speaker = signedInSpeaker(heard, turn.vessel.kind, turn.member);
+  return {
+    member: memberOfSpeaker(speaker),
+    assurance: speaker === heard ? voiceAssurance(speaker) : (2 as const),
+  };
+};
+
 /**
  * Who a turn is from and how sure (ACCOUNTS-IDENTITY-DESIGN §2.4): a spoken turn is its voice's member at its voice's
  * level; a typed one on a signed-in desktop, phone or browser is the owner's device at A2 (I-0: those sessions are his
@@ -213,7 +223,7 @@ export const turnIdentity = (
   turn: Pick<TurnEnvelope, "speaker" | "vessel" | "member">,
 ): { readonly member: string | null; readonly assurance: Assurance } =>
   turn.speaker !== null && turn.speaker !== undefined
-    ? { member: memberOfSpeaker(turn.speaker), assurance: voiceAssurance(turn.speaker) }
+    ? spokenIdentity(turn, turn.speaker)
     : {
         // A typed turn is its device's member: the owner's unless a member's own device sent it.
         member: turn.member === undefined ? OWNER_MEMBER_ID : turn.member,
@@ -247,12 +257,14 @@ export const moodMember = (turn: TurnEnvelope): string | null => {
  */
 export const originOf = (turn: TurnEnvelope) => {
   const identity = turnIdentity(turn);
-  const carried = turn.speaker?.session === true || turn.speaker?.lifted === true;
+  const speaker =
+    turn.speaker == null ? null : signedInSpeaker(turn.speaker, turn.vessel.kind, turn.member);
+  const carried = speaker?.session === true || speaker?.lifted === true;
   return {
     ...turn.vessel,
     label: turn.origin ?? turn.vessel.kind,
-    hisVoice: hisVoice(turn.speaker ?? null),
-    speaker: turn.speaker ?? null,
+    hisVoice: hisVoice(speaker),
+    speaker,
     ...identity,
     assurance: carried ? (Math.min(identity.assurance, 1) as Assurance) : identity.assurance,
     tainted: turn.tainted === true,
@@ -1018,8 +1030,18 @@ export const make = Effect.gen(function* () {
       return "";
     const said = held.turns.findLast((t) => t.role === "user")?.content;
     if (said === undefined) return "";
+    const replied =
+      held.turns.at(-1)?.role === "assistant" ? held.turns.at(-1)?.content : undefined;
     return (
-      sinceLine({ at: DateTime.formatIso(DateTime.makeUnsafe(held.at)), said }, now, zone) ?? ""
+      sinceLine(
+        {
+          at: DateTime.formatIso(DateTime.makeUnsafe(held.at)),
+          said,
+          ...(replied === undefined ? {} : { replied }),
+        },
+        now,
+        zone,
+      ) ?? ""
     );
   };
   let transcriptSweptAt = 0;
@@ -1412,10 +1434,11 @@ export const make = Effect.gen(function* () {
       : turn;
   });
 
-  /** A typed turn takes its session's member when the vessel did not name one. */
+  /** A typed turn takes its session's member when the vessel did not name one; a voice there is placed by it. */
   const withMember = Effect.fn("TessayaTurn.member")(function* (turn: TurnEnvelope) {
-    if (turn.member !== undefined || (turn.speaker !== null && turn.speaker !== undefined))
-      return turn;
+    if (turn.speaker !== null && turn.speaker !== undefined)
+      return { ...turn, speaker: signedInSpeaker(turn.speaker, turn.vessel.kind, turn.member) };
+    if (turn.member !== undefined) return turn;
     return { ...turn, member: yield* SessionMember };
   });
 
