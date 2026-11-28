@@ -865,10 +865,17 @@ export const layer = McpToolAccess.toLayer(
               (origin.kind !== "device" ||
                 origin.hisVoice === true ||
                 origin.speaker?.verified === true));
+          const here = input.body === undefined || input.body.toLowerCase() === "here";
+          const at = here ? (origin?.id ?? input.body) : input.body;
+          // her form asked from a window that is no body of the cast (his private window on the web or phone) is the
+          // form his desktop wears, which that window follows ("change into your body", "back to cartoon")
           const body =
-            input.body === undefined || input.body.toLowerCase() === "here"
-              ? (origin?.id ?? input.body)
-              : input.body;
+            here &&
+            input.action === "form" &&
+            at !== undefined &&
+            !(yield* cast.value.view).bodies.some((b) => b.id === at)
+              ? "desktop"
+              : at;
           const op = castOp(input, body);
           // A visit for this conversation is a persona switch, as a wake word is: any untainted turn may ask.
           const view = yield* cast.value.call(op, verified, origin?.tainted !== true).pipe(

@@ -202,6 +202,10 @@ it.effect("switches the form a body shows; Tumble's form is a Tessel's alone", (
     expect(yield* cast.form("desktop")).toBe("human");
     expect(yield* cast.form("desk-1")).toBe("human");
     expect(yield* cast.form("r1-tumble")).toBe("tumble");
+    // "desktop" is the desk body, as the web window's "back to cartoon" asks for it
+    yield* cast.call({ op: "form", body: "desktop", form: "cartoon" }, true);
+    expect(yield* cast.form("desktop")).toBe("cartoon");
+    yield* cast.call({ op: "form", body: "Desk", form: "human" }, true);
     // the self it wears is untouched by the form
     expect(yield* cast.wearing("desk-1")).toBe("companion");
     expect(

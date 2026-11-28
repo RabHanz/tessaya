@@ -103,6 +103,7 @@ import {
   loadCartoonSkin,
   prepareBody,
   type CartoonSpec,
+  type CartoonHandsMode,
   type FormMorph,
 } from "./formMorph";
 import {
@@ -875,7 +876,10 @@ export function mountBody(
     readonly of: VRM;
     readonly base: string;
     readonly player: FormMorph;
+    readonly hands: CartoonHandsMode;
     done: (() => void) | null;
+    /** Standing as her cartoon: her body is hidden, so nothing of hers needs a frame. */
+    cartoon: boolean;
   } | null = null;
   let model: string | null = null;
   let shown = false;
@@ -2753,7 +2757,10 @@ export function mountBody(
       stepping !== null ||
       handHeld ||
       now - lastMove < SETTLE_MS;
-    if (active(now) || motion.tremble > 0.05 || morph?.player.active() === true)
+    if (morph?.player.active() === true) schedule(1000 / TIERS[tier]!.fps);
+    // standing as her cartoon, nothing of her body needs a frame once the camera has settled
+    else if (morph?.cartoon === true && !active(now)) return;
+    else if (active(now) || motion.tremble > 0.05)
       schedule(1000 / (bodyMoving ? TIERS[tier]!.fps : Math.min(30, TIERS[tier]!.fps)));
     else if (breathing()) schedule(1000 / Math.min(BREATH_FPS, TIERS[tier]!.fps));
     else {
@@ -2784,6 +2791,8 @@ export function mountBody(
   const planBlink = () => {
     if (blinkTimer !== null || disposed) return;
     const fire = () => {
+      // no blink while she stands as her cartoon: her body is hidden (the next rest plans one again)
+      if (morph?.cartoon === true) return void (blinkTimer = null);
       // a held blink comes the moment the hold lets go, as a person's does
       const wait = (holds["blink"] ?? 0) - performance.now();
       if (wait > 0) return void (blinkTimer = setTimeout(fire, wait));
@@ -4360,29 +4369,44 @@ export function mountBody(
     }),
     /**
      * Her shapeshift (Library film-shapeshift-morph-live): "out" melts her body into her cartoon, "in" brings her body
-     * back from it. The cartoon's skin and art load from `cartoon.base` (`<id>.bin`, `-front.jpg`, `-side.jpg`).
-     * Resolves when the change has played; frames are drawn only while it runs.
+     * back from it. The cartoon's skin and art load from `cartoon.base` (`<id>.bin`, `-front.jpg`, `-side.jpg`), with
+     * her floating hands unless `hands` is "none". `instant` lands the change at once (she stands as it ends).
+     * Resolves when the change has played; frames are drawn only while it runs, and none while she stands as her cartoon.
      */
     morph: async (
       dir: MorphDir,
       look: MorphLook,
-      cartoon: { readonly base: string; readonly spec: CartoonSpec },
+      cartoon: {
+        readonly base: string;
+        readonly spec: CartoonSpec;
+        readonly hands?: CartoonHandsMode;
+        readonly instant?: boolean;
+      },
     ): Promise<void> => {
       const her = vrm;
       if (her === null) return;
-      if (morph === null || morph.of !== her || morph.base !== cartoon.base) {
-        const skin = await loadCartoonSkin(cartoon.base, cartoon.spec);
+      const hands = cartoon.hands ?? "floating";
+      if (
+        morph === null ||
+        morph.of !== her ||
+        morph.base !== cartoon.base ||
+        morph.hands !== hands
+      ) {
+        const skin = await loadCartoonSkin(cartoon.base, cartoon.spec, hands);
         if (vrm !== her) return;
         morph?.player.dispose();
         morph = {
           of: her,
           base: cartoon.base,
+          hands,
           player: createFormMorph(root, skin, prepareBody(her.scene, skin.plain), her.scene),
           done: null,
+          cartoon: false,
         };
       }
       const m = morph;
       m.done?.();
+      m.cartoon = false;
       // the cartoon stands where she stands, facing the way she faces (less the VRM 0 half turn in baseYaw)
       root.updateMatrixWorld(true);
       m.player.start(
@@ -4391,9 +4415,13 @@ export function mountBody(
         root.matrixWorld
           .clone()
           .multiply(new THREE.Matrix4().makeRotationY(her.scene.rotation.y - baseYaw)),
+        cartoon.instant === true,
       );
       await new Promise<void>((done) => {
-        m.done = done;
+        m.done = () => {
+          m.cartoon = dir === "out";
+          done();
+        };
         invalidate();
       });
     },

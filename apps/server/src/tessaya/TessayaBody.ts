@@ -89,6 +89,23 @@ export const physicsClipsOn = Effect.fn("TessayaBody.physicsClipsOn")(function* 
       );
 });
 
+/**
+ * Her form for a body page on the web (the private window): her full body or her cartoon, as his desktop wears it
+ * (Settings → Desktop companion → Her body, which "change into your body" sets), and the change's look (`tessayaMorph`).
+ */
+export const webBodyForm = Effect.fn("TessayaBody.webBodyForm")(function* () {
+  const cast = yield* Effect.serviceOption(TessayaCast);
+  const settings = yield* Effect.serviceOption(ServerSettingsService);
+  const form = Option.isNone(cast) ? "cartoon" : yield* cast.value.form("desktop");
+  const look = Option.isNone(settings)
+    ? "original"
+    : yield* settings.value.getSettings.pipe(
+        Effect.map((s) => s.tessayaMorph),
+        Effect.orElseSucceed(() => "original" as const),
+      );
+  return { form: form === "human" ? ("human" as const) : ("cartoon" as const), look };
+});
+
 /** Who is asking: her own turn on a vessel, an agent in T3, or one signed in from outside. */
 export interface BodyCaller {
   readonly id: string;
@@ -866,7 +883,6 @@ export const feel = Effect.fn("TessayaBody.feel")(function* (f: Felt) {
       vessel: f.vessel,
       ...(f.pressure === undefined ? {} : { pressure: f.pressure }),
       ...(f.durationMs === undefined ? {} : { durationMs: f.durationMs }),
-      ...(f.areaCm2 === undefined ? {} : { areaCm2: f.areaCm2 }),
     },
     ...(f.private === true ? { private: true } : {}),
   });
