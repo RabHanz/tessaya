@@ -152,7 +152,7 @@ index 5333af3ea577abda416b1a386bdd77b393e6066a..50d96919343e4be74495dbf7f8ad1059
    "checkmark.circle": IconCircleCheck,
    "checkmark.circle.fill": IconCircleCheck,
 diff --git a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
-index 2a0edba8a3cead7921dfad513829a6573ae60952..3020eebf78241cef57602072084112ef0f3c5310 100644
+index 2a0edba8a3cead7921dfad513829a6573ae60952..3d264412c8f3dc3566a737f2cdbee3b0568831f0 100644
 --- a/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 +++ b/apps/mobile/src/features/settings/SettingsRouteScreen.tsx
 @@ -17,7 +17,7 @@ import { EmptyState } from "../../components/ui/EmptyState";
@@ -306,21 +306,21 @@ index 2a0edba8a3cead7921dfad513829a6573ae60952..3020eebf78241cef57602072084112ef
 +          ? [
 +              {
 +                id: "sleeve-awake",
-+                icon: "bolt" as const,
++                icon: "bolt.circle" as const,
 +                label: gt("Stay awake while charging"),
 +                value: sleeveSet.awake ? gt("On") : gt("Off"),
 +                onPress: () => setSleeveSetting("awake", !sleeveSet.awake),
 +              },
 +              {
 +                id: "sleeve-quiet",
-+                icon: "bell.slash" as const,
++                icon: "bell.badge" as const,
 +                label: gt("Quiet notifications"),
 +                value: sleeveSet.quiet ? gt("On") : gt("Off"),
 +                onPress: () => setSleeveSetting("quiet", !sleeveSet.quiet),
 +              },
 +              {
 +                id: "sleeve-who",
-+                icon: "person" as const,
++                icon: "person.crop.circle" as const,
 +                label: gt("Who she is here"),
 +                onPress: () =>
 +                  Alert.alert(

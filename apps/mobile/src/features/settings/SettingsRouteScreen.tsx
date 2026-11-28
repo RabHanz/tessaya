@@ -343,21 +343,21 @@ function useSettingsIndexSections(): SettingsListSection[] {
           ? [
               {
                 id: "sleeve-awake",
-                icon: "bolt" as const,
+                icon: "bolt.circle" as const,
                 label: gt("Stay awake while charging"),
                 value: sleeveSet.awake ? gt("On") : gt("Off"),
                 onPress: () => setSleeveSetting("awake", !sleeveSet.awake),
               },
               {
                 id: "sleeve-quiet",
-                icon: "bell.slash" as const,
+                icon: "bell.badge" as const,
                 label: gt("Quiet notifications"),
                 value: sleeveSet.quiet ? gt("On") : gt("Off"),
                 onPress: () => setSleeveSetting("quiet", !sleeveSet.quiet),
               },
               {
                 id: "sleeve-who",
-                icon: "person" as const,
+                icon: "person.crop.circle" as const,
                 label: gt("Who she is here"),
                 onPress: () =>
                   Alert.alert(
