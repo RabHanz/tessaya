@@ -104,10 +104,10 @@ index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb223718
    }
  }
 diff --git a/apps/mobile/metro.config.js b/apps/mobile/metro.config.js
-index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..8165e1769e592e16899c88a770bbc42e91e81bf7 100644
+index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..e906ba77e547d689fa94f68fe195a5769ac03d89 100644
 --- a/apps/mobile/metro.config.js
 +++ b/apps/mobile/metro.config.js
-@@ -18,7 +18,11 @@ const licenseGeneratorSource = path.join(
+@@ -18,10 +18,16 @@ const licenseGeneratorSource = path.join(
  const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-stream");
  const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
@@ -119,7 +119,12 @@ index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..8165e1769e592e16899c88a770bbc42e
  config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
  config.resolver = {
    ...config.resolver,
-@@ -35,6 +39,8 @@ config.resolver = {
++  // her wake-word models ship as assets (src/features/tessel/sleeveWake.ts)
++  assetExts: [...(config.resolver?.assetExts ?? []), "onnx"],
+   blockList: [
+     ...(Array.isArray(config.resolver?.blockList)
+       ? config.resolver.blockList
+@@ -35,6 +41,8 @@ config.resolver = {
      "@t3tools/mobile-third-party-licenses": generatedLicenseModuleRoot,
      "@t3tools/mobile-device-stream": generatedDeviceStreamRoot,
      "@t3tools/mobile-preview-stream": generatedPreviewStreamRoot,
@@ -128,7 +133,7 @@ index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..8165e1769e592e16899c88a770bbc42e
    },
  };
  
-@@ -71,11 +77,21 @@ async function generateMobileThirdPartyLicenses() {
+@@ -71,11 +79,21 @@ async function generateMobileThirdPartyLicenses() {
  }
  
  async function prepareStreamScripts() {
@@ -152,7 +157,7 @@ index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..8165e1769e592e16899c88a770bbc42e
    await generateAll();
    if (process.env.NODE_ENV !== "production") {
      let rebuild = Promise.resolve();
-@@ -90,6 +106,16 @@ async function prepareStreamScripts() {
+@@ -90,6 +108,16 @@ async function prepareStreamScripts() {
          ["preview-stream.browser.ts"],
          generatePreviewStreamScript,
        ],
@@ -169,7 +174,7 @@ index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..8165e1769e592e16899c88a770bbc42e
        ["packages/client-runtime/src/device", ["stream.ts", "hubAccess.ts"], generateAll],
        [
          "packages/client-runtime/src/preview",
-@@ -110,11 +136,16 @@ async function prepareStreamScripts() {
+@@ -110,11 +138,16 @@ async function prepareStreamScripts() {
    }
  }
  

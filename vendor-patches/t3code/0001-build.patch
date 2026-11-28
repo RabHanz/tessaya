@@ -101,7 +101,7 @@ index 4866dd32d08f9c244ec848d6d4751162a89ff78c..d5aaa2bbe52fd33eba6669b8a86e2a7f
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..291b705fdf95e75f7bca693cd73f40ff9a89b0ee 100644
+index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..276d0094ef9a642a1df2055359c4d5b0b41b8204 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -79,6 +79,8 @@
@@ -135,7 +135,12 @@ index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..291b705fdf95e75f7bca693cd73f40ff
      "expo-secure-store": "~58.0.3",
      "expo-sensors": "~58.0.5",
      "expo-sharing": "58.0.23",
-@@ -126,10 +131,12 @@
+@@ -122,14 +127,17 @@
+     "expo-web-browser": "~58.1.0",
+     "expo-widgets": "58.0.29",
+     "gt-react-native": "11.4.18",
++    "onnxruntime-react-native": "1.24.3",
+     "pele": "catalog:",
      "react": "catalog:",
      "react-dom": "catalog:",
      "react-native": "0.88.1",

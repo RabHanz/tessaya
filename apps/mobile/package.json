@@ -127,6 +127,7 @@
     "expo-web-browser": "~58.1.0",
     "expo-widgets": "58.0.29",
     "gt-react-native": "11.4.18",
+    "onnxruntime-react-native": "1.24.3",
     "pele": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
