@@ -1,3 +1,5 @@
+import { inQuietHours } from "@t3tools/tessaya-shared/attention";
+
 /** This phone as the `sleeve` preference names it: its registry id, its own name and its model. */
 export interface PhoneNames {
   readonly id: string;
@@ -37,3 +39,13 @@ export const withSleeve = (
   const next = on ? [...others, phone.names[0] ?? phone.id] : others;
   return next.length === 0 ? null : next.join(", ").slice(0, 120);
 };
+
+/** Alone this long on its charger, her Sleeve rests (REQ-25-157). */
+export const ALONE_MS = 2 * 60_000;
+
+/**
+ * How her Sleeve rests alone on its charger: dimmed to her dock, or dark for the night (its screen let go to sleep),
+ * by his quiet hours ("22-8"). A touch, a raise or a turn with her brings her back.
+ */
+export const restOf = (quietHours: string, hour: number): "dock" | "night" =>
+  inQuietHours(quietHours, hour) ? "night" : "dock";

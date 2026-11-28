@@ -11,6 +11,13 @@ export const setHerPhase = (next: HerPhase) => {
   for (const l of listeners) l();
 };
 
+/** Each change of her phase here, for a timer outside React. */
+export const onHerPhase = (l: (next: HerPhase) => void) => {
+  const f = () => l(phase);
+  listeners.add(f);
+  return () => void listeners.delete(f);
+};
+
 export const useHerPhase = () =>
   useSyncExternalStore(
     (l) => {
