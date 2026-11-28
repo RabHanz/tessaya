@@ -16,6 +16,8 @@ export function createEnvironmentTranscriber(input: {
   readonly prepare: (signal: AbortSignal) => Promise<string>;
   readonly decode: (uri: string) => Promise<Uint8Array>;
   readonly upload: (pcm: Uint8Array, signal: AbortSignal) => Promise<string>;
+  /** Transcribes while he speaks; null leaves the recording to `transcribe` after it stops. */
+  readonly stream?: (signal: AbortSignal) => Promise<string | null>;
 }): VoiceTranscriber {
   function check(signal: AbortSignal) {
     throwIfVoiceTranscriptionAborted(signal);
@@ -42,7 +44,7 @@ export function createEnvironmentTranscriber(input: {
         async start(_uri, { signal }) {
           await ready;
           check(signal);
-          return null;
+          return input.stream ? input.stream(signal) : null;
         },
         async transcribe(uri, { signal }) {
           await ready;

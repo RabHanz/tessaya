@@ -3,6 +3,7 @@
  * ✕ / waveform / ✓ centred in the toolbar, coloured from the phone's theme. Only colour and opacity change between
  * states, nothing reflows, and the waveform is the one thing that moves, from the microphone's level on the UI thread.
  */
+import type { SpeechStreamText } from "@t3tools/contracts";
 import type { PillDesign, PillTokens, WaveName } from "@t3tools/tessaya-shared/composerDictation";
 import { BlurView } from "expo-blur";
 import { memo } from "react";
@@ -18,6 +19,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
+import { AppText as Text } from "../../components/ui/AppText";
 import { SymbolView } from "../../components/ui/AppSymbol";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 
@@ -246,8 +248,12 @@ export function TessayaDictationPill(props: {
   readonly confirmable: boolean;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
+  /** His words as he speaks (the server's live stream): firm ones in full colour, the rest muted. */
+  readonly words?: SpeechStreamText | null;
 }) {
   const { tokens, design } = props;
+  const committed = props.words?.committed.trim() ?? "";
+  const tentative = props.words?.tentative.trim() ?? "";
   const lively = design === "lively";
   return (
     <View className="min-w-0 flex-1 items-center justify-center" style={{ height: 44 }}>
@@ -268,6 +274,7 @@ export function TessayaDictationPill(props: {
             lively || (design === "quiet" && QUIET_BLUR) ? "transparent" : tokens.surface,
           borderWidth: tokens.hairline === null ? 0 : StyleSheet.hairlineWidth,
           borderColor: tokens.hairline ?? "transparent",
+          ...(committed || tentative ? { alignSelf: "stretch", marginHorizontal: 8 } : {}),
         }}
       >
         {design === "quiet" && QUIET_BLUR ? (
@@ -285,6 +292,17 @@ export function TessayaDictationPill(props: {
           icon="xmark"
           onPress={props.onCancel}
         />
+        {committed || tentative ? (
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="head"
+            style={{ flex: 1, fontSize: 14, color: tokens.fg }}
+          >
+            {committed}
+            {committed && tentative ? " " : ""}
+            <Text style={{ color: tokens.fg2 }}>{tentative}</Text>
+          </Text>
+        ) : null}
         <View
           style={
             lively

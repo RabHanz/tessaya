@@ -132,7 +132,7 @@ it("keeps local as the default and never reuses consent for an offline or resele
     expect(appAtomRegistry.get(voiceRouteAtom)).toBeNull();
     expect(mocks.probe).not.toHaveBeenCalled();
     chooseVoiceDestination(EnvironmentId.make("offline"));
-    expect(appAtomRegistry.get(voiceRouteAtom)).toEqual({ transcriber: null });
+    expect(appAtomRegistry.get(voiceRouteAtom)).toEqual({ live: true, transcriber: null });
     const host = EnvironmentId.make("my-server");
     chooseVoiceDestination(host);
     const first = appAtomRegistry.get(voiceRouteAtom)?.transcriber;

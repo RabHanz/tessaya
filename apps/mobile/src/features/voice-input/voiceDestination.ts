@@ -16,6 +16,7 @@ import {
   requireCloudSpeechKey,
   transcribeCloudPcm,
   getEnvironmentSpeechStatus,
+  getEnvironmentSpeechStreamUrl,
   transcribeEnvironmentPcm,
   VoiceTranscriptionError,
 } from "@t3tools/client-runtime/voice-input";
@@ -34,6 +35,7 @@ import { environmentSession, sessionHasScope } from "../../state/session";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { uuidv4 } from "../../lib/uuid";
 import { createEnvironmentTranscriber } from "./environmentTranscriber";
+import { liveRecording, streamLiveCapture } from "./liveCapture";
 import { readVoiceGrant, writeVoiceGrant, type VoiceGrant } from "./voiceGrantStorage";
 
 const storedGrant = Atom.make(Effect.promise(readVoiceGrant)).pipe(Atom.keepAlive);
@@ -175,6 +177,8 @@ function environmentTranscriber(
         : "auto";
     },
     decode: (uri) => {
+      const live = liveRecording(uri);
+      if (live) return Promise.resolve(live);
       if (!native?.decodeRecording)
         throw new VoiceTranscriptionError({
           code: "unavailable",
@@ -182,6 +186,17 @@ function environmentTranscriber(
         });
       return native.decodeRecording(uri);
     },
+    // The server's own speech stream (as web uses it); a cloud provider has none, so it uploads after.
+    ...(provider
+      ? {}
+      : {
+          stream: (signal: AbortSignal) =>
+            streamLiveCapture({
+              url: () => runSpeech(getEnvironmentSpeechStreamUrl(prepared), signal, canSend),
+              signal,
+              canSend,
+            }),
+        }),
     upload: async (pcm, signal) =>
       (
         await runSpeech(
@@ -256,6 +271,8 @@ export const voiceRouteAtom = Atom.make((get) => {
   const connection = get(connectionAtom);
   const registry = get.registry;
   return {
+    // Live words come from the environment's speech stream, which a cloud destination does not have.
+    live: !cloud,
     transcriber:
       connection &&
       environmentTranscriber(

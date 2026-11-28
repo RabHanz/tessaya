@@ -24,6 +24,7 @@ import {
   type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
 import { createLazyVoiceRecorder } from "./lazyVoiceRecorder";
+import { createLiveRecorder, liveCaptureAvailable } from "./liveCapture";
 import { VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 import { VoiceInputSession } from "./voiceInputSession";
 import { createVoiceRecordingPermission } from "./voiceRecordingPermission";
@@ -91,11 +92,17 @@ export const voiceInputAtom = Atom.make((get) => {
     void session.controller.appMovedToBackground();
   });
   const recorder = createLazyVoiceRecorder({
-    getDestination: () => (registry.get(voiceRouteAtom) === null ? "local" : "environment"),
+    getDestination: () => {
+      const route = registry.get(voiceRouteAtom);
+      if (route === null) return "local";
+      return route.live && liveCaptureAvailable() ? "live" : "environment";
+    },
     create: (destination) =>
       destination === "local"
         ? createVoiceRecorder(VOICE_RECORDING_OPTIONS)
-        : new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS),
+        : destination === "live"
+          ? createLiveRecorder()
+          : new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS),
     onStatus: (status: RecordingStatus) => {
       session.controller.handleRecorderStatus({
         isFinished: status.isFinished,

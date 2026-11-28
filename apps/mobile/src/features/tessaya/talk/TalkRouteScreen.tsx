@@ -512,6 +512,10 @@ export function TalkView(props: {
     onChangeSelection: () => undefined,
   });
   const listening = voice.state.phase === "recording";
+  // his words as he speaks, from the server's live stream; null when this phone uploads after
+  const hearing = voice.liveWords
+    ? `${voice.liveWords.committed} ${voice.liveWords.tentative}`.trim() || null
+    : null;
   // in the Sleeve a tap starts and a second tap sends (no hold), and raising the phone starts it too
   const toggleTalk = () => (listening ? void voice.stop() : voice.start());
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the Sleeve's motion sensor (outside this view) starts her listening
@@ -642,7 +646,7 @@ export function TalkView(props: {
             mood={mood}
             line={
               listening
-                ? "Listening"
+                ? (hearing ?? "Listening")
                 : pending === "…"
                   ? "Thinking"
                   : (pending ?? lines.findLast((l) => l.role === "her")?.text ?? null)
@@ -652,6 +656,7 @@ export function TalkView(props: {
           <TalkHistory
             lines={lines}
             pending={pending}
+            hearing={hearing}
             maxHeight={screenHeight * 0.3}
             earlier={earliest === null ? null : () => void readHistory(earliest)}
           />
@@ -760,6 +765,8 @@ export function TalkView(props: {
 function TalkHistory(props: {
   readonly lines: ReadonlyArray<TalkLine>;
   readonly pending: string | null;
+  /** What he is saying now, before it is sent. */
+  readonly hearing: string | null;
   readonly maxHeight: number;
   readonly earlier: (() => void) | null;
 }) {
@@ -769,7 +776,7 @@ function TalkHistory(props: {
   const [now] = useState(() => Date.now());
   const rows = talkRows(props.lines, now);
   const lastHer = rows.findLastIndex((r) => r.kind === "line" && r.role === "her");
-  if (rows.length === 0 && props.pending === null) return null;
+  if (rows.length === 0 && props.pending === null && props.hearing === null) return null;
   return (
     <ScrollView
       ref={scroller}
@@ -815,6 +822,11 @@ function TalkHistory(props: {
             </Text>
           </View>
         ),
+      )}
+      {props.hearing === null ? null : (
+        <View className="items-end pl-12">
+          <Text className="text-sm text-foreground-muted">{props.hearing}</Text>
+        </View>
       )}
       {props.pending === null ? null : (
         <Text className="text-xl text-foreground">{props.pending}</Text>

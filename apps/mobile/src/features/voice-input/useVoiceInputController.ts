@@ -7,6 +7,7 @@ import {
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { useGlobalVoiceInput } from "./VoiceInputProvider";
+import { getLiveWords, subscribeLiveWords } from "./liveWords";
 import { createVoiceInputTarget } from "./voiceInputSession";
 
 const IDLE_STATE: VoiceInputState = { phase: "idle", error: null, errorAction: null };
@@ -79,10 +80,17 @@ export function useVoiceInputController(input: {
   }, [session]);
   const state = global.ownerKey === input.ownerKey ? global.state : IDLE_STATE;
   const isBusy = voiceInputBlocksSubmission(state);
+  const heard = useSyncExternalStore(subscribeLiveWords, getLiveWords);
+  // His words so far, while this owner records or the last of them is written out.
+  const liveWords =
+    heard !== null && (state.phase === "recording" || state.phase === "transcribing")
+      ? heard
+      : null;
   return {
     isAvailable: global.isAvailable && (!global.isBusy || global.ownerKey === input.ownerKey),
     state,
     audioLevels: global.audioLevels,
+    liveWords,
     elapsedSeconds: global.elapsedSeconds,
     isBusy,
     freezesEditor: isBusy,
