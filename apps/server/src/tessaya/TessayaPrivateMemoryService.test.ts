@@ -3,7 +3,6 @@ import type { PrivateTurn } from "@t3tools/tessaya-shared/privateMemory";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
-import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
 import * as Context from "effect/Context";
@@ -641,7 +640,7 @@ it.effect(
         }
       const ownSecrets = Layer.mock(ServerSecretStore)({
         getOrCreateRandom: (_name, bytes) => Effect.succeed(new Uint8Array(bytes).fill(7)),
-        get: () => Effect.succeed(Option.some(new Uint8Array(32).fill(7))),
+        get: () => Effect.succeedSome(new Uint8Array(32).fill(7)),
       });
       const { laptop } = yield* laptopOn(brainCtx, ownSecrets);
       const recalled = yield* Effect.gen(function* () {
