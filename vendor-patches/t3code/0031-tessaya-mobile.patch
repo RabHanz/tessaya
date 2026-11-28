@@ -589,6 +589,28 @@ index dbf7ab552aa8c72bf7d9c095d7de5849c7b23f0a..50d532a19e2f78e53d593a31d467590f
 +      : appVariant === "preview"
 +        ? require("../../../../assets/nightly/nightly-ios-1024.png")
 +        : require("../../../../assets/prod/black-ios-1024.png");
+diff --git a/apps/mobile/src/features/agent-awareness/notificationNavigation.ts b/apps/mobile/src/features/agent-awareness/notificationNavigation.ts
+index 7d2317e58baaee56540c942ee4dd65cdbd91f47e..389494b8bd4b8e91c484e6999830a8386731f7fe 100644
+--- a/apps/mobile/src/features/agent-awareness/notificationNavigation.ts
++++ b/apps/mobile/src/features/agent-awareness/notificationNavigation.ts
+@@ -1,5 +1,6 @@
+ import * as Notifications from "expo-notifications";
+ 
++import { sleeveQuietBehavior } from "../tessaya/sleeve/sleeveSettings";
+ import { setAndroidThreadOnScreen } from "./androidNotifications";
+ import { foregroundNotificationBehavior } from "./foregroundNotificationBehavior";
+ import { routeAgentNotificationResponseOnce, threadDeepLinkOnScreen } from "./notificationPayload";
+@@ -22,7 +23,9 @@ export function installAgentNotificationNavigation(navigate: (href: string) => v
+   const handledResponseIds = new Set<string>();
+   Notifications.setNotificationHandler({
+     handleNotification: (notification) =>
+-      Promise.resolve(foregroundNotificationBehavior(notification, deepLinkOnScreen)),
++      Promise.resolve(
++        sleeveQuietBehavior(foregroundNotificationBehavior(notification, deepLinkOnScreen)),
++      ),
+   });
+ 
+   const handleResponse = (response: Notifications.NotificationResponse): void => {
 diff --git a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx b/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx
 index c5f5b1d64f9971cf2f61235eff046f877c2b2658..68b37837c3c2c481db4d9d2aa04533d08397fc4c 100644
 --- a/apps/mobile/src/features/connection/ConnectionsNewRouteScreen.test.tsx

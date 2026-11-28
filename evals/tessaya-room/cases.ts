@@ -1822,6 +1822,8 @@ export const roomCases: ReadonlyArray<RoomCase> = [
       }).items,
     )}`,
     sets: [/^phone\.private=open/i],
+    callsAtMost: { home_do: 0 },
+  },
   // REQ-25-096: her Sleeve's own settings, by voice
   {
     id: "sleeve-setting-quiet",
