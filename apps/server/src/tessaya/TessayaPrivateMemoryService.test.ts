@@ -490,6 +490,46 @@ describe("a member's own store, made when they accept (identity I-1)", () => {
     ));
 });
 
+/** A laptop's server linked to her brain (`brainCtx`), with its own secrets. */
+const laptopOn = (
+  brainCtx: Context.Context<Layer.Success<typeof stack>>,
+  secrets: Layer.Layer<ServerSecretStore>,
+) =>
+  Effect.gen(function* () {
+    const db = yield* Layer.build(SqlitePersistenceMemory);
+    const lsql = Context.get(db, SqlClient.SqlClient);
+    yield* lsql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
+    const laptop = yield* Layer.build(
+      Layer.mergeAll(privateLayer, memoryLayer).pipe(
+        Layer.provide(secrets),
+        Layer.provideMerge(fast),
+        Layer.provideMerge(
+          Layer.succeed(PeerLinks.PeerLinks, {
+            enabled: Effect.succeed(true),
+            list: Effect.succeed([
+              { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
+            ]),
+          } as never),
+        ),
+        Layer.provideMerge(
+          Layer.succeed(
+            PeerMcpClient.PeerMcpClient,
+            PeerMcpClient.PeerMcpClient.of({
+              call: (input) =>
+                receiveAtBrain(
+                  input.arguments["op"] as never,
+                  input.arguments["payload"],
+                  "auto",
+                ).pipe(Effect.provideContext(brainCtx)) as never,
+            }),
+          ),
+        ),
+        Layer.provideMerge(Layer.succeedContext(db)),
+      ),
+    );
+    return { laptop, lsql };
+  });
+
 it.effect(
   "his one private store on the brain: his laptop unlocks a brain-made row with his PIN, keeps no rows and never the pepper",
   () =>
@@ -525,37 +565,7 @@ it.effect(
             return new Uint8Array(bytes).fill(7);
           }),
       });
-      const db = yield* Layer.build(SqlitePersistenceMemory);
-      const lsql = Context.get(db, SqlClient.SqlClient);
-      yield* lsql`INSERT INTO fabric_settings (key, value) VALUES (${HOME_KEY}, 'brain')`;
-      const laptop = yield* Layer.build(
-        Layer.mergeAll(privateLayer, memoryLayer).pipe(
-          Layer.provide(laptopSecrets),
-          Layer.provideMerge(fast),
-          Layer.provideMerge(
-            Layer.succeed(PeerLinks.PeerLinks, {
-              enabled: Effect.succeed(true),
-              list: Effect.succeed([
-                { ...descriptorOf("env-brain", "brain"), label: "brain", status: "ok" } as never,
-              ]),
-            } as never),
-          ),
-          Layer.provideMerge(
-            Layer.succeed(
-              PeerMcpClient.PeerMcpClient,
-              PeerMcpClient.PeerMcpClient.of({
-                call: (input) =>
-                  receiveAtBrain(
-                    input.arguments["op"] as never,
-                    input.arguments["payload"],
-                    "auto",
-                  ).pipe(Effect.provideContext(brainCtx)) as never,
-              }),
-            ),
-          ),
-          Layer.provideMerge(Layer.succeedContext(db)),
-        ),
-      );
+      const { laptop, lsql } = yield* laptopOn(brainCtx, laptopSecrets);
       const recalled = yield* Effect.gen(function* () {
         const p = yield* TessayaPrivateMemoryService;
         const [store] = yield* as(desk)(p.people);
@@ -583,6 +593,74 @@ it.effect(
         (yield* onBrain(
           receiveAtBrain("outbox", { id: "x", op: "privatePepper", payload: {} }, "auto"),
         )).ok,
+      );
+    }).pipe(Effect.scoped),
+);
+
+it.effect(
+  "a store his laptop made with its own pepper before the brain's, moved up as it was, opens with his PIN and moves to the brain's",
+  () =>
+    Effect.gen(function* () {
+      const brainOf = (seed: number) =>
+        Layer.build(
+          Layer.mergeAll(privateLayer, memoryLayer).pipe(
+            Layer.provideMerge(secretsOf(seed)),
+            Layer.provideMerge(fast),
+            Layer.provideMerge(SqlitePersistenceMemory),
+          ),
+        );
+      // 18 Nov: made on his laptop while it was its own brain (pepper 7), with a note in it
+      const before = yield* brainOf(7);
+      const rows = yield* Effect.gen(function* () {
+        const p = yield* TessayaPrivateMemoryService;
+        const owner = yield* as(desk)(made({ name: "Rab", pin: OWNER_PIN }));
+        yield* as(desk)(p.unlock({ storeId: owner.store.id, pin: OWNER_PIN }));
+        yield* as(desk)(p.remember({ turn: turn(), text: `The ${MARKER} anniversary is in May` }));
+        yield* as(desk)(p.lock());
+        const sql = yield* SqlClient.SqlClient;
+        const out: Record<string, ReadonlyArray<Record<string, unknown>>> = {};
+        for (const t of [
+          "tessaya_private_stores",
+          "tessaya_private_items",
+          "tessaya_private_audit",
+        ])
+          out[t] = yield* sql.unsafe<Record<string, unknown>>(`SELECT * FROM ${t}`);
+        return out;
+      }).pipe(Effect.provideContext(before));
+      // 20 Nov: its rows moved up to her brain (pepper 9) unchanged, as moveUpPrivate copies them
+      const brainCtx = yield* brainOf(9);
+      const bsql = Context.get(brainCtx, SqlClient.SqlClient);
+      for (const [t, list] of Object.entries(rows))
+        for (const r of list) {
+          const cols = Object.keys(r);
+          yield* bsql.unsafe(
+            `INSERT INTO ${t} (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`,
+            cols.map((c) => r[c]) as never,
+          );
+        }
+      const ownSecrets = Layer.mock(ServerSecretStore)({
+        getOrCreateRandom: (_name, bytes) => Effect.succeed(new Uint8Array(bytes).fill(7)),
+        get: () => Effect.succeedSome(new Uint8Array(32).fill(7)),
+      });
+      const { laptop } = yield* laptopOn(brainCtx, ownSecrets);
+      const recalled = yield* Effect.gen(function* () {
+        const p = yield* TessayaPrivateMemoryService;
+        const [store] = yield* as(desk)(p.people);
+        yield* as(desk)(p.unlock({ storeId: store!.id, pin: OWNER_PIN }));
+        return yield* as(desk)(p.recall({ turn: turn(), text: "anniversary" }));
+      }).pipe(Effect.provideContext(laptop));
+      assert.include(recalled.block, `The ${MARKER} anniversary is in May`);
+      // re-wrapped to the brain's pepper: his PIN now opens it on the brain itself, and the move is in his audit
+      const onBrain = yield* Effect.gen(function* () {
+        const p = yield* TessayaPrivateMemoryService;
+        const [store] = yield* as(phone)(p.people);
+        return (yield* as(phone)(p.unlock({ storeId: store!.id, pin: OWNER_PIN }))).open;
+      }).pipe(Effect.provideContext(brainCtx));
+      assert.isTrue(onBrain);
+      const audit = yield* bsql<{ action: string }>`SELECT action FROM tessaya_private_audit`;
+      assert.include(
+        audit.map((a) => a.action),
+        "PIN moved to her brain's pepper",
       );
     }).pipe(Effect.scoped),
 );
