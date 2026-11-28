@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { clampSpot, pinchScale, STAGE_SCALE, wanderSpot } from "./sleeveEstate.ts";
+import {
+  clampSpot,
+  fingerSkin,
+  pinchScale,
+  PX_PER_CM,
+  STAGE_SCALE,
+  wanderSpot,
+} from "./sleeveEstate.ts";
 
 const box = { w: 390, h: 844, bottom: 120 };
 
@@ -34,5 +41,16 @@ describe("her estate on a Sleeve", () => {
       expect(to.x).toBeLessThanOrEqual(290);
       expect(to.y).toBeLessThanOrEqual(624);
     }
+  });
+
+  it("reads his finger's contact and force only where the screen measures them", () => {
+    // a broad press: a 2 cm by 1.5 cm ellipse
+    expect(fingerSkin(2 * PX_PER_CM, 1.5 * PX_PER_CM, 0.8)).toEqual({
+      areaCm2: 2.36,
+      pressure: 0.8,
+    });
+    // no contact size and the browser's stand-in force: a fingertip, force unknown
+    expect(fingerSkin(1, 1, 0.5)).toEqual({ areaCm2: 1.2, pressure: null });
+    expect(fingerSkin(0, 0, 0)).toEqual({ areaCm2: 1.2, pressure: null });
   });
 });

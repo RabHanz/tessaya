@@ -7,7 +7,14 @@ import { HUMAN_SENSE, MASCOT_SENSE, mergeSense, regionAt } from "@t3tools/tessay
 import { readTouch } from "@t3tools/tessaya-shared/bodyMotion";
 import { rigGestureOf, rigMoodOf } from "@t3tools/tessaya-shared/companion";
 import { MASCOT_SCRIPT } from "@t3tools/tessaya-shared/mascotPage";
-import { clampSpot, pinchScale, wanderSpot, type Spot } from "@t3tools/tessaya-shared/sleeveEstate";
+import {
+  clampSpot,
+  fingerSkin,
+  pinchScale,
+  PX_PER_CM,
+  wanderSpot,
+  type Spot,
+} from "@t3tools/tessaya-shared/sleeveEstate";
 
 import rig from "../../../../../web/public/companion/rig.js?raw";
 import bodies from "../../../../../web/public/companion/bodies.js?raw";
@@ -122,8 +129,6 @@ const quietSoon = () => {
 
 // his hand: on her it is a touch (or a carry, or a pinch to resize her); on the empty screen a tap calls her there
 const MAP = mergeSense([HUMAN_SENSE, MASCOT_SENSE], false);
-// CSS px in a centimetre on a phone (about 160 points to the inch)
-const PX_PER_CM = 63;
 interface Press {
   readonly id: number;
   readonly at: number;
@@ -134,7 +139,9 @@ interface Press {
   travel: number;
   reversals: number;
   lastDx: number;
-  force: number;
+  /** The most skin and the firmest force his finger gave over the whole touch (force null: none measured). */
+  area: number;
+  force: number | null;
   readonly onHer: boolean;
   carried: boolean;
 }
@@ -158,6 +165,7 @@ const twoApart = () => {
 
 addEventListener("pointerdown", (e) => {
   const onHer = onHerAt(e.clientX, e.clientY);
+  const skin = fingerSkin(e.width, e.height, e.pressure);
   presses.set(e.pointerId, {
     id: e.pointerId,
     at: performance.now(),
@@ -168,7 +176,8 @@ addEventListener("pointerdown", (e) => {
     travel: 0,
     reversals: 0,
     lastDx: 0,
-    force: e.pressure || 0.5,
+    area: skin.areaCm2,
+    force: skin.pressure,
     onHer,
     carried: false,
   });
@@ -187,8 +196,10 @@ addEventListener("pointermove", (e) => {
   p.travel += Math.hypot(dx, e.clientY - p.y);
   p.x = e.clientX;
   p.y = e.clientY;
-  p.force = Math.max(p.force, e.pressure || 0);
-  if (pinchFrom !== null && presses.size === 2) {
+  const skin = fingerSkin(e.width, e.height, e.pressure);
+  p.area = Math.max(p.area, skin.areaCm2);
+  if (skin.pressure !== null) p.force = Math.max(p.force ?? 0, skin.pressure);
+  if (pinchFrom !== null && presses.size === 2 && Math.abs(twoApart() - pinchFrom.d) >= 20) {
     place({ ...spot, scale: pinchScale(pinchFrom.scale, pinchFrom.d, twoApart()) }, 0);
     return;
   }
@@ -203,6 +214,9 @@ addEventListener("pointermove", (e) => {
 const end = (e: PointerEvent) => {
   const p = presses.get(e.pointerId);
   if (p === undefined) return;
+  // two fingers on her that stayed the same distance apart held her between them: a squeeze, not a resize
+  const squeezed =
+    pinchFrom !== null && presses.size === 2 && Math.abs(twoApart() - pinchFrom.d) < 20 && p.onHer;
   presses.delete(e.pointerId);
   if (presses.size < 2) pinchFrom = null;
   const ms = performance.now() - p.at;
@@ -234,17 +248,18 @@ const end = (e: PointerEvent) => {
     travelPx: p.travel,
     reversals: p.reversals,
     taps: tapsAt.length,
-    pointers: e.isPrimary ? Math.max(1, presses.size + 1) : 2,
-    pressure: p.force,
+    pointers: squeezed ? 2 : 1,
+    ...(p.force === null ? {} : { pressure: p.force }),
   });
   mascot.react(felt.kind, felt.speed);
   tell({
     type: "touch",
     part: partAt(p.x0, p.y0),
     kind: felt.kind,
-    pressure: felt.intensity,
+    pressure: p.force ?? felt.intensity,
     cmPerS: ms > 0 ? (p.travel / PX_PER_CM) * (1000 / ms) : 0,
     durationMs: Math.round(ms),
+    areaCm2: p.area,
   });
   quietSoon();
 };

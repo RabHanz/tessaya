@@ -265,8 +265,14 @@ it.layer(NodeServices.layer)("the voice library a server serves", (it) => {
           const felt: Array<unknown> = [];
           const off = onAction((e) => void (e.kind === "body.felt" && felt.push(e.data)));
           yield* touch({ ...stroke, kind: "pat", device: "phone-1" });
+          // the phone measures the skin under his finger: it reaches her nerves and the record
+          yield* touch({ ...stroke, kind: "grab", device: "phone-1", areaCm2: 2.5 });
           off();
-          assert.deepStrictEqual(felt, [{ vessel: "phone-1", pressure: 0.15, durationMs: 1500 }]);
+          assert.deepStrictEqual(felt, [
+            { vessel: "phone-1", pressure: 0.15, durationMs: 1500 },
+            { vessel: "phone-1", pressure: 0.15, durationMs: 1500, areaCm2: 2.5 },
+          ]);
+          assert.isFalse((yield* touch({ ...stroke, areaCm2: 0 })).ok);
           // not a touch she knows
           assert.isFalse((yield* touch({ ...stroke, kind: "slap" })).ok);
           assert.isFalse((yield* touch({ ...stroke, pressure: 3 })).ok);
