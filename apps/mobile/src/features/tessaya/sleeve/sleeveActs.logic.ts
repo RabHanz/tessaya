@@ -16,3 +16,11 @@ export const messageUrl = (value: string, ios: boolean): string | null => {
     ? `sms:${digits(number)}`
     : `sms:${digits(number)}${ios ? "&" : "?"}body=${encodeURIComponent(body)}`;
 };
+
+/** A device_set value as a switch: true, "on", "yes"; null when it is neither on nor off. */
+export const switchOf = (value: unknown): boolean | null => {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return null;
+  if (/^\s*(on|yes|true|1)\b/i.test(value)) return true;
+  return /^\s*(off|no|false|0)\b/i.test(value) ? false : null;
+};

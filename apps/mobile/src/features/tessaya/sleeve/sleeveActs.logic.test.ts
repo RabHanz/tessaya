@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { callUrl, messageUrl } from "./sleeveActs.logic";
+import { callUrl, messageUrl, switchOf } from "./sleeveActs.logic";
 
 describe("her Sleeve's acts", () => {
   it("opens a call only to something that is a number", () => {
@@ -16,5 +16,17 @@ describe("her Sleeve's acts", () => {
     expect(messageUrl("07700900123: hi", false)).toBe("sms:07700900123?body=hi");
     expect(messageUrl("07700900123", true)).toBe("sms:07700900123");
     expect(messageUrl("someone: hi", true)).toBeNull();
+  });
+
+  it("reads a setting's switch from her brain, and refuses what is neither", () => {
+    expect([true, "On", "yes please", false, "off", "maybe", 3].map(switchOf)).toEqual([
+      true,
+      true,
+      true,
+      false,
+      false,
+      null,
+      null,
+    ]);
   });
 });

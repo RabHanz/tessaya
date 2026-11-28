@@ -24,6 +24,7 @@ import { sleeveListen } from "./sleeveListen";
 import { useSleeveActs } from "./useSleeveActs";
 import { SleeveExitSheet, SleeveTopRow } from "./SleeveChrome";
 import { ALONE_MS, restOf } from "./sleeveMode.logic";
+import { setSleeveShowing, useSleeveSettings } from "./sleeveSettings";
 import { setSleeveUnlocked, useSleeve, useSleeveCovering } from "./useSleeve";
 
 const AWAKE_TAG = "tessaya-sleeve";
@@ -101,13 +102,15 @@ export function SleeveHost() {
     };
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- see only touches the timer and state
   }, [covering]);
+  const { awake } = useSleeveSettings();
+  setSleeveShowing(covering && active);
   const power = charging && active ? rest : "active";
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the screen's keep-awake is the system's, outside React
   useEffect(() => {
-    if (!covering || !active || !charging || power === "night") return;
+    if (!covering || !active || !charging || !awake || power === "night") return;
     void activateKeepAwakeAsync(AWAKE_TAG).catch(() => undefined);
     return () => void deactivateKeepAwake(AWAKE_TAG).catch(() => undefined);
-  }, [covering, active, charging, power]);
+  }, [covering, active, charging, awake, power]);
   // her body's motion sensor, read on the phone (only moments leave it): raised to him, she listens
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the accelerometer is outside React, held only while she is on screen
   useEffect(() => {

@@ -28,6 +28,7 @@ import { useSavedRemoteConnections } from "../../state/use-remote-environment-re
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection, SettingsSidebarContext } from "./components/SettingsSection";
 import { setSleeveUnlocked, useSleeve } from "../tessaya/sleeve/useSleeve";
+import { setSleeveSetting, useSleeveSettings } from "../tessaya/sleeve/sleeveSettings";
 import { setPrivateShown, useLayerKnown } from "../tessaya/private/privateLayer";
 import { SettingsScreen } from "./components/SettingsScreen";
 import type { SettingsPageTarget } from "./components/settings-page-targets";
@@ -249,6 +250,7 @@ function useSettingsIndexSections(): SettingsListSection[] {
       : (selectedProject?.label ?? gt("Unavailable project"));
   const overflowRows = useOverflowRows();
   const sleeve = useSleeve();
+  const sleeveSet = useSleeveSettings();
   const layerKnown = useLayerKnown();
   const page = (
     target: SettingsPageTarget,
@@ -336,6 +338,37 @@ function useSettingsIndexSections(): SettingsListSection[] {
               ],
             ),
         },
+        // her Sleeve's own settings (REQ-25-096), each also by voice ("keep the sleeve awake while it charges")
+        ...(sleeve.sleeve
+          ? [
+              {
+                id: "sleeve-awake",
+                icon: "bolt" as const,
+                label: gt("Stay awake while charging"),
+                value: sleeveSet.awake ? gt("On") : gt("Off"),
+                onPress: () => setSleeveSetting("awake", !sleeveSet.awake),
+              },
+              {
+                id: "sleeve-quiet",
+                icon: "bell.slash" as const,
+                label: gt("Quiet notifications"),
+                value: sleeveSet.quiet ? gt("On") : gt("Off"),
+                onPress: () => setSleeveSetting("quiet", !sleeveSet.quiet),
+              },
+              {
+                id: "sleeve-who",
+                icon: "person" as const,
+                label: gt("Who she is here"),
+                onPress: () =>
+                  Alert.alert(
+                    gt("Who she is here"),
+                    gt(
+                      "Say “be Alfred on my phone”, or any persona, on any device. You can also pick one in Talk.",
+                    ),
+                  ),
+              },
+            ]
+          : []),
         page("SettingsVoice", "mic", "Voice and microphone"),
         page("SettingsAppearance", "paintbrush", gt("Appearance")),
         page("SettingsOrganization", "gearshape", gt("General")),
