@@ -11,10 +11,6 @@
       "types": "./src/fbank.ts",
       "import": "./src/fbank.ts"
     },
-    "./openWakeWord": {
-      "types": "./src/providers/openWakeWord.ts",
-      "import": "./src/providers/openWakeWord.ts"
-    },
     "./loudness": {
       "types": "./src/loudness.ts",
       "import": "./src/loudness.ts"

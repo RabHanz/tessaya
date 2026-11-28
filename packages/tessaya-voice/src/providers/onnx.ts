@@ -1,6 +1,6 @@
 /* oxlint-disable t3code/no-low-value-comments -- Baton file predating upstream's rule (D82) */
 /**
- * openWakeWord (wake, pipeline in ./openWakeWord.ts) and Silero (VAD) on onnxruntime-node. Both are
+ * openWakeWord (wake, pipeline in tessaya-shared/openWakeWord.ts) and Silero (VAD) on onnxruntime-node. Both are
  * synchronous per frame from the pipeline's point of view: ORT's `run` is
  * async, so each provider queues frames and resolves them in order, exposing
  * the latest answer. The pipeline polls `process`/`isSpeech` per frame and
@@ -18,9 +18,9 @@ import {
   type OpenWakeWordScorer,
   openSession,
   streamingScorer,
-} from "./openWakeWord.ts";
+} from "@t3tools/tessaya-shared/openWakeWord";
 
-export * from "./openWakeWord.ts";
+export * from "@t3tools/tessaya-shared/openWakeWord";
 
 const SILERO_WINDOW = 512;
 const SILERO_CONTEXT = 64;
