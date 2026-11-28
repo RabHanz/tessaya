@@ -60,6 +60,17 @@ it("reads the phone's route, its motor and its button, as data", () => {
     gain: 1,
   });
   assert.strictEqual(parsePhoneText('{"t":"talk"}'), "talk");
+  // its body's moments, in a Tessel's words; anything else of that kind is dropped
+  assert.deepStrictEqual(parsePhoneText('{"t":"motion","kind":"lift"}'), {
+    tail: "event/motion",
+    body: '{"kind":"lift","conf":1,"intensity":60}',
+  });
+  assert.deepStrictEqual(parsePhoneText('{"t":"placement","placement":"face_down"}'), {
+    tail: "state/placement",
+    body: '{"placement":"face_down"}',
+  });
+  assert.isNull(parsePhoneText('{"t":"motion","kind":"teleport"}'));
+  assert.isNull(parsePhoneText('{"t":"placement","placement":"moon"}'));
   assert.isNull(parsePhoneText("nope"));
 });
 
@@ -98,8 +109,18 @@ it("is a vessel of its own with no Tessel near: a talk opens a session, its mic 
   v.mic(new Uint8Array(4000));
   // The loop opens a session itself (a notice): he may answer it.
   deliver("cmd/voice/start", Buffer.from("{}"));
+  // its body's moment goes onto the hub as a Tessel's would
+  v.moment({ tail: "event/motion", body: '{"kind":"lift","conf":1,"intensity":60}' });
   v.set(false);
-  assert.deepStrictEqual(up, ["cmd/voice/start:2", "voice/up:1920", "voice/up:1920", "closed"]);
+  // let go (a Tessel near): its moments are that Tessel's business, nothing goes up
+  v.moment({ tail: "state/placement", body: '{"placement":"desk"}' });
+  assert.deepStrictEqual(up, [
+    "cmd/voice/start:2",
+    "voice/up:1920",
+    "voice/up:1920",
+    "event/motion:39",
+    "closed",
+  ]);
   assert.deepStrictEqual(phone, [
     "listen:true",
     "play:640",
