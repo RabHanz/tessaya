@@ -24,6 +24,10 @@ vi.mock("expo-audio", () => ({
   setIsAudioActiveAsync: async () => {},
 }));
 vi.mock("../../native/voiceRecorder", () => ({ createVoiceRecorder: vi.fn() }));
+vi.mock("./liveCapture", () => ({
+  createLiveRecorder: vi.fn(),
+  liveCaptureAvailable: () => false,
+}));
 vi.mock("../../native/voiceTranscription", () => ({ getLocalVoiceTranscriber: async () => null }));
 vi.mock("../../state/preferences", async () => {
   const { AsyncResult, Atom } = await import("effect/reactivity");

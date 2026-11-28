@@ -1111,6 +1111,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                   confirmable={voicePresentation.confirmationEnabled}
                   onCancel={voiceInput.cancel}
                   onConfirm={voiceInput.stop}
+                  words={voiceInput.liveWords}
                 />
                 <View className="shrink-0 flex-row items-center">
                   {showStopAction ? (

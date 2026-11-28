@@ -3,7 +3,7 @@ Usage details (ComposerPickerFooter children, onUsageLimitsCommand), and on mobi
 provider with account rows (BatonAccountRow), the session's real effort, and the header's limit chip.
 
 diff --git a/apps/mobile/src/features/threads/ThreadComposer.tsx b/apps/mobile/src/features/threads/ThreadComposer.tsx
-index 2d108bde5192bbec8f4fa8cf45c9321408aa26f2..1c9ae135f5d61487d253d0d0dce7b6ff62686a16 100644
+index 2d108bde5192bbec8f4fa8cf45c9321408aa26f2..6fa9a92952550e59d0ca53a5b0493e773377fc0c 100644
 --- a/apps/mobile/src/features/threads/ThreadComposer.tsx
 +++ b/apps/mobile/src/features/threads/ThreadComposer.tsx
 @@ -28,7 +28,7 @@ import { StackActions, useFocusEffect, useNavigation } from "@react-navigation/n
@@ -57,7 +57,7 @@ index 2d108bde5192bbec8f4fa8cf45c9321408aa26f2..1c9ae135f5d61487d253d0d0dce7b6ff
  
    useFocusEffect(() => {
      if (!settingsRoutePresentedRef.current) {
-@@ -1098,28 +1101,18 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
+@@ -1098,28 +1101,19 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
                  paddingTop={0}
                  style={{ gap: 0 }}
                >
@@ -80,6 +80,7 @@ index 2d108bde5192bbec8f4fa8cf45c9321408aa26f2..1c9ae135f5d61487d253d0d0dce7b6ff
 -                  phase={voiceInput.state.phase}
 -                  presentation={voicePresentation}
 +                  onConfirm={voiceInput.stop}
++                  words={voiceInput.liveWords}
                  />
                  <View className="shrink-0 flex-row items-center">
 -                  <ComposerDictationPrimaryAction

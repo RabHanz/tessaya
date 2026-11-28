@@ -19,6 +19,7 @@ import { AppState } from "react-native";
 import { Haptics } from "../../../modules/t3-haptics";
 import { PhoneAudio, type PhoneAudioRoute } from "../../../modules/t3-phone-audio";
 import { connectionAtomRuntime } from "../../connection/runtime";
+import { holdPhoneAudio } from "../../lib/phoneAudioHold";
 import { useServerConfigs } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { environmentSession } from "../../state/session";
@@ -189,6 +190,7 @@ function PhoneRouteLink({
   useEffect(() => {
     const audio = PhoneAudio;
     if (access == null || audio === null) return;
+    const release = holdPhoneAudio();
     const query = new URLSearchParams({
       ...access.query,
       device: c.deviceId,
@@ -295,6 +297,7 @@ function PhoneRouteLink({
       for (const s of subs) s.remove();
       ws.close();
       void audio.stop();
+      release();
     };
   }, [access, c.deviceId, wake]);
   return null;
