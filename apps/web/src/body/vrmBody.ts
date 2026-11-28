@@ -440,11 +440,16 @@ const GROUP_OF: Readonly<Record<string, string>> = {
 /** Her skin by part, from each vertex's bone (or the humanoid bone it hangs from); hair, hands and feet left out. */
 const bodyOf = (vrm: VRM, humanOf: ReadonlyMap<THREE.Object3D, string>) => {
   const memo = new Map<THREE.Object3D, string | null>();
+  const swung = new Set([...(vrm.springBoneManager?.joints ?? [])].map((j) => j.bone));
   const groupOfBone = (b: THREE.Object3D): string | null => {
     if (memo.has(b)) return memo.get(b)!;
     let o: THREE.Object3D | null = b;
     while (o !== null && !humanOf.has(o)) o = o.parent;
-    const g = o === null ? null : (GROUP_OF[humanOf.get(o)!] ?? null);
+    const human = o === null ? undefined : humanOf.get(o);
+    // what swings from her hips (a skirt, coat tails) is cloth, not her: a hanging hand read inside a flare was pushed
+    // out every frame and her idle arms shook. Her bust swings from her chest and stays.
+    const g =
+      human === undefined || (swung.has(b) && human === "hips") ? null : (GROUP_OF[human] ?? null);
     memo.set(b, g);
     return g;
   };
