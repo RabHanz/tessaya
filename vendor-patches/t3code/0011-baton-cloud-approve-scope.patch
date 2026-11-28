@@ -616,7 +616,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..bb0196b2978b2d8a43e7b0fb7b50df44
  
  const MCP_APPROVAL_CODE_PATTERN = new RegExp(
 diff --git a/packages/contracts/src/clientRpcPermissions.ts b/packages/contracts/src/clientRpcPermissions.ts
-index 7d68cb5114c068035d8a83efbb55feff552ebc0a..a3df3310a5ae7d7333d796fc4e2021081822e599 100644
+index 7d68cb5114c068035d8a83efbb55feff552ebc0a..8d119b55a09a8e982d569688840a8ef1e56d0009 100644
 --- a/packages/contracts/src/clientRpcPermissions.ts
 +++ b/packages/contracts/src/clientRpcPermissions.ts
 @@ -1,7 +1,9 @@
@@ -647,8 +647,8 @@ index 7d68cb5114c068035d8a83efbb55feff552ebc0a..a3df3310a5ae7d7333d796fc4e202108
 +const UPCOMING_LIST = "baton.upcoming.list";
 +const UPCOMING_CHANGE = "baton.upcoming.change";
 +/** Tessaya's front door (`TESSAYA_DOOR_WS_METHODS`): naming a machine on it is access, as pairing links are. */
-+const DOOR_NAMES = "tessaya.door.names";
-+const DOOR_SET_NAME = "tessaya.door.setName";
++const DOOR_NAMES = "baton.door.names";
++const DOOR_SET_NAME = "baton.door.setName";
 +/** His reaction to one pulse decision (`BATON_PULSE_WS_METHODS.react`): it changes what she raises. */
 +const PULSE_REACT = "baton.pulse.react";
 +

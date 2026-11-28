@@ -43,7 +43,7 @@ index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..f37cfa8591ba3306559f0a4d9f56c4bb
          pairingBaseUrl = resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform);
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
 diff --git a/apps/server/src/environment/DirectEndpoints.test.ts b/apps/server/src/environment/DirectEndpoints.test.ts
-index d6d2856635670f4be766722f3f20a49ac6a8878e..1e4e606f815ab0541dfdd1bfb90c5357d0c53cf7 100644
+index d6d2856635670f4be766722f3f20a49ac6a8878e..2071b4175ffd9620b36c56e6004deb5d2f30fe63 100644
 --- a/apps/server/src/environment/DirectEndpoints.test.ts
 +++ b/apps/server/src/environment/DirectEndpoints.test.ts
 @@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -101,7 +101,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e4e606f815ab0541dfdd1bfb90c5357
            ),
          ),
        ),
-@@ -458,4 +470,99 @@ describe("DirectEndpoints Tailscale Serve", () => {
+@@ -458,4 +470,96 @@ describe("DirectEndpoints Tailscale Serve", () => {
        expect(yield* resolveWithServe(502)).toEqual([]);
      }),
    );
@@ -143,24 +143,21 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e4e606f815ab0541dfdd1bfb90c5357
 +    ),
 +  );
 +
-+  it.each([
++  effectIt.effect.each([
 +    ["hive.home.example.com", "hive.home.example.com"],
 +    ["hive.home.example.com:8443", "hive.home.example.com"],
 +    // A tailnet name is not a door.
 +    ["[fd7a:115c:a1e0::1]", null],
 +    ["", null],
-+  ])("PublicDomainHost from TESSAYA_PUBLIC_HOST=%j", (host, expected) => {
-+    expect(
-+      Effect.runSync(
-+        Effect.provide(
-+          Effect.gen(function* () {
-+            return yield* DirectEndpoints.PublicDomainHost;
-+          }),
-+          ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: host })),
-+        ),
++  ] as const)("PublicDomainHost from TESSAYA_PUBLIC_HOST=%j", ([host, expected]) =>
++    Effect.gen(function* () {
++      expect(yield* DirectEndpoints.PublicDomainHost).toBe(expected);
++    }).pipe(
++      Effect.provide(
++        ConfigProvider.layer(ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: host })),
 +      ),
-+    ).toBe(expected);
-+  });
++    ),
++  );
 +
 +  it.each([
 +    ["home.example.com", "Hive", "hive.home.example.com"],
@@ -202,7 +199,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..1e4e606f815ab0541dfdd1bfb90c5357
 +  });
  });
 diff --git a/apps/server/src/environment/DirectEndpoints.ts b/apps/server/src/environment/DirectEndpoints.ts
-index 8112cded968aa863fc63b8c87d913943be5858aa..3e0ca24b5a5940264a74cf593a7b6bc60fc3977a 100644
+index 8112cded968aa863fc63b8c87d913943be5858aa..97c61af57ba936b83f436a3e96b890a9b382a3d7 100644
 --- a/apps/server/src/environment/DirectEndpoints.ts
 +++ b/apps/server/src/environment/DirectEndpoints.ts
 @@ -4,6 +4,7 @@ import {
@@ -372,11 +369,13 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..3e0ca24b5a5940264a74cf593a7b6bc6
      return yield* resolveAvailable();
    });
  
-@@ -239,6 +326,7 @@ export const make = Effect.gen(function* () {
+@@ -239,6 +326,9 @@ export const make = Effect.gen(function* () {
      resolve: Effect.fn("DirectEndpoints.resolve")(function () {
        return resolve;
      }),
-+    setDoorHost: (host) => Ref.set(doorHost, host),
++    setDoorHost: Effect.fn("DirectEndpoints.setDoorHost")(function* (host: string | null) {
++      yield* Ref.set(doorHost, host);
++    }),
    });
  });
  

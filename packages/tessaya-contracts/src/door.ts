@@ -7,8 +7,8 @@ import * as Schema from "effect/Schema";
 import { EnvironmentId } from "@t3tools/contracts";
 
 export const TESSAYA_DOOR_WS_METHODS = {
-  names: "tessaya.door.names",
-  setName: "tessaya.door.setName",
+  names: "baton.door.names",
+  setName: "baton.door.setName",
 } as const;
 
 export const TessayaDoorNames = Schema.Struct({

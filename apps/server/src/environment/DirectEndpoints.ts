@@ -326,7 +326,9 @@ export const make = Effect.gen(function* () {
     resolve: Effect.fn("DirectEndpoints.resolve")(function () {
       return resolve;
     }),
-    setDoorHost: (host) => Ref.set(doorHost, host),
+    setDoorHost: Effect.fn("DirectEndpoints.setDoorHost")(function* (host: string | null) {
+      yield* Ref.set(doorHost, host);
+    }),
   });
 });
 

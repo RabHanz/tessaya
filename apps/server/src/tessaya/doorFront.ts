@@ -199,7 +199,8 @@ const serveUpgrade = async (
     if (head.length > 0) theirs.write(head);
     theirs.on("error", () => socket.destroy());
     socket.on("error", () => theirs.destroy());
-    theirs.pipe(socket).pipe(theirs);
+    theirs.pipe(socket);
+    socket.pipe(theirs);
   });
   upstream.end();
 };

@@ -11334,6 +11334,92 @@
     }
   ],
   "97585565390197f6": "Отменить",
+  "0c708fe3f49833fc": "This environment is not the household's door.",
+  "4c8021ef605f16fb": "Use one word of letters, digits or dashes, not the door's own name.",
+  "1e2374d807c817af": "Another machine already has that name.",
+  "0d8ea79833cbceee": "That machine is no longer linked here.",
+  "49da4e8e3d76642f": "Could not change the public name",
+  "e91080f839c5f86d": "Public name",
+  "e13d193d011f4d52": "none",
+  "951991aebe78ac8c": "Remove",
+  "425be7ecd878142d": "Live",
+  "16aae445c1761cd0": "Coming",
+  "e4a8863248d71a36": "Copy “{text}”",
+  "9399911e5544c7c5": "Asking Tessaya…",
+  "6acea74c8e453003": "What do you want to do?",
+  "651409774059a965": "Search Help or ask Tessaya",
+  "b6d75552bc769766": "Search or ask",
+  "e4911e502264cb64": "On this page",
+  "a3990f5fde7dcb90": "Lessons",
+  "604e15689e0dd016": "{title} · {minutes} min",
+  "e04b34a78a2c8d93": "Where you use her",
+  "2a0231f9bfcb8524": "Who you are",
+  "48a7ce1496cf1c0f": "Show me in Tessaya",
+  "ef99b45100e1a379": "In Tessaya's window on your computer",
+  "ca0fc5aa65081d91": "Show me here",
+  "e4204f5ebebfb87f": [
+    "“",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "”"
+  ],
+  "37da5ba9ab4ff233": "Try saying",
+  "9f8c6316ea2cdc30": [
+    "Good to know: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "a342a177fb6e00c0": "Read the full guide",
+  "77699595207fed80": "‹ All of Help",
+  "582fe3f89fd198ea": [
+    "Related: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "115c69de3202f664": "Открыть",
+  "2c44ece57896f440": "Ask Tessaya",
+  "431b41a86f4e7355": [
+    "You asked: ",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    }
+  ],
+  "e18318ee208c8c22": "Nothing in Help matches. Ask Tessaya and she will say if she can help.",
+  "a49a91d99f1d4f68": [
+    "Say “",
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    "”"
+  ],
+  "4b7aa512c4ac65b4": " (done)",
+  "b6fe092b53003164": [
+    {
+      "i": 1,
+      "k": "_gt_value_1",
+      "v": "v"
+    },
+    " of ",
+    {
+      "i": 2,
+      "k": "_gt_value_2",
+      "v": "v"
+    },
+    " done"
+  ],
   "c0fce4a3555c5c17": "Подключение",
   "0d1eba54ff075d77": "Использовать",
   "035dc7d3b0f3e526": "Заголовки тредов и другой генерируемый текст",
@@ -12649,7 +12735,6 @@
   "672a3dae06b39402": "Открыть на отдельной странице",
   "7755500a4cde5066": "Закрыть панель",
   "b8dcbc93a2ca1861": "Этого больше нет в запуске.",
-  "115c69de3202f664": "Открыть",
   "a2bbf464a3be4882": "{count, plural, =1 {1-я попытка} =2 {2-я попытка} =3 {3-я попытка} one {{count}-я попытка} few {{count}-я попытка} many {{count}-я попытка} other {{count}-я попытка}}",
   "0398ca6c1d24b92d": "в очереди, следующий",
   "0af6d5ffd5166214": "{count, plural, one {в очереди, впереди {count}} few {в очереди, впереди {count}} many {в очереди, впереди {count}} other {в очереди, впереди {count}}}",

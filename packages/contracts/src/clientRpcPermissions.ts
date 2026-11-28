@@ -128,8 +128,8 @@ const CAST_CALL = "baton.cast.call";
 const UPCOMING_LIST = "baton.upcoming.list";
 const UPCOMING_CHANGE = "baton.upcoming.change";
 /** Tessaya's front door (`TESSAYA_DOOR_WS_METHODS`): naming a machine on it is access, as pairing links are. */
-const DOOR_NAMES = "tessaya.door.names";
-const DOOR_SET_NAME = "tessaya.door.setName";
+const DOOR_NAMES = "baton.door.names";
+const DOOR_SET_NAME = "baton.door.setName";
 /** His reaction to one pulse decision (`BATON_PULSE_WS_METHODS.react`): it changes what she raises. */
 const PULSE_REACT = "baton.pulse.react";
 

@@ -6,6 +6,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
+import { msg, useGT, useMessages } from "gt-react";
 import { useState } from "react";
 
 import { tessayaWorkSessions } from "../../state/tessayaWorkSessions";
@@ -15,10 +16,10 @@ import { Input } from "../ui/input";
 import { toastManager } from "../ui/toast";
 
 const ERRORS = {
-  "not-a-door": "This environment is not the household's door.",
-  "invalid-name": "Use one word of letters, digits or dashes, not the door's own name.",
-  taken: "Another machine already has that name.",
-  "not-linked": "That machine is no longer linked here.",
+  "not-a-door": msg("This environment is not the household's door."),
+  "invalid-name": msg("Use one word of letters, digits or dashes, not the door's own name."),
+  taken: msg("Another machine already has that name."),
+  "not-linked": msg("That machine is no longer linked here."),
 } as const;
 
 export function TessayaDoorName({
@@ -28,6 +29,8 @@ export function TessayaDoorName({
   readonly environmentId: EnvironmentId;
   readonly machineId: EnvironmentId;
 }) {
+  const gt = useGT();
+  const m = useMessages();
   const query = useAtomValue(tessayaWorkSessions.doorNamesQuery({ environmentId, input: {} }));
   const canName = useAtomValue(tessayaWorkSessions.doorSetName.permissionAtom(environmentId));
   const setName = useAtomCommand(tessayaWorkSessions.doorSetName, { reportFailure: false });
@@ -47,22 +50,22 @@ export function TessayaDoorName({
     void setName({ environmentId, input: { environmentId: machineId, name } }).then((result) => {
       setBusy(false);
       if (result._tag !== "Success")
-        return toastManager.add({ type: "error", title: "Could not change the public name" });
+        return toastManager.add({ type: "error", title: gt("Could not change the public name") });
       if (result.value.error !== null)
-        return toastManager.add({ type: "error", title: ERRORS[result.value.error] });
+        return toastManager.add({ type: "error", title: m(ERRORS[result.value.error]) });
       setSaved(result.value.names);
       setDraft(null);
     });
   };
   return (
     <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
-      <span>Public name</span>
+      <span>{gt("Public name")}</span>
       <Input
-        aria-label="Public name"
+        aria-label={gt("Public name")}
         className="h-7 w-28"
         value={value}
         disabled={!canName || busy}
-        placeholder="none"
+        placeholder={gt("none", { $context: "no public name set" })}
         onChange={(event) => setDraft(event.target.value)}
       />
       <span className="truncate">.{door.domain}</span>
@@ -73,7 +76,9 @@ export function TessayaDoorName({
           disabled={busy}
           onClick={() => save(value.trim() || null)}
         >
-          {value.trim() === "" ? "Remove" : "Save"}
+          {value.trim() === ""
+            ? gt("Remove", { $context: "verb, takes the machine off the door" })
+            : gt("Save", { $context: "verb" })}
         </Button>
       ) : null}
     </div>

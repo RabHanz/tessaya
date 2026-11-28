@@ -3,6 +3,8 @@
  * The household's one front door: the brain whose `TESSAYA_PUBLIC_HOST` is an internet name also answers, under the
  * name given in Sharing & access, for each machine it holds a peer link with. The link is only the address book.
  */
+import { EnvironmentId } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -115,21 +117,20 @@ export const layer = Layer.effect(
       );
     }
 
-    const resolve = (environmentId: string): Promise<string | null> => {
+    const resolveNow = Effect.fn("TessayaDoor.resolve")(function* (environmentId: string) {
+      const now = yield* Clock.currentTimeMillis;
       const cached = verified.get(environmentId);
-      if (cached !== undefined && cached.until > Date.now()) return Promise.resolve(cached.url);
-      if (Option.isNone(links) || door === null) return Promise.resolve(null);
-      return run(
-        links.value.resolve(environmentId as never).pipe(
-          Effect.map((resolved) => (throughDoor(resolved.url, door.domain) ? null : resolved.url)),
-          Effect.orElseSucceed(() => null),
-        ),
-      ).then((url) => {
-        if (url === null) verified.delete(environmentId);
-        else verified.set(environmentId, { url, until: Date.now() + VERIFIED_MS });
-        return url;
-      });
-    };
+      if (cached !== undefined && cached.until > now) return cached.url;
+      if (Option.isNone(links) || door === null) return null;
+      const url = yield* links.value.resolve(EnvironmentId.make(environmentId)).pipe(
+        Effect.map((resolved) => (throughDoor(resolved.url, door.domain) ? null : resolved.url)),
+        Effect.orElseSucceed(() => null),
+      );
+      if (url === null) verified.delete(environmentId);
+      else verified.set(environmentId, { url, until: now + VERIFIED_MS });
+      return url;
+    });
+    const resolve = (environmentId: string) => run(resolveNow(environmentId));
 
     if (door !== null) {
       yield* Effect.acquireRelease(
@@ -155,7 +156,7 @@ export const layer = Layer.effect(
           if (holder !== undefined && holder !== environmentId) return "taken" as const;
           if (Option.isNone(links)) return "not-linked" as const;
           const link = yield* links.value
-            .get(environmentId as never)
+            .get(EnvironmentId.make(environmentId))
             .pipe(Effect.orElseSucceed(() => Option.none()));
           if (Option.isNone(link)) return "not-linked" as const;
         }
