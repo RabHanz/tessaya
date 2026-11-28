@@ -104,48 +104,55 @@ index 3667f582e1edb140dd6ff6b1da529a14555d86e4..b4e663edc3126e689a77d080fb223718
    }
  }
 diff --git a/apps/mobile/metro.config.js b/apps/mobile/metro.config.js
-index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..e2a5df5d507fcdf7481e9afa554696801a1eee08 100644
+index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..8165e1769e592e16899c88a770bbc42e91e81bf7 100644
 --- a/apps/mobile/metro.config.js
 +++ b/apps/mobile/metro.config.js
-@@ -18,7 +18,10 @@ const licenseGeneratorSource = path.join(
+@@ -18,7 +18,11 @@ const licenseGeneratorSource = path.join(
  const escapedWorkspaceRoot = workspaceRoot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  const generatedDeviceStreamRoot = path.join(__dirname, ".generated", "device-stream");
  const generatedPreviewStreamRoot = path.join(__dirname, ".generated", "preview-stream");
 +const generatedBodyStreamRoot = path.join(__dirname, ".generated", "body-stream");
++const generatedStageStreamRoot = path.join(__dirname, ".generated", "stage-stream");
  
 +// The Tessaya babel rewrite depends on APP_VARIANT, so a cached transform from another variant must not be reused.
 +config.cacheVersion = `${config.cacheVersion ?? ""}:${process.env.APP_VARIANT ?? ""}:${process.env.TESSAYA_BRAND ?? ""}`;
  config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
  config.resolver = {
    ...config.resolver,
-@@ -35,6 +38,7 @@ config.resolver = {
+@@ -35,6 +39,8 @@ config.resolver = {
      "@t3tools/mobile-third-party-licenses": generatedLicenseModuleRoot,
      "@t3tools/mobile-device-stream": generatedDeviceStreamRoot,
      "@t3tools/mobile-preview-stream": generatedPreviewStreamRoot,
 +    "@t3tools/mobile-body-stream": generatedBodyStreamRoot,
++    "@t3tools/mobile-stage-stream": generatedStageStreamRoot,
    },
  };
  
-@@ -71,11 +75,14 @@ async function generateMobileThirdPartyLicenses() {
+@@ -71,11 +77,21 @@ async function generateMobileThirdPartyLicenses() {
  }
  
  async function prepareStreamScripts() {
 -  const { generateDeviceStreamScript, generatePreviewStreamScript } = await import(
--    pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href
--  );
-+  const { generateDeviceStreamScript, generatePreviewStreamScript, generateBodyStreamScript } =
-+    await import(pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href);
++  const {
++    generateDeviceStreamScript,
++    generatePreviewStreamScript,
++    generateBodyStreamScript,
++    generateStageStreamScript,
++  } = await import(
+     pathToFileURL(path.join(__dirname, "scripts", "generate-device-stream.mts")).href
+   );
    const generateAll = () =>
 -    Promise.all([generateDeviceStreamScript(), generatePreviewStreamScript()]);
 +    Promise.all([
 +      generateDeviceStreamScript(),
 +      generatePreviewStreamScript(),
 +      generateBodyStreamScript(),
++      generateStageStreamScript(),
 +    ]);
    await generateAll();
    if (process.env.NODE_ENV !== "production") {
      let rebuild = Promise.resolve();
-@@ -90,6 +97,11 @@ async function prepareStreamScripts() {
+@@ -90,6 +106,16 @@ async function prepareStreamScripts() {
          ["preview-stream.browser.ts"],
          generatePreviewStreamScript,
        ],
@@ -154,10 +161,15 @@ index 6371da34fd1907e0f6611d781e5a97d7cddf5da5..e2a5df5d507fcdf7481e9afa55469680
 +        ["body-stream.browser.ts"],
 +        generateBodyStreamScript,
 +      ],
++      [
++        "apps/mobile/src/features/tessaya/sleeve",
++        ["stage-stream.browser.ts"],
++        generateStageStreamScript,
++      ],
        ["packages/client-runtime/src/device", ["stream.ts", "hubAccess.ts"], generateAll],
        [
          "packages/client-runtime/src/preview",
-@@ -110,11 +122,16 @@ async function prepareStreamScripts() {
+@@ -110,11 +136,16 @@ async function prepareStreamScripts() {
    }
  }
  
@@ -308,15 +320,17 @@ index d20d199119b051799bf36797e0898787d2faf02f..95cb0e9f71064a98bca794e241c5cd56
        const imageSetDir = path.join(catalogDir, IMAGE_SET);
        fs.mkdirSync(imageSetDir, { recursive: true });
 diff --git a/apps/mobile/scripts/generate-device-stream.mts b/apps/mobile/scripts/generate-device-stream.mts
-index 76f3d262dfa90983c9cfcf5a9ed10a76de03426f..dadd9d979e96093a21d6dbe89c854c99f8a6dff6 100644
+index 76f3d262dfa90983c9cfcf5a9ed10a76de03426f..8b1293da58e8eeae5e613384c6b382e65e9857d9 100644
 --- a/apps/mobile/scripts/generate-device-stream.mts
 +++ b/apps/mobile/scripts/generate-device-stream.mts
-@@ -40,3 +40,5 @@ async function generateWebViewScript(feature: string, name: string) {
+@@ -40,3 +40,7 @@ async function generateWebViewScript(feature: string, name: string) {
  
  export const generateDeviceStreamScript = () => generateWebViewScript("devices", "Device");
  export const generatePreviewStreamScript = () => generateWebViewScript("browser", "Preview");
 +// Tessaya: her body in the Talk tab, the same renderer as the desk and the web (apps/web/src/body).
 +export const generateBodyStreamScript = () => generateWebViewScript("tessaya/talk", "Body");
++// Tessaya: her estate in the Sleeve, the desk mascot's own rig and page script (apps/web/public/companion).
++export const generateStageStreamScript = () => generateWebViewScript("tessaya/sleeve", "Stage");
 diff --git a/apps/mobile/src/App.tsx b/apps/mobile/src/App.tsx
 index 7193fcb9b7af8312261575b1ec999b63fbef72b4..e10728959886457f824ec2fcd612b301a57a3e35 100644
 --- a/apps/mobile/src/App.tsx

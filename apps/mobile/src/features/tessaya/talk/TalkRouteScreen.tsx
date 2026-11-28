@@ -8,6 +8,10 @@ import { useAtomValue } from "@effect/atom-react";
 import { useIsFocused } from "@react-navigation/native";
 import type { TessayaPersona, TessayaVoiceCallResult } from "@t3tools/tessaya-contracts";
 import bodyStreamScript from "@t3tools/mobile-body-stream";
+import stageStreamScript from "@t3tools/mobile-stage-stream";
+import type { TessayaBodyForm } from "@t3tools/contracts";
+import { formOf } from "@t3tools/tessaya-shared/cast";
+import { cueFor, momentOf } from "@t3tools/tessaya-shared/companion";
 import { lineCues } from "@t3tools/tessaya-shared/bodyCues";
 import { renderFor, VESSELS, type PropState } from "@t3tools/tessaya-shared/expressionMap";
 import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
@@ -44,7 +48,7 @@ import { useAtomCommand } from "../../../state/use-atom-command";
 import { useVoiceInputController } from "../../voice-input/useVoiceInputController";
 import { askOutcome, askRefused, bodyCacheName, talkPersona } from "./talk.logic";
 import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
-import { setHerPhase } from "../island/herPhase";
+import { setHerPhase, useHerPhase } from "../island/herPhase";
 import { phoneSoulIs } from "../private/privateLayer";
 import { useBottomClearance } from "../layout/screenInsets";
 import { useSleeveCovering } from "../sleeve/useSleeve";
@@ -63,6 +67,8 @@ import {
 } from "./talkCost";
 
 const PAGE = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;height:100%;background:transparent;overflow:hidden}</style></head><body><script>${bodyStreamScript}</script></body></html>`;
+// her estate in the Sleeve: her character's own stage, the whole screen hers (sleeve/stage-stream.browser.ts)
+const STAGE = `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"></head><body><script>${stageStreamScript}</script></body></html>`;
 const POLL_MS = 1500;
 const POLLS = 60;
 
@@ -110,6 +116,8 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   const [bodyShown, setBodyShown] = useState(false);
   // his computer offered no body of his: her face stays, and says so rather than "on her way"
   const [bodyless, setBodyless] = useState(false);
+  // the form she takes on this phone (the Cast, set anywhere or by voice); null until read
+  const [form, setForm] = useState<TessayaBodyForm | null>(null);
   const [model, setModel] = useState<{ readonly persona: string; readonly base64: string } | null>(
     null,
   );
@@ -127,6 +135,10 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   // the private layer opens for the soul he is talking to here
   phoneSoulIs(persona?.id ?? null);
   const drawing = focused && active;
+  // in the Sleeve her cartoon lives on the whole screen: when the Cast says so, or no body of hers is offered
+  const cartoon = sleeve && (bodyless || form === "cartoon");
+  const castCall = useAtomCommand(tessayaWorkSessions.castCall, { reportFailure: false });
+  const phase = useHerPhase();
   const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, { reportFailure: false });
   const cost = useRef<Stretch | null>(null);
   const awayAt = useRef<number | null>(null);
@@ -146,8 +158,11 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
     kind?: unknown;
     pressure?: unknown;
     cmPerS?: unknown;
+    durationMs?: unknown;
   }) => {
-    const kind = typeof t.kind === "string" ? touchOpKind(t.kind) : null;
+    // carried about her screen is felt as the desk's carry; every other kind as the one touch path reads it
+    const kind =
+      t.kind === "carry" ? "carry" : typeof t.kind === "string" ? touchOpKind(t.kind) : null;
     if (environmentId === null || persona === null || kind === null || typeof t.part !== "string")
       return;
     const answer = await voiceCall({
@@ -160,7 +175,8 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
           kind,
           pressure: typeof t.pressure === "number" ? Math.min(1, Math.max(0, t.pressure)) : 0.4,
           cmPerS: typeof t.cmPerS === "number" ? Math.min(2000, Math.max(0, t.cmPerS)) : 0,
-          durationMs: 0,
+          durationMs:
+            typeof t.durationMs === "number" ? Math.min(600_000, Math.max(0, t.durationMs)) : 0,
           persona: persona.id,
           device: manifestNow().deviceId,
         },
@@ -312,6 +328,24 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   }, [connection?.httpBaseUrl, connection?.bearerToken, persona]);
 
   const post = (data: object) => webView.current?.postMessage(JSON.stringify(data));
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads her form on this phone from the Cast each time the Sleeve shows
+  useEffect(() => {
+    if (!sleeve || !drawing || environmentId === null) return;
+    const id = manifestNow().deviceId;
+    void castCall({ environmentId, input: { op: "view" } }).then((r) => {
+      if (r._tag !== "Success") return;
+      const body = r.value.bodies.find((b) => b.id === id);
+      setForm(formOf("phone", body?.form === undefined ? undefined : { form: body.form }));
+    });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- one read each time she comes on screen here
+  }, [sleeve, drawing, environmentId]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- her stage (a WebView, outside React) shows each turn phase on her face
+  useEffect(() => {
+    const moment = momentOf(phase);
+    const cue = moment === null ? null : cueFor(moment, "calm");
+    if (cartoon && cue !== null) post({ type: "moment", cue });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- post writes to the current page
+  }, [cartoon, phase]);
 
   const readHistory = async (before?: number) => {
     if (environmentId === null) return;
@@ -404,10 +438,12 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
     file.write((clip as { base64: string }).base64, { encoding: "base64" });
     const player = createAudioPlayer(file.uri);
     setHerPhase("speaking");
+    post({ type: "speak", on: true, line: text });
     const done = player.addListener("playbackStatusUpdate", (status) => {
       if (!status.didJustFinish) return;
       done.remove();
       player.release();
+      post({ type: "speak", on: false });
       setHerPhase("idle");
     });
     player.play();
@@ -476,14 +512,17 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
       {drawing ? (
         <WebView<object>
           ref={webView}
-          source={{ html: PAGE }}
+          key={cartoon ? "stage" : "body"}
+          source={{ html: cartoon ? STAGE : PAGE }}
           originWhitelist={["*"]}
           scrollEnabled={false}
           bounces={false}
           style={{ flex: 1, backgroundColor: "transparent" }}
           onMessage={(e) => {
             const data = e.nativeEvent.data;
-            if (data.includes('"ready"') && model !== null) post({ type: "model", ...model });
+            if (data.includes('"ready"') && cartoon && persona !== null)
+              post({ type: "persona", id: persona.id });
+            else if (data.includes('"ready"') && model !== null) post({ type: "model", ...model });
             if (data.includes('"touch"')) {
               try {
                 void touched(JSON.parse(data) as Record<string, unknown>);
@@ -499,13 +538,13 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
           onLoadStart={() => setBodyShown(false)}
           onLoadEnd={() => {
             post({ type: "inset", bottom: inset.current });
-            if (model !== null) post({ type: "model", ...model });
+            if (model !== null && !cartoon) post({ type: "model", ...model });
           }}
         />
       ) : (
         <View className="flex-1" />
       )}
-      {bodyShown ? null : (
+      {bodyShown || cartoon ? null : (
         <View
           pointerEvents="none"
           className="absolute inset-x-0 items-center justify-center gap-3 px-8"

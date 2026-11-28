@@ -42,3 +42,5 @@ export const generateDeviceStreamScript = () => generateWebViewScript("devices",
 export const generatePreviewStreamScript = () => generateWebViewScript("browser", "Preview");
 // Tessaya: her body in the Talk tab, the same renderer as the desk and the web (apps/web/src/body).
 export const generateBodyStreamScript = () => generateWebViewScript("tessaya/talk", "Body");
+// Tessaya: her estate in the Sleeve, the desk mascot's own rig and page script (apps/web/public/companion).
+export const generateStageStreamScript = () => generateWebViewScript("tessaya/sleeve", "Stage");
