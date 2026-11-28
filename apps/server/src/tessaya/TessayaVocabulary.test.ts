@@ -453,7 +453,16 @@ it("derives T3's list as its contract allows: added, then learned by use, then W
     { term: "Rare", aliases: [] },
     { term: "Wisprword", aliases: [] },
   ]);
-  expect(words[5]!.aliases).toHaveLength(8);
+  // Wispr's and learned forms are hints for the desktop, never T3's context-free rewrites.
+  expect(words[5]!.aliases).toEqual([]);
+  const added = customWordsOf([
+    { phrase: "It", replacement: "feelIt", source: "added" },
+    { phrase: "UltraThink", replacement: null, source: "added", heard: ["think", "ultra fink"] },
+  ]);
+  expect(added).toEqual([
+    { term: "feelIt", aliases: [] },
+    { term: "UltraThink", aliases: ["ultra fink"] },
+  ]);
 });
 
 it("listens for a project title only when it is spoken words", () => {

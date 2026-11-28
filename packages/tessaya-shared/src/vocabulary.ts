@@ -295,9 +295,20 @@ export const customWordsOf = (
     .flatMap(({ entry }) => {
       const term = (entry.replacement ?? entry.phrase).trim();
       if (!fresh(term)) return [];
-      const forms = [...(entry.replacement === null ? [] : [entry.phrase]), ...(entry.heard ?? [])];
+      // T3 rewrites an alias wherever it is heard, with no context: only forms he added himself, never an everyday
+      // word ("It" to feelIt, "think" to UltraThink). Learned and Wispr forms stay hints for the desktop's name slots.
+      const forms =
+        (entry.source ?? "added") === "added"
+          ? [...(entry.replacement === null ? [] : [entry.phrase]), ...(entry.heard ?? [])]
+          : [];
       const aliases: Array<string> = [];
-      for (const form of forms) if (aliases.length < 8 && fresh(form)) aliases.push(form.trim());
+      for (const form of forms)
+        if (
+          aliases.length < 8 &&
+          !(/^\S+$/u.test(form.trim()) && everydayForm(form.trim())) &&
+          fresh(form)
+        )
+          aliases.push(form.trim());
       return [{ term, aliases }];
     })
     .slice(0, max);
