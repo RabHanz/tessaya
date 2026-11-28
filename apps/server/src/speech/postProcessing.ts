@@ -15,7 +15,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { buildTranscriptionPostProcessingPrompt } from "../textGeneration/TranscriptionPostProcessing.ts";
-import { applySpeechAliases } from "./customWords.ts";
+import { applySpeechAliases, withServerWords } from "./customWords.ts";
 import { DictationCleanupApi } from "./DictationCleanupApi.ts";
 import { SpeechOperationError } from "./SpeechService.ts";
 
@@ -44,8 +44,9 @@ const make = Effect.gen(function* () {
       function* (input) {
         if (input.transcript.trim().length === 0) return { text: input.transcript };
         const settings = yield* settingsService.getSettings;
+        const options = withServerWords(input.options, settings.speechProjectCustomWords);
         const providers = yield* providerRegistry.getProviders;
-        const { mode, customInstructions } = input.options.speechPostProcessingPrompt;
+        const { mode, customInstructions } = options.speechPostProcessingPrompt;
         // Providers run in a working directory; cleanup must not read a checkout.
         const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-voice-cleanup-" });
         const modelSelection = resolveSpeechPostProcessingModelSelection(settings, providers);
@@ -60,19 +61,19 @@ const make = Effect.gen(function* () {
               custom,
               input.transcript,
               input.draft,
-              input.options.speechCorrectionWord,
+              options.speechCorrectionWord,
             ),
             modelSelection,
           );
           return {
             text:
               text.length > 0
-                ? applySpeechAliases(text, input.options.speechCustomWords)
+                ? applySpeechAliases(text, options.speechCustomWords)
                 : input.transcript,
           };
         }
         // The desktop's clean-up (prompt, checker, one retry), with his one dictionary as T3's list carries it.
-        const dictionary = input.options.speechCustomWords.map((w) => ({
+        const dictionary = options.speechCustomWords.map((w) => ({
           phrase: w.term,
           replacement: null,
           heard: w.aliases,
@@ -122,7 +123,7 @@ const make = Effect.gen(function* () {
           yield* Effect.logWarning("dictation clean-up fell back to the local text", {
             why: cleaned.why,
           });
-        return { text: applySpeechAliases(cleaned.text, input.options.speechCustomWords) };
+        return { text: applySpeechAliases(cleaned.text, options.speechCustomWords) };
       },
       Effect.scoped,
       Effect.mapError((cause) => new SpeechOperationError({ operation: "post-processing", cause })),

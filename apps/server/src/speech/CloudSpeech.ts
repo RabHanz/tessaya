@@ -23,7 +23,7 @@ import * as Schema from "effect/Schema";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as ServerSettings from "../serverSettings.ts";
 import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
-import { applySpeechAliases, speechRecognitionWords } from "./customWords.ts";
+import { applySpeechAliases, speechRecognitionWords, withServerWords } from "./customWords.ts";
 import { removeSpeechFillerWords } from "./fillerWords.ts";
 import { decodeSpeechPcm, SAMPLE_RATE, SpeechInvalidAudioError } from "./SpeechService.ts";
 import * as BrainUsage from "../tessaya/BrainUsage.ts";
@@ -186,9 +186,13 @@ export const make = Effect.gen(function* () {
     function* (
       provider: CloudSpeechProvider,
       pcm: Uint8Array,
-      options: SpeechTranscriptionOptions,
+      requested: SpeechTranscriptionOptions,
       model?: string,
     ) {
+      const options = withServerWords(
+        requested,
+        (yield* settings.getSettings).speechProjectCustomWords,
+      );
       const source = (yield* credentials)[provider];
       if (!source) return yield* new CloudSpeechError({ provider, reason: "missing-key" });
       if (provider === "openrouter" && (!model || !isModelId(model)))

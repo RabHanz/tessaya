@@ -127,9 +127,6 @@ const SITES: Readonly<Record<string, Site>> = {
     pending: "B1c: the desktop reads the table, not routing.json",
   },
   // Not Tessaya's brain.
-  "apps/server/src/tessaya/TessayaPhoneVoice.ts": {
-    excluded: "speech recognition's model file, not a language model",
-  },
   "apps/server/src/tessaya/TessayaSessionCatalogService.ts": {
     excluded: "work sessions run on the member's own provider (ACCOUNTS-IDENTITY §9.5)",
   },

@@ -1,4 +1,5 @@
 import type { SpeechCustomWords } from "@t3tools/contracts";
+import { resolveSpeechVocabulary } from "@t3tools/shared/speech";
 
 // These scripts are written without spaces, so a neighbor in one of them still ends a word.
 const UNSPACED_SCRIPTS = "\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}";
@@ -226,3 +227,21 @@ export function normalizeSpeechCustomWords(words: SpeechCustomWords): SpeechCust
     })
     .slice(0, 100);
 }
+
+/**
+ * The server's dictionary (`speechProjectCustomWords`; on a Tessaya server, his one dictionary) joins the words a
+ * client sent, so a client that sends none, such as T3's phone app, is still heard with it.
+ */
+export const withServerWords = <T extends { readonly speechCustomWords: SpeechCustomWords }>(
+  options: T,
+  server: SpeechCustomWords,
+): T =>
+  server.length === 0
+    ? options
+    : {
+        ...options,
+        speechCustomWords: resolveSpeechVocabulary({
+          personal: options.speechCustomWords,
+          project: server,
+        }).speechCustomWords,
+      };

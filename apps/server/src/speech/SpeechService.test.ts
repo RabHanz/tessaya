@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import { beforeEach, expect, vi } from "vite-plus/test";
 import { it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -88,6 +92,16 @@ vi.mock("./native.ts", () => ({
 }));
 vi.mock("./model.ts", () => ({
   DEFAULT_SPEECH_MODEL_ID: "test-model",
+  PERSONAL_SPEECH_MODEL_ID: "tessaya/personal",
+  personalSpeechModel: (manifest: { name?: string; size?: number; sha256?: string }) =>
+    manifest.name
+      ? {
+          ...modelDefinitions[0],
+          id: "tessaya/personal",
+          name: "Personal",
+          filename: manifest.name,
+        }
+      : undefined,
   SPEECH_MODELS: modelDefinitions,
   getSpeechModel: (modelId: string) => modelDefinitions.find((model) => model.id === modelId),
   effectiveSpeechLanguage: (model: { languages: string[] }, intent: string) =>
@@ -111,11 +125,16 @@ const store = Layer.succeed(
       }),
   }),
 );
-const layer = SpeechService.layer.pipe(
-  Layer.provide(store),
-  Layer.provideMerge(ServerSettings.layerTest({ speechModelId: "test-model" })),
-  Layer.provide(NodeServices.layer),
-);
+// Never the real home: a personal model there would change which model these tests load.
+const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-speech-home-"));
+const speechLayer = (settings: Parameters<typeof ServerSettings.layerTest>[0]) =>
+  SpeechService.layer.pipe(
+    Layer.provide(store),
+    Layer.provideMerge(ServerSettings.layerTest({ speechModelId: "test-model", ...settings })),
+    Layer.provide(Layer.succeed(HostProcess.HomeDirectory, home)),
+    Layer.provide(NodeServices.layer),
+  );
+const layer = speechLayer({});
 const pcm = () => new Uint8Array(new Float32Array([0.25]).buffer);
 
 beforeEach(() => {
@@ -575,6 +594,71 @@ it.effect("uses vocabulary only for supported transcription and always applies a
           ]);
         }).pipe(Effect.scoped, Effect.provide(layer));
       }
+    }
+  }),
+);
+
+it.effect("hears a client that sends no words with the server's own dictionary", () =>
+  Effect.gen(function* () {
+    native.supportsVocabulary = true;
+    const speech = yield* SpeechService.SpeechService;
+    native.transcribe.mockResolvedValueOnce({ text: "ask tessa ya" });
+    expect(yield* speech.transcribe(pcm(), DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS)).toBe(
+      "ask Tessaya",
+    );
+    expect(native.transcribe.mock.lastCall?.[1]).toMatchObject({ vocabulary: ["Tessaya", "Bob"] });
+    native.transcribe.mockResolvedValueOnce({ text: "ask tessa ya" });
+    yield* speech.transcribe(pcm(), {
+      ...DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
+      speechCustomWords: [
+        { term: "bob", aliases: [] },
+        { term: "Northwind", aliases: [] },
+      ],
+    });
+    expect(native.transcribe.mock.lastCall?.[1]).toMatchObject({
+      vocabulary: ["Tessaya", "Bob", "Northwind"],
+    });
+  }).pipe(
+    Effect.provide(
+      speechLayer({
+        speechProjectCustomWords: [
+          { term: "Tessaya", aliases: ["tessa ya"] },
+          { term: "Bob", aliases: [] },
+        ],
+      }),
+    ),
+  ),
+);
+
+it.effect("uses the personal model while its manifest is here, and the stock model after", () =>
+  Effect.gen(function* () {
+    const dir = NodePath.join(home, ".tessaya", "personal-models");
+    NodeFS.mkdirSync(dir, { recursive: true });
+    NodeFS.writeFileSync(
+      NodePath.join(dir, "manifest.json"),
+      JSON.stringify({ name: "mine.gguf", size: 4, sha256: "0".repeat(64) }),
+    );
+    readyModels.add("tessaya/personal");
+    try {
+      yield* Effect.gen(function* () {
+        const speech = yield* SpeechService.SpeechService;
+        expect(yield* speech.status).toMatchObject({ modelId: "tessaya/personal" });
+        const listed = (yield* speech.models(false)).models.find(
+          (model) => model.id === "tessaya/personal",
+        );
+        expect(listed).toMatchObject({ active: true, state: "installed" });
+        yield* speech.selectModel("fallback-model");
+        expect(yield* speech.status).toMatchObject({ modelId: "fallback-model" });
+        yield* speech.selectModel("tessaya/personal");
+        expect(yield* speech.status).toMatchObject({ modelId: "tessaya/personal" });
+      }).pipe(Effect.provide(layer));
+      NodeFS.rmSync(dir, { recursive: true, force: true });
+      yield* Effect.gen(function* () {
+        const speech = yield* SpeechService.SpeechService;
+        expect(yield* speech.status).toMatchObject({ modelId: "test-model" });
+      }).pipe(Effect.provide(layer));
+    } finally {
+      NodeFS.rmSync(dir, { recursive: true, force: true });
     }
   }),
 );

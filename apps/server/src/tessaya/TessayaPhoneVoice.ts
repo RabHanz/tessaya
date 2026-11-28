@@ -1,86 +1,63 @@
-// @effect-diagnostics nodeBuiltinImport:off
 /**
- * The phone's push-to-talk, server side: a 16 kHz WAV goes through the same speech model the laptop uses, by way of the
- * dictation sidecar's `transcribe` command. A server without the sidecar or the model says so; it never guesses.
+ * The phone page's push-to-talk, server side: its 16 kHz WAV goes through the server's one SpeechService, the
+ * recogniser, dictionary and model every other client of this server is heard with.
  */
-import * as NodeChildProcess from "node:child_process";
-import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
-import * as NodePath from "node:path";
-import { envOf } from "@t3tools/tessaya-shared/envOf";
+import { DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
 
-export const MODEL_FILE = "parakeet-tdt-0.6b-v3-Q8_0.gguf";
+import type { SpeechService } from "../speech/SpeechService.ts";
+
 export const NOT_AVAILABLE =
   "Voice is not available on this server: it has no speech model here. Type instead.";
-
-/** The sidecar prints one JSON line per file: `{"file":..., "text":...}` or `{"file":..., "error":...}`. */
-export const parseTranscript = (stdout: string): string | null => {
-  for (const line of stdout.split(/\r?\n/)) {
-    try {
-      const value = JSON.parse(line) as { file?: unknown; text?: unknown };
-      if (typeof value.file === "string" && typeof value.text === "string")
-        return value.text.trim();
-    } catch {
-      // Progress lines are not JSON text; skip them.
-    }
-  }
-  return null;
-};
-
-export type RunSidecar = (binary: string, args: ReadonlyArray<string>) => Promise<string>;
-
-const execSidecar: RunSidecar = (binary, args) =>
-  new Promise((resolve, reject) =>
-    NodeChildProcess.execFile(
-      binary,
-      [...args],
-      { timeout: 90_000, maxBuffer: 1 << 20, windowsHide: true },
-      (error, stdout) => (error === null ? resolve(stdout) : reject(error)),
-    ),
-  );
 
 export type Transcription =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly why: string };
 
-export const transcribeWav = async (input: {
-  readonly wav: Uint8Array;
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly userdataDir: string;
-  /** His dictionary's terms, for the decoder's phrase boosting (`recogniserTerms`). */
-  readonly vocabulary?: ReadonlyArray<string>;
-  readonly run?: RunSidecar;
-  readonly exists?: (path: string) => boolean;
-}): Promise<Transcription> => {
-  const exists = input.exists ?? NodeFS.existsSync;
-  const binary = envOf("DICTATION", input.env);
-  const model =
-    envOf("STT_MODEL", input.env) ??
-    NodePath.join(input.userdataDir, "voice", "models", MODEL_FILE);
-  if (binary === undefined || !exists(binary) || !exists(model))
-    return { ok: false, why: NOT_AVAILABLE };
-  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tessaya-phone-"));
-  const file = NodePath.join(dir, "say.wav");
-  try {
-    NodeFS.writeFileSync(file, input.wav, { mode: 0o600 });
-    const terms = NodePath.join(dir, "terms.txt");
-    const vocabulary = input.vocabulary ?? [];
-    if (vocabulary.length > 0) NodeFS.writeFileSync(terms, vocabulary.join("\n"), { mode: 0o600 });
-    const text = parseTranscript(
-      await (input.run ?? execSidecar)(binary, [
-        "transcribe",
-        "--model",
-        model,
-        ...(vocabulary.length > 0 ? ["--vocabulary-file", terms] : []),
-        file,
-      ]),
-    );
-    return text === null || text === ""
-      ? { ok: false, why: "I could not hear anything in that." }
-      : { ok: true, text };
-  } catch {
-    return { ok: false, why: "The speech model did not answer. Try again, or type." };
-  } finally {
-    NodeFS.rmSync(dir, { recursive: true, force: true });
+/** A checked 16 kHz mono 16-bit WAV (`checkWav`) as the Float32 PCM bytes SpeechService takes. */
+export const wavToSpeechPcm = (wav: Uint8Array): Uint8Array => {
+  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+  let at = 12;
+  while (at + 8 <= wav.byteLength) {
+    const size = view.getUint32(at + 4, true);
+    if (String.fromCharCode(...wav.subarray(at, at + 4)) === "data") {
+      const end = Math.min(wav.byteLength, at + 8 + size);
+      const pcm = new Float32Array(Math.floor((end - at - 8) / 2));
+      for (let i = 0; i < pcm.length; i++) pcm[i] = view.getInt16(at + 8 + i * 2, true) / 32768;
+      return new Uint8Array(pcm.buffer);
+    }
+    at += 8 + size + (size % 2);
   }
+  return new Uint8Array();
+};
+
+export const transcribeWav = (
+  speech: SpeechService["Service"] | undefined,
+  wav: Uint8Array,
+): Effect.Effect<Transcription> => {
+  const pcm = wavToSpeechPcm(wav);
+  if (speech === undefined) return Effect.succeed({ ok: false, why: NOT_AVAILABLE });
+  if (pcm.byteLength === 0)
+    return Effect.succeed({ ok: false, why: "I could not hear anything in that." });
+  return speech.transcribe(pcm, DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS).pipe(
+    Effect.map((text): Transcription =>
+      text.trim() === ""
+        ? { ok: false, why: "I could not hear anything in that." }
+        : { ok: true, text: text.trim() },
+    ),
+    Effect.catchTags({
+      SpeechModelNotFoundError: () => Effect.succeed({ ok: false, why: NOT_AVAILABLE } as const),
+      SpeechUnsupportedPlatformError: () =>
+        Effect.succeed({ ok: false, why: NOT_AVAILABLE } as const),
+      SpeechBusyError: () =>
+        Effect.succeed({
+          ok: false,
+          why: "Still working on the last recording. Try again in a moment.",
+        } as const),
+    }),
+    Effect.orElseSucceed((): Transcription => ({
+      ok: false,
+      why: "The speech model did not answer. Try again, or type.",
+    })),
+  );
 };

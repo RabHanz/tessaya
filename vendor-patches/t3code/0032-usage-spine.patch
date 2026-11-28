@@ -150,12 +150,15 @@ index 1ada861d6d85236a55cda95f57cdeaff83991ae4..4ad3cc420a223c5e2f197cd8081c0911
            Layer.provide(ServerSettings.ServerSettingsService.layerTest()),
            Layer.provide(Layer.mock(SecretResolver.SecretResolver)({})),
 diff --git a/apps/server/src/speech/CloudSpeech.ts b/apps/server/src/speech/CloudSpeech.ts
-index 31702c80a87eef3e1e3a1d49db7539eaf1684513..96ccc1426939af69cea0e3700f5ebe3bf5dacc19 100644
+index 31702c80a87eef3e1e3a1d49db7539eaf1684513..df6aa5d8d92b2697e6d3cabe5511b2a557ae1492 100644
 --- a/apps/server/src/speech/CloudSpeech.ts
 +++ b/apps/server/src/speech/CloudSpeech.ts
-@@ -25,7 +25,8 @@ import * as ServerSettings from "../serverSettings.ts";
+@@ -23,9 +23,10 @@ import * as Schema from "effect/Schema";
+ import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
+ import * as ServerSettings from "../serverSettings.ts";
  import { requireSettingsSecret } from "../secrets/settingsSecretValue.ts";
- import { applySpeechAliases, speechRecognitionWords } from "./customWords.ts";
+-import { applySpeechAliases, speechRecognitionWords } from "./customWords.ts";
++import { applySpeechAliases, speechRecognitionWords, withServerWords } from "./customWords.ts";
  import { removeSpeechFillerWords } from "./fillerWords.ts";
 -import { decodeSpeechPcm, SpeechInvalidAudioError } from "./SpeechService.ts";
 +import { decodeSpeechPcm, SAMPLE_RATE, SpeechInvalidAudioError } from "./SpeechService.ts";
@@ -163,7 +166,7 @@ index 31702c80a87eef3e1e3a1d49db7539eaf1684513..96ccc1426939af69cea0e3700f5ebe3b
  
  const endpoints = {
    openai: { url: "https://api.openai.com/v1/audio/transcriptions", model: "gpt-transcribe" },
-@@ -123,139 +124,152 @@ export class CloudSpeech extends Context.Service<
+@@ -123,139 +124,156 @@ export class CloudSpeech extends Context.Service<
    }
  >()("t3/speech/CloudSpeech") {}
  
@@ -276,13 +279,17 @@ index 31702c80a87eef3e1e3a1d49db7539eaf1684513..96ccc1426939af69cea0e3700f5ebe3b
        provider: CloudSpeechProvider,
 -      key: Redacted.Redacted<string> | SecretReference | null,
 +      pcm: Uint8Array,
-+      options: SpeechTranscriptionOptions,
++      requested: SpeechTranscriptionOptions,
 +      model?: string,
      ) {
 -      yield* settings.updateSettings({
 -        cloudSpeechCredentials: {
 -          [provider]: Redacted.isRedacted(key) ? Redacted.value(key) : (key ?? ""),
 -        },
++      const options = withServerWords(
++        requested,
++        (yield* settings.getSettings).speechProjectCustomWords,
++      );
 +      const source = (yield* credentials)[provider];
 +      if (!source) return yield* new CloudSpeechError({ provider, reason: "missing-key" });
 +      if (provider === "openrouter" && (!model || !isModelId(model)))
@@ -446,7 +453,7 @@ index 31702c80a87eef3e1e3a1d49db7539eaf1684513..96ccc1426939af69cea0e3700f5ebe3b
 +
 +export const layer = Layer.effect(CloudSpeech, make).pipe(Layer.provide(BrainUsage.layer));
 diff --git a/apps/server/src/speech/SpeechService.ts b/apps/server/src/speech/SpeechService.ts
-index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1b263b223 100644
+index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..4412a20baaf12928c4f114055c2e5a0c912a3dd7 100644
 --- a/apps/server/src/speech/SpeechService.ts
 +++ b/apps/server/src/speech/SpeechService.ts
 @@ -8,6 +8,8 @@ import {
@@ -458,7 +465,33 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
  import * as Cause from "effect/Cause";
  import * as Clock from "effect/Clock";
  import * as Context from "effect/Context";
-@@ -42,7 +44,7 @@ import { SILERO_VAD } from "./silero.ts";
+@@ -16,7 +18,9 @@ import * as Duration from "effect/Duration";
+ import * as Effect from "effect/Effect";
+ import * as Exit from "effect/Exit";
+ import * as Fiber from "effect/Fiber";
++import * as FileSystem from "effect/FileSystem";
+ import * as Layer from "effect/Layer";
++import * as Path from "effect/Path";
+ import * as Queue from "effect/Queue";
+ import * as Schema from "effect/Schema";
+ import * as Scope from "effect/Scope";
+@@ -27,12 +31,15 @@ import {
+   makeSpeechTextCorrector,
+   normalizeSpeechCustomWords,
+   speechRecognitionWords,
++  withServerWords,
+ } from "./customWords.ts";
+ import { removeSpeechFillerWords } from "./fillerWords.ts";
+ import {
+   DEFAULT_SPEECH_MODEL_ID,
+   effectiveSpeechLanguage,
+   getSpeechModel,
++  PERSONAL_SPEECH_MODEL_ID,
++  personalSpeechModel,
+   SPEECH_MODELS,
+   type SpeechModel,
+ } from "./model.ts";
+@@ -42,7 +49,7 @@ import { SILERO_VAD } from "./silero.ts";
  import { isSpeechPlatformSupported } from "./platform.ts";
  import * as SpeechModelStore from "./SpeechModelStore.ts";
  
@@ -467,7 +500,7 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
  const MAX_SPEECH_DURATION_SECONDS = 5 * 60;
  export const MAX_SPEECH_BYTES =
    SAMPLE_RATE * Float32Array.BYTES_PER_ELEMENT * MAX_SPEECH_DURATION_SECONDS;
-@@ -134,6 +136,13 @@ export type SpeechStream = {
+@@ -134,6 +141,13 @@ export type SpeechStream = {
    readonly finish: Effect.Effect<string, SpeechError>;
  };
  
@@ -481,7 +514,7 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
  export class SpeechService extends Context.Service<
    SpeechService,
    {
-@@ -155,6 +164,8 @@ export class SpeechService extends Context.Service<
+@@ -155,6 +169,8 @@ export class SpeechService extends Context.Service<
      readonly startStream: (
        options: SpeechTranscriptionOptions,
      ) => Effect.Effect<SpeechStream, SpeechError, Scope.Scope>;
@@ -490,7 +523,13 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
      readonly updateAcceleration: (
        acceleration: SpeechAcceleration,
      ) => Effect.Effect<EnvironmentSpeechStatus, SpeechError>;
-@@ -181,6 +192,19 @@ const make = Effect.gen(function* () {
+@@ -178,9 +194,25 @@ const make = Effect.gen(function* () {
+   const architecture = yield* HostProcess.Architecture;
+   const serverSettings = yield* ServerSettings.ServerSettingsService;
+   const store = yield* SpeechModelStore.SpeechModelStore;
++  const fileSystem = yield* FileSystem.FileSystem;
++  const path = yield* Path.Path;
++  const home = yield* HostProcess.HomeDirectory;
    const scope = yield* Effect.scope;
    const clock = yield* Clock.Clock;
    const now = () => clock.currentTimeMillisUnsafe();
@@ -510,7 +549,93 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
    const libc = platform === "linux" ? yield* HostProcess.LinuxLibc : undefined;
    const unsupportedReason = isSpeechPlatformSupported(platform, architecture, libc)
      ? null
-@@ -687,10 +711,13 @@ const make = Effect.gen(function* () {
+@@ -284,8 +316,40 @@ const make = Effect.gen(function* () {
+     ServerSettings.ServerSettingsService["Service"]["getSettings"]
+   >;
+ 
++  // The personal model counts only once its file is linked in and verified; re-read so a swapped model is picked up.
++  const personalDirectory = path.join(home, ".tessaya", "personal-models");
++  const personalModel = yield* fileSystem
++    .readFileString(path.join(personalDirectory, "manifest.json"))
++    .pipe(
++      Effect.flatMap(Schema.decodeEffect(Schema.fromJsonString(Schema.Unknown))),
++      Effect.map(personalSpeechModel),
++      Effect.flatMap((definition) =>
++        definition
++          ? store.link([definition], personalDirectory).pipe(
++              Effect.andThen(store.installedPath(definition)),
++              Effect.map((installed) => (installed ? definition : undefined)),
++            )
++          : Effect.undefined,
++      ),
++      Effect.orElseSucceed(() => undefined),
++      Effect.cachedWithTTL("1 minute"),
++    );
++  // Refreshed by every settings read, which precedes each use below.
++  let personal: SpeechModel | undefined;
++  yield* personalModel.pipe(Effect.forkScoped);
++  const allModels = () => (personal ? [personal, ...SPEECH_MODELS] : SPEECH_MODELS);
++  const modelById = (modelId: string) =>
++    personal?.id === modelId ? personal : getSpeechModel(modelId);
++
++  // shortcut: the default id means the personal model while one is installed, since settings cannot tell an untouched
++  // default from a chosen one; picking any other model, or removing the manifest, uses the stock models.
+   const selectedModel = (settings: SettingsSnapshot): SpeechModel =>
+-    getSpeechModel(settings.speechModelId) ?? getSpeechModel(DEFAULT_SPEECH_MODEL_ID)!;
++    (settings.speechModelId === DEFAULT_SPEECH_MODEL_ID ||
++    settings.speechModelId === PERSONAL_SPEECH_MODEL_ID
++      ? personal
++      : undefined) ??
++    getSpeechModel(settings.speechModelId) ??
++    getSpeechModel(DEFAULT_SPEECH_MODEL_ID)!;
+ 
+   let silenceRetryAt = 0;
+   const acquireSilenceModel = Effect.fn("SpeechService.acquireSilenceModel")(function* (
+@@ -306,7 +370,7 @@ const make = Effect.gen(function* () {
+ 
+   // Publish the reservation before forking: a cached transfer can finish before forkIn returns.
+   const downloadFiber = Effect.fn("SpeechService.downloadFiber")(function* (modelId: string) {
+-    const definition = getSpeechModel(modelId);
++    const definition = modelById(modelId);
+     if (!definition) return yield* new SpeechModelNotFoundError({ modelId });
+     if (closing || activeOperation || (downloading && downloading.modelId !== modelId))
+       return yield* new SpeechBusyError({ operation: "model download" });
+@@ -433,7 +497,13 @@ const make = Effect.gen(function* () {
+     );
+ 
+   const readSettings = (operation: string) =>
+-    serverSettings.getSettings.pipe(
++    personalModel.pipe(
++      Effect.tap((found) =>
++        Effect.sync(() => {
++          personal = found;
++        }),
++      ),
++      Effect.andThen(serverSettings.getSettings),
+       Effect.tap((settings) =>
+         Effect.sync(() => {
+           if (settings.speechModelId !== autoCpuModel || settings.speechAcceleration !== "auto")
+@@ -497,7 +567,7 @@ const make = Effect.gen(function* () {
+   ): Effect.fn.Return<SpeechModels> {
+     const selected = selectedModel(settings);
+     const models = yield* Effect.forEach(
+-      SPEECH_MODELS,
++      allModels(),
+       (definition) =>
+         Effect.all([store.isReady(definition), store.linkedFrom(definition)]).pipe(
+           Effect.map(([ready, linkedFrom]): EnvironmentSpeechModel => {
+@@ -597,8 +667,9 @@ const make = Effect.gen(function* () {
+   });
+ 
+   const transcribe: SpeechService["Service"]["transcribe"] = Effect.fn("SpeechService.transcribe")(
+-    function* (pcmBytes, options) {
++    function* (pcmBytes, requested) {
+       const settings = yield* readSettings("transcription");
++      const options = withServerWords(requested, settings.speechProjectCustomWords);
+       return yield* exclusive(
+         "transcription",
+         Effect.gen(function* () {
+@@ -687,10 +758,13 @@ const make = Effect.gen(function* () {
                vocabularyFor(inference).length > 0 ? [] : customWords,
                dictionary,
              );
@@ -528,7 +653,24 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
              );
            }).pipe(
              Effect.ensuring(
-@@ -884,10 +911,13 @@ const make = Effect.gen(function* () {
+@@ -705,7 +779,7 @@ const make = Effect.gen(function* () {
+   );
+ 
+   // Stream setup shares the public startStream span.
+-  const openStream = Effect.fnUntraced(function* (options: SpeechTranscriptionOptions) {
++  const openStream = Effect.fnUntraced(function* (requested: SpeechTranscriptionOptions) {
+     const operation = "streaming transcription";
+     yield* requireSupported;
+     const released = Promise.withResolvers<void>();
+@@ -756,6 +830,7 @@ const make = Effect.gen(function* () {
+       }),
+     );
+     const settings = yield* readSettings(operation);
++    const options = withServerWords(requested, settings.speechProjectCustomWords);
+     const definition = selectedModel(settings);
+     const language = effectiveSpeechLanguage(definition, options.speechLanguage);
+     const dictionary = normalizeSpeechCustomWords(options.speechCustomWords);
+@@ -884,10 +959,13 @@ const make = Effect.gen(function* () {
            throw cause;
          }
          finished = true;
@@ -546,7 +688,7 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
          );
        }),
      };
-@@ -898,6 +928,7 @@ const make = Effect.gen(function* () {
+@@ -898,6 +976,7 @@ const make = Effect.gen(function* () {
      models: readModels,
      prepareModel,
      transcribe,
@@ -554,6 +696,33 @@ index ba25233a32c7e91e48036bfaa4baa40eea4bf25e..0ff8e12e8addec5ad8d4611b9b0a77d1
      startStream: Effect.fn("SpeechService.startStream")(function* (options) {
        const session = yield* Scope.fork(yield* Effect.scope);
        return yield* openStream(options).pipe(
+@@ -917,7 +996,7 @@ const make = Effect.gen(function* () {
+       exclusive(
+         "model selection",
+         Effect.gen(function* () {
+-          const definition = getSpeechModel(modelId);
++          const definition = modelById(modelId);
+           if (!definition || !(yield* store.isReady(definition)))
+             return yield* new SpeechModelNotFoundError({ modelId });
+           yield* attempt("model selection", () => disposeModel());
+@@ -937,7 +1016,7 @@ const make = Effect.gen(function* () {
+         "model removal",
+         Effect.gen(function* () {
+           const settings = yield* readSettings("model removal");
+-          const definition = getSpeechModel(modelId);
++          const definition = modelById(modelId);
+           if (!definition) return yield* new SpeechModelNotFoundError({ modelId });
+           yield* attempt("model removal", async () => {
+             await loading?.catch(() => undefined);
+@@ -948,7 +1027,7 @@ const make = Effect.gen(function* () {
+             .pipe(Effect.mapError((cause) => speechError("model removal", cause)));
+           if (selectedModel(settings).id !== modelId) return;
+           const candidates = yield* Effect.forEach(
+-            SPEECH_MODELS.filter((candidate) => candidate.id !== modelId),
++            allModels().filter((candidate) => candidate.id !== modelId),
+             (candidate) =>
+               store.isReady(candidate).pipe(Effect.map((ready) => ({ candidate, ready }))),
+             { concurrency: "unbounded" },
 diff --git a/apps/server/src/textGeneration/AntigravityTextGeneration.ts b/apps/server/src/textGeneration/AntigravityTextGeneration.ts
 index 364a97f3bd53d9a95f60bc39b5958505851352cb..c0dfc20ea5d20ad8d921200d58f28888639d8df0 100644
 --- a/apps/server/src/textGeneration/AntigravityTextGeneration.ts

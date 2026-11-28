@@ -1,61 +1,77 @@
-// @effect-diagnostics nodeBuiltinImport:off
-import * as NodeFS from "node:fs";
+import { describe, expect } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
 
-import { describe, expect, it } from "vite-plus/test";
+import {
+  SpeechBusyError,
+  SpeechModelNotFoundError,
+  type SpeechService,
+} from "../speech/SpeechService.ts";
+import { NOT_AVAILABLE, transcribeWav, wavToSpeechPcm } from "./TessayaPhoneVoice.ts";
 
-import { NOT_AVAILABLE, parseTranscript, transcribeWav } from "./TessayaPhoneVoice.ts";
+const wavOf = (samples: ReadonlyArray<number>) => {
+  const bytes = new Uint8Array(44 + samples.length * 2);
+  const view = new DataView(bytes.buffer);
+  bytes.set(
+    [..."RIFF"].map((c) => c.charCodeAt(0)),
+    0,
+  );
+  bytes.set(
+    [..."WAVEfmt "].map((c) => c.charCodeAt(0)),
+    8,
+  );
+  view.setUint32(16, 16, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 16_000, true);
+  view.setUint16(34, 16, true);
+  bytes.set(
+    [..."data"].map((c) => c.charCodeAt(0)),
+    36,
+  );
+  view.setUint32(40, samples.length * 2, true);
+  samples.forEach((s, i) => view.setInt16(44 + i * 2, s, true));
+  return bytes;
+};
 
-const wav = new Uint8Array(64);
+const speechThat = (transcribe: SpeechService["Service"]["transcribe"]) =>
+  ({ transcribe }) as unknown as SpeechService["Service"];
 
-describe("the phone's push-to-talk", () => {
-  it("reads the sidecar's text line and skips its other lines", () => {
-    expect(
-      parseTranscript(
-        '{"ev":"loaded","loadMs":900}\n{"file":"/t/say.wav","text":" what needs me ","audioMs":2000}\n',
-      ),
-    ).toBe("what needs me");
-    expect(parseTranscript('{"file":"/t/say.wav","error":"bad"}')).toBeNull();
+describe("the phone page's push-to-talk", () => {
+  it("hands SpeechService the WAV's samples as Float32 PCM", () => {
+    const pcm = new Float32Array(wavToSpeechPcm(wavOf([0, 16384, -32768])).buffer);
+    expect([...pcm]).toEqual([0, 0.5, -1]);
   });
-  it("says plainly when the server has no sidecar or model", async () => {
-    const out = await transcribeWav({ wav, env: {}, userdataDir: "/x", exists: () => false });
-    expect(out).toEqual({ ok: false, why: NOT_AVAILABLE });
-  });
-  it("runs the sidecar's transcribe on the recording and returns the words", async () => {
-    const seen: string[][] = [];
-    let terms = "";
-    const out = await transcribeWav({
-      wav,
-      env: { BATON_DICTATION: "/bin/side", BATON_STT_MODEL: "/m/model.gguf" },
-      userdataDir: "/x",
-      vocabulary: ["Tessaya", "Northwind"],
-      exists: () => true,
-      run: async (_b, args) => {
-        seen.push([...args]);
-        terms = NodeFS.readFileSync(args[args.indexOf("--vocabulary-file") + 1]!, "utf8");
-        return '{"file":"f","text":"approve the plan"}';
-      },
-    });
-    expect(out).toEqual({ ok: true, text: "approve the plan" });
-    expect(seen[0]!.slice(0, 4)).toEqual([
-      "transcribe",
-      "--model",
-      "/m/model.gguf",
-      "--vocabulary-file",
-    ]);
-    expect(terms).toBe("Tessaya\nNorthwind");
-  });
-  it("tells him when the model fails or hears nothing", async () => {
-    const base = {
-      wav,
-      env: { BATON_DICTATION: "/b", BATON_STT_MODEL: "/m" },
-      userdataDir: "/x",
-      exists: () => true,
-    };
-    expect(
-      (await transcribeWav({ ...base, run: async () => Promise.reject(new Error("x")) })).ok,
-    ).toBe(false);
-    expect(
-      await transcribeWav({ ...base, run: async () => '{"file":"f","text":""}' }),
-    ).toMatchObject({ ok: false, why: "I could not hear anything in that." });
-  });
+
+  it.effect("returns what the server's one recogniser heard", () =>
+    Effect.gen(function* () {
+      let bytes = 0;
+      const out = yield* transcribeWav(
+        speechThat((pcm) => {
+          bytes = pcm.byteLength;
+          return Effect.succeed(" approve the plan ");
+        }),
+        wavOf([1, 2]),
+      );
+      expect(out).toEqual({ ok: true, text: "approve the plan" });
+      expect(bytes).toBe(8);
+    }),
+  );
+
+  it.effect("says plainly when the server has no model, is busy, or heard nothing", () =>
+    Effect.gen(function* () {
+      const run = (speech: SpeechService["Service"] | undefined) =>
+        transcribeWav(speech, wavOf([1]));
+      expect(yield* run(undefined)).toEqual({ ok: false, why: NOT_AVAILABLE });
+      expect(
+        yield* run(speechThat(() => Effect.fail(new SpeechModelNotFoundError({ modelId: "m" })))),
+      ).toEqual({ ok: false, why: NOT_AVAILABLE });
+      expect(
+        yield* run(speechThat(() => Effect.fail(new SpeechBusyError({ operation: "x" })))),
+      ).toMatchObject({ ok: false, why: expect.stringContaining("Still working") });
+      expect(yield* run(speechThat(() => Effect.succeed("  ")))).toMatchObject({
+        ok: false,
+        why: "I could not hear anything in that.",
+      });
+    }),
+  );
 });
