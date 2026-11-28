@@ -101,7 +101,7 @@ index 4866dd32d08f9c244ec848d6d4751162a89ff78c..d5aaa2bbe52fd33eba6669b8a86e2a7f
    test: {
      // The Windows lane runs workspace suites concurrently; filesystem-heavy
 diff --git a/apps/mobile/package.json b/apps/mobile/package.json
-index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..2a39d3eb3995a98e701dddb1d0f8ab4b50c4dff8 100644
+index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..291b705fdf95e75f7bca693cd73f40ff9a89b0ee 100644
 --- a/apps/mobile/package.json
 +++ b/apps/mobile/package.json
 @@ -79,6 +79,8 @@
@@ -121,7 +121,13 @@ index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..2a39d3eb3995a98e701dddb1d0f8ab4b
      "expo-blur": "58.0.6",
      "expo-build-properties": "~58.0.12",
      "expo-camera": "~58.0.14",
-@@ -111,6 +114,7 @@
+@@ -106,11 +109,13 @@
+     "expo-image-picker": "~58.0.10",
+     "expo-keep-awake": "~58.0.4",
+     "expo-linking": "~58.0.17",
++    "expo-local-authentication": "~58.0.3",
+     "expo-network": "~58.0.5",
+     "expo-notifications": "~58.1.9",
      "expo-observe": "~58.0.19",
      "expo-paste-input": "^0.2.2",
      "expo-quick-actions": "^6.0.2",
@@ -129,7 +135,7 @@ index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..2a39d3eb3995a98e701dddb1d0f8ab4b
      "expo-secure-store": "~58.0.3",
      "expo-sensors": "~58.0.5",
      "expo-sharing": "58.0.23",
-@@ -126,10 +130,12 @@
+@@ -126,10 +131,12 @@
      "react": "catalog:",
      "react-dom": "catalog:",
      "react-native": "0.88.1",

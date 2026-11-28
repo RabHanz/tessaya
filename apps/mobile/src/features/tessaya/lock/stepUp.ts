@@ -3,6 +3,7 @@
  * brain's household store (`stepUp`, the same check the desk's private window uses), or Face ID or a fingerprint,
  * which only releases that PIN from the phone's keychain for the same check. Nothing is unlocked on the phone alone.
  */
+import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
 
 const PIN_KEY = "tessaya.stepUpPin";
@@ -62,6 +63,15 @@ const OWNER_KEY = "tessaya.ownerCheck";
  * his phone's alone (leaving the Sleeve). False when the phone has none or he cancels.
  */
 export const ownerWithBiometric = async (why: string): Promise<boolean> => {
+  // the phone's own owner check: Face ID or a fingerprint, else the phone's passcode where none is enrolled
+  const level = await LocalAuthentication.getEnrolledLevelAsync().catch(() => null);
+  if (level !== null && level !== LocalAuthentication.SecurityLevel.NONE)
+    return LocalAuthentication.authenticateAsync({
+      promptMessage: why,
+      disableDeviceFallback: false,
+    })
+      .then((r) => r.success)
+      .catch(() => false);
   if (!biometricOffered()) return false;
   const ask = { requireAuthentication: true, authenticationPrompt: why };
   try {

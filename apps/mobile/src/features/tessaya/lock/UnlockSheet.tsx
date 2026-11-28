@@ -1,4 +1,5 @@
 /** "Is it you?": Face ID or a fingerprint when he kept his PIN for it, else his PIN, both checked by her brain. */
+import * as LocalAuthentication from "expo-local-authentication";
 import { useEffect, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
@@ -41,8 +42,17 @@ export function UnlockSheet(props: {
   const [lastPin, setLastPin] = useState<{ readonly ok: boolean; readonly line: string } | null>(
     null,
   );
-  const hold =
-    props.owner === true && exitFallback({ biometric: biometricOffered(), pin: lastPin });
+  // the phone's passcode or biometrics can confirm it's him (a phone with neither is unlocked by anyone anyway)
+  const [ownerCheck, setOwnerCheck] = useState(biometricOffered());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- asks the phone whether a passcode or biometrics is set
+  useEffect(() => {
+    if (props.owner !== true) return;
+    void LocalAuthentication.getEnrolledLevelAsync().then(
+      (l) => setOwnerCheck(l !== LocalAuthentication.SecurityLevel.NONE),
+      () => undefined,
+    );
+  }, [props.owner]);
+  const hold = props.owner === true && exitFallback({ biometric: ownerCheck, pin: lastPin });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- reads from the keychain whether Face ID can stand in for his PIN
   useEffect(() => {
     if (props.pinOnly !== true) void biometricSaved().then(setSaved);
@@ -87,14 +97,14 @@ export function UnlockSheet(props: {
       >
         <Text className="text-lg text-foreground">{props.title}</Text>
         <Text className="text-sm text-foreground-muted">{props.detail}</Text>
-        {props.owner === true && biometricOffered() ? (
+        {props.owner === true && ownerCheck ? (
           <Pressable
             accessibilityRole="button"
             onPress={withBiometric}
             disabled={busy}
             className="items-center rounded-full bg-primary py-3.5"
           >
-            <Text className="text-primary-foreground">Use Face ID or fingerprint</Text>
+            <Text className="text-primary-foreground">Use Face ID or your phone's passcode</Text>
           </Pressable>
         ) : null}
         {hold || (props.owner === true && call === null) ? (
