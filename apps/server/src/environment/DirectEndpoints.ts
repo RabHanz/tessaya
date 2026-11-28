@@ -264,9 +264,9 @@ export const make = Effect.gen(function* () {
     if (publicUrl === null && !config.tailscaleServeEnabled && domainHost === null) {
       return yield* resolveAvailable();
     }
-    const ownName: Effect.Effect<string | null, unknown, ChildProcessSpawner.ChildProcessSpawner> =
+    const ownName =
       publicUrl !== null
-        ? Effect.succeed(publicUrl)
+        ? Effect.succeed<string | null>(publicUrl)
         : config.tailscaleServeEnabled
           ? readTailscaleStatus.pipe(
               Effect.map(({ magicDnsName }) =>
@@ -279,8 +279,8 @@ export const make = Effect.gen(function* () {
               ),
             )
           : Effect.succeed(null);
-    const served = (
-      baseUrl: Effect.Effect<string | null, unknown, ChildProcessSpawner.ChildProcessSpawner>,
+    const served = <E>(
+      baseUrl: Effect.Effect<string | null, E, ChildProcessSpawner.ChildProcessSpawner>,
     ) =>
       baseUrl.pipe(
         Effect.flatMap((httpBaseUrl) => {

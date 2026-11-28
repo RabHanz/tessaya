@@ -378,6 +378,7 @@ const resolveWithServe = (
   options: {
     readonly publicHost?: string;
     readonly domain?: string;
+    readonly name?: string;
     readonly serve?: boolean;
   } = {},
 ) =>

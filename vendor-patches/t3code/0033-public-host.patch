@@ -31,7 +31,7 @@ index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..abc9a523e723440b207a9a2eb53026dd
          pairingBaseUrl = resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform);
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
 diff --git a/apps/server/src/environment/DirectEndpoints.test.ts b/apps/server/src/environment/DirectEndpoints.test.ts
-index d6d2856635670f4be766722f3f20a49ac6a8878e..2db34932af31042f3f72e80b2e7d2127b4558a2c 100644
+index d6d2856635670f4be766722f3f20a49ac6a8878e..310a9ad2f6f1a1a59d465ea57e6d3467218b499d 100644
 --- a/apps/server/src/environment/DirectEndpoints.test.ts
 +++ b/apps/server/src/environment/DirectEndpoints.test.ts
 @@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -59,7 +59,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..2db34932af31042f3f72e80b2e7d2127
        tailscaleServePort: 443,
      })),
    ).pipe(
-@@ -372,16 +373,30 @@ const layerServeConfig = (host = "127.0.0.1") =>
+@@ -372,16 +373,31 @@ const layerServeConfig = (host = "127.0.0.1") =>
      ),
    );
  
@@ -69,6 +69,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..2db34932af31042f3f72e80b2e7d2127
 +  options: {
 +    readonly publicHost?: string;
 +    readonly domain?: string;
++    readonly name?: string;
 +    readonly serve?: boolean;
 +  } = {},
 +) =>
@@ -92,7 +93,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..2db34932af31042f3f72e80b2e7d2127
            ),
          ),
        ),
-@@ -458,4 +473,70 @@ describe("DirectEndpoints Tailscale Serve", () => {
+@@ -458,4 +474,70 @@ describe("DirectEndpoints Tailscale Serve", () => {
        expect(yield* resolveWithServe(502)).toEqual([]);
      }),
    );
@@ -164,7 +165,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..2db34932af31042f3f72e80b2e7d2127
 +  });
  });
 diff --git a/apps/server/src/environment/DirectEndpoints.ts b/apps/server/src/environment/DirectEndpoints.ts
-index 8112cded968aa863fc63b8c87d913943be5858aa..ec73fa1c1d89a8a6c3f8c41e66ad0c164c4291bb 100644
+index 8112cded968aa863fc63b8c87d913943be5858aa..1ac8b4cdae376303cfa5de241ef012f2f6c46583 100644
 --- a/apps/server/src/environment/DirectEndpoints.ts
 +++ b/apps/server/src/environment/DirectEndpoints.ts
 @@ -4,6 +4,7 @@ import {
@@ -266,9 +267,9 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..ec73fa1c1d89a8a6c3f8c41e66ad0c16
 +    if (publicUrl === null && !config.tailscaleServeEnabled && domainHost === null) {
 +      return yield* resolveAvailable();
 +    }
-+    const ownName: Effect.Effect<string | null, unknown, ChildProcessSpawner.ChildProcessSpawner> =
++    const ownName =
 +      publicUrl !== null
-+        ? Effect.succeed(publicUrl)
++        ? Effect.succeed<string | null>(publicUrl)
 +        : config.tailscaleServeEnabled
 +          ? readTailscaleStatus.pipe(
 +              Effect.map(({ magicDnsName }) =>
@@ -281,8 +282,8 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..ec73fa1c1d89a8a6c3f8c41e66ad0c16
 +              ),
 +            )
 +          : Effect.succeed(null);
-+    const served = (
-+      baseUrl: Effect.Effect<string | null, unknown, ChildProcessSpawner.ChildProcessSpawner>,
++    const served = <E>(
++      baseUrl: Effect.Effect<string | null, E, ChildProcessSpawner.ChildProcessSpawner>,
 +    ) =>
 +      baseUrl.pipe(
 +        Effect.flatMap((httpBaseUrl) => {
