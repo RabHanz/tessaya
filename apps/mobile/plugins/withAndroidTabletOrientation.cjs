@@ -5,9 +5,12 @@ const { AndroidConfig, withAndroidManifest, withMainActivity } = require("expo/c
 const ORIENTATION_METHODS = `
   // Applied in onCreate and re-applied on fold/unfold; added by
   // withAndroidTabletOrientation.
+  // Only a fold or unfold re-decides: a turn leaves what the app asked for (a Tessaya Sleeve turns to landscape).
+  private var orientedFor = -1
+
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
-    applyTabletOrientation()
+    if (newConfig.smallestScreenWidthDp != orientedFor) applyTabletOrientation()
   }
 
   private fun applyTabletOrientation() {
@@ -16,6 +19,7 @@ const ORIENTATION_METHODS = `
     } else {
       ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }
+    orientedFor = resources.configuration.smallestScreenWidthDp
   }
 `;
 

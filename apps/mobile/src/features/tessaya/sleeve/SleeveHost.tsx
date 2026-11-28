@@ -4,6 +4,8 @@
  * leaves the front or five minutes on.
  */
 import { makeMotionReader } from "@t3tools/tessaya-shared/sleeveMotion";
+import * as Device from "expo-device";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { Accelerometer } from "expo-sensors";
 import { useEffect, useState } from "react";
 import { AppState, StatusBar, View } from "react-native";
@@ -42,6 +44,16 @@ export function SleeveHost() {
     });
     return () => sub.remove();
   }, []);
+  // a phone stays portrait, and her Sleeve turns with it (on its side it is her dock); a tablet keeps its own rotation
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the screen's orientation lock is the system's, outside React
+  useEffect(() => {
+    if (Device.deviceType !== Device.DeviceType.PHONE) return;
+    void (
+      covering
+        ? ScreenOrientation.unlockAsync()
+        : ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP)
+    ).catch(() => undefined);
+  }, [covering]);
   // her body's motion sensor, read on the phone (only moments leave it): raised to him, she listens
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the accelerometer is outside React, held only while she is on screen
   useEffect(() => {

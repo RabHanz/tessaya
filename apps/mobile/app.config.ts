@@ -273,7 +273,8 @@ const config: ExpoConfig = {
     // Skip costly fingerprinting on dev launches; preview and production OTAs require matching native projects.
     policy: runtimeVersionPolicy,
   },
-  orientation: "portrait",
+  // Tessaya: the app locks portrait at launch (expo-screen-orientation); only her Sleeve turns (M-158).
+  orientation: "default",
   icon: variant.assets.appIcon,
   userInterfaceStyle: "automatic",
   updates: {
@@ -434,6 +435,8 @@ const config: ExpoConfig = {
         },
       },
     ],
+    // Tessaya: portrait from the first frame; her Sleeve unlocks it (SleeveHost).
+    ["expo-screen-orientation", { initialOrientation: "PORTRAIT_UP" }],
     [
       "expo-audio",
       {

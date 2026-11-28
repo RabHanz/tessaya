@@ -13,6 +13,8 @@ export interface StageBox {
   readonly h: number;
   /** The app's panel over the bottom of the screen, in CSS px. */
   readonly bottom: number;
+  /** Turned on its side (the dock), the panel is on the right instead, in CSS px. */
+  readonly right?: number;
 }
 
 export const STAGE_SCALE = { min: 0.55, max: 1.7 } as const;
@@ -26,7 +28,7 @@ export const clampSpot = (s: Spot, size: number, box: StageBox): Spot => {
   const half = (size * scale) / 2;
   return {
     scale,
-    x: within(s.x, half, box.w - half),
+    x: within(s.x, half, box.w - (box.right ?? 0) - half),
     y: within(s.y, half, box.h - box.bottom - half),
   };
 };

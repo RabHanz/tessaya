@@ -90,6 +90,10 @@ describe("withAndroidTabletOrientation", () => {
     expect(once.mainActivity).toMatch(
       /private fun applyTabletOrientation\(\)\s*\{\s*requestedOrientation = if \(resources\.configuration\.smallestScreenWidthDp >= 600\)\s*\{\s*ActivityInfo\.SCREEN_ORIENTATION_FULL_USER\s*\} else \{\s*ActivityInfo\.SCREEN_ORIENTATION_PORTRAIT\s*\}/,
     );
+    // a turn on the same screen keeps the orientation the app asked for; only a new screen size re-decides
+    expect(once.mainActivity).toMatch(
+      /if \(newConfig\.smallestScreenWidthDp != orientedFor\) applyTabletOrientation\(\)/,
+    );
     expect(await prebuildAndroid(once)).toEqual(once);
     const existingActivity = once.mainActivity
       .replace(

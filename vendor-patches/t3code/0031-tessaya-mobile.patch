@@ -305,6 +305,47 @@ index 666f59df83485570850bcbc73795b318f7dc9a67..b89d0fd294b140147150b8c72e4b1c67
      ]
      for (tab, label) in labels {
        let icon = tab == "pullRequests" ? pullRequestIcon : tab == "issues" ? issueIcon : UIImage(systemName: symbols[tab] ?? "circle")
+diff --git a/apps/mobile/plugins/withAndroidTabletOrientation.cjs b/apps/mobile/plugins/withAndroidTabletOrientation.cjs
+index 8a1076752575338a657cfbd1551aa41200bafee6..8804b90d0364183aa0fa3c217b9223032323ea7f 100644
+--- a/apps/mobile/plugins/withAndroidTabletOrientation.cjs
++++ b/apps/mobile/plugins/withAndroidTabletOrientation.cjs
+@@ -5,9 +5,12 @@ const { AndroidConfig, withAndroidManifest, withMainActivity } = require("expo/c
+ const ORIENTATION_METHODS = `
+   // Applied in onCreate and re-applied on fold/unfold; added by
+   // withAndroidTabletOrientation.
++  // Only a fold or unfold re-decides: a turn leaves what the app asked for (a Tessaya Sleeve turns to landscape).
++  private var orientedFor = -1
++
+   override fun onConfigurationChanged(newConfig: Configuration) {
+     super.onConfigurationChanged(newConfig)
+-    applyTabletOrientation()
++    if (newConfig.smallestScreenWidthDp != orientedFor) applyTabletOrientation()
+   }
+ 
+   private fun applyTabletOrientation() {
+@@ -16,6 +19,7 @@ const ORIENTATION_METHODS = `
+     } else {
+       ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+     }
++    orientedFor = resources.configuration.smallestScreenWidthDp
+   }
+ `;
+ 
+diff --git a/apps/mobile/plugins/withAndroidTabletOrientation.test.ts b/apps/mobile/plugins/withAndroidTabletOrientation.test.ts
+index 00ae53e76539e8c5fe57de5b1e6012b0fb69fd70..1e6ca9b29fb3d305915d179e1ffb7c5a49e8265f 100644
+--- a/apps/mobile/plugins/withAndroidTabletOrientation.test.ts
++++ b/apps/mobile/plugins/withAndroidTabletOrientation.test.ts
+@@ -90,6 +90,10 @@ describe("withAndroidTabletOrientation", () => {
+     expect(once.mainActivity).toMatch(
+       /private fun applyTabletOrientation\(\)\s*\{\s*requestedOrientation = if \(resources\.configuration\.smallestScreenWidthDp >= 600\)\s*\{\s*ActivityInfo\.SCREEN_ORIENTATION_FULL_USER\s*\} else \{\s*ActivityInfo\.SCREEN_ORIENTATION_PORTRAIT\s*\}/,
+     );
++    // a turn on the same screen keeps the orientation the app asked for; only a new screen size re-decides
++    expect(once.mainActivity).toMatch(
++      /if \(newConfig\.smallestScreenWidthDp != orientedFor\) applyTabletOrientation\(\)/,
++    );
+     expect(await prebuildAndroid(once)).toEqual(once);
+     const existingActivity = once.mainActivity
+       .replace(
 diff --git a/apps/mobile/plugins/withWidgetLogoAsset.cjs b/apps/mobile/plugins/withWidgetLogoAsset.cjs
 index d20d199119b051799bf36797e0898787d2faf02f..95cb0e9f71064a98bca794e241c5cd5690232b24 100644
 --- a/apps/mobile/plugins/withWidgetLogoAsset.cjs

@@ -77,9 +77,15 @@ for (const source of [rig, bodies, props, speech, sounds, MASCOT_SCRIPT]) {
 const mascot = window.mascot!;
 
 // where she stands (her centre, in CSS px) and how big she is; the bottom inset keeps her above the app's panel
-const box = () => ({ w: innerWidth, h: innerHeight, bottom: inset });
+const box = () => ({ w: innerWidth, h: innerHeight, bottom: inset, right: insetRight });
 let inset = 0;
-let size = Math.min(innerWidth * 0.62, innerHeight * 0.42);
+let insetRight = 0;
+// her size on this screen: on its side (the dock) she takes most of its height
+const sizeFor = () =>
+  innerWidth > innerHeight
+    ? Math.min(innerWidth * 0.4, innerHeight * 0.7)
+    : Math.min(innerWidth * 0.62, innerHeight * 0.42);
+let size = sizeFor();
 let spot: Spot = { x: innerWidth / 2, y: innerHeight * 0.38, scale: 1 };
 const place = (next: Spot, ms: number) => {
   spot = clampSpot(next, size, box());
@@ -90,7 +96,7 @@ const place = (next: Spot, ms: number) => {
 };
 place(spot, 0);
 addEventListener("resize", () => {
-  size = Math.min(innerWidth * 0.62, innerHeight * 0.42);
+  size = sizeFor();
   place(spot, 0);
 });
 
@@ -296,6 +302,7 @@ const onMessage = (raw: unknown) => {
   } else if (m.type === "level" && typeof m["v"] === "number") levelOf?.(m["v"]);
   else if (m.type === "inset" && typeof m["bottom"] === "number") {
     inset = m["bottom"] * innerHeight;
+    insetRight = typeof m["right"] === "number" ? m["right"] * innerWidth : 0;
     place(spot, 300);
   } else if (m.type === "go" && typeof m["x"] === "number" && typeof m["y"] === "number")
     walkTo({ x: m["x"] * innerWidth, y: m["y"] * innerHeight });

@@ -94,8 +94,10 @@ export function TalkView(props: {
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
   const connection = useSavedRemoteConnection(environmentId);
   const insets = useSafeAreaInsets();
-  const screenHeight = useWindowDimensions().height;
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
   const { focused, sleeve, away } = props;
+  // a Sleeve turned on its side (on a stand, charging) is her dock: her on the left, her words on the right
+  const dock = sleeve && screenWidth > screenHeight;
   const [active, setActive] = useState(AppState.currentState === "active");
   const [personas, setPersonas] = useState<ReadonlyArray<TessayaPersona>>([]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -597,18 +599,31 @@ export function TalkView(props: {
         </View>
       )}
       <View
-        className={`absolute inset-x-0 bottom-0 gap-3 pt-4 ${sleeve ? "" : "rounded-t-3xl bg-screen"}`}
-        style={{
-          paddingBottom: bottom + 12,
-          paddingLeft: insets.left + 20,
-          paddingRight: insets.right + 20,
-        }}
+        className={`absolute bottom-0 gap-3 pt-4 ${dock ? "justify-center" : "inset-x-0"} ${sleeve ? "" : "rounded-t-3xl bg-screen"}`}
+        style={
+          dock
+            ? { top: insets.top + 32, right: 0, width: "42%", paddingRight: insets.right + 24 }
+            : {
+                paddingBottom: bottom + 12,
+                paddingLeft: insets.left + 20,
+                paddingRight: insets.right + 20,
+              }
+        }
         // the panel grows with her reply or the keyboard; her framing keeps her face above it
         onLayout={(e) => {
           if (screenHeight === 0) return;
+          if (dock) {
+            setPanel(0);
+            inset.current = 0;
+            return post({
+              type: "inset",
+              bottom: 0,
+              right: e.nativeEvent.layout.width / screenWidth,
+            });
+          }
           setPanel(e.nativeEvent.layout.height);
           inset.current = e.nativeEvent.layout.height / screenHeight;
-          post({ type: "inset", bottom: inset.current });
+          post({ type: "inset", bottom: inset.current, right: 0 });
         }}
       >
         {sleeve ? (
