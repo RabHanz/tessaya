@@ -17,7 +17,7 @@ import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { CLOUD_ENDPOINT_RUNTIME_CONFIG } from "../cloud/config.ts";
 import { CloudManagedEndpointRuntime } from "../cloud/ManagedEndpointRuntime.ts";
 import type { DeviceHub } from "@t3tools/tessaya-contracts";
-import { DirectEndpoints } from "../environment/DirectEndpoints.ts";
+import { DirectEndpoints, PublicDomainHost } from "../environment/DirectEndpoints.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { DeviceSync, HUBS_RECORD } from "./DeviceSync.ts";
 import { R1Loop } from "./R1Loop.ts";
@@ -215,7 +215,10 @@ export const layer = Layer.effect(
       );
     const away = Effect.map(read(AWAY_SECRET), (v) => Option.getOrNull(v) === "on");
 
+    const domainHost = yield* PublicDomainHost.pipe(Effect.orElseSucceed(() => null));
+    // The base domain, when set, is her away route; T3 Connect's tunnel otherwise.
     const tunnelHost = Effect.gen(function* () {
+      if (domainHost !== null) return domainHost;
       const linked = Option.isSome(
         yield* secrets.get(CLOUD_ENDPOINT_RUNTIME_CONFIG).pipe(Effect.orElseSucceed(Option.none)),
       );
@@ -246,7 +249,8 @@ export const layer = Layer.effect(
     const compose = Effect.fn("R1Reach.compose")(function* (id: string | null) {
       const lan = Option.isSome(direct)
         ? (yield* direct.value.resolveAvailable())
-            .filter((e) => e.kind === "lan")
+            // The base domain's https origin is reported as "lan" too; it is the away route, not the LAN.
+            .filter((e) => e.kind === "lan" && e.httpBaseUrl.startsWith("http:"))
             .map((e) => e.httpBaseUrl)
         : [];
       const host = yield* tunnelHost;

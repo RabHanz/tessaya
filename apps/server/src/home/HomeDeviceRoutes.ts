@@ -12,6 +12,7 @@ import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/http";
 
 import { TessayaRuntime } from "../tessaya/TessayaRpcHandlers.ts";
 import { requestUrl } from "../requestUrl.ts";
+import { internetCaller, PublicDomainHost } from "../environment/DirectEndpoints.ts";
 import { StepUps } from "./StepUps.ts";
 import { HomeAssistantService, r1ById } from "./HomeAssistantService.ts";
 import { HomeDevices, MAX_SHOT_BYTES } from "./HomeDevices.ts";
@@ -59,15 +60,15 @@ const sameKey = (given: string, expected: string) =>
   given !== "" && NodeCrypto.timingSafeEqual(digest(given), digest(expected));
 
 /**
- * Whether a camera upload may be taken. Over the T3 Connect tunnel (Cloudflare adds `cf-connecting-ip`) anyone on the
- * internet can reach the path, so it needs the device key as a bearer; on the LAN it stays open, as older firmware
- * sends no key.
+ * Whether a camera upload may be taken. From the internet (T3 Connect's tunnel or the base domain's proxy) anyone can
+ * reach the path, so it needs the device key as a bearer; on the LAN it stays open, as older firmware sends no key.
  */
 export const uploadAuthorized = (
   headers: Readonly<Record<string, string | undefined>>,
   deviceKey: string | null,
+  domainHost: string | null = null,
 ): boolean =>
-  headers["cf-connecting-ip"] === undefined ||
+  internetCaller(headers, domainHost) === undefined ||
   (deviceKey !== null &&
     sameKey((headers["authorization"] ?? "").replace(/^Bearer\s+/i, ""), deviceKey));
 
@@ -77,6 +78,7 @@ export const routes = HttpRouter.use((router) =>
   Effect.gen(function* () {
     const context = yield* TessayaRuntime;
     if (context === null) return;
+    const domainHost = yield* PublicDomainHost;
     const upload = Effect.gen(function* () {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const id = Option.flatMap(requestUrl(request), (url) =>
@@ -96,7 +98,7 @@ export const routes = HttpRouter.use((router) =>
         ),
         id.value,
       );
-      if (!uploadAuthorized(request.headers, device?.deviceKey ?? null))
+      if (!uploadAuthorized(request.headers, device?.deviceKey ?? null, domainHost))
         return HttpServerResponse.text("Wrong device key.", { status: 401 });
       const bytes = new Uint8Array(yield* request.arrayBuffer);
       const kept = yield* Effect.flatMap(HomeDevices, (d) => d.acceptShot(id.value, bytes)).pipe(
@@ -133,9 +135,10 @@ export const routes = HttpRouter.use((router) =>
         path,
         Effect.gen(function* () {
           const request = yield* HttpServerRequest.HttpServerRequest;
-          // Through the tunnel the peer is cloudflared on loopback; the caller is in the header.
+          // Through a tunnel or proxy the peer is the proxy; the caller is in its header.
           const remote =
-            request.headers["cf-connecting-ip"] ?? Option.getOrUndefined(request.remoteAddress);
+            internetCaller(request.headers, domainHost) ??
+            Option.getOrUndefined(request.remoteAddress);
           const socket = yield* request.upgrade;
           yield* runHubSocket(socket, hub, remote).pipe(Effect.scoped);
           return HttpServerResponse.empty();
@@ -164,7 +167,8 @@ export const routes = HttpRouter.use((router) =>
           r1,
           phoneId: phoneId.value,
           name: (url?.searchParams.get("name") ?? "").slice(0, 60) || "Phone",
-          remote: request.headers["cf-connecting-ip"] ?? Option.getOrNull(request.remoteAddress),
+          remote:
+            internetCaller(request.headers, domainHost) ?? Option.getOrNull(request.remoteAddress),
           r1Remote: () => (r1 === null ? null : hub.remoteOf(r1)),
           changed: (link, open) => (r1 === null ? Effect.void : devices.phoneLink(r1, link, open)),
           talk: (link) => (r1 === null ? Effect.void : devices.phoneTalk(r1, link)),

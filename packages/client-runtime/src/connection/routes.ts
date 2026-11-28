@@ -140,16 +140,27 @@ const ROUTE_KIND_RANK: Record<ConnectionRouteKind, number> = {
   relay: 5,
 };
 
+/**
+ * A server that names its own public HTTPS origin (Tessaya's base domain) is reached there from anywhere, so that
+ * learned route goes right after the LAN and ahead of Tailscale, which needs the VPN on.
+ */
+function routeRank(route: ConnectionRoute): number {
+  const kind = connectionRouteKind(route);
+  return kind === "public" && isLearned(route) && routeHttpBaseUrl(route)?.startsWith("https:")
+    ? ROUTE_KIND_RANK.lan + 0.5
+    : ROUTE_KIND_RANK[kind];
+}
+
 export function insertRoute(
   routes: ReadonlyArray<ConnectionRoute>,
   route: ConnectionRoute,
   { aheadOfSameKind = false }: { readonly aheadOfSameKind?: boolean } = {},
 ): ReadonlyArray<ConnectionRoute> {
   const kind = connectionRouteKind(route);
-  const rank = ROUTE_KIND_RANK[kind];
+  const rank = routeRank(route);
   const index = routes.findIndex((existing) => {
     const existingKind = connectionRouteKind(existing);
-    return ROUTE_KIND_RANK[existingKind] > rank || (aheadOfSameKind && existingKind === kind);
+    return routeRank(existing) > rank || (aheadOfSameKind && existingKind === kind);
   });
   return index === -1
     ? [...routes, route]
