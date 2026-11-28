@@ -24,11 +24,6 @@ export const MORPH = {
     face: 0.05,
   },
   DURS: { plain: 6, wipe: 14, pp: 14, hug: 14, face: 13 },
-  /**
-   * One form to another (her body <-> an animal), in v4 frames: the "out" half stops as the skin has nearly covered the
-   * first form and the "in" half starts already moving, so no plain column stands between them (Director 28 Nov).
-   */
-  M2M: { COVER: 36, IN0: 3 },
 } as const;
 
 const smooth = (x: number) => {

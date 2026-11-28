@@ -12,7 +12,77 @@ export interface PhoneFacts {
   readonly motion: boolean;
   /** The app's version and the over-the-air update it runs, for the brain's fleet check (M-146). */
   readonly app?: { readonly version: string | null; readonly update: string | null };
+  /** It is her Sleeve: a body of hers, which feels and can act for him (M-158, REQ-25-168). */
+  readonly sleeve?: boolean;
 }
+
+/**
+ * What a phone body lets her feel and do. Everything she does hands off to him (he presses call or send) or is her own
+ * presence; nothing here acts unseen. Hers only while it is her Sleeve, where its act runner lives.
+ */
+const SLEEVE_ITEMS: DeviceManifest["items"] = [
+  {
+    id: "imu.moments",
+    label: "Handled",
+    type: "string",
+    access: "event",
+    safety: "free",
+    report: "on-change",
+    group: "sensors",
+    description:
+      "being picked up, raised to him, shaken or put face down (moments only, never the sensor stream)",
+  },
+  {
+    id: "skin.screen",
+    label: "Touch",
+    type: "string",
+    access: "event",
+    safety: "free",
+    report: "on-change",
+    group: "sensors",
+    description: "his fingers on her on the screen: where, how hard, over how much skin",
+  },
+  {
+    id: "phone.call",
+    label: "Call",
+    type: "string",
+    access: "write",
+    safety: "confirm",
+    report: "on-change",
+    group: "phone",
+    description: "opens a call to a number on his phone; he presses call",
+  },
+  {
+    id: "phone.message",
+    label: "Text",
+    type: "string",
+    access: "write",
+    safety: "confirm",
+    report: "on-change",
+    group: "phone",
+    description: "a text to send, as 'number: message'; it opens on his phone and he presses send",
+  },
+  {
+    id: "phone.share",
+    label: "Share",
+    type: "string",
+    access: "write",
+    safety: "confirm",
+    report: "on-change",
+    group: "phone",
+    description: "opens his share sheet with this text, for any app he picks",
+  },
+  {
+    id: "phone.notify",
+    label: "Notify",
+    type: "string",
+    access: "write",
+    safety: "free",
+    report: "on-change",
+    group: "phone",
+    description: "a note on his lock screen, when he has let the app notify him",
+  },
+];
 
 /** A value in a vessel publish that says where its member is (B-043), noted as presence and never kept as an item. */
 export const HERE_ITEM = "presence.here";
@@ -85,6 +155,7 @@ export const phoneManifest = (facts: PhoneFacts): DeviceManifest => ({
       group: "body",
       description: "the body tag the phone was last seated on, read by its own NFC",
     },
+    ...(facts.sleeve === true ? SLEEVE_ITEMS : []),
   ],
 });
 

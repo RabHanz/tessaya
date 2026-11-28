@@ -4,8 +4,6 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { DevicesOverview } from "@t3tools/tessaya-contracts";
-import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
-import * as Device from "expo-device";
 import { useEffect, useState } from "react";
 
 import { AppText as Text } from "../../../components/ui/AppText";
@@ -18,17 +16,9 @@ import { SettingsRow } from "../../settings/components/SettingsRow";
 import { SettingsScreen } from "../../settings/components/SettingsScreen";
 import { SettingsSection } from "../../settings/components/SettingsSection";
 import { deviceRows } from "./devicesList.logic";
+import { thisPhoneId } from "./thisPhone";
 
 const REFRESH_MS = 15_000;
-
-/** This phone's id in the device registry, as its Talk tab and Tessels page publish it. */
-export const thisPhoneId = () =>
-  phoneManifest({
-    installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
-    model: Device.modelName ?? null,
-    os: null,
-    motion: Device.isDevice,
-  }).deviceId;
 
 export function DevicesRouteScreen() {
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);

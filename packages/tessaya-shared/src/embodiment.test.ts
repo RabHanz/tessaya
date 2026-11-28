@@ -17,6 +17,10 @@ describe("embodiment", () => {
       "Your body here is your character on his desktop: he can drag, poke and throw you.",
     );
     expect(bodyLine(ids("power.battery_pct"))).toBe("");
+    // his phone as her Sleeve: she feels his fingers and its handling, and knows what she can do for him there
+    expect(bodyLine(ids("imu.moments", "skin.screen", "phone.call", "phone.notify"))).toBe(
+      "Your body here is his phone, a Sleeve: you can open a call for him (he presses call) and leave a note on his lock screen, through device_set on its items; in this body you feel being picked up, carried or shaken and his fingers on you through the screen.",
+    );
   });
 
   it("names every other body with its live state and wearer, and who stands with her", () => {

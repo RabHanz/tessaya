@@ -560,7 +560,6 @@ import {
   parseMascotCharacter,
   parseMascotCrew,
   parseMascotHands,
-  parseMascotMorph,
   parseMascotScreens,
   parseMascotSize,
   parseMascotSound,
@@ -570,7 +569,6 @@ import {
   type DesktopMascot,
   type MascotCharacter,
   type MascotHands,
-  type MascotMorph,
   type MascotScreens,
   type MascotSize,
   type MascotSound,
@@ -814,8 +812,6 @@ interface VoiceSettings {
   /** Her body: her persona's own character or one from the Studio (EMOTION D10), and arms or floating hands. */
   readonly mascotCharacter: MascotCharacter;
   readonly mascotHands: MascotHands;
-  /** Her shapeshift between her character and her full body, in its look, or none. */
-  readonly mascotMorph: MascotMorph;
   /** Her body's sounds (poked, squished, dropped) and the warm bed under her presence. */
   readonly mascotSounds: MascotSound;
   readonly mascotBed: MascotSound;
@@ -1026,7 +1022,6 @@ const DEFAULT_SETTINGS: VoiceSettings = {
   mascotScreens: "span",
   mascotCharacter: "persona",
   mascotHands: "arms",
-  mascotMorph: "original",
   mascotSounds: "normal",
   mascotBed: "normal",
   mascotCrew: "none",
@@ -1201,7 +1196,6 @@ export const readSettings = (path: string): VoiceSettings => {
       mascotScreens: parseMascotScreens(saved["mascotScreens"]),
       mascotCharacter: parseMascotCharacter(saved["mascotCharacter"]),
       mascotHands: parseMascotHands(saved["mascotHands"]),
-      mascotMorph: parseMascotMorph(saved["mascotMorph"]),
       mascotSounds: parseMascotSound(saved["mascotSounds"]),
       mascotBed: parseMascotSound(saved["mascotBed"]),
       mascotCrew: parseMascotCrew(saved["mascotCrew"]),
@@ -5522,7 +5516,6 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
       screens: settings.mascotScreens,
       character: settings.mascotCharacter,
       hands: settings.mascotHands,
-      morph: settings.mascotMorph,
       sounds: settings.mascotSounds,
       bed: settings.mascotBed,
       hover: settings.mascotHover,
@@ -8165,7 +8158,7 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         id: "v.mascotCharacter",
         section: "Desktop companion",
         label: "Her body",
-        hint: 'Each persona wears its own character from the Character Studio, or pick one for her here. "Change into your body" puts on her full body.',
+        hint: "Each persona wears its own character from the Character Studio, or pick one for her here.",
         kind: "choice",
         value: settings.mascotCharacter,
         options: [
@@ -8184,20 +8177,6 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
         options: [
           { value: "arms", label: "Arms" },
           { value: "float", label: "Floating hands" },
-        ],
-        disabled: !settings.mascot,
-      },
-      {
-        id: "v.mascotMorph",
-        section: "Desktop companion",
-        label: "Her change",
-        hint: "How her character turns into her full body and back: the original change, as water, or no change at all.",
-        kind: "choice",
-        value: settings.mascotMorph,
-        options: [
-          { value: "original", label: "Original" },
-          { value: "water", label: "Water" },
-          { value: "off", label: "Off" },
         ],
         disabled: !settings.mascot,
       },
@@ -9519,7 +9498,6 @@ export const startDesktopTessayaVoice = (input: DesktopTessayaVoiceInput): Deskt
     else if (id === "v.mascotScreens") save({ mascotScreens: parseMascotScreens(value) });
     else if (id === "v.mascotCharacter") save({ mascotCharacter: parseMascotCharacter(value) });
     else if (id === "v.mascotHands") save({ mascotHands: parseMascotHands(value) });
-    else if (id === "v.mascotMorph") save({ mascotMorph: parseMascotMorph(value) });
     else if (id === "v.mascotSounds") save({ mascotSounds: parseMascotSound(value) });
     else if (id === "v.mascotBed") save({ mascotBed: parseMascotSound(value) });
     else if (id === "v.mascotCrew") save({ mascotCrew: parseMascotCrew(value) });

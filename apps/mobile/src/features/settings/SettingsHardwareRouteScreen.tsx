@@ -5,7 +5,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { phoneManifest, phoneValues } from "@t3tools/tessaya-shared/phoneDevice";
 import { r1EasyAction, type R1UpdatesView } from "@t3tools/tessaya-shared/r1Firmware";
-import * as Device from "expo-device";
 import {
   DEVICE_SPEAKER_OUTPUTS,
   R1_MOODS,
@@ -73,6 +72,7 @@ import { useVisibleThreadShells } from "../../state/entities";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "./components/SettingsScreen";
+import { thisPhoneFacts } from "../tessaya/devices/thisPhone";
 import { SettingsSection } from "./components/SettingsSection";
 import { useEnvironments } from "../../state/environments";
 import { connectedSettingsTargets } from "./settings-environment-filter";
@@ -272,12 +272,7 @@ function HardwareSections({
 
   // This phone joins the device registry while he looks at his hardware (a stub until the phone companion lands).
   const publishPhone = (extra: ReadonlyArray<{ itemId: string; value: unknown }> = []) => {
-    const facts = {
-      installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
-      model: Device.modelName ?? null,
-      os: Device.osName === null ? null : `${Device.osName} ${Device.osVersion ?? ""}`.trim(),
-      motion: Device.isDevice,
-    };
+    const facts = thisPhoneFacts();
     const manifest = phoneManifest(facts);
     return devicesCall({
       environmentId,

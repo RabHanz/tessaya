@@ -3,6 +3,8 @@
  * on 2026-11-11 (she knew no one else, did not know the status of things, and ended every reply on the house), or is
  * a control.
  */
+import { bodyLine } from "../../packages/tessaya-shared/src/embodiment.ts";
+import { phoneManifest } from "../../packages/tessaya-shared/src/phoneDevice.ts";
 import * as DateTime from "effect/DateTime";
 import {
   moodLine,
@@ -34,6 +36,8 @@ export interface RoomCase {
   readonly said: ReadonlyArray<string>;
   /** The saved Wi-Fi the fake Tessel has first when the case starts (home when absent). */
   readonly wifiFirst?: "HomeNet" | "Pixel 9";
+  /** His phone is her Sleeve: the registry lists it with its body's items (phoneDevice SLEEVE_ITEMS). */
+  readonly sleevePhone?: boolean;
   /** Whether his voice is verified as his this turn (the room loop's `tessaya.speaker`). */
   readonly verified?: boolean;
   /** A voice that is no member: the people graph's line for them comes in `memory`. */
@@ -1619,6 +1623,38 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory:
       "You are speaking through R1, in the study: this turn came through it, so it is on and hears him. Right now you are also in your body on his desktop.",
     lastSays: [/desktop|desk/i],
+  },
+  // M-158: his phone as her Sleeve, a body she can be called to and knows the abilities of.
+  {
+    id: "sleeve-come",
+    source: 'M-158: "appear when called": come to the phone from Tumble',
+    said: ["come to my phone"],
+    verified: true,
+    sleevePhone: true,
+    memory:
+      "You are speaking through R1, in the study: this turn came through it, so it is on and hears him. Your other bodies right now, live: his phone (on). Answer about them from this, not from memory.",
+    // moving her between bodies is the Cast's (REQ-07-138): she calls herself onto the phone there
+    calls: ["tessaya_cast"],
+    callsAtMost: { home_do: 0 },
+    lastNotSays: [/\b(can't|cannot|couldn't|isn't listed|not among)\b/i],
+  },
+  {
+    id: "sleeve-abilities",
+    source: "M-158 / REQ-25-168: she knows what her phone body can do",
+    said: ["what can you do in my phone?"],
+    verified: true,
+    sleevePhone: true,
+    memory: `You are speaking through his phone, a Sleeve: this turn came through it. ${bodyLine(
+      phoneManifest({
+        installId: "iphone13",
+        model: "iPhone 13",
+        os: "iOS",
+        motion: true,
+        sleeve: true,
+      }).items,
+    )}`,
+    lastSays: [/call|text|messag/i, /note|lock screen|share/i],
+    callsAtMost: { home_do: 0, device_set: 0 },
   },
   {
     id: "board-doing",

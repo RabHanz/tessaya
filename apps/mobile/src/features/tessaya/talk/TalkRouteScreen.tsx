@@ -14,11 +14,9 @@ import { formOf } from "@t3tools/tessaya-shared/cast";
 import { cueFor, momentOf } from "@t3tools/tessaya-shared/companion";
 import { lineCues } from "@t3tools/tessaya-shared/bodyCues";
 import { renderFor, VESSELS, type PropState } from "@t3tools/tessaya-shared/expressionMap";
-import { phoneManifest } from "@t3tools/tessaya-shared/phoneDevice";
 import { touchOpKind } from "@t3tools/tessaya-shared/touchReaction";
 import { modelOrder, type OfferedModel } from "@t3tools/tessaya-shared/playgroundOrder";
 import * as Battery from "expo-battery";
-import * as Device from "expo-device";
 import {
   createAudioPlayer,
   getRecordingPermissionsAsync,
@@ -53,6 +51,7 @@ import { phoneSoulIs } from "../private/privateLayer";
 import { useBottomClearance } from "../layout/screenInsets";
 import { phoneTalk, usePhoneVesselReady } from "../../tessel/phoneRoute";
 import { setSleeveListen } from "../sleeve/sleeveListen";
+import { thisPhoneManifest } from "../devices/thisPhone";
 import { useSleeveCovering } from "../sleeve/useSleeve";
 import { SleeveName } from "../sleeve/SleeveChrome";
 import { PAPER } from "../layout/woad";
@@ -89,6 +88,8 @@ export function TalkView(props: {
   readonly sleeve: boolean;
   /** Her Sleeve was turned face down: she has gone to her other bodies, and comes back when it is turned up. */
   readonly away: boolean;
+  /** Who the Cast has on this body (a Sleeve): she speaks as that persona here unless he picks another. */
+  readonly wearing?: string | null;
 }) {
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
   const connection = useSavedRemoteConnection(environmentId);
@@ -138,7 +139,7 @@ export function TalkView(props: {
   const listPersonas = useAtomCommand(tessayaWorkSessions.personasList, { reportFailure: false });
   const phoneCall = useAtomCommand(tessayaWorkSessions.phoneCall, { reportFailure: false });
   const voiceCall = useAtomCommand(tessayaWorkSessions.voiceCall, { reportFailure: false });
-  const persona = talkPersona(personas, picked);
+  const persona = talkPersona(personas, picked ?? props.wearing ?? null);
   // the private layer opens for the soul he is talking to here
   phoneSoulIs(persona?.id ?? null);
   const drawing = focused && active;
@@ -155,13 +156,7 @@ export function TalkView(props: {
   // the battery at the start of the stretch on screen, and when she went off it
   const batteryAt = useRef<BatteryRead | null>(null);
   const awayBattery = useRef<BatteryRead | null>(null);
-  const manifestNow = () =>
-    phoneManifest({
-      installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
-      model: Device.modelName ?? null,
-      os: Device.osName === null ? null : `${Device.osName} ${Device.osVersion ?? ""}`.trim(),
-      motion: Device.isDevice,
-    });
+  const manifestNow = thisPhoneManifest;
   /** His finger on her body here, felt by her one nervous system (the desk's own `touch` path); her mood answers. */
   const touched = async (t: {
     part?: unknown;

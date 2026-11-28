@@ -15,6 +15,7 @@ import { phoneSend, phoneTalk } from "../../tessel/phoneRoute";
 import { AppText as Text } from "../../../components/ui/AppText";
 import { TalkView } from "../talk/TalkRouteScreen";
 import { sleeveListen } from "./sleeveListen";
+import { useSleeveActs } from "./useSleeveActs";
 import { SleeveExitSheet, SleeveTopRow } from "./SleeveChrome";
 import { setSleeveUnlocked, useSleeve, useSleeveCovering } from "./useSleeve";
 
@@ -26,6 +27,13 @@ export function SleeveHost() {
   const [active, setActive] = useState(AppState.currentState === "active");
   // turned face down she leaves this body for her others; turned back or picked up, she comes back
   const [away, setAway] = useState(false);
+  // her brain's asks of this body (open a call or a text, share, a note), and who the Cast has here: called to this
+  // phone from any of her bodies, she comes back in front of him, as that persona
+  const [wearing, setWearing] = useState<string | null>(null);
+  useSleeveActs(covering && active, (persona) => {
+    setWearing(persona);
+    setAway(false);
+  });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the app leaving the front locks his settings again
   useEffect(() => {
     const sub = AppState.addEventListener("change", (s) => {
@@ -63,7 +71,7 @@ export function SleeveHost() {
     <View className="absolute inset-0" style={{ backgroundColor: WOAD }}>
       <StatusBar hidden />
       <WoadGlow id="tessaya-sleeve-glow" />
-      <TalkView focused={active} sleeve away={away} />
+      <TalkView focused={active} sleeve away={away} wearing={wearing} />
       {away ? (
         <View
           className="absolute inset-0 items-center justify-end"

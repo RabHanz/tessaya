@@ -8,6 +8,7 @@ export const bodyLine = (items: ReadonlyArray<{ readonly id: string }>): string 
   const has = (prefix: string) => items.some((i) => i.id.startsWith(prefix));
   const feels = [
     has("imu.") ? "being picked up, carried or shaken" : null,
+    has("skin.screen") ? "his fingers on you through the screen" : null,
     has("touch.") ? "a tap on your shell" : null,
     has("key.") ? "its buttons pressed" : null,
   ].filter((x): x is string => x !== null);
@@ -18,8 +19,18 @@ export const bodyLine = (items: ReadonlyArray<{ readonly id: string }>): string 
   const desk = has("mascot.do")
     ? "your body here is your character on his desktop: he can drag, poke and throw you"
     : null;
+  // his phone as her body (a Sleeve): what it lets her do for him, all handed to him to finish
+  const phone = [
+    has("phone.call") ? "open a call for him (he presses call)" : null,
+    has("phone.message") ? "open a text for him (he presses send)" : null,
+    has("phone.share") ? "hand something to any app through his share sheet" : null,
+    has("phone.notify") ? "leave a note on his lock screen" : null,
+  ].filter((x): x is string => x !== null);
   const parts = [
     desk,
+    phone.length === 0
+      ? null
+      : `your body here is his phone, a Sleeve: you can ${list(phone)}, through device_set on its items`,
     feels.length === 0 ? null : `in this body you feel ${list(feels)}`,
     ...shows,
     has("camera.") ? "you can see through its camera when he asks you to look" : null,

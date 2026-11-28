@@ -186,7 +186,6 @@ const EXACT: Readonly<Record<string, TabId>> = {
   "v.mascotScreens": "appearance",
   "v.mascotCharacter": "appearance",
   "v.mascotHands": "appearance",
-  "v.mascotMorph": "appearance",
   "v.mascotSounds": "appearance",
   "v.mascotBed": "appearance",
   "v.pillFace": "appearance",
