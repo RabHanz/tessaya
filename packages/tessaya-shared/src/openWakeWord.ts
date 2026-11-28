@@ -4,8 +4,6 @@
  * (v0.6.0): 1280-sample chunks, melspectrogram over the chunk plus 480 samples of history (x/10 + 2), embedding over
  * the last 76 mel frames, the wake model over the last 16 embeddings.
  */
-import type { WakeProvider } from "../types.ts";
-
 /** The part of an onnxruntime build this uses; onnxruntime-node and onnxruntime-react-native both fit. */
 export interface OrtSession {
   readonly inputNames: ReadonlyArray<string>;
@@ -235,13 +233,7 @@ export type OpenWakeWordScorer = Awaited<ReturnType<typeof createOpenWakeWordSco
 export const createOpenWakeWordProvider = async (
   paths: OpenWakeWordPaths,
   makeScorer: (paths: OpenWakeWordPaths) => Promise<OpenWakeWordScorer>,
-): Promise<
-  WakeProvider & {
-    readonly drain: () => Promise<void>;
-    /** The word behind the last fire. */
-    readonly lastWord: () => string | null;
-  }
-> => {
+) => {
   const scorer = await makeScorer(paths);
   let word: string | null = null;
   // Each word has its own threshold; scored as a fraction of it, 1 means that word fired.
@@ -266,7 +258,7 @@ export const createOpenWakeWordProvider = async (
   });
   return {
     name: "openwakeword",
-    process: (frame) => {
+    process: (frame: Int16Array): number | null => {
       s.feed(frame);
       return s.take();
     },
