@@ -61,6 +61,9 @@ class T3PhoneAudioModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("T3PhoneAudio")
 
+    // Her voice is on the loudspeaker when no headset is connected (a Sleeve on its stand), never the earpiece.
+    Constants("speakerDefault" to true)
+
     Events("onMic", "onRoute", "onState", "onButton")
 
     AsyncFunction("start") {
@@ -192,6 +195,7 @@ class T3PhoneAudioModule : Module() {
     } else {
       audio.isBluetoothScoOn = false
       audio.stopBluetoothSco()
+      audio.isSpeakerphoneOn = false
     }
     audio.mode = AudioManager.MODE_NORMAL
     swapTrack(AudioAttributes.USAGE_MEDIA)
@@ -200,9 +204,15 @@ class T3PhoneAudioModule : Module() {
   @Suppress("DEPRECATION")
   private fun routeToHeadset() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-      pickByPriority(audio.availableCommunicationDevices, headsetTypes) { it.type }
-        ?.let { audio.setCommunicationDevice(it) }
+      val device =
+        pickByPriority(audio.availableCommunicationDevices, headsetTypes) { it.type }
+          ?: audio.availableCommunicationDevices.firstOrNull {
+            it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER
+          }
+      device?.let { audio.setCommunicationDevice(it) }
     } else {
+      // no headset to take the call audio: the loudspeaker, not the earpiece
+      audio.isSpeakerphoneOn = !audio.isBluetoothScoAvailableOffCall
       if (audio.isBluetoothScoAvailableOffCall) {
         audio.startBluetoothSco()
         audio.isBluetoothScoOn = true

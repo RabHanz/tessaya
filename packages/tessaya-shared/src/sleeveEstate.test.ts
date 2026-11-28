@@ -19,6 +19,13 @@ describe("her estate on a Sleeve", () => {
       scale: 1,
     });
     expect(clampSpot({ x: 195, y: 300, scale: 1 }, 200, box)).toEqual({ x: 195, y: 300, scale: 1 });
+    // on its side, her words take the right of the screen: she keeps to the left of them
+    const dock = { w: 844, h: 390, bottom: 0, right: 350 };
+    expect(clampSpot({ x: 800, y: 200, scale: 1 }, 200, dock)).toEqual({
+      x: 394,
+      y: 200,
+      scale: 1,
+    });
   });
 
   it("grows and shrinks only within her bounds, and centres her when she is wider than the screen", () => {

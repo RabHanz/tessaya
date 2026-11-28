@@ -24,6 +24,9 @@ public class T3PhoneAudioModule: Module {
   public func definition() -> ModuleDefinition {
     Name("T3PhoneAudio")
 
+    // Her voice is on the loudspeaker when no headset is connected (a Sleeve on its stand), never the earpiece.
+    Constants(["speakerDefault": true])
+
     Events("onMic", "onRoute", "onState", "onButton")
 
     AsyncFunction("start") { () throws -> [String: Any] in
@@ -109,7 +112,8 @@ public class T3PhoneAudioModule: Module {
   // .voiceChat forces HFP on Bluetooth, so it is only used while capturing to keep A2DP quality otherwise.
   private func configureSession() throws {
     let session = AVAudioSession.sharedInstance()
-    var options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP]
+    // .defaultToSpeaker only moves her off the earpiece; a connected headset still takes the route
+    var options: AVAudioSession.CategoryOptions = [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
     if mixable { options.insert(.duckOthers) }
     try session.setCategory(.playAndRecord, mode: micOn ? .voiceChat : .default, options: options)
     // Her buzz on the word still lands while the mic is open.
