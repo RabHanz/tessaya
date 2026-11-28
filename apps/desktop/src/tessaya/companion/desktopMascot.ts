@@ -212,6 +212,10 @@ export const parseMascotCharacter = (value: unknown): MascotCharacter =>
 export type MascotHands = "arms" | "float";
 export const parseMascotHands = (value: unknown): MascotHands =>
   value === "float" ? "float" : "arms";
+/** Her shapeshift between her character and her full body: its look (formMorph), or straight across without one. */
+export type MascotMorph = "original" | "water" | "off";
+export const parseMascotMorph = (value: unknown): MascotMorph =>
+  value === "water" || value === "off" ? value : "original";
 
 /** How loud her body's sounds and her bed are (Settings → Desktop companion); Off plays nothing. */
 export type MascotSound = "off" | "soft" | "normal" | "full";
@@ -393,6 +397,7 @@ export interface MascotOptions {
   /** Her body: the persona's own character, or one he picked from the Studio's. */
   readonly character: MascotCharacter;
   readonly hands: MascotHands;
+  readonly morph?: MascotMorph;
   /** Her body's sounds as he pokes, drags and drops her, and the bed under her presence (one per desktop: hers). */
   readonly sounds: MascotSound;
   readonly bed: MascotSound;
@@ -781,7 +786,7 @@ export const createDesktopMascot = (input: {
           ? options.character
           : (options.persona.character ?? options.persona.persona),
       hands: options.hands === "float" ? "floating" : "none",
-      look: "original",
+      look: options.morph === "water" ? "water" : "original",
     }).toString();
   // her full body standing in for her character (handOff): set while its page has her, and while it hands her back
   let handOff: "on" | "back" | null = null;
@@ -1765,7 +1770,7 @@ export const createDesktopMascot = (input: {
         if (veil === shown) dropVeil();
       });
       veil = shown;
-      handOff = page.handOff === true ? "on" : null;
+      handOff = page.handOff === true && options.morph !== "off" ? "on" : null;
       shown.webContents.on("page-title-updated", (event, title) => {
         const ask = readBodyAsk(title);
         if (ask === null) return;
@@ -1774,7 +1779,7 @@ export const createDesktopMascot = (input: {
       });
       void shown
         .loadURL(
-          page.handOff === true
+          handOff === "on"
             ? `${page.url}${page.url.includes("?") ? "&" : "?"}${handOffQuery()}`
             : page.url,
         )
