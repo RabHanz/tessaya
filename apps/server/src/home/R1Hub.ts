@@ -28,6 +28,7 @@ import type { HttpServerRequest } from "effect/http";
 
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { isPrivateNetworkAddress } from "../startupAccess.ts";
+import { internetCaller, PublicDomainHost } from "../environment/DirectEndpoints.ts";
 import { HomeAssistantService, r1ById, r1ByKey, type R1Device } from "./HomeAssistantService.ts";
 
 /**
@@ -168,7 +169,7 @@ const FAILURE_WINDOW_MS = 10 * 60_000;
 const LOCK_MS = 15 * 60_000;
 
 /**
- * Who may try a login now, per address (the tunnel's caller from `cf-connecting-ip`): a rate per minute and a lockout
+ * Who may try a login now, per address (an internet caller as its proxy names it): a rate per minute and a lockout
  * after repeated wrong keys. Per address, so a stranger guessing an R1's id cannot lock the R1 itself out. Pure.
  */
 export const makeLoginGuard = () => {
@@ -774,11 +775,13 @@ export const deviceCaller = (
  * After a device-key check passed on an HTTP route: who used the key, so a rotation can warn that something on another
  * machine (a room loop, a second server) needs the new one. Through the tunnel the peer is local, so the header counts.
  */
-export const noteDeviceKeyUse = (request: HttpServerRequest.HttpServerRequest) =>
-  Effect.flatMap(Effect.serviceOption(R1Hub), (hub) =>
-    Option.isNone(hub)
-      ? Effect.void
-      : hub.value.noteKeyUse(
-          request.headers["cf-connecting-ip"] ?? Option.getOrUndefined(request.remoteAddress),
-        ),
+export const noteDeviceKeyUse = Effect.fn("R1Hub.noteDeviceKeyUse")(function* (
+  request: HttpServerRequest.HttpServerRequest,
+) {
+  const hub = yield* Effect.serviceOption(R1Hub);
+  if (Option.isNone(hub)) return;
+  const domainHost = yield* PublicDomainHost.pipe(Effect.orElseSucceed(() => null));
+  yield* hub.value.noteKeyUse(
+    internetCaller(request.headers, domainHost) ?? Option.getOrUndefined(request.remoteAddress),
   );
+});

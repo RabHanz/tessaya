@@ -153,6 +153,44 @@ export const PublicBaseUrl = Config.String("TESSAYA_PUBLIC_HOST").pipe(
   Config.map(publicBaseUrl),
 );
 
+const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+
+/** Tessaya: this brain's public name, `<name>.<domain>`; null when either is unusable. */
+export const publicDomainHost = (domain: string, name: string): string | null => {
+  const label = name.trim().toLowerCase();
+  const base = domain
+    .trim()
+    .toLowerCase()
+    .replace(/^\.+|\.+$/g, "");
+  const parts = base.split(".");
+  return DNS_LABEL.test(label) && parts.length >= 2 && parts.every((part) => DNS_LABEL.test(part))
+    ? `${label}.${base}`
+    : null;
+};
+
+/**
+ * Tessaya: `TESSAYA_PUBLIC_DOMAIN` is the one base domain every brain is reached at from the internet (through the
+ * owner's reverse proxy), so moving to a new domain is this one value; `TESSAYA_PUBLIC_NAME` is this brain's own label
+ * under it, a setting so no machine name goes public. Either unset, nothing changes.
+ */
+export const PublicDomainHost = Config.all({
+  domain: Config.String("TESSAYA_PUBLIC_DOMAIN").pipe(Config.withDefault("")),
+  name: Config.String("TESSAYA_PUBLIC_NAME").pipe(Config.withDefault("")),
+}).pipe(Config.map(({ domain, name }) => publicDomainHost(domain, name)));
+
+/**
+ * Who called from the internet, or undefined for a caller on this machine's own networks. The owner's proxy for the
+ * base domain keeps the public name as Host and puts the caller in `x-real-ip`, which it overwrites; T3 Connect's
+ * Cloudflare tunnel names the caller in `cf-connecting-ip`.
+ */
+export const internetCaller = (
+  headers: Readonly<Record<string, string | undefined>>,
+  domainHost: string | null,
+): string | undefined =>
+  domainHost !== null && headers["host"]?.trim().toLowerCase().replace(/:443$/, "") === domainHost
+    ? (headers["x-real-ip"] ?? "internet")
+    : headers["cf-connecting-ip"];
+
 /**
  * AWS, GCP, Azure, DigitalOcean, Hetzner, Linode, Vultr, and Oracle all serve
  * instance metadata at this address. A plain TCP connect skips HTTP proxies,
@@ -197,7 +235,8 @@ export const make = Effect.gen(function* () {
   yield* Effect.forkDetach(onCloudVm);
 
   const publicUrl = yield* PublicBaseUrl;
-  const servedEndpoint = yield* Ref.make<Option.Option<ServerDirectEndpoint>>(Option.none());
+  const domainHost = yield* PublicDomainHost;
+  const servedEndpoints = yield* Ref.make<ReadonlyArray<ServerDirectEndpoint>>([]);
   const resolveAvailable = Effect.fn("DirectEndpoints.resolveAvailable")(function* () {
     const interfaces = NodeOS.networkInterfaces();
     const isolatedBridges =
@@ -216,18 +255,20 @@ export const make = Effect.gen(function* () {
         ...(isolatedBridges === undefined ? {} : { isolatedBridges }),
       }),
     ];
-    const servedUrl = yield* Ref.get(servedEndpoint);
-    if (Option.isSome(servedUrl)) endpoints.push(servedUrl.value);
+    endpoints.push(...(yield* Ref.get(servedEndpoints)));
     return endpoints;
   });
 
   const resolve = Effect.gen(function* () {
     // Serve setup can fail without stopping startup; advertise only after it answers as this server.
-    if (publicUrl !== null || config.tailscaleServeEnabled) {
-      const baseUrl =
-        publicUrl !== null
-          ? Effect.succeed<string | null>(publicUrl)
-          : readTailscaleStatus.pipe(
+    if (publicUrl === null && !config.tailscaleServeEnabled && domainHost === null) {
+      return yield* resolveAvailable();
+    }
+    const ownName =
+      publicUrl !== null
+        ? Effect.succeed<string | null>(publicUrl)
+        : config.tailscaleServeEnabled
+          ? readTailscaleStatus.pipe(
               Effect.map(({ magicDnsName }) =>
                 magicDnsName === null
                   ? null
@@ -236,8 +277,12 @@ export const make = Effect.gen(function* () {
                       servePort: config.tailscaleServePort,
                     }),
               ),
-            );
-      const servedUrl = yield* baseUrl.pipe(
+            )
+          : Effect.succeed(null);
+    const served = <E>(
+      baseUrl: Effect.Effect<string | null, E, ChildProcessSpawner.ChildProcessSpawner>,
+    ) =>
+      baseUrl.pipe(
         Effect.flatMap((httpBaseUrl) => {
           if (httpBaseUrl === null) return Effect.succeed(null);
           return probeTailscaleHttpsEndpoint({ baseUrl: httpBaseUrl, environmentId }).pipe(
@@ -257,8 +302,17 @@ export const make = Effect.gen(function* () {
         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
         Effect.provideService(HttpClient.HttpClient, httpClient),
       );
-      yield* Ref.set(servedEndpoint, servedUrl);
-    }
+    const found = yield* Effect.all(
+      [
+        served(ownName),
+        served(Effect.succeed(domainHost === null ? null : publicBaseUrl(domainHost))),
+      ],
+      { concurrency: "unbounded" },
+    );
+    yield* Ref.set(
+      servedEndpoints,
+      found.flatMap((e) => (Option.isSome(e) ? [e.value] : [])),
+    );
     return yield* resolveAvailable();
   });
 

@@ -30,4 +30,10 @@ it("takes a camera upload on the LAN as before, and over the tunnel only with th
   expect(uploadAuthorized({ ...tunnel, authorization: "Bearer wrong" }, key)).toBe(false);
   expect(uploadAuthorized({ ...tunnel, authorization: `Bearer ${key}` }, key)).toBe(true);
   expect(uploadAuthorized({ ...tunnel, authorization: `Bearer ${key}` }, null)).toBe(false);
+  const proxied = { host: "box.home.example.com", "x-real-ip": "203.0.113.9" };
+  expect(uploadAuthorized(proxied, key, "box.home.example.com")).toBe(false);
+  expect(
+    uploadAuthorized({ ...proxied, authorization: `Bearer ${key}` }, key, "box.home.example.com"),
+  ).toBe(true);
+  expect(uploadAuthorized(proxied, key)).toBe(true);
 });

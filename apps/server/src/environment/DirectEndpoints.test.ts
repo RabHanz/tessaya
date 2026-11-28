@@ -375,7 +375,12 @@ const layerServeConfig = (host = "127.0.0.1", tailscaleServeEnabled = true) =>
 
 const resolveWithServe = (
   probeStatus: number,
-  options: { readonly publicHost?: string; readonly serve?: boolean } = {},
+  options: {
+    readonly publicHost?: string;
+    readonly domain?: string;
+    readonly name?: string;
+    readonly serve?: boolean;
+  } = {},
 ) =>
   Effect.flatMap(DirectEndpoints.DirectEndpoints, (service) => service.resolve()).pipe(
     Effect.provide(
@@ -387,7 +392,11 @@ const resolveWithServe = (
             layerServeProbe(probeStatus),
             NodeFileSystem.layer,
             ConfigProvider.layer(
-              ConfigProvider.fromUnknown({ TESSAYA_PUBLIC_HOST: options.publicHost ?? "" }),
+              ConfigProvider.fromUnknown({
+                TESSAYA_PUBLIC_HOST: options.publicHost ?? "",
+                TESSAYA_PUBLIC_DOMAIN: options.domain ?? "",
+                TESSAYA_PUBLIC_NAME: options.name ?? "",
+              }),
             ),
           ),
         ),
@@ -475,6 +484,50 @@ describe("DirectEndpoints Tailscale Serve", () => {
       expect(yield* resolveWithServe(502, { publicHost, serve: false })).toEqual([]);
     }),
   );
+
+  effectIt.effect("lists this brain's name under TESSAYA_PUBLIC_DOMAIN once it answers", () =>
+    Effect.gen(function* () {
+      const options = { domain: "home.example.com", name: "hive", serve: false };
+      expect(yield* resolveWithServe(200, options)).toEqual([
+        { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
+      ]);
+      expect(yield* resolveWithServe(502, options)).toEqual([]);
+      // No name, no public origin: the machine's own name is never used.
+      expect(yield* resolveWithServe(200, { domain: "home.example.com", serve: false })).toEqual(
+        [],
+      );
+    }),
+  );
+
+  it.each([
+    ["home.example.com", "Hive", "hive.home.example.com"],
+    [" .Home.Example.com. ", "nest", "nest.home.example.com"],
+    ["", "hive", null],
+    ["example", "hive", null],
+    ["home.example.com", "", null],
+    ["home.example.com", "bad_name", null],
+    ["home.example.com", "a.b", null],
+    ["home example.com", "hive", null],
+  ])("publicDomainHost(%j, %j)", (domain, name, expected) => {
+    expect(DirectEndpoints.publicDomainHost(domain, name)).toBe(expected);
+  });
+
+  it("internetCaller tells the base domain's proxy and Cloudflare from the LAN", () => {
+    const host = "box.home.example.com";
+    expect(DirectEndpoints.internetCaller({}, host)).toBeUndefined();
+    expect(DirectEndpoints.internetCaller({ host: "192.168.1.10:3773" }, host)).toBeUndefined();
+    expect(DirectEndpoints.internetCaller({ host, "x-real-ip": "203.0.113.9" }, host)).toBe(
+      "203.0.113.9",
+    );
+    // A caller through the proxy cannot pick its address with Cloudflare's header.
+    expect(DirectEndpoints.internetCaller({ host, "cf-connecting-ip": "198.51.100.1" }, host)).toBe(
+      "internet",
+    );
+    expect(DirectEndpoints.internetCaller({ "cf-connecting-ip": "198.51.100.1" }, null)).toBe(
+      "198.51.100.1",
+    );
+    expect(DirectEndpoints.internetCaller({ host }, null)).toBeUndefined();
+  });
 
   it.each([
     ["tessaya.example.com", "https://tessaya.example.com/"],
