@@ -401,7 +401,7 @@ patchedDependencies:
   micromark-extension-llm-math@3.1.0: 6c191d17ea797a4ac6cc88b901041c5e6c5d4c4e508102a033e3f14e95bd2add
   micromark@4.0.2: cb79edde7eca83bbcaaafb6ceb7b044b81b987314cde4910823b15257ecada67
   node-pty@1.2.0-beta.15: ff8117509663fe1d5a07ef2648c324e80a9349b7d90401a00a591702615b8b30
-  onnxruntime-react-native@1.24.3: 8013a54c54385db1e018fab62448b7e362106420fe4a8e6860ceaf44c613d7c6
+  onnxruntime-react-native@1.24.3: 72003115bec9e10a5612e821d793ce66cc6c39980879a8b0c131ba32c97faed0
   react-native-gesture-handler@3.5.0: 171379dd378f8f11e9187876dec2116e5cbf5f21cef6576cdde6956518324f98
   react-native-image-viewing@0.2.2: 4aa038d541c7ddcc8f1437eb3e7b4f769f61de78e7f91b53f9805dfca608474d
   react-native-keyboard-controller@1.23.0: 2ed70ef8fcad54320fc4028dc81b1a4f9df88d5c5add79631462bdd4d24ab13b
@@ -790,7 +790,7 @@ importers:
         version: 11.4.18(patch_hash=9e9babb38642464db18e12d1a9f3531acda06056cfee82ee0261ba8bdc1aefaa)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)
       onnxruntime-react-native:
         specifier: 1.24.3
-        version: 1.24.3(patch_hash=8013a54c54385db1e018fab62448b7e362106420fe4a8e6860ceaf44c613d7c6)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)
+        version: 1.24.3(patch_hash=72003115bec9e10a5612e821d793ce66cc6c39980879a8b0c131ba32c97faed0)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)
       pele:
         specifier: 'catalog:'
         version: 1.8.0
@@ -22384,7 +22384,7 @@ snapshots:
       global-agent: 4.1.8
       onnxruntime-common: 1.30.0
 
-  onnxruntime-react-native@1.24.3(patch_hash=8013a54c54385db1e018fab62448b7e362106420fe4a8e6860ceaf44c613d7c6)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0):
+  onnxruntime-react-native@1.24.3(patch_hash=72003115bec9e10a5612e821d793ce66cc6c39980879a8b0c131ba32c97faed0)(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0):
     dependencies:
       onnxruntime-common: 1.24.3
       react: 19.3.0
