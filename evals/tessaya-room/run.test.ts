@@ -23,6 +23,15 @@ describe("tessaya-room grader", () => {
     expect(failureOf(c, sample({ calls: ["tessaya_cast"] }))).toBeNull();
   });
 
+  it("fails a form ask that changed nothing, or changed to the wrong form", () => {
+    const c = caseOf("form-body");
+    const asked = (forms: ReadonlyArray<string>) =>
+      failureOf(c, sample({ calls: ["tessaya_cast"], forms }));
+    expect(asked([])).toBe("asked for forms none");
+    expect(asked(["cartoon"])).toBe("asked for forms cartoon");
+    expect(asked(["human"])).toBeNull();
+  });
+
   it("fails her saying the same thing twice where a case asks for distinct replies", () => {
     const c = caseOf("presence-missed-you");
     const said = (replies: ReadonlyArray<string>) =>

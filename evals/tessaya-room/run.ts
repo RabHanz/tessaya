@@ -432,6 +432,7 @@ const healthOf = new WeakMap<House, NonNullable<RoomCase["health"]>>();
 
 /** The problem reports she sent in each case, their arguments as JSON. */
 const reportedOf = new WeakMap<House, Array<string>>();
+const formsOf = new WeakMap<House, Array<string>>();
 /** The session he is talking with through her once one message went, as TessayaSessionInsight keeps it. */
 const talkingOf = new WeakMap<House, string>();
 /** The Tessel each case's turn came through, when it says. */
@@ -741,6 +742,8 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
     // The Cast with his phone, her Sleeve, as one of her bodies: a call there moves her to it (TessayaCast call).
     case "tessaya_cast": {
       const cast = WORK["tessaya_cast"] as { line: string; bodies: ReadonlyArray<object> };
+      if (args["action"] === "form")
+        formsOf.set(house, [...(formsOf.get(house) ?? []), String(args["form"] ?? "cartoon")]);
       if (!sleevePhones.has(house)) return cast;
       if (args["op"] === "call")
         return {
@@ -1049,7 +1052,14 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
       lamp.push(house.lamp());
       history.push({ role: "user", content: heard }, { role: "assistant", content: reply });
     }
-    return { replies, calls, lamp, firstMs, reported: reportedOf.get(house) ?? [] };
+    return {
+      replies,
+      calls,
+      lamp,
+      firstMs,
+      reported: reportedOf.get(house) ?? [],
+      forms: formsOf.get(house) ?? [],
+    };
   } finally {
     await mcp?.close();
     NodeFS.rmSync(dir, { recursive: true, force: true });
