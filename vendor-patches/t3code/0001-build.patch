@@ -487,7 +487,7 @@ index 910e78420f46d1656291fd35d726c14381c46582..65144e632ca6ef44c4a15b2e3194b62c
    const document = Schema.toJsonSchemaDocument(T3ProjectFile, { onExcessProperty: "error" });
    const jsonSchema: Record<string, unknown> = {
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index eca09cf47a865dc17c3288180263f6f6192d728f..7c42e6610fc367675326893044d92f0aa8ab0bc6 100644
+index eca09cf47a865dc17c3288180263f6f6192d728f..b38a1d3309e076abff542860a08e5b0919664c1d 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -21,6 +21,8 @@ allowBuilds:
@@ -499,7 +499,20 @@ index eca09cf47a865dc17c3288180263f6f6192d728f..7c42e6610fc367675326893044d92f0a
    # Ships N-API prebuilds; its install script only rebuilds from source.
    objc-js: false
    "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.19-3757a449.tgz": true
-@@ -244,6 +246,7 @@ patchedDependencies:
+@@ -111,6 +113,7 @@ overrides:
+   mdast-util-to-hast: 13.2.1
+   alchemy: "catalog:"
+   expo-audio: 58.0.12
++  onnxruntime-react-native: 1.24.3
+   expo-network: 58.0.5
+   "@clerk/expo-native-components": 0.4.8
+   "@cursor/sdk": 1.5.0
+@@ -241,9 +244,12 @@ patchedDependencies:
+   micromark@4.0.2: patches/micromark@4.0.2.patch
+   mdast-util-to-hast@13.2.1: patches/mdast-util-to-hast@13.2.1.patch
+   expo-audio@58.0.12: patches/expo-audio@58.0.12.patch
++  # RN 0.88 is bridgeless and has no RCTCxxBridge; the iOS JSI install reads the runtime off the bridge proxy.
++  onnxruntime-react-native@1.24.3: patches/onnxruntime-react-native-bridgeless.patch
    expo-video@58.0.14: patches/expo-video@58.0.14.patch
    expo-network@58.0.5: patches/expo-network@58.0.5.patch
    "@clerk/expo-native-components@0.4.8": patches/@clerk__expo-native-components@0.4.8.patch

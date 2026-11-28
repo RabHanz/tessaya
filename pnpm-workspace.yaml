@@ -113,6 +113,7 @@ overrides:
   mdast-util-to-hast: 13.2.1
   alchemy: "catalog:"
   expo-audio: 58.0.12
+  onnxruntime-react-native: 1.24.3
   expo-network: 58.0.5
   "@clerk/expo-native-components": 0.4.8
   "@cursor/sdk": 1.5.0
@@ -243,6 +244,8 @@ patchedDependencies:
   micromark@4.0.2: patches/micromark@4.0.2.patch
   mdast-util-to-hast@13.2.1: patches/mdast-util-to-hast@13.2.1.patch
   expo-audio@58.0.12: patches/expo-audio@58.0.12.patch
+  # RN 0.88 is bridgeless and has no RCTCxxBridge; the iOS JSI install reads the runtime off the bridge proxy.
+  onnxruntime-react-native@1.24.3: patches/onnxruntime-react-native-bridgeless.patch
   expo-video@58.0.14: patches/expo-video@58.0.14.patch
   expo-network@58.0.5: patches/expo-network@58.0.5.patch
   "@clerk/expo-native-components@0.4.8": patches/@clerk__expo-native-components@0.4.8.patch

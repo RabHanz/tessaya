@@ -4,7 +4,6 @@ import {
   createOpenWakeWordScorerWith,
 } from "@t3tools/tessaya-shared/openWakeWord";
 import { Asset } from "expo-asset";
-import * as Ort from "onnxruntime-react-native";
 
 // The desktop's and the room loop's own models (Metro needs literal paths), every shipped word, so his choice holds here.
 const FEATURES = {
@@ -40,6 +39,8 @@ export const loadSleeveWake = async (choices: WakeChoices): Promise<SleeveWake> 
     local(FEATURES.embedding),
     ...words.map((w) => local(WORDS[w.word]!)),
   ]);
+  // loaded here, not at the top: its import runs the native install and throws when that fails, which would take the app down
+  const Ort = await import("onnxruntime-react-native");
   const wake = await createOpenWakeWordProvider(
     {
       melspectrogram: melspectrogram!,
