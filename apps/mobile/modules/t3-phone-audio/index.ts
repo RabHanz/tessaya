@@ -27,6 +27,8 @@ export interface PhoneAudioEvents {
 
 /** All PCM is signed 16-bit little-endian, 16 kHz, mono. */
 export interface PhoneAudioModule {
+  /** Her voice plays on the loudspeaker when no headset is connected (absent on builds before the Sleeve's). */
+  readonly speakerDefault?: boolean;
   start(): Promise<PhoneAudioRoute>;
   play(pcm: Uint8Array): void;
   flush(): void;

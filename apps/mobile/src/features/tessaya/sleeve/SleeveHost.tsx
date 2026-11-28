@@ -3,13 +3,17 @@
  * offers the way back or five minutes of settings, each after Face ID or his PIN; settings lock again when the app
  * leaves the front or five minutes on.
  */
+import { makeMotionReader } from "@t3tools/tessaya-shared/sleeveMotion";
+import { Accelerometer } from "expo-sensors";
 import { useEffect, useState } from "react";
 import { AppState, StatusBar, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { WOAD, WoadGlow } from "../layout/woad";
 import { UnlockSheet } from "../lock/UnlockSheet";
+import { phoneTalk } from "../../tessel/phoneRoute";
 import { TalkView } from "../talk/TalkRouteScreen";
+import { sleeveListen } from "./sleeveListen";
 import { SleeveExitSheet, SleeveTopRow } from "./SleeveChrome";
 import { setSleeveUnlocked, useSleeve, useSleeveCovering } from "./useSleeve";
 
@@ -27,6 +31,17 @@ export function SleeveHost() {
     });
     return () => sub.remove();
   }, []);
+  // her body's motion sensor, read on the phone (only moments leave it): raised to him, she listens
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the accelerometer is outside React, held only while she is on screen
+  useEffect(() => {
+    if (!covering || !active) return;
+    const read = makeMotionReader();
+    Accelerometer.setUpdateInterval(100);
+    const sub = Accelerometer.addListener((a) => {
+      if (read(a, Date.now()) === "raised" && !phoneTalk()) sleeveListen();
+    });
+    return () => sub.remove();
+  }, [covering, active]);
   if (!covering) return null;
   return (
     <View className="absolute inset-0" style={{ backgroundColor: WOAD }}>
