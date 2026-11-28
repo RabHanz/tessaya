@@ -2,10 +2,7 @@
  * The phone telling each of his servers it is in his hand (B-043): the app coming to the front and going away, as a
  * `presence.here` value on this phone's vessel publish. The server notes it for the signed-in member; no location.
  */
-import * as Application from "expo-application";
-import * as Updates from "expo-updates";
 import { HERE_ITEM, phoneManifest, phoneValues } from "@t3tools/tessaya-shared/phoneDevice";
-import * as Device from "expo-device";
 import { useEffect, useRef } from "react";
 import { AppState } from "react-native";
 
@@ -13,6 +10,7 @@ import { IS_TESSAYA_APP } from "../lib/tessayaBrand";
 import { useEnvironments } from "./environments";
 import { tessayaWorkSessions } from "./tessayaWorkSessions";
 import { useAtomCommand } from "./use-atom-command";
+import { thisPhoneFacts } from "../features/tessaya/devices/thisPhone";
 
 const QUIET = { reportFailure: false } as const;
 /** Still in front: said again this often, so the server's estimate does not fade while he uses it. */
@@ -30,15 +28,9 @@ export function usePresenceHere() {
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the OS app state, outside React
   useEffect(() => {
     if (!IS_TESSAYA_APP) return;
-    const facts = {
-      installId: `${Device.modelName ?? ""}${Device.deviceName ?? ""}`,
-      model: Device.modelName ?? null,
-      os: Device.osName === null ? null : `${Device.osName} ${Device.osVersion ?? ""}`.trim(),
-      motion: Device.isDevice,
-      app: { version: Application.nativeApplicationVersion, update: Updates.updateId },
-    };
-    const manifest = phoneManifest(facts);
     const say = (value: "foreground" | "background") => {
+      const facts = thisPhoneFacts();
+      const manifest = phoneManifest(facts);
       for (const env of latest.current.environments)
         void latest.current.devicesCall({
           environmentId: env.environmentId,

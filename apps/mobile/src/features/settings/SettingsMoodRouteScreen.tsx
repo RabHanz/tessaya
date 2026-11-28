@@ -170,22 +170,6 @@ function MoodSections(props: {
             onPress={() => patch({ tessayaLiveliness: value })}
           />
         ))}
-        {(
-          [
-            ["original", "Her change: original", "Her cartoon melts into her full body and back."],
-            ["water", "Her change: water", "The same change, as clear water."],
-            ["off", "Her change: off", "Straight across, with no change."],
-          ] as const
-        ).map(([value, label, description]) => (
-          <ListChoiceRow
-            key={value}
-            label={label}
-            description={description}
-            selected={settings.tessayaMorph === value}
-            separated
-            onPress={() => patch({ tessayaMorph: value })}
-          />
-        ))}
         <SettingsSwitchRow
           label="Body-only agents move her body"
           subtitle="Agents you approved for her body only may move her own body, not only the body playground. It still waits while a conversation you are in has her."

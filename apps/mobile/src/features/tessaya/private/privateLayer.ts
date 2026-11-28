@@ -9,7 +9,7 @@ import { useSyncExternalStore } from "react";
 
 import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { useSavedRemoteConnection } from "../../../state/use-remote-environment-registry";
-import { thisPhoneId } from "../devices/DevicesRouteScreen";
+import { thisPhoneId } from "../devices/thisPhone";
 import type { StepUpCall } from "../lock/stepUp";
 
 export interface LayerAnswer {

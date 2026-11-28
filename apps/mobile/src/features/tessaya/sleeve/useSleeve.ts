@@ -7,7 +7,7 @@ import { AppState } from "react-native";
 import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
-import { thisPhoneId } from "../devices/DevicesRouteScreen";
+import { setThisPhoneSleeve, thisPhoneId } from "../devices/thisPhone";
 import { sleeveCovers, withSleeve, type PhoneNames } from "./sleeveMode.logic";
 
 // The last answer, so a Sleeve starts as her at once, before her brain is reached.
@@ -47,6 +47,7 @@ const tell = () => {
 };
 const hold = (next: string | undefined) => {
   held = next;
+  setThisPhoneSleeve(sleeveCovers(next, phone(), given));
   tell();
 };
 export const RELOCK_MS = 5 * 60_000;
@@ -66,6 +67,7 @@ const phone = (): PhoneNames => ({
   id: thisPhoneId(),
   names: [Device.deviceName, Device.modelName].filter((n): n is string => typeof n === "string"),
 });
+setThisPhoneSleeve(sleeveCovers(held, phone(), given));
 
 /** Whether this phone is her Sleeve, from his `sleeve` preference on her brain (set here, elsewhere or by voice). */
 export function useSleeve() {

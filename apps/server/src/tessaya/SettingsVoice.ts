@@ -80,9 +80,6 @@ export const SERVER_SETTINGS_VOICE: {
   tessayaBodyPhysicsClips: free(
     "whether her library moves play their physics-trained versions, where her arms never pass through her",
   ),
-  tessayaMorph: free(
-    'how she changes between her cartoon and her full body on the web and phone: the original change, as water ("change like water"), or off (no change, straight across)',
-  ),
   tessayaRoomCleanup: free(
     "fixing a word she misheard on the Tessel from what you were talking about, before she answers",
   ),

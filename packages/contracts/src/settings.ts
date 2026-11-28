@@ -1642,10 +1642,6 @@ export const ServerSettings = Schema.Struct({
   tessayaBodyOutsideAgents: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // Tessaya: library moves play the physics-trained version (baked, checked rollouts) where one exists; off until he likes it.
   tessayaBodyPhysicsClips: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  // Tessaya: her shapeshift between her cartoon and her full body on the web and phone (formMorph): its look, or none.
-  tessayaMorph: Schema.Literals(["original", "water", "off"]).pipe(
-    Schema.withDecodingDefault(Effect.succeed("original" as const)),
-  ),
   // Tessaya: the room or Home Assistant area each of her devices is in, by device id: room sensors place people there.
   tessayaVesselAreas: Schema.Record(Schema.String, Schema.String).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
@@ -2183,7 +2179,6 @@ export const ServerSettingsPatch = Schema.Struct({
   tessayaTurnCapture: Schema.optionalKey(Schema.Boolean),
   tessayaBodyOutsideAgents: Schema.optionalKey(Schema.Boolean),
   tessayaBodyPhysicsClips: Schema.optionalKey(Schema.Boolean),
-  tessayaMorph: Schema.optionalKey(Schema.Literals(["original", "water", "off"])),
   tessayaMood: Schema.optionalKey(
     Schema.Struct({
       enabled: Schema.optionalKey(Schema.Boolean),

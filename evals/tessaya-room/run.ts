@@ -44,6 +44,7 @@ import { handOffLine, hereLine, voiceLine } from "../../apps/server/src/tessaya/
 import { TurnOrigin } from "../../apps/server/src/tessaya/TurnOrigin.ts";
 import { offlineWhy } from "../../apps/server/src/home/DeviceRegistry.ts";
 import { volumeAfter, volumeLine } from "../../packages/tessaya-shared/src/speakingVolume.ts";
+import { phoneManifest } from "../../packages/tessaya-shared/src/phoneDevice.ts";
 import { CONVERSATION_END } from "../../packages/tessaya-shared/src/stopPhrases.ts";
 import { ROOM_TOOL_SPECS } from "../../apps/server/src/home/R1Tools.ts";
 import { clockLine } from "../../packages/tessaya-shared/src/brain.ts";
@@ -445,6 +446,15 @@ const speakingOf = new WeakMap<House, string>();
 const volumes = new WeakMap<House, number>();
 /** Which saved Wi-Fi is first on the fake Tessel; home until she moves it. */
 const wifiFirst = new WeakMap<House, "HomeNet" | "Pixel 9">();
+// his phone, her Sleeve, as the registry lists it: its writable body items
+const SLEEVE_PHONE = phoneManifest({
+  installId: "iphone13",
+  model: "iPhone 13",
+  os: "iOS 26",
+  motion: true,
+  sleeve: true,
+});
+const sleevePhones = new WeakSet<House>();
 const wifiOf = (house: House) => {
   const first = wifiFirst.get(house) ?? "HomeNet";
   const home = { ssid: "HomeNet", hotspot: false, badPass: false, current: first === "HomeNet" };
@@ -500,6 +510,19 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
               firmware: "smp-0.3.147",
               wifi: wifiOf(house),
             },
+            ...(sleevePhones.has(house)
+              ? [
+                  {
+                    id: SLEEVE_PHONE.deviceId,
+                    kind: "phone",
+                    name: "his phone (her Sleeve)",
+                    online: true,
+                    items: SLEEVE_PHONE.items
+                      .filter((i) => i.access === "write")
+                      .map((i) => ({ id: i.id, label: i.label, description: i.description })),
+                  },
+                ]
+              : []),
           ],
         },
       };
@@ -508,6 +531,8 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       const fails = setFailsOf.get(house);
       if (fails !== undefined) return { ok: false, error: fails };
       const item = String(args["itemId"] ?? "");
+      if (item.startsWith("phone.") && sleevePhones.has(house))
+        return { ok: true, value: { status: "done", line: "Done on his phone." } };
       if (item === "net.add")
         return {
           ok: false,
@@ -713,6 +738,31 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
         ),
       };
     }
+    // The Cast with his phone, her Sleeve, as one of her bodies: a call there moves her to it (TessayaCast call).
+    case "tessaya_cast": {
+      const cast = WORK["tessaya_cast"] as { line: string; bodies: ReadonlyArray<object> };
+      if (!sleevePhones.has(house)) return cast;
+      if (args["op"] === "call")
+        return {
+          line: `${String(args["persona"] ?? "She")} is on his phone now, until this conversation ends.`,
+        };
+      return {
+        line: `${cast.line}; his phone: Tessaya`,
+        bodies: [
+          ...cast.bodies,
+          {
+            id: SLEEVE_PHONE.deviceId,
+            name: "his phone",
+            kind: "phone",
+            wearing: null,
+            why: "lead",
+            home: null,
+            follows: false,
+            on: [],
+          },
+        ],
+      };
+    }
     // As TessayaUnderstanding answers: a fact is said back first, and goes only on a confirmed second call.
     case "tessaya_memory_forget": {
       const a = args as { fact?: unknown; confirmed?: unknown; restore?: unknown };
@@ -889,6 +939,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
   if (c.health !== undefined) healthOf.set(house, c.health);
   if (c.here !== undefined) hereOf.set(house, c.here);
   if (c.deviceSetFails !== undefined) setFailsOf.set(house, c.deviceSetFails);
+  if (c.sleevePhone === true) sleevePhones.add(house);
   const speaking = DEFAULT_OS_PACK.personas.find((p) => p.id === c.persona)?.name;
   if (speaking !== undefined) speakingOf.set(house, speaking);
   const calls: Array<string> = [];
