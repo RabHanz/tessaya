@@ -35,8 +35,10 @@ import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
 
 import { wakeTrainingOn } from "@t3tools/tessaya-shared/household";
+import type { WakeChoices } from "@t3tools/tessaya-shared/wakeWords";
 
 import * as ServerConfig from "../config.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
 import { homeLink } from "./TessayaHousehold.ts";
 import { PACK_DIR_NAME, readPack } from "./OperatingSystemPack.ts";
@@ -72,6 +74,14 @@ export class TessayaWake extends Context.Service<
     readonly publicKey: Effect.Effect<string>;
     /** Every persona's wake word: whether it wakes, which version, and each kept one with its numbers. */
     readonly overview: Effect.Effect<Refused | ReadonlyArray<WakeWordView>>;
+    /** His wake-word choices, the one set every vessel follows (her home server's when there is one). */
+    readonly choices: Effect.Effect<Refused | WakeChoices>;
+    /** One word on or off, and his threshold for it, for every vessel. */
+    readonly choose: (
+      word: string,
+      on: boolean,
+      threshold?: number,
+    ) => Effect.Effect<Refused | { ok: true }>;
     readonly rollback: (word: string, version: number) => Effect.Effect<Refused | { ok: true }>;
     readonly cancel: (word: string) => Effect.Effect<Refused | { ok: true }>;
     /** The way back from a cancel, or a fresh try at a current word: it is asked for again. */
@@ -149,6 +159,7 @@ const make = Effect.gen(function* () {
   const keyFile = NodePath.join(config.secretsDir, "wake-model-key.pem");
   const voicesDir = (personId: string) => NodePath.join(userdata, "wake-voices", personId);
   const prefs = yield* Effect.serviceOption(MemberPreferences);
+  const serverSettings = yield* Effect.serviceOption(ServerSettingsService);
   const consented = (personId: string) =>
     Option.isNone(prefs)
       ? Effect.succeed(false)
@@ -389,6 +400,47 @@ const make = Effect.gen(function* () {
     return yield* Effect.sync(() => wakeOverview(readPack(userdata).personas, load(), now));
   }).pipe(Effect.withSpan("TessayaWake.overview"));
 
+  const noSettings: Refused = { refused: "Her settings are not on this server." };
+  const choices = Effect.gen(function* () {
+    const there = yield* atHome("choice", {}, (r) => r.json() as Promise<WakeChoices>);
+    if (there !== null) return there;
+    if (Option.isNone(serverSettings)) return noSettings;
+    return yield* serverSettings.value.getSettings.pipe(
+      Effect.map((s): Refused | WakeChoices => s.tessayaWakeWords),
+      Effect.orElseSucceed((): Refused => ({ refused: "Her settings could not be read." })),
+    );
+  }).pipe(Effect.withSpan("TessayaWake.choices"));
+
+  const choose = Effect.fn("TessayaWake.choose")(function* (
+    word: string,
+    on: boolean,
+    threshold?: number,
+  ) {
+    const there = yield* post("choice", {
+      word,
+      on,
+      ...(threshold === undefined ? {} : { threshold }),
+    });
+    if (there !== null) return there;
+    if (Option.isNone(serverSettings)) return noSettings;
+    const service = serverSettings.value;
+    return yield* lock.withPermits(1)(
+      service.getSettings.pipe(
+        Effect.flatMap((s) => {
+          // Settings patches merge a map by key, so the word keeps the key it was first chosen under, in any case.
+          const key =
+            Object.keys(s.tessayaWakeWords).find((k) => k.toLowerCase() === word.toLowerCase()) ??
+            word;
+          return service.updateSettings({
+            tessayaWakeWords: { [key]: threshold === undefined ? { on } : { on, threshold } },
+          });
+        }),
+        Effect.as({ ok: true } as const),
+        Effect.orElseSucceed((): Refused => ({ refused: "Her settings could not be saved." })),
+      ),
+    );
+  });
+
   const voices = Effect.fn("TessayaWake.voices")(function* (personId: string) {
     if (!PERSON.test(personId) || !(yield* consented(personId))) return noConsent;
     const clips = yield* Effect.sync(() => {
@@ -470,6 +522,8 @@ const make = Effect.gen(function* () {
     cancel,
     retrain,
     overview,
+    choices,
+    choose,
   });
 });
 

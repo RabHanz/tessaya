@@ -8,6 +8,7 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
 import { fetchSignedWake, type WakeWordView } from "@t3tools/tessaya-shared/wakeModels";
+import { chosenWakeWords, type WakeChoices } from "@t3tools/tessaya-shared/wakeWords";
 
 import { wakeModelFile, type WakeWordSetting } from "./desktopVoiceCore.ts";
 
@@ -149,4 +150,29 @@ const enrolmentBody = (personId: string, clips: ReadonlyArray<Int16Array>) => {
     out.push(b64);
   }
   return { personId, clips: out };
+};
+
+/** His wake-word choices from her brain (one set for every vessel), or null when it did not answer. */
+export const wakeChoices = async (
+  at: WakeServer,
+  get: typeof fetch = fetch,
+): Promise<WakeChoices | null> => {
+  const r = await get(new URL("/api/tessaya/wake/choice", at.server), {
+    headers: { authorization: at.authorization },
+  }).catch(() => null);
+  const body = r?.ok === true ? ((await r.json().catch(() => null)) as unknown) : null;
+  return typeof body === "object" && body !== null && !Array.isArray(body)
+    ? (body as WakeChoices)
+    : null;
+};
+
+/** What this desktop chose that differs from the table: his choices before her brain kept them, for it to take once. */
+export const wakeChoicesToSeed = (words: ReadonlyArray<WakeWordSetting>) => {
+  const table = chosenWakeWords({});
+  return words.flatMap((w) => {
+    const t = table.find((d) => d.word === w.word);
+    return t === undefined || (t.enabled === w.enabled && t.threshold === w.threshold)
+      ? []
+      : [{ word: w.word, on: w.enabled, threshold: w.threshold }];
+  });
 };

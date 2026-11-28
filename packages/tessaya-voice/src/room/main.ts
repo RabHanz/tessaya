@@ -17,7 +17,13 @@ import { pocketSpeech } from "@t3tools/tessaya-shared/speechSplice";
 import { registerSounds } from "@t3tools/tessaya-shared/voiceClips";
 import { pocketVoiceUrl } from "@t3tools/tessaya-shared/voiceLibrary";
 import { fetchSignedWake, wakeKey } from "@t3tools/tessaya-shared/wakeModels";
-import { WAKE_WORDS, wakeModelFile } from "@t3tools/tessaya-shared/wakeWords";
+import {
+  chosenWakeWords,
+  WAKE_WORDS,
+  type WakeChoices,
+  wakeModelFile,
+  withWakeChoices,
+} from "@t3tools/tessaya-shared/wakeWords";
 
 import { gainLimiter, integratedLufs, loudnessGain } from "../loudness.ts";
 import { createOpenWakeWordScorer, createSileroScorer } from "../providers/onnx.ts";
@@ -1165,28 +1171,53 @@ const main = async () => {
       .map((s) => s.trim())
       .filter(Boolean),
   );
-  // The words a fresh desktop wakes to, from the one table; a word whose model is not in R1_MODELS is skipped, and said.
-  const shipped = WAKE_WORDS.filter((w) => w.onByDefault)
-    .map((w) => ({
-      word: w.word,
-      persona: w.persona,
-      file: model(wakeModelFile(w.word)),
-      threshold: w.threshold,
-    }))
-    .filter((w) => {
-      const there = NodeFS.existsSync(w.file);
-      if (!there) log(`wake: no ${NodePath.basename(w.file)} in R1_MODELS`);
-      return there;
-    });
-  const wakeWords = async (): Promise<RoomWake[]> => [
-    ...shipped,
-    ...(await trainedWakes(
+  // His wake-word choices from her brain, the set every vessel follows; unreachable keeps the last ones read.
+  let choices: WakeChoices = {};
+  const readChoices = async () => {
+    const r = await fetch(new URL("/api/tessaya/wake/choice", env("R1_BRAIN_URL")), {
+      headers: { authorization: `Bearer ${deviceKey}` },
+      signal: AbortSignal.timeout(20_000),
+    }).catch(() => null);
+    const body = r?.ok === true ? ((await r.json().catch(() => null)) as unknown) : null;
+    if (typeof body === "object" && body !== null && !Array.isArray(body))
+      choices = body as WakeChoices;
+  };
+  const noModel = new Set<string>();
+  // The table's words as he chose them; a word whose model is not in R1_MODELS is skipped, and said once.
+  const shipped = () =>
+    chosenWakeWords(choices)
+      .filter((w) => w.enabled)
+      .map((w) => ({
+        word: w.word,
+        persona: WAKE_WORDS.find((t) => t.word === w.word)!.persona,
+        file: model(wakeModelFile(w.word)),
+        threshold: w.threshold,
+      }))
+      .filter((w) => {
+        const there = NodeFS.existsSync(w.file);
+        if (!there && !noModel.has(w.file)) {
+          noModel.add(w.file);
+          log(`wake: no ${NodePath.basename(w.file)} in R1_MODELS`);
+        }
+        return there;
+      });
+  const wakeWords = async (): Promise<RoomWake[]> => {
+    await readChoices();
+    const table = shipped();
+    const trained = await trainedWakes(
       env("R1_BRAIN_URL"),
       deviceKey,
       roster,
-      new Set(shipped.map((w) => w.word.toLowerCase())),
-    ).catch(() => [])),
-  ];
+      new Set(table.map((w) => w.word.toLowerCase())),
+    ).catch(() => []);
+    return [
+      ...table,
+      ...withWakeChoices(
+        trained.map((w) => ({ ...w, enabled: true })),
+        choices,
+      ).flatMap(({ enabled, ...w }) => (enabled ? [w] : [])),
+    ];
+  };
   let words = await wakeWords();
   const scorerFor = (list: typeof words) => () =>
     createOpenWakeWordScorer({

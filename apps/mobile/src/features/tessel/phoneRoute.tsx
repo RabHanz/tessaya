@@ -24,6 +24,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { environmentSession } from "../../state/session";
 import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
 import { useIsSleeve } from "../tessaya/sleeve/useSleeve";
+import type { WakeChoices } from "@t3tools/tessaya-shared/wakeWords";
 import { loadSleeveWake, type SleeveWake } from "./sleeveWake";
 
 export interface PhoneRouteChoice {
@@ -146,6 +147,10 @@ export function PhoneRouteHost() {
   const asked = usePhoneVessel();
   const sleeve = useIsSleeve() && PhoneAudio?.speakerDefault === true;
   const vessel = asked || sleeve;
+  const configs = useServerConfigs();
+  const choices: WakeChoices =
+    (environmentId === null ? undefined : configs.get(environmentId)?.settings.tessayaWakeWords) ??
+    {};
   if (PhoneAudio === null) return null;
   // Opt-in: an audio session takes the headset's button from his music, so it is held only when he asked.
   const c =
@@ -156,7 +161,12 @@ export function PhoneRouteHost() {
         : null;
   // Keyed: another environment or Tessel is a fresh link with fresh tickets.
   return c === null ? null : (
-    <PhoneRouteLink key={`${c.environmentId}/${c.deviceId}`} choice={c} wake={sleeve} />
+    <PhoneRouteLink
+      key={`${c.environmentId}/${c.deviceId}`}
+      choice={c}
+      // shortcut: a changed wake choice reopens the link (a talk in flight drops); fine while choices change rarely
+      wake={sleeve ? JSON.stringify(choices) : null}
+    />
   );
 }
 
@@ -165,8 +175,11 @@ function PhoneRouteLink({
   wake,
 }: {
   readonly choice: PhoneRouteChoice;
-  /** A Sleeve listens for her wake word on this phone while it is on screen (iOS gives no mic once locked). */
-  readonly wake: boolean;
+  /**
+   * His wake-word choices (JSON, so a changed choice reloads the words) when this Sleeve listens for them while on
+   * screen (iOS gives no mic once locked); null when it does not listen.
+   */
+  readonly wake: string | null;
 }) {
   const [attempt, setAttempt] = useState(0);
   /** Tries refused in a row since the link last opened. */
@@ -200,8 +213,8 @@ function PhoneRouteLink({
       syncMic();
     });
     // a model that fails to load leaves the tap and the headset button as the way in
-    if (wake)
-      void loadSleeveWake()
+    if (wake !== null)
+      void loadSleeveWake(JSON.parse(wake) as WakeChoices)
         .then((w) => {
           if (closed) return;
           sleeveWake = w;

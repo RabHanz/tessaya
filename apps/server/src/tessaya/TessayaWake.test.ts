@@ -10,6 +10,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { PACK_DIR_NAME } from "./OperatingSystemPack.ts";
 import { MemberPreferences } from "./MemberPreferences.ts";
 import * as TessayaWake from "./TessayaWake.ts";
@@ -90,6 +91,27 @@ it.effect(
     }).pipe(Effect.provide(TessayaWake.layer.pipe(Layer.provideMerge(config)))),
 );
 
+it.effect("keeps his wake-word choices in her settings, one word at a time, the others kept", () =>
+  Effect.gen(function* () {
+    const wake = yield* TessayaWake.TessayaWake;
+    expect(yield* wake.choices).toEqual({});
+    expect(yield* wake.choose("Freya", false)).toEqual({ ok: true });
+    expect(yield* wake.choose("Sebastian", true, 0.9)).toEqual({ ok: true });
+    // The same word in another case changes his earlier choice rather than adding a second.
+    expect(yield* wake.choose("freya", true)).toEqual({ ok: true });
+    expect(yield* wake.choices).toEqual({
+      Freya: { on: true },
+      Sebastian: { on: true, threshold: 0.9 },
+    });
+  }).pipe(
+    Effect.provide(
+      TessayaWake.layer.pipe(
+        Layer.provideMerge(Layer.mergeAll(config, ServerSettingsService.layerTest())),
+      ),
+    ),
+  ),
+);
+
 it("lets only the trainer train, any paired vessel or R1 fetch, and a settings writer roll back or cancel", () => {
   const trainer = new Set(["tessaya:wake-trainer"]);
   const owner = new Set(["settings:write", "orchestration:read"]);
@@ -104,11 +126,15 @@ it("lets only the trainer train, any paired vessel or R1 fetch, and a settings w
   expect(wakeAccess("GET models", vessel, false)).toBeNull();
   expect(wakeAccess("GET status", vessel, false)).toBeNull();
   expect(wakeAccess("GET status", null, false)?.status).toBe(401);
+  // His wake-word choices: every vessel and R1 reads them; only a settings writer changes them.
+  expect(wakeAccess("GET choice", vessel, false)).toBeNull();
+  expect(wakeAccess("GET choice", null, true)).toBeNull();
+  expect(wakeAccess("GET choice", null, false)?.status).toBe(401);
   // Enrolment audio: an R1's, or a session that may change settings (his desktop); never a plain vessel's.
   expect(wakeAccess("POST enrolment", null, true)).toBeNull();
   expect(wakeAccess("POST enrolment", owner, false)).toBeNull();
   expect(wakeAccess("POST enrolment", vessel, false)?.status).toBe(401);
-  for (const route of ["POST rollback", "POST cancel", "POST retrain"]) {
+  for (const route of ["POST rollback", "POST cancel", "POST retrain", "POST choice"]) {
     expect(wakeAccess(route, owner, false)).toBeNull();
     expect(wakeAccess(route, vessel, false)?.status).toBe(403);
     expect(wakeAccess(route, trainer, false)?.status).toBe(403);

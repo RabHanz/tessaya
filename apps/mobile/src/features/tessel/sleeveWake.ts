@@ -1,4 +1,4 @@
-import { WAKE_WORDS } from "@t3tools/tessaya-shared/wakeWords";
+import { chosenWakeWords, type WakeChoices } from "@t3tools/tessaya-shared/wakeWords";
 import {
   createOpenWakeWordProvider,
   createOpenWakeWordScorerWith,
@@ -6,7 +6,7 @@ import {
 import { Asset } from "expo-asset";
 import * as Ort from "onnxruntime-react-native";
 
-// The desktop's and the room loop's own models (Metro needs literal paths); only the words a fresh install wakes to ride in the app.
+// The desktop's and the room loop's own models (Metro needs literal paths), every shipped word, so his choice holds here.
 const FEATURES = {
   melspectrogram:
     require("../../../../../native/baton-dictation/models/melspectrogram.onnx") as number,
@@ -16,6 +16,8 @@ const WORDS: Readonly<Record<string, number>> = {
   Tessaya: require("../../../../../native/baton-dictation/models/tessaya.onnx") as number,
   Alfred: require("../../../../../native/baton-dictation/models/alfred.onnx") as number,
   Freya: require("../../../../../native/baton-dictation/models/freya.onnx") as number,
+  Sebastian: require("../../../../../native/baton-dictation/models/sebastian.onnx") as number,
+  Onyx: require("../../../../../native/baton-dictation/models/onyx.onnx") as number,
 };
 
 // onnxruntime takes the file:// URI as it is
@@ -30,9 +32,9 @@ export interface SleeveWake {
   readonly reset: () => void;
 }
 
-/** Her wake words on this phone, scored by the same pipeline and thresholds as the desktop and the room loop. */
-export const loadSleeveWake = async (): Promise<SleeveWake> => {
-  const words = WAKE_WORDS.filter((w) => w.onByDefault && WORDS[w.word] !== undefined);
+/** His wake words on this phone, as he chose them in her brain, scored by the desktop's and the room loop's pipeline. */
+export const loadSleeveWake = async (choices: WakeChoices): Promise<SleeveWake> => {
+  const words = chosenWakeWords(choices).filter((w) => w.enabled && WORDS[w.word] !== undefined);
   const [melspectrogram, embedding, ...paths] = await Promise.all([
     local(FEATURES.melspectrogram),
     local(FEATURES.embedding),
