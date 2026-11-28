@@ -55,3 +55,21 @@ export const forgetBiometric = async () => {
   await SecureStore.deleteItemAsync(PIN_KEY).catch(() => undefined);
   await SecureStore.deleteItemAsync(SAVED_KEY).catch(() => undefined);
 };
+
+const OWNER_KEY = "tessaya.ownerCheck";
+/**
+ * His own Face ID or fingerprint on this phone, with no PIN: a kept marker only his biometrics release, for what is
+ * his phone's alone (leaving the Sleeve). False when the phone has none or he cancels.
+ */
+export const ownerWithBiometric = async (why: string): Promise<boolean> => {
+  if (!biometricOffered()) return false;
+  const ask = { requireAuthentication: true, authenticationPrompt: why };
+  try {
+    if ((await SecureStore.getItemAsync(OWNER_KEY, ask)) !== null) return true;
+    // first time: keep the marker, then read it back, which is what asks for his face
+    await SecureStore.setItemAsync(OWNER_KEY, "1", ask);
+    return (await SecureStore.getItemAsync(OWNER_KEY, ask)) !== null;
+  } catch {
+    return false;
+  }
+};

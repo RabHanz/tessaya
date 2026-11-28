@@ -4,11 +4,7 @@ export interface PhoneNames {
   readonly names: ReadonlyArray<string>;
 }
 
-const norm = (s: string) =>
-  s
-    .trim()
-    .toLowerCase()
-    .replace(/[’']/g, "'");
+const norm = (s: string) => s.trim().toLowerCase().replace(/[’']/g, "'");
 const entries = (value: string | undefined) =>
   (value ?? "")
     .split(",")
@@ -20,6 +16,16 @@ export const isSleeve = (value: string | undefined, phone: PhoneNames): boolean 
   const mine = new Set([phone.id, ...phone.names].filter((n) => n !== "").map(norm));
   return entries(value).some((e) => mine.has(norm(e)));
 };
+
+/**
+ * Whether the Sleeve covers this phone: her Sleeve by his preference, unless he gave it back here while the preference
+ * still read `given` (his brain not reached yet, or refusing). A new preference value, his own or cleared, ends that.
+ */
+export const sleeveCovers = (
+  value: string | undefined,
+  phone: PhoneNames,
+  given: string | null,
+): boolean => isSleeve(value, phone) && (given === null || (value ?? "") !== given);
 
 /** The preference with this phone added or taken out, or null (cleared) when no phone is left. */
 export const withSleeve = (

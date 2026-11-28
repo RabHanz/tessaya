@@ -8,7 +8,7 @@ import { tessayaEnvironmentIdAtom } from "../../../state/tessayaHousehold";
 import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { thisPhoneId } from "../devices/DevicesRouteScreen";
-import { isSleeve, withSleeve, type PhoneNames } from "./sleeveMode.logic";
+import { sleeveCovers, withSleeve, type PhoneNames } from "./sleeveMode.logic";
 
 // The last answer, so a Sleeve starts as her at once, before her brain is reached.
 const CACHE_KEY = "tessaya.sleeve";
@@ -22,6 +22,23 @@ const cached = () => {
   }
 };
 let held: string | undefined = cached();
+// he gave this phone back here: the preference value it was given back from, until her brain's value changes
+const GIVEN_KEY = "tessaya.sleeve.given";
+let given: string | null = (() => {
+  try {
+    return SecureStore.getItem(GIVEN_KEY);
+  } catch {
+    return null;
+  }
+})();
+const setGiven = (next: string | null) => {
+  given = next;
+  void (
+    next === null
+      ? SecureStore.deleteItemAsync(GIVEN_KEY)
+      : SecureStore.setItemAsync(GIVEN_KEY, next)
+  ).catch(() => undefined);
+};
 // his settings unlocked on this Sleeve, until the app leaves the front or RELOCK_MS pass
 let unlocked = false;
 const listeners = new Set<() => void>();
@@ -62,6 +79,8 @@ export function useSleeve() {
     const next = (r.value.value as { preferences?: Record<string, string> }).preferences?.[
       "sleeve"
     ];
+    // her brain's value moved on (cleared, or he made it her Sleeve again): his giving it back is done with
+    if (given !== null && (next ?? "") !== given) setGiven(null);
     hold(next);
     await (
       next === undefined
@@ -80,9 +99,13 @@ export function useSleeve() {
     return () => sub.remove();
   }, [environmentId]);
   return {
-    sleeve: isSleeve(value, phone()),
-    set: (on: boolean) =>
-      ask("setPreference", { key: "sleeve", value: withSleeve(value, phone(), on) }),
+    sleeve: sleeveCovers(value, phone(), given),
+    set: (on: boolean) => {
+      // giving it back takes effect here at once, whether or not her brain is reached; making it hers again ends that
+      setGiven(on ? null : (value ?? ""));
+      tell();
+      return ask("setPreference", { key: "sleeve", value: withSleeve(value, phone(), on) });
+    },
   };
 }
 
@@ -90,11 +113,13 @@ export function useSleeve() {
 export function useSleeveCovering() {
   const value = useSyncExternalStore(subscribe, () => held);
   const open = useSyncExternalStore(subscribe, () => unlocked);
-  return isSleeve(value, phone()) && !open;
+  const back = useSyncExternalStore(subscribe, () => given);
+  return sleeveCovers(value, phone(), back) && !open;
 }
 
 /** Whether this phone is her Sleeve, locked or not: it holds her voice route as her body (phoneRoute). */
 export function useIsSleeve() {
   const value = useSyncExternalStore(subscribe, () => held);
-  return isSleeve(value, phone());
+  const back = useSyncExternalStore(subscribe, () => given);
+  return sleeveCovers(value, phone(), back);
 }
