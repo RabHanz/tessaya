@@ -90,10 +90,11 @@ export function SleeveHost() {
       ) : null}
       {asking === "back" || asking === "settings" ? (
         <UnlockSheet
+          owner
           title={asking === "back" ? "Give your phone back to you?" : "Settings are locked"}
           detail={
             asking === "back"
-              ? "Use Face ID or your PIN. She stays on your other devices."
+              ? "Face ID, or your PIN. She stays on your other devices."
               : "Use Face ID or your PIN to change this Sleeve."
           }
           onUnlocked={() => {

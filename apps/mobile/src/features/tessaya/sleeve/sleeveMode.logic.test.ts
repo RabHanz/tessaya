@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isSleeve, withSleeve } from "./sleeveMode.logic";
+import { isSleeve, sleeveCovers, withSleeve } from "./sleeveMode.logic";
 
 const phone = { id: "phone-xperia5iv", names: ["Hamza’s Xperia", "SOG09"] };
 
@@ -12,6 +12,14 @@ describe("Sleeve mode", () => {
     expect(isSleeve("iPhone", phone)).toBe(false);
     expect(isSleeve("off", phone)).toBe(false);
     expect(isSleeve(undefined, phone)).toBe(false);
+  });
+
+  it("lets him out at once when he gives it back, even while her brain still names it, until her value changes", () => {
+    expect(sleeveCovers("SOG09", phone, null)).toBe(true);
+    // given back from "SOG09": her brain unreached or refusing, the phone is his again here
+    expect(sleeveCovers("SOG09", phone, "SOG09")).toBe(false);
+    // he made it her Sleeve again (a new value): it covers once more
+    expect(sleeveCovers("iPhone, SOG09", phone, "SOG09")).toBe(true);
   });
 
   it("adds and takes out only this phone, and clears the preference when none is left", () => {
