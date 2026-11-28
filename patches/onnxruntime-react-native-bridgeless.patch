@@ -1,0 +1,31 @@
+diff --git a/ios/OnnxruntimeModule.mm b/ios/OnnxruntimeModule.mm
+index 8155f92..36f9ec1 100644
+--- a/ios/OnnxruntimeModule.mm
++++ b/ios/OnnxruntimeModule.mm
+@@ -10,6 +10,11 @@
+ #import <ReactCommon/RCTTurboModule.h>
+ #import <jsi/jsi.h>
+ 
++// React Native 0.88 has no RCTCxxBridge; the bridgeless RCTBridgeProxy still answers -runtime on the JS thread.
++@interface RCTBridge (OnnxruntimeJSIRuntime)
++- (void*)runtime;
++@end
++
+ @implementation OnnxruntimeModule
+ 
+ @synthesize bridge = _bridge;
+@@ -27,12 +32,11 @@ RCT_EXPORT_MODULE(Onnxruntime)
+  */
+ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(install) {
+   @try {
+-    RCTCxxBridge* cxxBridge = (RCTCxxBridge*)_bridge;
+-    if (cxxBridge == nil) {
++    if (_bridge == nil) {
+       return @false;
+     }
+ 
+-    auto jsiRuntime = (facebook::jsi::Runtime*)cxxBridge.runtime;
++    auto jsiRuntime = (facebook::jsi::Runtime*)[_bridge runtime];
+     if (jsiRuntime == nil) {
+       return @false;
+     }
