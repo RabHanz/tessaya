@@ -1789,8 +1789,10 @@ export const createDesktopMascot = (input: {
         show: false,
         webPreferences: { session: page.session, contextIsolation: true, sandbox: true },
       });
-      // Always out of capture, whatever the capture setting says for her public self.
-      shown.setContentProtection(true);
+      // Opened for a private moment: always out of capture. Her everyday body follows his capture setting like her
+      // character, and the private shield still covers it if a moment opens in this same window.
+      if (page.handOff === true) protectFromCapture(shown);
+      else shown.setContentProtection(true);
       shown.setAlwaysOnTop(true, "floating");
       markCompanionWindow(shown);
       void onEveryDesktop(shown);
