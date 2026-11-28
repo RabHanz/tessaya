@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isSleeve, sleeveCovers, withSleeve } from "./sleeveMode.logic";
+import { isSleeve, restOf, sleeveCovers, withSleeve } from "./sleeveMode.logic";
 
 const phone = { id: "phone-xperia5iv", names: ["Hamza’s Xperia", "SOG09"] };
 
@@ -26,5 +26,14 @@ describe("Sleeve mode", () => {
     expect(withSleeve("iPhone", phone, true)).toBe("iPhone, Hamza’s Xperia");
     expect(withSleeve("iPhone, SOG09", phone, false)).toBe("iPhone");
     expect(withSleeve("SOG09", phone, false)).toBeNull();
+  });
+});
+
+describe("Sleeve power", () => {
+  it("rests as her dock by day and dark in his quiet hours, across midnight", () => {
+    expect(restOf("22-8", 14)).toBe("dock");
+    expect(restOf("22-8", 23)).toBe("night");
+    expect(restOf("22-8", 3)).toBe("night");
+    expect(restOf("none", 3)).toBe("dock");
   });
 });
