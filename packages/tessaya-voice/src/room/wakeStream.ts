@@ -236,8 +236,13 @@ export const createWakeStream = (deps: WakeStreamDeps) => {
   const sentSeen = new Set<string>();
   /** An early kws pass's confirm, begun when it came, before the segment ended. */
   const earlyConfirm = new Map<string, Promise<Confirmed>>();
-  const kwsWord = (name: unknown) =>
-    deps.kwsWake?.find((w) => w.word.toLowerCase() === String(name ?? "").toLowerCase());
+  // Only a word she listens for now: one he turned off (his wake choices) never wakes her through the Tessel's kws.
+  const kwsWord = (name: unknown) => {
+    const said = String(name ?? "").toLowerCase();
+    return current.words.some((w) => w.word.toLowerCase() === said)
+      ? deps.kwsWake?.find((w) => w.word.toLowerCase() === said)
+      : undefined;
+  };
   const byKws = (id: string, word: string) => {
     const w = kwsWord(word);
     return (kwsSeen.has(id) || deps.kwsReady?.(id) === true) && w !== undefined && w.also !== true;
