@@ -15,6 +15,8 @@ export interface RoomSample {
   readonly forms?: ReadonlyArray<string>;
   /** Each device_set she made, as "itemId=value". */
   readonly sets?: ReadonlyArray<string>;
+  /** Each Margin call she made, as "margin_write:add_shopping_item". */
+  readonly margin?: ReadonlyArray<string>;
 }
 
 /** The HA-mode tail he heard after every answer. */
@@ -47,6 +49,9 @@ export const failureOf = (c: RoomCase, s: RoomSample): string | null => {
   for (const re of c.sets ?? [])
     if (!(s.sets ?? []).some((v) => re.test(v)))
       return `set nothing like ${re} (${(s.sets ?? []).join(", ") || "none"})`;
+  for (const re of c.margin ?? [])
+    if (!(s.margin ?? []).some((v) => re.test(v)))
+      return `made no Margin call like ${re} (${(s.margin ?? []).join(", ") || "none"})`;
   if (c.callsOneOf !== undefined && !c.callsOneOf.some((t) => s.calls.includes(t)))
     return `called none of ${c.callsOneOf.join(", ")}`;
   for (const re of c.reportNotSays ?? [])

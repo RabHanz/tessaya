@@ -182,16 +182,16 @@ index 800486ce8689dd9163239a8968cfa0c91372bb3a..156e377db28934cd33d035e104a949ac
            expiresAt: DateTime.add(now, {
              milliseconds: DESKTOP_BOOTSTRAP_TOKEN_WINDOW_MS,
 diff --git a/apps/server/src/cli/authScopes.ts b/apps/server/src/cli/authScopes.ts
-index 9294cc1a12ba7b4f84940632177d42110fc3231c..c04425b8d60e29690f02f33b293cf108d6609ec8 100644
+index 9294cc1a12ba7b4f84940632177d42110fc3231c..a2d09c88b5b7c6c0ab8b0d95c04223ebf688aa65 100644
 --- a/apps/server/src/cli/authScopes.ts
 +++ b/apps/server/src/cli/authScopes.ts
 @@ -1,11 +1,20 @@
 -import { AuthGrantScope } from "@t3tools/contracts";
 +import {
-+  AuthTessayaMemorySyncScope,
 +  type AuthGrantScope,
 +  AuthGrantScopeNames,
-+  mixesMemorySync,
++  mixesSoloScope,
++  SOLO_SCOPES,
 +} from "@t3tools/contracts";
  import { Flag } from "effect/cli";
  
@@ -204,8 +204,8 @@ index 9294cc1a12ba7b4f84940632177d42110fc3231c..c04425b8d60e29690f02f33b293cf108
      Flag.atLeast(0),
      Flag.map((scopes) => [...new Set(scopes.length > 0 ? scopes : defaults)]),
 +    Flag.filter(
-+      (scopes) => !mixesMemorySync(scopes),
-+      () => `${AuthTessayaMemorySyncScope} is a sync-only credential: give it alone.`,
++      (scopes) => !mixesSoloScope(scopes),
++      () => `${SOLO_SCOPES.join(" and ")} are single-purpose credentials: give each alone.`,
 +    ),
    );
 diff --git a/packages/client-runtime/src/state/commandPermissions.test.ts b/packages/client-runtime/src/state/commandPermissions.test.ts
@@ -267,7 +267,7 @@ index a3b1861ca035162c603a6358e594031627e41542..f5122dfecb3b3c5738116deeeb0666d7
      Effect.gen(function* () {
        const registry = yield* setup;
 diff --git a/packages/contracts/src/auth.test.ts b/packages/contracts/src/auth.test.ts
-index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd414ab92e0a 100644
+index d18a827c14228c32d19c9fbef9511422fc1e706f..fb1e8105cea2c0cc4c81de34e4ab50053fa3ae74 100644
 --- a/packages/contracts/src/auth.test.ts
 +++ b/packages/contracts/src/auth.test.ts
 @@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
@@ -291,7 +291,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd41
  describe("authorization grants", () => {
    it("decodes legacy review credentials without offering them in new grants", () => {
      const decodeAuthEnvironmentScopes = Schema.decodeSync(AuthEnvironmentScopes);
-@@ -23,6 +30,41 @@ describe("authorization grants", () => {
+@@ -23,6 +30,43 @@ describe("authorization grants", () => {
      expect(AuthStandardClientScopes).not.toContain("review:write");
    });
  
@@ -328,12 +328,14 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd41
 +    );
 +    expect(decodeGrantScopes(["tessaya:memory-sync"])).toEqual(["baton:memory-sync"]);
 +    expect(() => decodeGrantScopes(["tessaya:memory-sync", "orchestration:read"])).toThrow();
++    expect(decodeGrantScopes(["tessaya:announce"])).toEqual(["tessaya:announce"]);
++    expect(() => decodeGrantScopes(["tessaya:announce", "orchestration:read"])).toThrow();
 +  });
 +
    // Keep the pre-granular vocabulary frozen to expose compatibility regressions.
    const oldScopes = Schema.Array(
      Schema.Literals([
-@@ -39,7 +81,7 @@ describe("authorization grants", () => {
+@@ -39,7 +83,7 @@ describe("authorization grants", () => {
  
    const decodeOldScopes = Schema.decodeUnknownSync(oldScopes);
  
@@ -342,7 +344,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd41
      "keeps %s permission errors decodable by old clients",
      (scope) => {
        const response = authScopeRequiredResponse(scope);
-@@ -48,6 +90,32 @@ describe("authorization grants", () => {
+@@ -48,6 +92,32 @@ describe("authorization grants", () => {
      },
    );
  
@@ -376,7 +378,7 @@ index d18a827c14228c32d19c9fbef9511422fc1e706f..94093d26f96bd96c43d8ef2464c7cd41
      const response = authScopeResponse(AuthStandardClientScopes);
      expect(decodeOldScopes(response.scopes)).toEqual(response.scopes);
 diff --git a/packages/contracts/src/auth.ts b/packages/contracts/src/auth.ts
-index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02caa03fe5ed 100644
+index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..bb0196b2978b2d8a43e7b0fb7b50df44d081f42e 100644
 --- a/packages/contracts/src/auth.ts
 +++ b/packages/contracts/src/auth.ts
 @@ -1,4 +1,5 @@
@@ -385,7 +387,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02ca
  import * as HttpApiSchema from "effect/http-api/HttpApiSchema";
  
  import {
-@@ -48,7 +49,44 @@ export const AuthAccessWriteScope = "access:write" as const;
+@@ -48,7 +49,49 @@ export const AuthAccessWriteScope = "access:write" as const;
  export const AuthRelayReadScope = "relay:read" as const;
  export const AuthRelayWriteScope = "relay:write" as const;
  export const AuthRelayConfigureScope = "relay:configure" as const;
@@ -427,11 +429,16 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02ca
 + * project, file or setting. Never part of the standard client scopes; the "body-only" MCP access level carries it alone.
 + */
 +export const AuthTessayaBodyScope = "tessaya:body" as const;
++/**
++ * An outside app that tells her something is due for the owner (The Margin's reminders): `POST /api/tessaya/announce`
++ * and nothing else. It goes alone (`mixesSoloScope`); revoking its session ends it.
++ */
++export const AuthTessayaAnnounceScope = "tessaya:announce" as const;
 +const AuthEnvironmentScopeName = Schema.Literals([
    AuthOrchestrationReadScope,
    AuthOrchestrationOperateScope,
    AuthSettingsWriteScope,
-@@ -67,16 +105,80 @@ export const AuthEnvironmentScope = Schema.Literals([
+@@ -67,16 +110,85 @@ export const AuthEnvironmentScope = Schema.Literals([
    AuthRelayReadScope,
    AuthRelayWriteScope,
    AuthRelayConfigureScope,
@@ -443,6 +450,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02ca
 +  AuthTessayaGuestScope,
 +  AuthTessayaWakeTrainerScope,
 +  AuthTessayaBodyScope,
++  AuthTessayaAnnounceScope,
  ]);
 -export type AuthEnvironmentScope = typeof AuthEnvironmentScope.Type;
 +/**
@@ -505,18 +513,22 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02ca
 +export const AuthGrantScopeNames = AuthGrantScopeName.literals;
  export type AuthGrantScope = typeof AuthGrantScope.Type;
 -export const AuthGrantScopes = Schema.Array(AuthGrantScope);
-+/** A memory-sync credential carries that scope alone: it must never double as a client token. */
-+export const mixesMemorySync = (scopes: ReadonlyArray<string>): boolean =>
-+  scopes.includes(AuthTessayaMemorySyncScope) && scopes.length > 1;
++/** A memory-sync or announce credential carries that scope alone: it must never double as a client token. */
++export const SOLO_SCOPES: ReadonlyArray<string> = [
++  AuthTessayaMemorySyncScope,
++  AuthTessayaAnnounceScope,
++];
++export const mixesSoloScope = (scopes: ReadonlyArray<string>): boolean =>
++  scopes.length > 1 && scopes.some((scope) => SOLO_SCOPES.includes(scope));
 +export const AuthGrantScopes = Schema.Array(AuthGrantScope).check(
 +  Schema.makeFilter(
-+    (scopes) => !mixesMemorySync(scopes) || `${AuthTessayaMemorySyncScope} goes alone`,
++    (scopes) => !mixesSoloScope(scopes) || `${SOLO_SCOPES.join(" and ")} each go alone`,
 +  ),
 +);
  export type AuthGrantScopes = typeof AuthGrantScopes.Type;
  
  const legacyScopes = new Set<AuthEnvironmentScope>([
-@@ -112,13 +214,25 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
+@@ -112,13 +224,26 @@ const legacyParents: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope>>
    [AuthTerminalReadScope]: AuthTerminalOperateScope,
  };
  
@@ -533,6 +545,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02ca
 +  [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
 +  [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,
 +  [AuthTessayaBodyScope]: AuthOrchestrationReadScope,
++  [AuthTessayaAnnounceScope]: AuthOrchestrationReadScope,
 +};
 +
  /** Keep permission denials decodable by clients with the original scope enum. */
@@ -546,7 +559,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02ca
      requiredPermission,
    };
  }
-@@ -273,21 +387,39 @@ export const AuthMcpClientAccess = Schema.Literals([
+@@ -273,21 +398,39 @@ export const AuthMcpClientAccess = Schema.Literals([
    "auto-accept-edits",
    "auto",
    "full-access",
@@ -594,7 +607,7 @@ index f995c27fb6a94bcc3fa1b2e9ce9d432006ade0a1..95d4933b3cbd4d99b3a079db0e8e02ca
  
  /** The random part of a one-time pairing code: this many characters from this alphabet. */
  export const PAIRING_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-@@ -299,6 +431,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
+@@ -299,6 +442,7 @@ const MCP_APPROVAL_CODE_PREFIXES = {
    "auto-accept-edits": "EDITS",
    auto: "AUTO",
    "full-access": "FULL",

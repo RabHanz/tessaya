@@ -11,6 +11,7 @@
  */
 import { ActionLog } from "../provenance/ActionLog.ts";
 import { PersonaOps } from "./PersonaOps.ts";
+import { TessayaMargin } from "./TessayaMargin.ts";
 import { activityList, activityWhy } from "../provenance/activity.ts";
 import { teamBoard } from "./TessayaTeamBoard.ts";
 import { readGrants, setGrant } from "./consent.ts";
@@ -225,7 +226,8 @@ export type TessayaServices =
   | TessayaCast
   | ProblemReports
   | ActionLog
-  | PersonaOps;
+  | PersonaOps
+  | TessayaMargin;
 
 /** The vessel a memory call comes from: the desktop app's own session, or another client (a browser, the phone page). */
 const vesselOf = (viewer: "server" | "desktop" | "client"): TurnEnvelope["vessel"] =>

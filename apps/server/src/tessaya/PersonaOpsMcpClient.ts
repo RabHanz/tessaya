@@ -1,15 +1,17 @@
 // @effect-diagnostics globalJsonInEffect:off preferSchemaOverJson:off globalFetch:off
 /**
- * One MCP Streamable HTTP connection to the ops system, as one worker: every request carries the worker's token and id
- * in headers. The session opens on the first call and is reused; one the server has forgotten (404) is reopened once,
+ * One MCP Streamable HTTP connection to an outside system (the ops system as one worker, The Margin): every request
+ * carries the token, and the worker's id when the system names workers. The session opens on the first call and is reused; one the server has forgotten (404) is reopened once,
  * and any other failure throws so the caller drops the connection and the next call opens a new one. Nothing here logs
  * the token.
  */
 
 export interface PersonaOpsEndpoint {
   readonly url: string;
-  /** The header that names the calling worker. */
-  readonly workerHeader: string;
+  /** The header that names the calling worker; none for a system that knows its caller by the token alone. */
+  readonly workerHeader?: string;
+  /** What its errors call it ("The ops system" when unset). */
+  readonly name?: string;
 }
 
 /** A `tools/call` answer: the ops system's JSON (its data on success, its error object on a refusal). */
@@ -52,13 +54,15 @@ export class PersonaOpsConnection {
   private nextId = 1;
 
   private readonly endpoint: PersonaOpsEndpoint;
-  private readonly workerId: string;
+  private readonly workerId: string | null;
   private readonly token: string;
+  private readonly name: string;
 
-  constructor(endpoint: PersonaOpsEndpoint, workerId: string, token: string) {
+  constructor(endpoint: PersonaOpsEndpoint, workerId: string | null, token: string) {
     this.endpoint = endpoint;
     this.workerId = workerId;
     this.token = token;
+    this.name = endpoint.name ?? "The ops system";
   }
 
   get open(): boolean {
@@ -73,7 +77,7 @@ export class PersonaOpsConnection {
     if (answer === "gone") {
       this.session = null;
       answer = await this.request("tools/call", { name, arguments: args });
-      if (answer === "gone") throw new Error("The ops system keeps forgetting the session.");
+      if (answer === "gone") throw new Error(`${this.name} keeps forgetting the session.`);
     }
     // A JSON-RPC error (an unknown tool, bad arguments) is the ops system's answer, not a broken connection.
     if (answer.error !== undefined)
@@ -112,7 +116,9 @@ export class PersonaOpsConnection {
         accept: "application/json, text/event-stream",
         "content-type": "application/json",
         authorization: `Bearer ${this.token}`,
-        [this.endpoint.workerHeader]: this.workerId,
+        ...(this.endpoint.workerHeader === undefined || this.workerId === null
+          ? {}
+          : { [this.endpoint.workerHeader]: this.workerId }),
         ...(session === null ? {} : { "mcp-protocol-version": session.version }),
         ...(session?.id == null ? {} : { "mcp-session-id": session.id }),
       },
@@ -121,14 +127,14 @@ export class PersonaOpsConnection {
     }).catch((e: unknown) => {
       throw new Error(
         e instanceof Error && e.name === "TimeoutError"
-          ? "The ops system did not answer in time."
-          : `The ops system could not be reached (${e instanceof Error ? e.message : String(e)})`,
+          ? `${this.name} did not answer in time.`
+          : `${this.name} could not be reached (${e instanceof Error ? e.message : String(e)})`,
       );
     });
   }
 
   /** The server's own words for a refused request, never echoing what was sent. */
-  private static async refusal(response: Response): Promise<Error> {
+  private async refusal(response: Response): Promise<Error> {
     const body = (await response.text().catch(() => "")).trim();
     let message = body;
     try {
@@ -144,7 +150,7 @@ export class PersonaOpsConnection {
       // not JSON: keep the text
     }
     return new Error(
-      `The ops system refused the connection (HTTP ${response.status}${message === "" ? "" : `: ${message.slice(0, 200)}`})`,
+      `${this.name} refused the connection (HTTP ${response.status}${message === "" ? "" : `: ${message.slice(0, 200)}`})`,
     );
   }
 
@@ -164,14 +170,14 @@ export class PersonaOpsConnection {
         },
         null,
       );
-      if (!response.ok) throw await PersonaOpsConnection.refusal(response);
+      if (!response.ok) throw await this.refusal(response);
       const answer = answerOf(
         response.headers.get("content-type") ?? "",
         await response.text(),
         id,
       );
       if (answer === null || answer.error !== undefined)
-        throw new Error(answer?.error?.message ?? "The ops system did not finish the handshake.");
+        throw new Error(answer?.error?.message ?? `${this.name} did not finish the handshake.`);
       const session = {
         id: response.headers.get("mcp-session-id"),
         version:
@@ -194,9 +200,9 @@ export class PersonaOpsConnection {
     const id = this.nextId++;
     const response = await this.post({ id, method, params }, session);
     if (response.status === 404 && session.id !== null) return "gone";
-    if (!response.ok) throw await PersonaOpsConnection.refusal(response);
+    if (!response.ok) throw await this.refusal(response);
     const answer = answerOf(response.headers.get("content-type") ?? "", await response.text(), id);
-    if (answer === null) throw new Error("The ops system answered something else.");
+    if (answer === null) throw new Error(`${this.name} answered something else.`);
     return answer;
   }
 }

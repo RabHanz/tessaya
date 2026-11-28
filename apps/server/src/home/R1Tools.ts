@@ -172,6 +172,9 @@ const ROOM_TOOLS = [
   "ops_post",
   "ops_decide",
   "ops_access",
+  // His day, lists and reminders in The Margin: "what's on my Margin today", "add milk to the shopping list".
+  "margin_read",
+  "margin_write",
   // Messages and announcements between the people here (COMMS-DESIGN C-1).
   "comms_send",
   "comms_inbox",

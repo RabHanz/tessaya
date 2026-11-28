@@ -14,6 +14,7 @@ import {
   type ToolVerdict,
 } from "./operator.ts";
 import type { Assurance, MemberRole, PrincipalRole } from "./household.ts";
+import { MARGIN_HOUSEHOLD } from "./margin.ts";
 import { leaseDecision, type PlanLease } from "./planLease.ts";
 import { bridgeToolName, CHROME_PREFIX, hostForCall, isChromeTool } from "./webPolicy.ts";
 import type { ProjectRef } from "./osPack.ts";
@@ -188,10 +189,23 @@ const isHomeTimer = (input: unknown): boolean => {
     none(i["conditions"])
   );
 };
-export const toolReach = (tool: string, input?: unknown): ToolReach =>
-  tessayaToolName(tool) === "home_automation_save" && isHomeTimer(input)
-    ? "home"
-    : (REACH[tessayaToolName(tool)] ?? "machine");
+/** The Margin's tool a margin_read or margin_write call names. */
+const marginToolOf = (input: unknown): string =>
+  typeof input === "object" &&
+  input !== null &&
+  typeof (input as { tool?: unknown }).tool === "string"
+    ? (input as { tool: string }).tool
+    : "";
+export const toolReach = (tool: string, input?: unknown): ToolReach => {
+  const name = tessayaToolName(tool);
+  if (name === "home_automation_save" && isHomeTimer(input)) return "home";
+  // An add or a tick there is everyday, as home_do is (TessayaMargin keeps his own lists to him); reading his own
+  // things there needs him, the home's shared lists do not.
+  if (name === "margin_write") return "home";
+  if (name === "margin_read")
+    return MARGIN_HOUSEHOLD.has(marginToolOf(input)) ? "home" : "personal";
+  return REACH[name] ?? "machine";
+};
 
 /** What each role may reach at all (HOUSEHOLD-DESIGN §5); "machine" also needs the owner's grant below the owner. */
 const ROLE_REACH: Readonly<Record<MemberRole, ReadonlySet<ToolReach>>> = {

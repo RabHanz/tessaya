@@ -63,6 +63,8 @@ describe("authorization grants", () => {
     );
     expect(decodeGrantScopes(["tessaya:memory-sync"])).toEqual(["baton:memory-sync"]);
     expect(() => decodeGrantScopes(["tessaya:memory-sync", "orchestration:read"])).toThrow();
+    expect(decodeGrantScopes(["tessaya:announce"])).toEqual(["tessaya:announce"]);
+    expect(() => decodeGrantScopes(["tessaya:announce", "orchestration:read"])).toThrow();
   });
 
   // Keep the pre-granular vocabulary frozen to expose compatibility regressions.

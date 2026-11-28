@@ -140,6 +140,34 @@ const makeHouse = () => {
 };
 
 /** What his work reads return: canned, from a made-up project. */
+/** The Margin's reads in the fake house, as its MCP answers them. */
+const MARGIN_READS_FAKE: Record<string, unknown> = {
+  get_my_week: {
+    days: [
+      {
+        date: "2026-11-12",
+        events: [{ title: "Dentist", start: "15:00" }],
+        my_work: [{ card_id: "c-41", title: "Send the invoice to Acme", due: "today" }],
+      },
+    ],
+    clashes: [],
+  },
+  get_week_overview: {
+    today: { due: ["Send the invoice to Acme"], events: ["Dentist 15:00"], shopping_to_buy: 3 },
+  },
+  get_morning_brief: { latest: "Dentist at three, the Acme invoice is due, and 3 things to buy." },
+  list_shopping_items: {
+    items: [
+      { id: "i-milk", name: "milk", checked: false },
+      { id: "i-eggs", name: "eggs", checked: false },
+      { id: "i-bread", name: "bread", checked: false },
+    ],
+  },
+  list_reminders: {
+    reminders: [{ card_id: "c-12", title: "Call Sam", reminder_at: "Friday 09:00" }],
+  },
+};
+
 const WORK = {
   // Two notes from Sara, as comms_inbox answers when messages waited for him (the comms-waiting case).
   comms_inbox: {
@@ -435,6 +463,8 @@ const healthOf = new WeakMap<House, NonNullable<RoomCase["health"]>>();
 const reportedOf = new WeakMap<House, Array<string>>();
 const formsOf = new WeakMap<House, Array<string>>();
 const setsOf = new WeakMap<House, Array<string>>();
+/** Each Margin call she made, as "margin_write:add_shopping_item". */
+const marginOf = new WeakMap<House, Array<string>>();
 /** The session he is talking with through her once one message went, as TessayaSessionInsight keeps it. */
 const talkingOf = new WeakMap<House, string>();
 /** The Tessel each case's turn came through, when it says. */
@@ -608,6 +638,14 @@ const runTool = (house: House, name: string, args: Record<string, unknown>) => {
       if (item.startsWith("eye."))
         return { ok: true, value: { status: "done", line: "Tessel took it." } };
       return WORK[name] ?? { ok: true, value: [] };
+    }
+    // As TessayaMargin answers: a made-up Margin day, shopping list and reminders; writes are taken.
+    case "margin_read":
+    case "margin_write": {
+      const tool = String(args["tool"] ?? "");
+      marginOf.set(house, [...(marginOf.get(house) ?? []), `${name}:${tool}`]);
+      if (name === "margin_write") return { status: "ok", line: "Done." };
+      return { status: "ok", line: "Read.", data: MARGIN_READS_FAKE[tool] ?? { items: [] } };
     }
     case "device_read": {
       const here = hereOf.get(house);
@@ -1074,6 +1112,7 @@ const sample = async (c: RoomCase): Promise<RoomSample> => {
       reported: reportedOf.get(house) ?? [],
       forms: formsOf.get(house) ?? [],
       sets: setsOf.get(house) ?? [],
+      margin: marginOf.get(house) ?? [],
     };
   } finally {
     await mcp?.close();

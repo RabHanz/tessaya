@@ -86,6 +86,11 @@ export const AuthTessayaWakeTrainerScope = "tessaya:wake-trainer" as const;
  * project, file or setting. Never part of the standard client scopes; the "body-only" MCP access level carries it alone.
  */
 export const AuthTessayaBodyScope = "tessaya:body" as const;
+/**
+ * An outside app that tells her something is due for the owner (The Margin's reminders): `POST /api/tessaya/announce`
+ * and nothing else. It goes alone (`mixesSoloScope`); revoking its session ends it.
+ */
+export const AuthTessayaAnnounceScope = "tessaya:announce" as const;
 const AuthEnvironmentScopeName = Schema.Literals([
   AuthOrchestrationReadScope,
   AuthOrchestrationOperateScope,
@@ -113,6 +118,7 @@ const AuthEnvironmentScopeName = Schema.Literals([
   AuthTessayaGuestScope,
   AuthTessayaWakeTrainerScope,
   AuthTessayaBodyScope,
+  AuthTessayaAnnounceScope,
 ]);
 /**
  * Baton was renamed Tessaya. Each `baton:` scope also decodes from its `tessaya:` spelling, and this build still
@@ -171,12 +177,16 @@ export const AuthGrantScope = Schema.Literals([
 /** The grantable scopes under the names this build writes. */
 export const AuthGrantScopeNames = AuthGrantScopeName.literals;
 export type AuthGrantScope = typeof AuthGrantScope.Type;
-/** A memory-sync credential carries that scope alone: it must never double as a client token. */
-export const mixesMemorySync = (scopes: ReadonlyArray<string>): boolean =>
-  scopes.includes(AuthTessayaMemorySyncScope) && scopes.length > 1;
+/** A memory-sync or announce credential carries that scope alone: it must never double as a client token. */
+export const SOLO_SCOPES: ReadonlyArray<string> = [
+  AuthTessayaMemorySyncScope,
+  AuthTessayaAnnounceScope,
+];
+export const mixesSoloScope = (scopes: ReadonlyArray<string>): boolean =>
+  scopes.length > 1 && scopes.some((scope) => SOLO_SCOPES.includes(scope));
 export const AuthGrantScopes = Schema.Array(AuthGrantScope).check(
   Schema.makeFilter(
-    (scopes) => !mixesMemorySync(scopes) || `${AuthTessayaMemorySyncScope} goes alone`,
+    (scopes) => !mixesSoloScope(scopes) || `${SOLO_SCOPES.join(" and ")} each go alone`,
   ),
 );
 export type AuthGrantScopes = typeof AuthGrantScopes.Type;
@@ -227,6 +237,7 @@ const denialFallbacks: Partial<Record<AuthEnvironmentScope, AuthEnvironmentScope
   [AuthTessayaGuestScope]: AuthOrchestrationReadScope,
   [AuthTessayaWakeTrainerScope]: AuthOrchestrationOperateScope,
   [AuthTessayaBodyScope]: AuthOrchestrationReadScope,
+  [AuthTessayaAnnounceScope]: AuthOrchestrationReadScope,
 };
 
 /** Keep permission denials decodable by clients with the original scope enum. */
