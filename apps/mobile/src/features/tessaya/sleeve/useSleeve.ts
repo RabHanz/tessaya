@@ -92,3 +92,9 @@ export function useSleeveCovering() {
   const open = useSyncExternalStore(subscribe, () => unlocked);
   return isSleeve(value, phone()) && !open;
 }
+
+/** Whether this phone is her Sleeve, locked or not: it holds her voice route as her body (phoneRoute). */
+export function useIsSleeve() {
+  const value = useSyncExternalStore(subscribe, () => held);
+  return isSleeve(value, phone());
+}

@@ -51,6 +51,8 @@ import { mergeLines, talkRows, type TalkLine } from "./talkHistory.logic";
 import { setHerPhase, useHerPhase } from "../island/herPhase";
 import { phoneSoulIs } from "../private/privateLayer";
 import { useBottomClearance } from "../layout/screenInsets";
+import { phoneTalk, usePhoneVesselReady } from "../../tessel/phoneRoute";
+import { setSleeveListen } from "../sleeve/sleeveListen";
 import { useSleeveCovering } from "../sleeve/useSleeve";
 import { SleeveName } from "../sleeve/SleeveChrome";
 import { PAPER } from "../layout/woad";
@@ -139,6 +141,9 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   const cartoon = sleeve && (bodyless || form === "cartoon");
   const castCall = useAtomCommand(tessayaWorkSessions.castCall, { reportFailure: false });
   const phase = useHerPhase();
+  // a Sleeve holds her voice route: a tap (or raising it) starts a hands-free talk in her room loop, out loud here
+  const linked = usePhoneVesselReady();
+  const handsFree = sleeve && linked;
   const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, { reportFailure: false });
   const cost = useRef<Stretch | null>(null);
   const awayAt = useRef<number | null>(null);
@@ -503,6 +508,17 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
     onChangeSelection: () => undefined,
   });
   const listening = voice.state.phase === "recording";
+  // in the Sleeve a tap starts and a second tap sends (no hold), and raising the phone starts it too
+  const toggleTalk = () => (listening ? void voice.stop() : voice.start());
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the Sleeve's motion sensor (outside this view) starts her listening
+  useEffect(() => {
+    if (!sleeve || handsFree) return;
+    setSleeveListen(() => {
+      if (!listening) voice.start();
+    });
+    return () => setSleeveListen(null);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- voice.start is the controller's current start
+  }, [sleeve, handsFree, listening]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the island (outside this screen) that she is listening
   useEffect(() => {
     if (listening) setHerPhase("listening");
@@ -667,7 +683,11 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            listening ? "Let go to send" : `Hold to talk to ${persona?.name ?? "her"}`
+            handsFree
+              ? `Talk to ${persona?.name ?? "her"}`
+              : listening
+                ? "Let go to send"
+                : `Hold to talk to ${persona?.name ?? "her"}`
           }
           style={
             mic === "granted" || mic === "unknown" || environmentId === null
@@ -677,8 +697,9 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
               : { display: "none" }
           }
           disabled={!voice.isAvailable || environmentId === null}
-          onPressIn={voice.start}
-          onPressOut={() => void voice.stop()}
+          onPress={handsFree ? () => void phoneTalk() : sleeve ? toggleTalk : undefined}
+          onPressIn={sleeve ? undefined : voice.start}
+          onPressOut={sleeve ? undefined : () => void voice.stop()}
           className={`items-center rounded-full py-4 ${sleeve ? "" : listening ? "bg-primary" : "bg-secondary"}`}
         >
           <Text
@@ -687,9 +708,15 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
           >
             {environmentId === null
               ? "Pair with one of your machines to talk to her"
-              : listening
-                ? "Listening… let go to send"
-                : `Hold to talk to ${persona?.name ?? "her"}`}
+              : handsFree
+                ? "Tap, or pick me up, to talk"
+                : listening
+                  ? sleeve
+                    ? "Listening… tap to send"
+                    : "Listening… let go to send"
+                  : sleeve
+                    ? "Tap, or pick me up, to talk"
+                    : `Hold to talk to ${persona?.name ?? "her"}`}
           </Text>
         </Pressable>
       </View>

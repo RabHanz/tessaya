@@ -22,6 +22,7 @@ import { useServerConfigs } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { environmentSession } from "../../state/session";
 import { tessayaEnvironmentIdAtom } from "../../state/tessayaHousehold";
+import { useIsSleeve } from "../tessaya/sleeve/useSleeve";
 
 export interface PhoneRouteChoice {
   readonly environmentId: EnvironmentId;
@@ -104,6 +105,15 @@ const setLinked = (next: boolean) => {
   linked = next;
   for (const l of linkListeners) l();
 };
+// a talk on this phone's own route, as its headset's button sends one; null while no link is open
+let talkNow: (() => void) | null = null;
+/** Starts a hands-free talk on this phone's route (her room loop opens the mic); false when no link is open. */
+export const phoneTalk = (): boolean => {
+  if (talkNow === null) return false;
+  talkNow();
+  return true;
+};
+
 export const usePhoneVesselReady = () =>
   useSyncExternalStore(
     (l) => (linkListeners.add(l), () => void linkListeners.delete(l)),
@@ -127,7 +137,11 @@ export const usePhoneVessel = (): boolean => {
 export function PhoneRouteHost() {
   const chosen = usePhoneRoute();
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
-  const vessel = usePhoneVessel();
+  // a Sleeve is her body: it holds her voice route the way a Tessel does, without the setting, once its audio
+  // module puts her on the loudspeaker with no headset (an older build plays her in the earpiece)
+  const asked = usePhoneVessel();
+  const sleeve = useIsSleeve() && PhoneAudio?.speakerDefault === true;
+  const vessel = asked || sleeve;
   if (PhoneAudio === null) return null;
   // Opt-in: an audio session takes the headset's button from his music, so it is held only when he asked.
   const c =
@@ -184,6 +198,7 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
     ];
     ws.onopen = () => {
       setLinked(true);
+      talkNow = () => ws.send(JSON.stringify({ t: "talk" }));
       refused.current = 0;
       void audio
         .start()
@@ -202,12 +217,14 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
     // A server that cannot serve it (no room loop yet) refuses each try: waits grow to a minute.
     ws.onclose = () => {
       setLinked(false);
+      talkNow = null;
       const wait = Math.min(60_000, 3_000 * 2 ** refused.current++);
       retry = setTimeout(() => setAttempt((n) => n + 1), wait);
     };
     return () => {
       ws.onclose = null;
       setLinked(false);
+      talkNow = null;
       if (retry !== null) clearTimeout(retry);
       for (const s of subs) s.remove();
       ws.close();
