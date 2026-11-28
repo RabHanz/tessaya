@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { MORPH, morphAt, morphSeconds, wPart } from "./formMorph.ts";
+import { MORPH, morphAt, morphSeconds, owlAt, swapAt, swapSeconds, wPart } from "./formMorph.ts";
 
 const frames = (dir: "in" | "out") => Math.round(morphSeconds(dir) * MORPH.FPS * 2) / 2;
 
@@ -65,6 +65,24 @@ describe("formMorph clock", () => {
     const hug = (u: number) => wPart(MORPH.LEAD.hug, MORPH.DURS.hug, u, "in");
     expect(hug(IN0)).toBeGreaterThan(0);
     expect(hug(IN0 + 1)).toBeGreaterThan(hug(IN0));
+  });
+
+  it("swaps one form for another with no jump at the hand-over, the skin closed between", () => {
+    const end = swapAt("cover", swapSeconds("cover"));
+    const start = swapAt("reveal", 0);
+    expect(end.prog).toBeCloseTo(0.5, 3);
+    expect(start.prog).toBeCloseTo(0.5, 3);
+    expect(end.wipe).toBeLessThan(0.1);
+    expect(start.wipe).toBe(0);
+    expect(swapAt("reveal", swapSeconds("reveal")).wipe).toBeCloseTo(1, 3);
+    expect(swapAt("cover", 0).wipe).toBeCloseTo(1, 3);
+  });
+
+  it("flies the owl up, around and down to land within its span", () => {
+    const span = 5;
+    expect(owlAt(0, span).air).toBe(0);
+    expect(owlAt(span / 2, span).air).toBeGreaterThan(0.9);
+    expect(owlAt(span, span)).toMatchObject({ air: 0, done: true });
   });
 
   it("matches v4's w_part at its ends", () => {

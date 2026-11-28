@@ -3,7 +3,7 @@
  * old devices: it draws only while something moves (speech, a gesture, a blend, a blink), capped per quality tier, and
  * nothing at all while hidden. At rest it is a still picture with a blink every few seconds.
  */
-import type { MorphDir, MorphLook } from "@t3tools/tessaya-shared/formMorph";
+import { OWL, owlAt, type MorphDir, type MorphLook } from "@t3tools/tessaya-shared/formMorph";
 import { VRMLoaderPlugin, VRMUtils, type VRM, type VRMHumanBoneName } from "@pixiv/three-vrm";
 import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
 import {
@@ -104,8 +104,11 @@ import {
   prepareBody,
   type CartoonSpec,
   type CartoonHandsMode,
+  createFormSwap,
   type FormMorph,
+  type FormSwap,
 } from "./formMorph";
+import { makeWingRig, type WingRig } from "./wingRig";
 import {
   bodySkinOf,
   deepestIn,
@@ -738,6 +741,9 @@ const makeStage = (canvas: HTMLCanvasElement, tier: number) => {
   return { renderer, scene, camera, lights: { fill, sun, rim } };
 };
 
+/** Her animal stands three-quarters to him (radians). */
+const ANIMAL_TURN = 0.7;
+
 export function mountBody(
   canvas: HTMLCanvasElement,
   options: {
@@ -880,6 +886,19 @@ export function mountBody(
     done: (() => void) | null;
     /** Standing as her cartoon: her body is hidden, so nothing of hers needs a frame. */
     cartoon: boolean;
+  } | null = null;
+  // her animal (shift): loaded through the page's own base (a layer's private assets), swapped in through her skin
+  let beast: {
+    readonly of: VRM;
+    readonly url: string;
+    readonly root: THREE.Group;
+    readonly mixer: THREE.AnimationMixer | null;
+    readonly wings: WingRig | null;
+    readonly swap: FormSwap;
+    done: (() => void) | null;
+    /** Her animal stands now; while `until` is ahead it still settles (its clip, or the owl's flight). */
+    on: boolean;
+    life: { start: number; until: number } | null;
   } | null = null;
   let model: string | null = null;
   let shown = false;
@@ -2731,6 +2750,26 @@ export function mountBody(
           : [];
       soft.set([...his, ...own]);
     }
+    if (beast !== null && beast.swap.active()) {
+      lastMove = now;
+      if (!beast.swap.frame(now)) {
+        beast.done?.();
+        beast.done = null;
+      }
+    } else if (beast?.life != null) {
+      // her animal settles after it arrives (its clip, or the owl's flight), then holds still: nothing draws idle
+      const b = beast;
+      const life = b.life!;
+      const u = (now - life.start) / 1000;
+      if (b.wings) {
+        const o = owlAt(u, life.until);
+        b.wings.pose(o.phase, o.glide, 0);
+        b.root.position.y = o.air * OWL.height;
+        b.root.rotation.x = -(OWL.perch * (1 - o.air) + 0.05 * o.air + 0.15 * o.crouch);
+      } else b.mixer?.setTime(u);
+      if (u >= life.until) b.life = null;
+      lastMove = now;
+    }
     if (morph !== null && morph.player.active()) {
       lastMove = now;
       if (!morph.player.frame(now)) {
@@ -2757,7 +2796,10 @@ export function mountBody(
       stepping !== null ||
       handHeld ||
       now - lastMove < SETTLE_MS;
-    if (morph?.player.active() === true) schedule(1000 / TIERS[tier]!.fps);
+    if (morph?.player.active() === true || beast?.swap.active() === true || beast?.life != null)
+      schedule(1000 / TIERS[tier]!.fps);
+    // standing as her animal, her hidden body is not drawn: nothing of hers needs a frame (her springs never settle)
+    else if (beast?.on === true) return;
     // standing as her cartoon, nothing of her body needs a frame once the camera has settled
     else if (morph?.cartoon === true && !active(now)) return;
     else if (active(now) || motion.tremble > 0.05)
@@ -2791,8 +2833,8 @@ export function mountBody(
   const planBlink = () => {
     if (blinkTimer !== null || disposed) return;
     const fire = () => {
-      // no blink while she stands as her cartoon: her body is hidden (the next rest plans one again)
-      if (morph?.cartoon === true) return void (blinkTimer = null);
+      // no blink while she stands as her cartoon or her animal: her body is hidden (the next rest plans one again)
+      if (morph?.cartoon === true || beast?.on === true) return void (blinkTimer = null);
       // a held blink comes the moment the hold lets go, as a person's does
       const wait = (holds["blink"] ?? 0) - performance.now();
       if (wait > 0) return void (blinkTimer = setTimeout(fire, wait));
@@ -2833,6 +2875,9 @@ export function mountBody(
     }
     morph?.player.dispose();
     morph = null;
+    beast?.swap.dispose();
+    beast?.root.removeFromParent();
+    beast = null;
     vrm = next;
     overlays?.dispose();
     style = styleOf(next);
@@ -4425,9 +4470,102 @@ export function mountBody(
         invalidate();
       });
     },
+    /**
+     * Her animal (Library film-shapeshift-morph-live): "animal" closes her plain skin over her body and opens it as the
+     * animal; "body" changes back. The animal's glTF loads from `animal.url` (a layer's own assets); `spec` is her
+     * cartoon's skin, worn plain. A bird with `wings` takes off, flies a few beats and lands after it arrives; any other
+     * plays its `clip` for a few seconds. Resolves when the change has played.
+     */
+    shift: async (
+      to: "animal" | "body",
+      look: MorphLook,
+      opts: {
+        readonly base: string;
+        readonly spec: CartoonSpec;
+        readonly animal: {
+          readonly url: string;
+          readonly height: number;
+          readonly clip?: string;
+          readonly wings?: boolean;
+        };
+      },
+    ): Promise<void> => {
+      const her = vrm;
+      if (her === null) return;
+      if (beast === null || beast.of !== her || beast.url !== opts.animal.url) {
+        const [skin, gltf] = await Promise.all([
+          loadCartoonSkin(opts.base, opts.spec, "none"),
+          loader.loadAsync(opts.animal.url),
+        ]);
+        if (vrm !== her) return;
+        beast?.swap.dispose();
+        beast?.root.removeFromParent();
+        const obj = gltf.scene;
+        obj.traverse((o) => void (o.frustumCulled = false));
+        const meshes: THREE.Mesh[] = [];
+        obj.traverse((o) => void ((o as THREE.Mesh).isMesh && meshes.push(o as THREE.Mesh)));
+        const birdMesh = opts.animal.wings
+          ? meshes.find((m) => (m.geometry.morphAttributes["position"]?.length ?? 0) > 0)
+          : undefined;
+        const wings = birdMesh ? makeWingRig(birdMesh) : null;
+        if (wings) {
+          wings.pose(OWL.READY, 0, 0);
+          obj.rotation.x = -OWL.perch;
+        }
+        const fit = new THREE.Group();
+        fit.add(obj);
+        const place = new THREE.Group();
+        place.add(fit);
+        let box = new THREE.Box3().setFromObject(fit, true);
+        fit.scale.setScalar(opts.animal.height / (box.max.y - box.min.y || 1));
+        place.updateMatrixWorld(true);
+        box = new THREE.Box3().setFromObject(fit, true);
+        fit.position.y -= box.min.y;
+        // it stands where she stands, turned three-quarters so its shape reads (head-on, a fox is a thin column)
+        place.rotation.y = her.scene.rotation.y - baseYaw + ANIMAL_TURN;
+        place.visible = false;
+        root.add(place);
+        place.updateMatrixWorld(true);
+        const clip = gltf.animations.find((c) => c.name === opts.animal.clip) ?? null;
+        const mixer = clip && !wings ? new THREE.AnimationMixer(obj) : null;
+        if (mixer && clip) mixer.clipAction(clip).play();
+        mixer?.setTime(0);
+        beast = {
+          of: her,
+          url: opts.animal.url,
+          root: place,
+          mixer,
+          wings,
+          swap: createFormSwap(
+            root,
+            skin,
+            { form: prepareBody(her.scene, skin.plain), root: her.scene },
+            { form: prepareBody(place, skin.plain), root: place },
+          ),
+          done: null,
+          on: false,
+          life: null,
+        };
+      }
+      const b = beast;
+      b.done?.();
+      b.life = null;
+      b.on = false;
+      b.swap.start(to === "animal" ? "second" : "first", look);
+      await new Promise<void>((done) => {
+        b.done = () => {
+          b.on = to === "animal";
+          // arrived: the owl flies a few beats and lands, another animal plays its clip a while, then both hold still
+          if (b.on) b.life = { start: performance.now(), until: b.wings ? 5 : b.mixer ? 3 : 0 };
+          done();
+        };
+        invalidate();
+      });
+    },
     dispose: () => {
       disposed = true;
       if (lapse !== null) clearTimeout(lapse);
+      beast?.swap.dispose();
       morph?.player.dispose();
       hideNow();
       if (blinkTimer !== null) clearTimeout(blinkTimer);

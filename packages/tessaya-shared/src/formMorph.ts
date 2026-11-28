@@ -97,3 +97,83 @@ export function morphAt(dir: MorphDir, t: number, look: MorphLook = "original"):
     done: t >= morphSeconds(dir),
   };
 }
+
+/**
+ * One form to another (her body <-> an animal, M2M): the skin closes over the first form ("cover", v4's "out" half up
+ * to M2M.COVER), then reshapes from it into the second and lets the second's colours through ("reveal", the "in" half
+ * from M2M.IN0). The skin stays plain throughout and holds the first form until "reveal" moves it.
+ */
+interface SwapFrame {
+  /** The visible form's surface resolved from the crown down (cover: the first going, reveal: the second coming). */
+  readonly wipe: number;
+  readonly pp: number;
+  /** How far the skin has moved from the first form onto the second at height share h (reveal only; cover is 0). */
+  readonly hug: (h: number) => number;
+  /** The share of the way from the first form to the second, continuous across the hand-over. */
+  readonly prog: number;
+  readonly done: boolean;
+}
+const SWAP_U = { cover: [OUT_U[0], MORPH.M2M.COVER], reveal: [MORPH.M2M.IN0, IN_U[1]] } as const;
+
+/** How long each half of a form-to-form change takes (s). */
+export const swapSeconds = (half: "cover" | "reveal") =>
+  (SWAP_U[half][1] - SWAP_U[half][0]) / MORPH.FPS;
+
+/** Where a form-to-form change's half is `t` seconds after it began. */
+export function swapAt(
+  half: "cover" | "reveal",
+  t: number,
+  look: MorphLook = "original",
+): SwapFrame {
+  const { LEAD, DURS, DUR, HSTAG, M2M } = MORPH;
+  const u = SWAP_U[half][0] + t * MORPH.FPS;
+  const dir: MorphDir = half === "cover" ? "out" : "in";
+  const wipe0 = wPart(look === "water" ? LEAD.wipeWet : LEAD.wipe, DURS.wipe, u, dir);
+  const torso = wPart(LEAD.torso, DUR, u, dir);
+  const coverEnd = 1 - wPart(LEAD.torso, DUR, M2M.COVER, "out");
+  const reveal0 = wPart(LEAD.torso, DUR, M2M.IN0, "in");
+  return {
+    wipe: look === "water" ? 1 - (1 - wipe0) ** 1.6 : wipe0,
+    pp: wPart(LEAD.pp, DURS.pp, u, dir),
+    hug: (h) => (half === "cover" ? 0 : wPart(LEAD.hug + (1 - h) * HSTAG, DURS.hug, u, "in")),
+    prog:
+      half === "cover"
+        ? (0.5 * (1 - torso)) / coverEnd
+        : 0.5 + (0.5 * (torso - reveal0)) / (1 - reveal0),
+    done: t >= swapSeconds(half),
+  };
+}
+
+/** A bird's flight after it arrives (morph-live owl): crouch, a deep first beat lifts it, slow beats and flat glides. */
+export const OWL = {
+  LIFT: 0.65,
+  READY: 0.85,
+  beat: 0.95,
+  beats: 2,
+  glide: 1.3,
+  height: 0.85,
+  perch: 0.5,
+} as const;
+
+/** The owl `u` seconds into a flight of `span` seconds that ends landed: wing phase, glide, height share and crouch. */
+export function owlAt(u: number, span: number) {
+  const { LIFT, READY, beat, beats, glide } = OWL;
+  const land = span - 0.35;
+  const cyc = beats * beat + glide;
+  const c = Math.max(0, u - LIFT - 2 * beat) % cyc;
+  let phase =
+    u < LIFT ? READY + (1 - READY) * smooth((u - 0.3) / (LIFT - 0.3)) : ((u - LIFT) / beat) % 1;
+  let gl =
+    u > LIFT + 2 * beat
+      ? smooth((c - beats * beat) / 0.3) * (1 - smooth((c - cyc + 0.3) / 0.3))
+      : 0;
+  // glides in to land, then wings back up, ready
+  gl = Math.max(gl, smooth((u - (land - 0.9)) / 0.3));
+  if (u > land) {
+    gl = 1 - smooth((u - land) / 0.3);
+    phase = READY;
+  }
+  const air = smooth(Math.min((u - LIFT) / 1.2, (land - u) / 1.2));
+  const crouch = u < LIFT + 0.15 ? Math.sin(Math.PI * Math.min(1, u / (LIFT + 0.15))) : 0;
+  return { phase, glide: gl, air, crouch, done: u >= span };
+}

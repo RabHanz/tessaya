@@ -7,6 +7,8 @@
 import {
   morphAt,
   morphSeconds,
+  swapAt,
+  swapSeconds,
   type MorphDir,
   type MorphLook,
 } from "@t3tools/tessaya-shared/formMorph";
@@ -326,8 +328,17 @@ function patchMaterial(m: THREE.Material, U: U) {
 
 const _v = new THREE.Vector3();
 
-/** Readies a loaded body (VRM scene or any skinned glTF) for the change: once per model. */
+// a body's materials are patched once with one set of uniforms: every later change on it shares them
+const prepared = new WeakMap<THREE.Object3D, BodyForm>();
+
+/** Readies a loaded body (VRM scene or any skinned glTF) for the change: once per model, the skin's plain colour each time. */
 export function prepareBody(root: THREE.Object3D, plain: THREE.Color): BodyForm {
+  const known = prepared.get(root);
+  if (known) {
+    (known.U.uLow!.value as THREE.Color).copy(plain).multiplyScalar(0.9);
+    (known.U.uHigh!.value as THREE.Color).copy(plain).lerp(new THREE.Color(1, 1, 1), 0.35);
+    return known;
+  }
   root.updateMatrixWorld(true);
   const meshes: THREE.Mesh[] = [];
   root.traverse((o) => {
@@ -410,7 +421,7 @@ export function prepareBody(root: THREE.Object3D, plain: THREE.Color): BodyForm 
       cell[c * 2 + 1] = cell[got * 2 + 1]!;
     }
   }
-  return {
+  const form: BodyForm = {
     U,
     meshes,
     cell,
@@ -419,6 +430,8 @@ export function prepareBody(root: THREE.Object3D, plain: THREE.Color): BodyForm 
     cs: new Float32Array(GRID_R * NC),
     tmp: new Float32Array(GRID_A * GRID_R * 3),
   };
+  prepared.set(root, form);
+  return form;
 }
 
 const LP_K = 4;
@@ -753,6 +766,138 @@ export function createFormMorph(
       skin.face?.mesh.geometry.dispose();
       skin.face?.mesh.material.dispose();
       skin.hands?.dispose();
+    },
+  };
+}
+
+export interface FormSwap {
+  /** Starts a change from the first form to the second ("to": "second"), or back ("to": "first"). */
+  readonly start: (to: "first" | "second", look: MorphLook) => void;
+  /** Draws the change `now` (ms); false once it has finished. */
+  readonly frame: (now: number) => boolean;
+  readonly active: () => boolean;
+  readonly dispose: () => void;
+}
+
+/**
+ * One form to another through her plain skin (M2M: her body and an animal): the skin closes over the form she leaves,
+ * reshapes into the one she takes, and lets its colours through. The skin is the cartoon's, kept plain; no face, parts
+ * or hands ride it.
+ */
+export function createFormSwap(
+  scene: THREE.Object3D,
+  skin: CartoonSkin,
+  first: { readonly form: BodyForm; readonly root: THREE.Object3D },
+  second: { readonly form: BodyForm; readonly root: THREE.Object3D },
+): FormSwap {
+  scene.add(skin.mesh);
+  const pos = skin.mesh.geometry.attributes.position as THREE.BufferAttribute;
+  let run: { from: typeof first; to: typeof first; look: MorphLook; t0: number | null } | null =
+    null;
+  const rest = (b: BodyForm) => {
+    b.U.uLevel!.value = -10;
+    b.U.uLegs!.value = -10;
+    b.U.uPP!.value = 1;
+    b.U.uWtr!.value = 0;
+  };
+  return {
+    start: (to, look) => {
+      const [from, into] = to === "second" ? [first, second] : [second, first];
+      run = { from, to: into, look, t0: null };
+    },
+    active: () => run !== null,
+    frame: (now) => {
+      if (run === null) return false;
+      run.t0 ??= now;
+      const t = (now - run.t0) / 1000;
+      const { from, to, look } = run;
+      const covering = t < swapSeconds("cover");
+      const half = covering ? "cover" : "reveal";
+      const f = swapAt(
+        half,
+        covering ? t : Math.min(t - swapSeconds("cover"), swapSeconds("reveal")),
+        look,
+      );
+      if (!covering && f.done) {
+        rest(to.form);
+        to.root.visible = true;
+        from.root.visible = false;
+        skin.mesh.visible = false;
+        run = null;
+        return false;
+      }
+      const wet = look === "water";
+      // cover: the skin holds the form she leaves; reveal: it moves from that form onto the one she takes
+      const M = covering ? from : to;
+      M.root.visible = true;
+      M.root.updateMatrixWorld(true);
+      if (!covering) from.root.updateMatrixWorld(true);
+      trackGrid(from.form);
+      if (!covering) trackGrid(to.form);
+      if (!covering) from.root.visible = false;
+      const A = from.form.pos;
+      const B = to.form.pos;
+      const arr = pos.array as Float32Array;
+      let top = -1e9;
+      let bot = 1e9;
+      for (let i = 0; i < skin.n; i++) {
+        let x = 0;
+        let y = 0;
+        let z = 0;
+        let bx = 0;
+        let by = 0;
+        let bz = 0;
+        const w = f.hug(skin.hh[i]!);
+        for (let k = 0; k < 4; k++) {
+          const g = skin.g0[i * 4 + k]! * 3;
+          const gw = skin.gw[i * 4 + k]!;
+          x += A[g]! * gw;
+          y += A[g + 1]! * gw;
+          z += A[g + 2]! * gw;
+          if (w > 0.001) {
+            bx += B[g]! * gw;
+            by += B[g + 1]! * gw;
+            bz += B[g + 2]! * gw;
+          }
+        }
+        if (w > 0.001) {
+          x += (bx - x) * w;
+          y += (by - y) * w;
+          z += (bz - z) * w;
+        }
+        if (wet) {
+          const th = skin.th[i]!;
+          const d = (4 * w * (1 - w) + 0.3) * 0.02 * Math.sin(15 * y - 9 * t + 3 * th);
+          x += Math.cos(th) * d;
+          z += Math.sin(th) * d;
+        }
+        arr[i * 3] = x;
+        arr[i * 3 + 1] = y;
+        arr[i * 3 + 2] = z;
+        top = Math.max(top, y);
+        bot = Math.min(bot, y);
+      }
+      pos.needsUpdate = true;
+      if (wet) skin.mesh.geometry.computeVertexNormals();
+      const lvl = top + 0.12 - (top - bot + 0.3) * f.wipe;
+      skin.U.uPlainAmt!.value = 1;
+      skin.U.uLevel!.value = lvl;
+      skin.U.uWtr!.value = wet ? 1 : 0;
+      skin.U.uWT!.value = t;
+      skin.mesh.visible = f.wipe < 0.999;
+      (skin.mesh.material as THREE.ShaderMaterial).transparent = wet;
+      M.form.U.uLevel!.value = f.wipe > 1e-3 ? lvl : 10;
+      M.form.U.uLegs!.value = -10;
+      M.form.U.uPP!.value = f.pp;
+      M.form.U.uWtr!.value = wet ? 1 : 0;
+      M.form.U.uWT!.value = t;
+      if (f.wipe <= 1e-3) M.root.visible = !covering;
+      return true;
+    },
+    dispose: () => {
+      skin.mesh.removeFromParent();
+      skin.mesh.geometry.dispose();
+      (skin.mesh.material as THREE.ShaderMaterial).dispose();
     },
   };
 }
