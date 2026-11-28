@@ -1500,10 +1500,10 @@ index 61307d2992e025a13693a423d81907bc2d645487..3552cff95908c0faefda81e458c9fb80
 +  "exclude": ["tessaya/**"]
  }
 diff --git a/third-party-licenses.config.json b/third-party-licenses.config.json
-index 3f5ed2ff2c4de8646ee8914184d98d8d4847df3c..e801a5d9e0476098b3e7e165423545ffe1da851d 100644
+index 3f5ed2ff2c4de8646ee8914184d98d8d4847df3c..98ea6ff428c57af31a513743c4e3ee5711e39c4f 100644
 --- a/third-party-licenses.config.json
 +++ b/third-party-licenses.config.json
-@@ -256,6 +256,22 @@
+@@ -256,6 +256,30 @@
      }
    ],
    "packageOverrides": [
@@ -1517,6 +1517,14 @@ index 3f5ed2ff2c4de8646ee8914184d98d8d4847df3c..e801a5d9e0476098b3e7e165423545ff
 +    },
 +    {
 +      "name": "onnxruntime-common",
++      "sourceUrl": "https://github.com/microsoft/onnxruntime",
++      "generatedNotice": {
++        "licenseId": "MIT",
++        "copyrights": ["Copyright (c) Microsoft Corporation"]
++      }
++    },
++    {
++      "name": "onnxruntime-react-native",
 +      "sourceUrl": "https://github.com/microsoft/onnxruntime",
 +      "generatedNotice": {
 +        "licenseId": "MIT",
