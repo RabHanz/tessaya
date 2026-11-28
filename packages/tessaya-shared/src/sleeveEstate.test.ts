@@ -5,7 +5,10 @@ import {
   fingerSkin,
   pinchScale,
   PX_PER_CM,
+  readStageAsk,
   STAGE_SCALE,
+  stageCard,
+  timerLeft,
   wanderSpot,
 } from "./sleeveEstate.ts";
 
@@ -59,5 +62,72 @@ describe("her estate on a Sleeve", () => {
     // no contact size and the browser's stand-in force: a fingertip, force unknown
     expect(fingerSkin(1, 1, 0.5)).toEqual({ areaCm2: 1.2, pressure: null });
     expect(fingerSkin(0, 0, 0)).toEqual({ areaCm2: 1.2, pressure: null });
+  });
+});
+
+describe("what she calls up on her estate", () => {
+  const here = {
+    now: 1_000_000,
+    dayEnd: 5_000_000,
+    day: "Saturday",
+    clock: (at: number) => `t${at}`,
+  };
+  const feed = {
+    timers: [
+      { title: "Pasta timer", endsAt: 1_300_000 },
+      { title: "Tea timer", endsAt: 1_100_000 },
+      { title: "Old timer", endsAt: 900_000 },
+    ],
+    upcoming: [
+      { title: "Dentist", at: 2_000_000 },
+      { title: "Tomorrow's call", at: 6_000_000 },
+      { title: "Gone", at: 500_000 },
+    ],
+  };
+  const card = (value: string, f = feed) => {
+    const ask = readStageAsk(value);
+    if (ask === null || ask.kind === "clear") return ask;
+    return stageCard({ ...ask, kind: ask.kind }, f, here);
+  };
+
+  it("reads her brain's ask, and refuses one she cannot show", () => {
+    expect(readStageAsk(" Note : buy milk")).toEqual({ kind: "note", text: "buy milk" });
+    expect(readStageAsk("put away")).toEqual({ kind: "clear", text: "" });
+    expect(readStageAsk("photo")).toBeNull();
+  });
+
+  it("holds his soonest running timer, or the one he named, counting down from Coming up", () => {
+    expect(card("timer")).toMatchObject({
+      title: "Tea timer",
+      endsAt: 1_100_000,
+      prop: "stopwatch",
+    });
+    expect(card("timer: pasta")).toMatchObject({ title: "Pasta timer", endsAt: 1_300_000 });
+    expect(card("timer", { ...feed, timers: [] })).toBe("No timer is running: set one first.");
+  });
+
+  it("shows the rest of today only, on her clipboard", () => {
+    expect(card("today")).toMatchObject({
+      title: "Saturday",
+      lines: ["t2000000  Dentist"],
+      prop: "clipboard",
+    });
+  });
+
+  it("takes what her tools read for the rest, with the prop that means it", () => {
+    expect(card("weather: Light rain, 12°")).toMatchObject({
+      prop: "umbrella",
+      gesture: "pointAt",
+    });
+    expect(card("weather: Sunny spells")).toMatchObject({ prop: "sunglasses" });
+    expect(card("weather: Overcast")).toMatchObject({ prop: null, lines: ["Overcast"] });
+    expect(card("music: Clair de lune")).toMatchObject({ prop: "headphones" });
+    expect(card("note")).toBe("Say what the note is.");
+  });
+
+  it("reads a timer's time left", () => {
+    expect(timerLeft(65_400, 0)).toBe("1:06");
+    expect(timerLeft(3_720_000, 0)).toBe("1:02:00");
+    expect(timerLeft(0, 5)).toBe("0:00");
   });
 });

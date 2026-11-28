@@ -6,6 +6,8 @@
 /* oxlint-disable t3code/no-untranslated-copy -- these answers go to her brain, which words them for him */
 import { useAtomValue } from "@effect/atom-react";
 import type { DeviceWrite } from "@t3tools/tessaya-contracts";
+import { fromUpcoming } from "@t3tools/tessaya-shared/island";
+import { readStageAsk, stageCard, type StageFeed } from "@t3tools/tessaya-shared/sleeveEstate";
 import * as Notifications from "expo-notifications";
 import { useEffect } from "react";
 import { Linking, Platform, Share } from "react-native";
@@ -15,6 +17,7 @@ import { tessayaWorkSessions } from "../../../state/tessayaWorkSessions";
 import { useAtomCommand } from "../../../state/use-atom-command";
 import { thisPhoneManifest } from "../devices/thisPhone";
 import { callUrl, messageUrl } from "./sleeveActs.logic";
+import { sleeveStage } from "./sleeveStage";
 
 type Ack = { readonly id: string; readonly ok: boolean; readonly error?: string };
 const WAIT_MS = 15_000;
@@ -27,7 +30,53 @@ const open = async (url: string | null, what: string): Promise<Omit<Ack, "id">> 
   );
 };
 
-const run = async (w: DeviceWrite): Promise<Omit<Ack, "id">> => {
+const NO_FEED: StageFeed = { timers: [], upcoming: [] };
+
+const stage = async (
+  value: string,
+  feed: () => Promise<StageFeed | null>,
+): Promise<Omit<Ack, "id">> => {
+  const ask = readStageAsk(value);
+  if (ask === null)
+    return {
+      ok: false,
+      error: "Her stage shows a timer, today, a note, the weather, music or a call.",
+    };
+  if (ask.kind === "clear") {
+    // nothing showing is already put away
+    sleeveStage(null);
+    return { ok: true };
+  }
+  const live = ask.kind === "timer" || ask.kind === "today" ? await feed() : NO_FEED;
+  if (live === null) return { ok: false, error: "Coming up could not be read just now." };
+  const now = Date.now();
+  const end = new Date(now);
+  end.setHours(24, 0, 0, 0);
+  const card = stageCard({ ...ask, kind: ask.kind }, live, {
+    now,
+    dayEnd: end.getTime(),
+    day: new Date(now).toLocaleDateString(undefined, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    }),
+    clock: (at) =>
+      new Date(at).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+  });
+  if (typeof card === "string") return { ok: false, error: card };
+  return sleeveStage(card)
+    ? { ok: true }
+    : {
+        ok: false,
+        error:
+          "Her stage is not on this phone's screen just now (she is in her full body or away).",
+      };
+};
+
+const run = async (
+  w: DeviceWrite,
+  feed: () => Promise<StageFeed | null>,
+): Promise<Omit<Ack, "id">> => {
   const text = typeof w.value === "string" ? w.value : "";
   switch (w.itemId) {
     case "phone.call":
@@ -51,6 +100,8 @@ const run = async (w: DeviceWrite): Promise<Omit<Ack, "id">> => {
         () => ({ ok: false, error: "The note could not be shown." }),
       );
     }
+    case "phone.stage":
+      return stage(text, feed);
     default:
       return { ok: false, error: "This phone does not do that." };
   }
@@ -61,10 +112,16 @@ export function useSleeveActs(on: boolean, come: (wearing: string | null) => voi
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
   const devicesCall = useAtomCommand(tessayaWorkSessions.devicesCall, { reportFailure: false });
   const castCall = useAtomCommand(tessayaWorkSessions.castCall, { reportFailure: false });
+  const listUpcoming = useAtomCommand(tessayaWorkSessions.upcomingList, { reportFailure: false });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- a long wait on her brain for writes, held while the Sleeve shows
   useEffect(() => {
     if (!on || environmentId === null) return;
     let stopped = false;
+    // Coming up read fresh for the timer or today she holds, as the island reads it
+    const feed = async () => {
+      const r = await listUpcoming({ environmentId, input: { days: 1 } });
+      return r._tag === "Success" ? fromUpcoming(r.value.items) : null;
+    };
     void (async () => {
       let acks: Array<Ack> = [];
       let worn: string | null | undefined;
@@ -95,7 +152,7 @@ export function useSleeveActs(on: boolean, come: (wearing: string | null) => voi
           continue;
         }
         const writes = (r.value.value as { writes?: ReadonlyArray<DeviceWrite> }).writes ?? [];
-        for (const w of writes) acks.push({ id: w.id, ...(await run(w)) });
+        for (const w of writes) acks.push({ id: w.id, ...(await run(w, feed)) });
       }
     })();
     return () => {

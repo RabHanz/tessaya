@@ -32,6 +32,15 @@ describe("tessaya-room grader", () => {
     expect(asked(["human"])).toBeNull();
   });
 
+  it("fails a stage ask that set nothing on her Sleeve, or set something else", () => {
+    const c = caseOf("sleeve-stage-note");
+    const set = (sets: ReadonlyArray<string>) =>
+      failureOf(c, sample({ calls: ["device_set"], sets }));
+    expect(set([])).toMatch(/^set nothing like/);
+    expect(set(["phone.notify=buy milk"])).toMatch(/^set nothing like/);
+    expect(set(["phone.stage=note: Buy milk"])).toBeNull();
+  });
+
   it("fails her saying the same thing twice where a case asks for distinct replies", () => {
     const c = caseOf("presence-missed-you");
     const said = (replies: ReadonlyArray<string>) =>

@@ -51,6 +51,7 @@ import { phoneSoulIs } from "../private/privateLayer";
 import { useBottomClearance } from "../layout/screenInsets";
 import { phoneTalk, usePhoneVesselReady } from "../../tessel/phoneRoute";
 import { setSleeveListen } from "../sleeve/sleeveListen";
+import { setSleeveStage } from "../sleeve/sleeveStage";
 import { thisPhoneManifest } from "../devices/thisPhone";
 import { useSleeveCovering } from "../sleeve/useSleeve";
 import { SleeveName } from "../sleeve/SleeveChrome";
@@ -528,6 +529,13 @@ export function TalkView(props: {
     if (away && listening) void voice.stop();
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- only her going and coming back moves her
   }, [sleeve, away]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- her stage (a WebView, outside React) holds what her brain calls up
+  useEffect(() => {
+    if (!cartoon || !drawing) return;
+    setSleeveStage((card) => post({ type: "stage", card }));
+    return () => setSleeveStage(null);
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- post writes to the current page
+  }, [cartoon, drawing]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the island (outside this screen) that she is listening
   useEffect(() => {
     if (listening) setHerPhase("listening");

@@ -72,3 +72,120 @@ export const fingerSkin = (
     pressure: pressure > 0 && pressure !== 0.5 ? Math.min(1, pressure) : null,
   };
 };
+
+/**
+ * What she can call up on her estate and hold (REQ-25-167): each from the service that owns it. A timer and today come
+ * live from Coming up; a note, the weather, music or a call are what her tools just read, in her words.
+ */
+export const STAGE_KINDS = ["timer", "today", "note", "weather", "music", "call"] as const;
+export type StageKind = (typeof STAGE_KINDS)[number];
+export interface StageAsk {
+  readonly kind: StageKind | "clear";
+  readonly text: string;
+}
+/** A card beside her, and what she holds or does with it (props.js ids, rig.js clips). */
+export interface StageCard {
+  readonly kind: StageKind;
+  readonly title: string;
+  readonly lines: ReadonlyArray<string>;
+  /** A timer counts down to this (epoch ms) on the card itself. */
+  readonly endsAt: number | null;
+  readonly prop: string | null;
+  readonly gesture: string | null;
+}
+/** What Coming up says now (island fromUpcoming): his timers, and the rest of his timed items. */
+export interface StageFeed {
+  readonly timers: ReadonlyArray<{ readonly title: string; readonly endsAt: number }>;
+  readonly upcoming: ReadonlyArray<{ readonly title: string; readonly at: number }>;
+}
+
+/** Her brain's ask, as the `phone.stage` item takes it: "timer", "today", "note: buy milk", "clear". */
+export const readStageAsk = (value: string): StageAsk | null => {
+  const at = value.indexOf(":");
+  const kind = (at < 0 ? value : value.slice(0, at)).trim().toLowerCase();
+  const text =
+    at < 0
+      ? ""
+      : value
+          .slice(at + 1)
+          .trim()
+          .slice(0, 240);
+  if (/^(clear|off|none|away|put away)$/.test(kind)) return { kind: "clear", text: "" };
+  return (STAGE_KINDS as ReadonlyArray<string>).includes(kind)
+    ? { kind: kind as StageKind, text }
+    : null;
+};
+
+const PROPS: Record<Exclude<StageKind, "weather">, string> = {
+  timer: "stopwatch",
+  today: "clipboard",
+  note: "pencil",
+  music: "headphones",
+  call: "phone",
+};
+const weatherProp = (text: string) =>
+  /\b(rain|shower|drizzl|storm|snow|sleet|wet)/i.test(text)
+    ? "umbrella"
+    : /\b(sun|clear|bright|hot)/i.test(text)
+      ? "sunglasses"
+      : null;
+
+/** Where and when the phone is: now, the end of his today (epoch ms), today's name and a time read in his own zone. */
+export interface StageHere {
+  readonly now: number;
+  readonly dayEnd: number;
+  readonly day: string;
+  readonly clock: (at: number) => string;
+}
+
+/** The card for an ask, or why it cannot show (for her brain to word). */
+export const stageCard = (
+  ask: StageAsk & { readonly kind: StageKind },
+  feed: StageFeed,
+  { now, dayEnd, day, clock }: StageHere,
+): StageCard | string => {
+  const base = { kind: ask.kind, endsAt: null, gesture: null };
+  switch (ask.kind) {
+    case "timer": {
+      const running = feed.timers
+        .filter((t) => t.endsAt > now)
+        .toSorted((a, b) => a.endsAt - b.endsAt);
+      const named = running.find(
+        (t) => ask.text !== "" && t.title.toLowerCase().includes(ask.text.toLowerCase()),
+      );
+      const timer = named ?? running[0];
+      if (timer === undefined) return "No timer is running: set one first.";
+      return { ...base, title: timer.title, lines: [], endsAt: timer.endsAt, prop: PROPS.timer };
+    }
+    case "today": {
+      const items = feed.upcoming.filter((i) => i.at >= now && i.at < dayEnd).slice(0, 5);
+      return {
+        ...base,
+        title: day,
+        lines: items.map((i) => `${clock(i.at)}  ${i.title}`),
+        prop: PROPS.today,
+      };
+    }
+    case "weather":
+      if (ask.text === "") return "Say what the weather is, from your search.";
+      return {
+        ...base,
+        title: "",
+        lines: [ask.text],
+        prop: weatherProp(ask.text),
+        gesture: "pointAt",
+      };
+    default:
+      if (ask.text === "") return `Say what the ${ask.kind} is.`;
+      return { ...base, title: "", lines: [ask.text], prop: PROPS[ask.kind] };
+  }
+};
+
+/** A timer's time left as the card reads it: "4:05", or "1:02:00" past an hour. */
+export const timerLeft = (endsAt: number, now: number): string => {
+  const s = Math.max(0, Math.ceil((endsAt - now) / 1000));
+  const two = (n: number) => String(n).padStart(2, "0");
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}:${two(m)}:${two(s % 60)}` : `${m}:${two(s % 60)}`;
+};

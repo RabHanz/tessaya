@@ -53,6 +53,8 @@ export interface RoomCase {
   readonly callsAtMost?: Readonly<Record<string, number>>;
   /** The forms she asks the Cast for (tessaya_cast form), in order, across the conversation. */
   readonly forms?: ReadonlyArray<"human" | "cartoon">;
+  /** Each must match one of her device_set calls, read as "itemId=value". */
+  readonly sets?: ReadonlyArray<RegExp>;
   /** The study lamp's state after each sentence, when the case acts on it. */
   readonly lampAfter?: ReadonlyArray<"on" | "off">;
   /** At least this many of the specialists' names must be in the last reply. */
@@ -109,6 +111,16 @@ export interface RoomCase {
 
 /** The turn's clock in every case: 10:15 his time on 12 Nov. */
 export const ROOM_NOW = Date.UTC(2026, 10, 12, 5, 15);
+// his phone as her Sleeve, where this turn came through
+const SLEEVE_HERE = `You are speaking through his phone, a Sleeve: this turn came through it. ${bodyLine(
+  phoneManifest({
+    installId: "iphone13",
+    model: "iPhone 13",
+    os: "iOS",
+    motion: true,
+    sleeve: true,
+  }).items,
+)}`;
 const ago = (minutes: number) =>
   DateTime.formatIso(DateTime.makeUnsafe(ROOM_NOW - minutes * 60_000));
 const tesselItem = (id: string, label: string, access: string, group: string, unit?: string) => ({
@@ -1684,17 +1696,40 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     said: ["what can you do in my phone?"],
     verified: true,
     sleevePhone: true,
-    memory: `You are speaking through his phone, a Sleeve: this turn came through it. ${bodyLine(
-      phoneManifest({
-        installId: "iphone13",
-        model: "iPhone 13",
-        os: "iOS",
-        motion: true,
-        sleeve: true,
-      }).items,
-    )}`,
+    memory: SLEEVE_HERE,
     lastSays: [/call|text|messag/i, /note|lock screen|share/i],
     callsAtMost: { home_do: 0, device_set: 0 },
+  },
+  // REQ-25-167: live things she calls up on her estate and holds, by voice
+  {
+    id: "sleeve-stage-timer",
+    source: "REQ-25-167: a timer in her hand, counting down on his phone",
+    said: ["show me my pasta timer"],
+    verified: true,
+    sleevePhone: true,
+    memory: SLEEVE_HERE,
+    sets: [/^phone\.stage=timer\b/i],
+    callsAtMost: { home_do: 0 },
+  },
+  {
+    id: "sleeve-stage-note",
+    source: "REQ-25-167: a note she holds up on his phone",
+    said: ["hold up a note that says buy milk"],
+    verified: true,
+    sleevePhone: true,
+    memory: SLEEVE_HERE,
+    sets: [/^phone\.stage=note:\s*buy milk/i],
+    callsAtMost: { home_do: 0 },
+  },
+  {
+    id: "sleeve-stage-clear",
+    source: "REQ-25-167: the way out, put away by voice",
+    said: ["put that away"],
+    verified: true,
+    sleevePhone: true,
+    memory: `${SLEEVE_HERE} Beside you on its screen you are holding a note: buy milk.`,
+    sets: [/^phone\.stage=clear/i],
+    callsAtMost: { home_do: 0 },
   },
   {
     id: "board-doing",
