@@ -51,6 +51,8 @@ export interface RoomCase {
   /** Tools that must be called at least once, and how many times at most. */
   readonly calls?: ReadonlyArray<string>;
   readonly callsAtMost?: Readonly<Record<string, number>>;
+  /** The forms she asks the Cast for (tessaya_cast form), in order, across the conversation. */
+  readonly forms?: ReadonlyArray<"human" | "cartoon">;
   /** The study lamp's state after each sentence, when the case acts on it. */
   readonly lampAfter?: ReadonlyArray<"on" | "off">;
   /** At least this many of the specialists' names must be in the last reply. */
@@ -1623,6 +1625,25 @@ export const roomCases: ReadonlyArray<RoomCase> = [
     memory:
       "You are speaking through R1, in the study: this turn came through it, so it is on and hears him. Right now you are also in your body on his desktop.",
     lastSays: [/desktop|desk/i],
+  },
+  // M-156: her form on request, from wherever he is: her full body (a human VRM) or her cartoon.
+  {
+    id: "form-body",
+    source: 'M-156: "change into your body" puts on her full body (the desktop\'s Her body)',
+    said: ["change into your body"],
+    verified: true,
+    calls: ["tessaya_cast"],
+    forms: ["human"],
+    callsAtMost: { home_do: 0 },
+  },
+  {
+    id: "form-cartoon",
+    source: 'M-156: "back to cartoon" takes her full body off again',
+    said: ["back to cartoon"],
+    verified: true,
+    calls: ["tessaya_cast"],
+    forms: ["cartoon"],
+    callsAtMost: { home_do: 0 },
   },
   // M-158: his phone as her Sleeve, a body she can be called to and knows the abilities of.
   {
