@@ -308,10 +308,10 @@ index 3dd64c9b1bcc7059c1fcd3af462a701babbae979..35bf5d42afb7b279ec4a514086327370
        } as never);
      }).pipe(Effect.provide(layer));
 diff --git a/apps/server/src/speech/postProcessing.ts b/apps/server/src/speech/postProcessing.ts
-index 92f4af17696c34788e0b042971cad6389ce2fe4e..eeb742c9c0b84eac0d3eb1d220dd808e93a49f5a 100644
+index 92f4af17696c34788e0b042971cad6389ce2fe4e..37f458a60b8a70cc425037e8fe240e3a1fe0fc85 100644
 --- a/apps/server/src/speech/postProcessing.ts
 +++ b/apps/server/src/speech/postProcessing.ts
-@@ -1,11 +1,14 @@
+@@ -1,18 +1,22 @@
 +import type { EnvironmentSpeechPostProcessingRequest, ModelSelection } from "@t3tools/contracts";
  import {
 -  DEFAULT_SPEECH_POST_PROCESSING_PROMPT,
@@ -329,15 +329,16 @@ index 92f4af17696c34788e0b042971cad6389ce2fe4e..eeb742c9c0b84eac0d3eb1d220dd808e
  import { resolveSpeechPostProcessingModelSelection } from "@t3tools/shared/serverSettings";
  
  import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
-@@ -13,6 +16,7 @@ import * as ServerSettings from "../serverSettings.ts";
+ import * as ServerSettings from "../serverSettings.ts";
  import * as TextGeneration from "../textGeneration/TextGeneration.ts";
  import { buildTranscriptionPostProcessingPrompt } from "../textGeneration/TranscriptionPostProcessing.ts";
- import { applySpeechAliases } from "./customWords.ts";
+-import { applySpeechAliases } from "./customWords.ts";
++import { applySpeechAliases, withServerWords } from "./customWords.ts";
 +import { DictationCleanupApi } from "./DictationCleanupApi.ts";
  import { SpeechOperationError } from "./SpeechService.ts";
  
  export class SpeechPostProcessing extends Context.Service<
-@@ -24,11 +28,17 @@ export class SpeechPostProcessing extends Context.Service<
+@@ -24,40 +28,102 @@ export class SpeechPostProcessing extends Context.Service<
    }
  >()("t3/speech/postProcessing/SpeechPostProcessing") {}
  
@@ -355,13 +356,15 @@ index 92f4af17696c34788e0b042971cad6389ce2fe4e..eeb742c9c0b84eac0d3eb1d220dd808e
    return SpeechPostProcessing.of({
      process: Effect.fn("SpeechPostProcessing.process")(
        function* (input) {
-@@ -36,28 +46,83 @@ const make = Effect.gen(function* () {
+         if (input.transcript.trim().length === 0) return { text: input.transcript };
          const settings = yield* settingsService.getSettings;
++        const options = withServerWords(input.options, settings.speechProjectCustomWords);
          const providers = yield* providerRegistry.getProviders;
-         const { mode, customInstructions } = input.options.speechPostProcessingPrompt;
+-        const { mode, customInstructions } = input.options.speechPostProcessingPrompt;
 -        const instructions =
 -          (mode === "custom" ? customInstructions.trim() : "") ||
 -          DEFAULT_SPEECH_POST_PROCESSING_PROMPT;
++        const { mode, customInstructions } = options.speechPostProcessingPrompt;
          // Providers run in a working directory; cleanup must not read a checkout.
          const cwd = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-voice-cleanup-" });
 -        const generated = yield* textGeneration.generateTranscriptionPostProcessing({
@@ -392,19 +395,19 @@ index 92f4af17696c34788e0b042971cad6389ce2fe4e..eeb742c9c0b84eac0d3eb1d220dd808e
 +              custom,
 +              input.transcript,
 +              input.draft,
-+              input.options.speechCorrectionWord,
++              options.speechCorrectionWord,
 +            ),
 +            modelSelection,
 +          );
 +          return {
 +            text:
 +              text.length > 0
-+                ? applySpeechAliases(text, input.options.speechCustomWords)
++                ? applySpeechAliases(text, options.speechCustomWords)
 +                : input.transcript,
 +          };
 +        }
 +        // The desktop's clean-up (prompt, checker, one retry), with his one dictionary as T3's list carries it.
-+        const dictionary = input.options.speechCustomWords.map((w) => ({
++        const dictionary = options.speechCustomWords.map((w) => ({
 +          phrase: w.term,
 +          replacement: null,
 +          heard: w.aliases,
@@ -454,7 +457,7 @@ index 92f4af17696c34788e0b042971cad6389ce2fe4e..eeb742c9c0b84eac0d3eb1d220dd808e
 +          yield* Effect.logWarning("dictation clean-up fell back to the local text", {
 +            why: cleaned.why,
 +          });
-+        return { text: applySpeechAliases(cleaned.text, input.options.speechCustomWords) };
++        return { text: applySpeechAliases(cleaned.text, options.speechCustomWords) };
        },
        Effect.scoped,
        Effect.mapError((cause) => new SpeechOperationError({ operation: "post-processing", cause })),

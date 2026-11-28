@@ -154,10 +154,10 @@ index 8bef7492c5b0f84e6b8f4fe81f8b6b6ffb0b5aa8..276d0094ef9a642a1df2055359c4d5b0
      "react-native-pdf-jsi": "6.1.0",
      "react-native-reanimated": "4.8.0",
 diff --git a/apps/server/package.json b/apps/server/package.json
-index 033a4e5dd726ab0014d36030f366d45d4458da8e..98ab91f76d8fb53af54bee32c4699ad12d93387a 100644
+index 033a4e5dd726ab0014d36030f366d45d4458da8e..49ff10e8da60755f2ac7939c42332e84f2c32e05 100644
 --- a/apps/server/package.json
 +++ b/apps/server/package.json
-@@ -62,11 +62,15 @@
+@@ -62,17 +62,21 @@
      "@t3tools/source-control-github": "workspace:*",
      "@t3tools/source-control-gitlab": "workspace:*",
      "@t3tools/source-control-tanstack-source": "workspace:*",
@@ -173,6 +173,13 @@ index 033a4e5dd726ab0014d36030f366d45d4458da8e..98ab91f76d8fb53af54bee32c4699ad1
      "playwright-core": "1.64.1",
      "proper-lockfile": "4.1.2",
      "saxes": "6.0.0",
+     "stream-chain": "^4.2.5",
+     "stream-json": "3.7.0",
+-    "transcribe-cpp": "0.4.1",
++    "transcribe-cpp": "0.5.0",
+     "undici": "catalog:",
+     "yaml": "catalog:",
+     "yauzl": "^3.4.0",
 diff --git a/apps/server/vite.config.ts b/apps/server/vite.config.ts
 index 2bec8830d86c51b2fff6883b2e8d232741fa8800..a34dcdac4c95ad76f272610ad2f7e91a44e69336 100644
 --- a/apps/server/vite.config.ts

@@ -1,0 +1,281 @@
+Tessaya: the server speech service is the one recogniser for every client: the personal model from
+~/.tessaya/personal-models, the server dictionary joined to client words, transcribe-cpp 0.5.0 (decoder vocabulary).
+
+diff --git a/apps/server/scripts/speech-catalog.test.ts b/apps/server/scripts/speech-catalog.test.ts
+index 1ec8fe99b705d47171a2243cc51dcff292b46159..288893b5e444a88e1af307352b75c15a613484a1 100644
+--- a/apps/server/scripts/speech-catalog.test.ts
++++ b/apps/server/scripts/speech-catalog.test.ts
+@@ -45,7 +45,7 @@ it("reproduces the bundled registry byte for byte without upstream requests", as
+       results: { [parakeet.id]: { accuracy: { en: { error: 3.99 } }, performance: {} } },
+     },
+     "0.2.3",
+-    "0.4.1",
++    "0.5.0",
+   );
+   expect(withoutFrenchOrSpeed.models[0]?.benchmark).toEqual({
+     accuracy: { en: { grade: "A-", errorPercent: 3.99 } },
+@@ -60,7 +60,7 @@ it("reproduces the bundled registry byte for byte without upstream requests", as
+         results: { [parakeet.id]: { accuracy: { en: { error: 3.99 } }, performance } },
+       },
+       "0.2.3",
+-      "0.4.1",
++      "0.5.0",
+     );
+     expect(result.models[0]?.benchmark.secondsPer30s).toEqual({
+       cpu: performance.cpu ? 30 / performance.cpu : null,
+@@ -103,8 +103,8 @@ it("filters restricted licenses, unsupported roles, engines, architectures and f
+     { license: "cc-by-nc" },
+     { license: "CC BY-NC 4.0" },
+     { license: "custom_NC" },
+-    { minEngine: "0.4.2" },
+-    { minEngine: "0.5.0" },
++    { minEngine: "0.5.1" },
++    { minEngine: "0.6.0" },
+     { family: "future_arch" },
+     ...[
+       "nested/model.gguf",
+@@ -117,7 +117,7 @@ it("filters restricted licenses, unsupported roles, engines, architectures and f
+     expect(generate([{ ...model, ...override }]).models).toEqual([]);
+   }
+   for (const license of ["other", "apache-2.0", "cc-by-4.0", "cc-by-sa-4.0", "unlicense"]) {
+-    expect(generate([{ ...model, license, minEngine: "0.4.1" }]).models).toHaveLength(1);
++    expect(generate([{ ...model, license, minEngine: "0.5.0" }]).models).toHaveLength(1);
+   }
+   const moonshine = catalog.models.find((entry) => entry.id === "moonshine-tiny-ja")!;
+   for (const [id, allowed] of [
+@@ -150,8 +150,8 @@ it("rejects missing defaults, unpinned or corrupt metadata, collisions, and unre
+   expect(() => generate([model, { ...model, repository: "handy-computer/another" }])).toThrow(
+     /Duplicate/,
+   );
+-  expect(() => generateSpeechCatalog(catalog.data, "0.2.3", "0.4.2")).toThrow(/loader support/);
++  expect(() => generateSpeechCatalog(catalog.data, "0.2.3", "0.4.1")).toThrow(/loader support/);
+   expect(() =>
+-    generateSpeechCatalog({ ...catalog.data, schema: 3 as 2 }, "0.2.3", "0.4.1"),
++    generateSpeechCatalog({ ...catalog.data, schema: 3 as 2 }, "0.2.3", "0.5.0"),
+   ).toThrow(/schema/);
+ });
+diff --git a/apps/server/scripts/speech-catalog.ts b/apps/server/scripts/speech-catalog.ts
+index 3af49ceee034d5f9019789855d3aaaeacf7144ed..ac0c7c66daf1b4791c5692d5ab025c3e79d50786 100644
+--- a/apps/server/scripts/speech-catalog.ts
++++ b/apps/server/scripts/speech-catalog.ts
+@@ -49,7 +49,7 @@ export function generateSpeechCatalog(
+   engineVersion: string,
+ ) {
+   if (data.schema !== 2) throw new Error("Unsupported speech catalog schema.");
+-  if (engineVersion !== "0.4.1")
++  if (engineVersion !== "0.5.0")
+     throw new Error("Review speech catalog loader support for this engine.");
+   const ids = new Set<string>();
+   const filenames = new Set<string>();
+diff --git a/apps/server/src/speech/SpeechService.test.ts b/apps/server/src/speech/SpeechService.test.ts
+index a4ed5455cdcae91188e385ae48f6ec871f18e006..173da99147dbf7b4e5c2c170c344b41493601059 100644
+--- a/apps/server/src/speech/SpeechService.test.ts
++++ b/apps/server/src/speech/SpeechService.test.ts
+@@ -1,3 +1,7 @@
++// @effect-diagnostics nodeBuiltinImport:off
++import * as NodeFS from "node:fs";
++import * as NodeOS from "node:os";
++import * as NodePath from "node:path";
+ import { beforeEach, expect, vi } from "vite-plus/test";
+ import { it } from "@effect/vitest";
+ import * as NodeServices from "@effect/platform-node/NodeServices";
+@@ -88,6 +92,16 @@ vi.mock("./native.ts", () => ({
+ }));
+ vi.mock("./model.ts", () => ({
+   DEFAULT_SPEECH_MODEL_ID: "test-model",
++  PERSONAL_SPEECH_MODEL_ID: "tessaya/personal",
++  personalSpeechModel: (manifest: { name?: string; size?: number; sha256?: string }) =>
++    manifest.name
++      ? {
++          ...modelDefinitions[0],
++          id: "tessaya/personal",
++          name: "Personal",
++          filename: manifest.name,
++        }
++      : undefined,
+   SPEECH_MODELS: modelDefinitions,
+   getSpeechModel: (modelId: string) => modelDefinitions.find((model) => model.id === modelId),
+   effectiveSpeechLanguage: (model: { languages: string[] }, intent: string) =>
+@@ -111,11 +125,16 @@ const store = Layer.succeed(
+       }),
+   }),
+ );
+-const layer = SpeechService.layer.pipe(
+-  Layer.provide(store),
+-  Layer.provideMerge(ServerSettings.layerTest({ speechModelId: "test-model" })),
+-  Layer.provide(NodeServices.layer),
+-);
++// Never the real home: a personal model there would change which model these tests load.
++const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-speech-home-"));
++const speechLayer = (settings: Parameters<typeof ServerSettings.layerTest>[0]) =>
++  SpeechService.layer.pipe(
++    Layer.provide(store),
++    Layer.provideMerge(ServerSettings.layerTest({ speechModelId: "test-model", ...settings })),
++    Layer.provide(Layer.succeed(HostProcess.HomeDirectory, home)),
++    Layer.provide(NodeServices.layer),
++  );
++const layer = speechLayer({});
+ const pcm = () => new Uint8Array(new Float32Array([0.25]).buffer);
+ 
+ beforeEach(() => {
+@@ -579,6 +598,71 @@ it.effect("uses vocabulary only for supported transcription and always applies a
+   }),
+ );
+ 
++it.effect("hears a client that sends no words with the server's own dictionary", () =>
++  Effect.gen(function* () {
++    native.supportsVocabulary = true;
++    const speech = yield* SpeechService.SpeechService;
++    native.transcribe.mockResolvedValueOnce({ text: "ask tessa ya" });
++    expect(yield* speech.transcribe(pcm(), DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS)).toBe(
++      "ask Tessaya",
++    );
++    expect(native.transcribe.mock.lastCall?.[1]).toMatchObject({ vocabulary: ["Tessaya", "Bob"] });
++    native.transcribe.mockResolvedValueOnce({ text: "ask tessa ya" });
++    yield* speech.transcribe(pcm(), {
++      ...DEFAULT_SPEECH_TRANSCRIPTION_OPTIONS,
++      speechCustomWords: [
++        { term: "bob", aliases: [] },
++        { term: "Northwind", aliases: [] },
++      ],
++    });
++    expect(native.transcribe.mock.lastCall?.[1]).toMatchObject({
++      vocabulary: ["Tessaya", "Bob", "Northwind"],
++    });
++  }).pipe(
++    Effect.provide(
++      speechLayer({
++        speechProjectCustomWords: [
++          { term: "Tessaya", aliases: ["tessa ya"] },
++          { term: "Bob", aliases: [] },
++        ],
++      }),
++    ),
++  ),
++);
++
++it.effect("uses the personal model while its manifest is here, and the stock model after", () =>
++  Effect.gen(function* () {
++    const dir = NodePath.join(home, ".tessaya", "personal-models");
++    NodeFS.mkdirSync(dir, { recursive: true });
++    NodeFS.writeFileSync(
++      NodePath.join(dir, "manifest.json"),
++      JSON.stringify({ name: "mine.gguf", size: 4, sha256: "0".repeat(64) }),
++    );
++    readyModels.add("tessaya/personal");
++    try {
++      yield* Effect.gen(function* () {
++        const speech = yield* SpeechService.SpeechService;
++        expect(yield* speech.status).toMatchObject({ modelId: "tessaya/personal" });
++        const listed = (yield* speech.models(false)).models.find(
++          (model) => model.id === "tessaya/personal",
++        );
++        expect(listed).toMatchObject({ active: true, state: "installed" });
++        yield* speech.selectModel("fallback-model");
++        expect(yield* speech.status).toMatchObject({ modelId: "fallback-model" });
++        yield* speech.selectModel("tessaya/personal");
++        expect(yield* speech.status).toMatchObject({ modelId: "tessaya/personal" });
++      }).pipe(Effect.provide(layer));
++      NodeFS.rmSync(dir, { recursive: true, force: true });
++      yield* Effect.gen(function* () {
++        const speech = yield* SpeechService.SpeechService;
++        expect(yield* speech.status).toMatchObject({ modelId: "test-model" });
++      }).pipe(Effect.provide(layer));
++    } finally {
++      NodeFS.rmSync(dir, { recursive: true, force: true });
++    }
++  }),
++);
++
+ it.effect("unloads after the chosen idle period and reloads on the next recording", () =>
+   Effect.gen(function* () {
+     const speech = yield* SpeechService.SpeechService;
+diff --git a/apps/server/src/speech/catalog.json b/apps/server/src/speech/catalog.json
+index 782211e0ec16a3372efccba3cfe5f4b9cb8daa79..cc41942f154cde10747d000b5daf1f7b2f50780c 100644
+--- a/apps/server/src/speech/catalog.json
++++ b/apps/server/src/speech/catalog.json
+@@ -1,7 +1,7 @@
+ {
+   "source": "@handy-computer/models",
+   "sourceVersion": "0.2.3",
+-  "engineVersion": "0.4.1",
++  "engineVersion": "0.5.0",
+   "models": [
+     {
+       "id": "handy-computer/parakeet-unified-en-0.6b-gguf",
+diff --git a/apps/server/src/speech/customWords.ts b/apps/server/src/speech/customWords.ts
+index 739910b13d1ac9dbb5d7ce30fa4fbaece771b35a..cf81252b10c5cba4a565b7fa54400fc10d5b31c8 100644
+--- a/apps/server/src/speech/customWords.ts
++++ b/apps/server/src/speech/customWords.ts
+@@ -1,4 +1,5 @@
+ import type { SpeechCustomWords } from "@t3tools/contracts";
++import { resolveSpeechVocabulary } from "@t3tools/shared/speech";
+ 
+ // These scripts are written without spaces, so a neighbor in one of them still ends a word.
+ const UNSPACED_SCRIPTS = "\\p{scx=Han}\\p{scx=Hiragana}\\p{scx=Katakana}";
+@@ -226,3 +227,21 @@ export function normalizeSpeechCustomWords(words: SpeechCustomWords): SpeechCust
+     })
+     .slice(0, 100);
+ }
++
++/**
++ * The server's dictionary (`speechProjectCustomWords`; on a Tessaya server, his one dictionary) joins the words a
++ * client sent, so a client that sends none, such as T3's phone app, is still heard with it.
++ */
++export const withServerWords = <T extends { readonly speechCustomWords: SpeechCustomWords }>(
++  options: T,
++  server: SpeechCustomWords,
++): T =>
++  server.length === 0
++    ? options
++    : {
++        ...options,
++        speechCustomWords: resolveSpeechVocabulary({
++          personal: options.speechCustomWords,
++          project: server,
++        }).speechCustomWords,
++      };
+diff --git a/apps/server/src/speech/model.ts b/apps/server/src/speech/model.ts
+index 59f0dcf0a86cbd1de665c1a95e37d667df8b392e..72bf8108bdd997784296cfa1bcf7ce61ff51e944 100644
+--- a/apps/server/src/speech/model.ts
++++ b/apps/server/src/speech/model.ts
+@@ -30,4 +30,39 @@ export const DEFAULT_SPEECH_MODEL_ID = "handy-computer/parakeet-unified-en-0.6b-
+ export const getSpeechModel = (modelId: string): SpeechModel | undefined =>
+   SPEECH_MODELS.find((model) => model.id === modelId);
+ 
++export const PERSONAL_SPEECH_MODEL_ID = "tessaya/personal";
++const TDT_V3 = getSpeechModel("handy-computer/parakeet-tdt-0.6b-v3-gguf")!;
++
++/**
++ * A person's own fine-tune of Parakeet TDT v3, found where the desktop finds it (`voiceModels.ts`):
++ * `<home>/.tessaya/personal-models/manifest.json` names one GGUF beside it with its size and sha256.
++ */
++export const personalSpeechModel = (manifest: unknown): SpeechModel | undefined => {
++  if (typeof manifest !== "object" || manifest === null) return undefined;
++  const { name, size, sha256 } = manifest as Record<string, unknown>;
++  if (
++    typeof name !== "string" ||
++    !/^[^/\\:]+\.gguf$/.test(name) ||
++    name.startsWith(".") ||
++    typeof size !== "number" ||
++    typeof sha256 !== "string" ||
++    !/^[0-9a-f]{64}$/.test(sha256)
++  )
++    return undefined;
++  return {
++    ...TDT_V3,
++    id: PERSONAL_SPEECH_MODEL_ID,
++    revision: sha256,
++    name: "Personal",
++    description: "Trained on your own voice",
++    filename: name,
++    size,
++    sha256,
++    languages: ["en"],
++    benchmark: { ...TDT_V3.benchmark, accuracy: {} },
++    recommended: true,
++    supportsLanguageDetection: false,
++  };
++};
++
+ export { effectiveSpeechLanguage } from "@t3tools/shared/speech";
