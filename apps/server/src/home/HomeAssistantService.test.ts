@@ -374,6 +374,8 @@ it.effect(
       assert.strictEqual(house.states.get("lock.front")?.s, "unlocked");
       assert.deepStrictEqual((yield* home.pending).length, 0);
 
+      // A pump is everyday control (REQ-19-072): it asks only once he has set it to ask.
+      yield* home.setOverride("switch.sonoff_1", "ask");
       const pump = yield* home.call(
         {
           domain: "switch",
@@ -906,7 +908,7 @@ it.effect(
 );
 
 it.effect(
-  "his own voice runs the pump and its timer with no card; anyone else's request is one card, answered once",
+  "any voice runs the pump and its timer with no card; once he sets it to ask, a request is one card, answered once",
   () => {
     const { house, layer } = setup();
     const tessel: HomeAssistantService.HomeActor = { who: "Tessaya via Tessel", surface: "r1" };
@@ -1004,6 +1006,21 @@ it.effect(
         },
         { who: "the Director", surface: "settings", approved: true },
       );
+      yield* TestClock.adjust("2 minutes");
+      // A voice Voice ID can't place runs everyday control too (REQ-19-072, 28 Nov); his own "ask me" makes it ask.
+      const [heardOn, heardTimer] = yield* request(null);
+      assert.deepStrictEqual([heardOn.status, heardTimer.status], ["done", "done"]);
+      assert.lengthOf(yield* inbox.pending, 0);
+      yield* home.call(
+        {
+          domain: "switch",
+          service: "turn_off",
+          target: { entity_id: "switch.sonoff_1" },
+          why: "x",
+        },
+        { who: "the Director", surface: "settings", approved: true },
+      );
+      yield* home.setOverride("switch.sonoff_1", "ask");
       yield* TestClock.adjust("2 minutes");
       const [guestOn, guestTimer] = yield* request(null);
       assert.deepStrictEqual([guestOn.status, guestTimer.status], ["asked", "asked"]);
