@@ -1,20 +1,23 @@
 /**
- * Sleeve (M-120): a phone that is only her, full screen and edge to edge. His settings sit behind a dot below the
- * status row: hold it, then Face ID or his PIN. They lock again when the app leaves the front or five minutes on.
+ * Sleeve (M-120, M-158): a phone that is only her, full screen and edge to edge, in her woad. "Your phone" at the top
+ * offers the way back or five minutes of settings, each after Face ID or his PIN; settings lock again when the app
+ * leaves the front or five minutes on.
  */
 import { useEffect, useState } from "react";
-import { AppState, Pressable, StatusBar, View } from "react-native";
+import { AppState, StatusBar, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { WOAD, WoadGlow } from "../layout/woad";
 import { UnlockSheet } from "../lock/UnlockSheet";
 import { TalkView } from "../talk/TalkRouteScreen";
+import { SleeveExitSheet, SleeveTopRow } from "./SleeveChrome";
 import { setSleeveUnlocked, useSleeve, useSleeveCovering } from "./useSleeve";
 
 export function SleeveHost() {
-  useSleeve();
+  const sleeve = useSleeve();
   const covering = useSleeveCovering();
   const insets = useSafeAreaInsets();
-  const [asking, setAsking] = useState(false);
+  const [asking, setAsking] = useState<"choose" | "back" | "settings" | null>(null);
   const [active, setActive] = useState(AppState.currentState === "active");
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the app leaving the front locks his settings again
   useEffect(() => {
@@ -26,34 +29,39 @@ export function SleeveHost() {
   }, []);
   if (!covering) return null;
   return (
-    <View className="absolute inset-0 bg-screen">
+    <View className="absolute inset-0" style={{ backgroundColor: WOAD }}>
       <StatusBar hidden />
+      <WoadGlow id="tessaya-sleeve-glow" />
       <TalkView focused={active} sleeve />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Settings. Hold, then confirm it's you"
-        delayLongPress={600}
-        onLongPress={() => setAsking(true)}
-        hitSlop={16}
-        style={{
-          position: "absolute",
-          top: insets.top + 12,
-          right: insets.right + 20,
-          width: 12,
-          height: 12,
-          borderRadius: 6,
-          backgroundColor: "rgba(127,127,127,0.45)",
-        }}
+      <SleeveTopRow
+        top={insets.top}
+        left={insets.left}
+        right={insets.right}
+        onExit={() => setAsking("choose")}
       />
-      {asking ? (
+      {asking === "choose" ? (
+        <SleeveExitSheet
+          bottom={insets.bottom}
+          onBack={() => setAsking("back")}
+          onSettings={() => setAsking("settings")}
+          onCancel={() => setAsking(null)}
+        />
+      ) : null}
+      {asking === "back" || asking === "settings" ? (
         <UnlockSheet
-          title="Settings are locked"
-          detail="Use Face ID or your PIN to change this Sleeve."
+          title={asking === "back" ? "Give your phone back to you?" : "Settings are locked"}
+          detail={
+            asking === "back"
+              ? "Use Face ID or your PIN. She stays on your other devices."
+              : "Use Face ID or your PIN to change this Sleeve."
+          }
           onUnlocked={() => {
-            setAsking(false);
+            const back = asking === "back";
+            setAsking(null);
             setSleeveUnlocked(true);
+            if (back) void sleeve.set(false);
           }}
-          onCancel={() => setAsking(false)}
+          onCancel={() => setAsking(null)}
         />
       ) : null}
     </View>

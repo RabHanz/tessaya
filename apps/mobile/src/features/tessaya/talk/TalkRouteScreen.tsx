@@ -48,6 +48,8 @@ import { setHerPhase } from "../island/herPhase";
 import { phoneSoulIs } from "../private/privateLayer";
 import { useBottomClearance } from "../layout/screenInsets";
 import { useSleeveCovering } from "../sleeve/useSleeve";
+import { SleeveName } from "../sleeve/SleeveChrome";
+import { PAPER } from "../layout/woad";
 import {
   addFrames,
   batteryDrain,
@@ -87,6 +89,8 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   const [lines, setLines] = useState<ReadonlyArray<TalkLine>>([]);
   const [earliest, setEarliest] = useState<number | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  // her mood here, the brain's one label for this persona (the Sleeve shows it under her name)
+  const [mood, setMood] = useState("neutral");
   // the microphone, asked for by a tap with its reason first, never as a system prompt in the middle of a hold
   const [mic, setMic] = useState<"unknown" | "ask" | "granted" | "denied">("unknown");
   const [typed, setTyped] = useState("");
@@ -338,9 +342,9 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
       ]),
     );
 
-  const speak = async (text: string) => {
-    if (environmentId === null || persona === null || text.trim() === "") return;
-    // her body speaks in the brain's one mood for this persona (as every other body does), neutral if unread
+  /** The brain's one mood for this persona, as every other body reads it; null when unread. */
+  const readMood = async () => {
+    if (environmentId === null || persona === null) return null;
     const read = await voiceCall({
       environmentId,
       input: {
@@ -358,6 +362,19 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
             brows?: unknown;
           } | null)
         : null;
+    if (typeof felt?.label === "string") setMood(felt.label);
+    return felt;
+  };
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the Sleeve shows her mood from her brain as she comes on screen
+  useEffect(() => {
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies, react/set-state-in-effect -- readMood closes over this persona; its mood arrives later from her brain
+    if (sleeve && drawing) void readMood();
+  }, [sleeve, drawing, persona?.id]);
+
+  const speak = async (text: string) => {
+    if (environmentId === null || persona === null || text.trim() === "") return;
+    // her body speaks in the brain's one mood for this persona (as every other body does), neutral if unread
+    const felt = await readMood();
     const mood = typeof felt?.label === "string" ? felt.label : "neutral";
     const intensity = typeof felt?.intensity === "number" ? felt.intensity : 0.4;
     const prop = renderFor(VESSELS.body, mood, intensity, felt?.props).prop ?? null;
@@ -452,7 +469,10 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
   }, [listening, pending]);
 
   return (
-    <View className="flex-1 bg-screen" style={{ paddingTop: sleeve ? 0 : insets.top }}>
+    <View
+      className={sleeve ? "flex-1" : "flex-1 bg-screen"}
+      style={{ paddingTop: sleeve ? 0 : insets.top }}
+    >
       {drawing ? (
         <WebView<object>
           ref={webView}
@@ -493,11 +513,14 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
         >
           <Image
             source={require("../welcome/face-neutral.webp")}
-            style={{ width: 160, height: 160 }}
+            style={sleeve ? { width: 195, height: 158 } : { width: 160, height: 160 }}
             contentFit="contain"
             accessibilityIgnoresInvertColors
           />
-          <Text className="text-center text-base text-foreground-muted">
+          <Text
+            className="text-center text-base text-foreground-muted"
+            style={sleeve ? { display: "none" } : undefined}
+          >
             {environmentId === null
               ? "Pair a computer to talk to her"
               : bodyless
@@ -521,12 +544,26 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
           post({ type: "inset", bottom: inset.current });
         }}
       >
-        <TalkHistory
-          lines={sleeve ? lines.filter((l) => l.role === "her").slice(-1) : lines}
-          pending={pending}
-          maxHeight={sleeve ? screenHeight * 0.2 : screenHeight * 0.3}
-          earlier={sleeve || earliest === null ? null : () => void readHistory(earliest)}
-        />
+        {sleeve ? (
+          <SleeveName
+            name={persona?.name ?? "Tessaya"}
+            mood={mood}
+            line={
+              listening
+                ? "Listening"
+                : pending === "…"
+                  ? "Thinking"
+                  : (pending ?? lines.findLast((l) => l.role === "her")?.text ?? null)
+            }
+          />
+        ) : (
+          <TalkHistory
+            lines={lines}
+            pending={pending}
+            maxHeight={screenHeight * 0.3}
+            earlier={earliest === null ? null : () => void readHistory(earliest)}
+          />
+        )}
         <ScrollView
           style={sleeve ? { display: "none" } : { flexGrow: 0 }}
           horizontal
@@ -590,15 +627,20 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
           }
           style={
             mic === "granted" || mic === "unknown" || environmentId === null
-              ? undefined
+              ? sleeve
+                ? { backgroundColor: "rgba(238,237,228,0.10)" }
+                : undefined
               : { display: "none" }
           }
           disabled={!voice.isAvailable || environmentId === null}
           onPressIn={voice.start}
           onPressOut={() => void voice.stop()}
-          className={`items-center rounded-full py-4 ${listening ? "bg-primary" : "bg-secondary"}`}
+          className={`items-center rounded-full py-4 ${sleeve ? "" : listening ? "bg-primary" : "bg-secondary"}`}
         >
-          <Text className={listening ? "text-primary-foreground" : "text-foreground"}>
+          <Text
+            className={listening ? "text-primary-foreground" : "text-foreground"}
+            style={sleeve ? { color: PAPER, opacity: listening ? 1 : 0.7 } : undefined}
+          >
             {environmentId === null
               ? "Pair with one of your machines to talk to her"
               : listening
