@@ -80,11 +80,34 @@ const hardwareOf = (v: unknown): HapticHardware | null => {
   return { kind: "android", primitives, amplitude: h["amplitude"] === true };
 };
 
-/** A message from the phone: its route, or its headset's button; null for anything else. Its payload is data. */
-export const parsePhoneText = (text: string): PhoneRoute | "talk" | null => {
+/**
+ * A moment of its body, in a Tessel's own words so her one nervous system reads it the same (HomeDevices, tesselMotion):
+ * picked up, shaken, where it is now. Only moments leave the phone, never its sensor stream.
+ */
+export interface PhoneMoment {
+  readonly tail: "event/motion" | "state/placement";
+  readonly body: string;
+}
+const MOTION_KINDS: ReadonlyArray<unknown> = ["lift", "shake", "shake_long", "drop"];
+// face_down: a Sleeve turned over (she has gone to another body); handheld: raised to him
+const PLACEMENTS: ReadonlyArray<unknown> = ["desk", "dock", "handheld", "carried", "face_down"];
+
+/** A message from the phone: its route, its headset's button or a moment of its body; null for anything else. */
+export const parsePhoneText = (text: string): PhoneRoute | PhoneMoment | "talk" | null => {
   try {
     const v = JSON.parse(text) as Record<string, unknown>;
     if (v["t"] === "talk") return "talk";
+    if (v["t"] === "motion")
+      return MOTION_KINDS.includes(v["kind"])
+        ? {
+            tail: "event/motion",
+            body: JSON.stringify({ kind: v["kind"], conf: 1, intensity: 60 }),
+          }
+        : null;
+    if (v["t"] === "placement")
+      return PLACEMENTS.includes(v["placement"])
+        ? { tail: "state/placement", body: JSON.stringify({ placement: v["placement"] }) }
+        : null;
     if (v["t"] !== "route") return null;
     const kind = (BT_KINDS as ReadonlyArray<unknown>).includes(v["kind"])
       ? (v["kind"] as BtKind)
@@ -173,6 +196,8 @@ export const makePhoneVessel = (io: {
       }
     },
     listening: () => listening,
+    /** A moment of its body, onto the hub as a Tessel's; nothing while a Tessel near has its ears. */
+    moment: (m: PhoneMoment) => binding?.publish(m.tail, m.body),
   };
 };
 
@@ -260,6 +285,10 @@ export const runPhoneSocket = Effect.fn("PhoneLink.runSocket")(function* (
             yield* input.vesselTalk(vesselId, link);
             vessel.talk();
           } else yield* input.talk(link);
+          continue;
+        }
+        if ("tail" in next) {
+          vessel.moment(next);
           continue;
         }
         route = next;

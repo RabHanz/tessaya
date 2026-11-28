@@ -105,12 +105,14 @@ const setLinked = (next: boolean) => {
   linked = next;
   for (const l of linkListeners) l();
 };
-// a talk on this phone's own route, as its headset's button sends one; null while no link is open
-let talkNow: (() => void) | null = null;
+// a message up this phone's own route; null while no link is open
+let sendNow: ((m: object) => void) | null = null;
 /** Starts a hands-free talk on this phone's route (her room loop opens the mic); false when no link is open. */
-export const phoneTalk = (): boolean => {
-  if (talkNow === null) return false;
-  talkNow();
+export const phoneTalk = (): boolean => phoneSend({ t: "talk" });
+/** A moment of her phone body for her nervous system (PhoneLink `motion` / `placement`); false when no link is open. */
+export const phoneSend = (m: object): boolean => {
+  if (sendNow === null) return false;
+  sendNow(m);
   return true;
 };
 
@@ -198,7 +200,7 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
     ];
     ws.onopen = () => {
       setLinked(true);
-      talkNow = () => ws.send(JSON.stringify({ t: "talk" }));
+      sendNow = (m) => ws.send(JSON.stringify(m));
       refused.current = 0;
       void audio
         .start()
@@ -217,14 +219,14 @@ function PhoneRouteLink({ choice: c }: { readonly choice: PhoneRouteChoice }) {
     // A server that cannot serve it (no room loop yet) refuses each try: waits grow to a minute.
     ws.onclose = () => {
       setLinked(false);
-      talkNow = null;
+      sendNow = null;
       const wait = Math.min(60_000, 3_000 * 2 ** refused.current++);
       retry = setTimeout(() => setAttempt((n) => n + 1), wait);
     };
     return () => {
       ws.onclose = null;
       setLinked(false);
-      talkNow = null;
+      sendNow = null;
       if (retry !== null) clearTimeout(retry);
       for (const s of subs) s.remove();
       ws.close();

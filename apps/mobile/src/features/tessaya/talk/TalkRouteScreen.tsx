@@ -77,19 +77,24 @@ const POLLS = 60;
 export function TalkRouteScreen() {
   // under a Sleeve the tab draws nothing: the Sleeve's own body is the one on screen
   const covered = useSleeveCovering();
-  return <TalkView focused={useIsFocused() && !covered} sleeve={false} />;
+  return <TalkView focused={useIsFocused() && !covered} sleeve={false} away={false} />;
 }
 
 /**
  * Talk itself. In Sleeve (M-120) she fills the screen edge to edge, behind the camera hole too; only her last line
  * and the place to hold stay, inside the safe area.
  */
-export function TalkView(props: { readonly focused: boolean; readonly sleeve: boolean }) {
+export function TalkView(props: {
+  readonly focused: boolean;
+  readonly sleeve: boolean;
+  /** Her Sleeve was turned face down: she has gone to her other bodies, and comes back when it is turned up. */
+  readonly away: boolean;
+}) {
   const environmentId = useAtomValue(tessayaEnvironmentIdAtom);
   const connection = useSavedRemoteConnection(environmentId);
   const insets = useSafeAreaInsets();
   const screenHeight = useWindowDimensions().height;
-  const { focused, sleeve } = props;
+  const { focused, sleeve, away } = props;
   const [active, setActive] = useState(AppState.currentState === "active");
   const [personas, setPersonas] = useState<ReadonlyArray<TessayaPersona>>([]);
   const [picked, setPicked] = useState<string | null>(null);
@@ -519,6 +524,13 @@ export function TalkView(props: { readonly focused: boolean; readonly sleeve: bo
     return () => setSleeveListen(null);
     // oxlint-disable-next-line react/exhaustive-effect-dependencies -- voice.start is the controller's current start
   }, [sleeve, handsFree, listening]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- her stage (a WebView, outside React) plays her leaving this body and coming back
+  useEffect(() => {
+    if (!sleeve) return;
+    post({ type: "morph", dir: away ? "out" : "in" });
+    if (away && listening) void voice.stop();
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- only her going and coming back moves her
+  }, [sleeve, away]);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells the island (outside this screen) that she is listening
   useEffect(() => {
     if (listening) setHerPhase("listening");

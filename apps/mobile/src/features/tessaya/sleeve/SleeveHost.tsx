@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { WOAD, WoadGlow } from "../layout/woad";
 import { UnlockSheet } from "../lock/UnlockSheet";
-import { phoneTalk } from "../../tessel/phoneRoute";
+import { phoneSend, phoneTalk } from "../../tessel/phoneRoute";
+import { AppText as Text } from "../../../components/ui/AppText";
 import { TalkView } from "../talk/TalkRouteScreen";
 import { sleeveListen } from "./sleeveListen";
 import { SleeveExitSheet, SleeveTopRow } from "./SleeveChrome";
@@ -23,6 +24,8 @@ export function SleeveHost() {
   const insets = useSafeAreaInsets();
   const [asking, setAsking] = useState<"choose" | "back" | "settings" | null>(null);
   const [active, setActive] = useState(AppState.currentState === "active");
+  // turned face down she leaves this body for her others; turned back or picked up, she comes back
+  const [away, setAway] = useState(false);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the app leaving the front locks his settings again
   useEffect(() => {
     const sub = AppState.addEventListener("change", (s) => {
@@ -38,7 +41,20 @@ export function SleeveHost() {
     const read = makeMotionReader();
     Accelerometer.setUpdateInterval(100);
     const sub = Accelerometer.addListener((a) => {
-      if (read(a, Date.now()) === "raised" && !phoneTalk()) sleeveListen();
+      const moment = read(a, Date.now());
+      if (moment === null) return;
+      // her nervous system feels it as any body's handling (PhoneLink, once her route is linked)
+      if (moment === "lifted") phoneSend({ t: "motion", kind: "lift" });
+      else if (moment === "shaken") phoneSend({ t: "motion", kind: "shake" });
+      else
+        phoneSend({
+          t: "placement",
+          placement:
+            moment === "raised" ? "handheld" : moment === "facedown" ? "face_down" : "desk",
+        });
+      if (moment === "facedown") setAway(true);
+      else if (moment === "faceup" || moment === "lifted" || moment === "raised") setAway(false);
+      if (moment === "raised" && !phoneTalk()) sleeveListen();
     });
     return () => sub.remove();
   }, [covering, active]);
@@ -47,7 +63,17 @@ export function SleeveHost() {
     <View className="absolute inset-0" style={{ backgroundColor: WOAD }}>
       <StatusBar hidden />
       <WoadGlow id="tessaya-sleeve-glow" />
-      <TalkView focused={active} sleeve />
+      <TalkView focused={active} sleeve away={away} />
+      {away ? (
+        <View
+          className="absolute inset-0 items-center justify-end"
+          style={{ backgroundColor: "rgba(0,0,0,0.88)", paddingBottom: insets.bottom + 48 }}
+        >
+          <Text style={{ color: "rgba(238,237,228,0.55)", fontSize: 14, textAlign: "center" }}>
+            She is with you on your other devices. Turn me over or pick me up to bring her back.
+          </Text>
+        </View>
+      ) : null}
       <SleeveTopRow
         top={insets.top}
         left={insets.left}
