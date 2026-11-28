@@ -155,28 +155,28 @@ export const PublicBaseUrl = Config.String("TESSAYA_PUBLIC_HOST").pipe(
 
 const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
-/** Tessaya: this machine's name under the one base domain, `<machine>.<domain>`; null when either is unusable. */
-export const publicDomainHost = (domain: string, machine: string): string | null => {
-  const label = machine.trim().toLowerCase().split(".")[0] ?? "";
+/** Tessaya: this brain's public name, `<name>.<domain>`; null when either is unusable. */
+export const publicDomainHost = (domain: string, name: string): string | null => {
+  const label = name.trim().toLowerCase();
   const base = domain
     .trim()
     .toLowerCase()
     .replace(/^\.+|\.+$/g, "");
-  return DNS_LABEL.test(label) &&
-    base.split(".").length >= 2 &&
-    base.split(".").every((part) => DNS_LABEL.test(part))
+  const parts = base.split(".");
+  return DNS_LABEL.test(label) && parts.length >= 2 && parts.every((part) => DNS_LABEL.test(part))
     ? `${label}.${base}`
     : null;
 };
 
 /**
- * Tessaya: `TESSAYA_PUBLIC_DOMAIN` is the one base domain every machine is reached at from the internet (through the
- * owner's reverse proxy), so moving to a new domain is this one value. Unset, nothing changes.
+ * Tessaya: `TESSAYA_PUBLIC_DOMAIN` is the one base domain every brain is reached at from the internet (through the
+ * owner's reverse proxy), so moving to a new domain is this one value; `TESSAYA_PUBLIC_NAME` is this brain's own label
+ * under it, a setting so no machine name goes public. Either unset, nothing changes.
  */
-export const PublicDomainHost = Config.String("TESSAYA_PUBLIC_DOMAIN").pipe(
-  Config.withDefault(""),
-  Config.map((domain) => publicDomainHost(domain, NodeOS.hostname())),
-);
+export const PublicDomainHost = Config.all({
+  domain: Config.String("TESSAYA_PUBLIC_DOMAIN").pipe(Config.withDefault("")),
+  name: Config.String("TESSAYA_PUBLIC_NAME").pipe(Config.withDefault("")),
+}).pipe(Config.map(({ domain, name }) => publicDomainHost(domain, name)));
 
 /**
  * Who called from the internet, or undefined for a caller on this machine's own networks. The owner's proxy for the

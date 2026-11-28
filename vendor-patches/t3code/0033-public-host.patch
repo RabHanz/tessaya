@@ -31,15 +31,13 @@ index 2d45d45befeec3b77f1f58f68dbd87895eee33bc..abc9a523e723440b207a9a2eb53026dd
          pairingBaseUrl = resolveDirectPairingBaseUrl(target.state, yield* HostProcess.Platform);
          if (isLoopbackHost(new URL(pairingBaseUrl).hostname)) {
 diff --git a/apps/server/src/environment/DirectEndpoints.test.ts b/apps/server/src/environment/DirectEndpoints.test.ts
-index d6d2856635670f4be766722f3f20a49ac6a8878e..0e9f85db9c7b3f0c2acde3d11ce1f14bd37a6b76 100644
+index d6d2856635670f4be766722f3f20a49ac6a8878e..2db34932af31042f3f72e80b2e7d2127b4558a2c 100644
 --- a/apps/server/src/environment/DirectEndpoints.test.ts
 +++ b/apps/server/src/environment/DirectEndpoints.test.ts
-@@ -2,7 +2,8 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
- import * as NodeServices from "@effect/platform-node/NodeServices";
+@@ -3,6 +3,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
  import { EnvironmentId } from "@t3tools/contracts";
  import { it as effectIt } from "@effect/vitest";
--import type * as NodeOS from "node:os";
-+import * as NodeOS from "node:os";
+ import type * as NodeOS from "node:os";
 +import * as ConfigProvider from "effect/ConfigProvider";
  import * as Effect from "effect/Effect";
  import * as FileSystem from "effect/FileSystem";
@@ -61,14 +59,18 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..0e9f85db9c7b3f0c2acde3d11ce1f14b
        tailscaleServePort: 443,
      })),
    ).pipe(
-@@ -372,16 +373,25 @@ const layerServeConfig = (host = "127.0.0.1") =>
+@@ -372,16 +373,30 @@ const layerServeConfig = (host = "127.0.0.1") =>
      ),
    );
  
 -const resolveWithServe = (probeStatus: number) =>
 +const resolveWithServe = (
 +  probeStatus: number,
-+  options: { readonly publicHost?: string; readonly domain?: string; readonly serve?: boolean } = {},
++  options: {
++    readonly publicHost?: string;
++    readonly domain?: string;
++    readonly serve?: boolean;
++  } = {},
 +) =>
    Effect.flatMap(DirectEndpoints.DirectEndpoints, (service) => service.resolve()).pipe(
      Effect.provide(
@@ -84,12 +86,13 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..0e9f85db9c7b3f0c2acde3d11ce1f14b
 +              ConfigProvider.fromUnknown({
 +                TESSAYA_PUBLIC_HOST: options.publicHost ?? "",
 +                TESSAYA_PUBLIC_DOMAIN: options.domain ?? "",
++                TESSAYA_PUBLIC_NAME: options.name ?? "",
 +              }),
 +            ),
            ),
          ),
        ),
-@@ -458,4 +468,64 @@ describe("DirectEndpoints Tailscale Serve", () => {
+@@ -458,4 +473,70 @@ describe("DirectEndpoints Tailscale Serve", () => {
        expect(yield* resolveWithServe(502)).toEqual([]);
      }),
    );
@@ -104,28 +107,34 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..0e9f85db9c7b3f0c2acde3d11ce1f14b
 +    }),
 +  );
 +
-+  effectIt.effect("lists this machine under TESSAYA_PUBLIC_DOMAIN beside the tailnet name", () =>
-+    Effect.gen(function* () {
-+      const host = DirectEndpoints.publicDomainHost("home.example.com", NodeOS.hostname());
-+      expect(host).not.toBeNull();
-+      expect(yield* resolveWithServe(200, { domain: "home.example.com" })).toEqual([
-+        { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-+        { kind: "lan", httpBaseUrl: `https://${host}/` },
-+      ]);
-+      expect(yield* resolveWithServe(502, { domain: "home.example.com" })).toEqual([]);
-+    }),
++  effectIt.effect(
++    "lists this brain's name under TESSAYA_PUBLIC_DOMAIN beside the tailnet name",
++    () =>
++      Effect.gen(function* () {
++        const options = { domain: "home.example.com", name: "hive" };
++        expect(yield* resolveWithServe(200, options)).toEqual([
++          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
++          { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
++        ]);
++        expect(yield* resolveWithServe(502, options)).toEqual([]);
++        // No name, no public origin: the machine's own name is never used.
++        expect(yield* resolveWithServe(200, { domain: "home.example.com" })).toEqual([
++          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
++        ]);
++      }),
 +  );
 +
 +  it.each([
-+    ["home.example.com", "Box-1.local", "box-1.home.example.com"],
-+    [" .Home.Example.com. ", "box", "box.home.example.com"],
-+    ["", "box", null],
-+    ["example", "box", null],
++    ["home.example.com", "Hive", "hive.home.example.com"],
++    [" .Home.Example.com. ", "nest", "nest.home.example.com"],
++    ["", "hive", null],
++    ["example", "hive", null],
 +    ["home.example.com", "", null],
 +    ["home.example.com", "bad_name", null],
-+    ["home example.com", "box", null],
-+  ])("publicDomainHost(%j, %j)", (domain, machine, expected) => {
-+    expect(DirectEndpoints.publicDomainHost(domain, machine)).toBe(expected);
++    ["home.example.com", "a.b", null],
++    ["home example.com", "hive", null],
++  ])("publicDomainHost(%j, %j)", (domain, name, expected) => {
++    expect(DirectEndpoints.publicDomainHost(domain, name)).toBe(expected);
 +  });
 +
 +  it("internetCaller tells the base domain's proxy and Cloudflare from the LAN", () => {
@@ -136,9 +145,9 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..0e9f85db9c7b3f0c2acde3d11ce1f14b
 +      "203.0.113.9",
 +    );
 +    // A caller through the proxy cannot pick its address with Cloudflare's header.
-+    expect(
-+      DirectEndpoints.internetCaller({ host, "cf-connecting-ip": "198.51.100.1" }, host),
-+    ).toBe("internet");
++    expect(DirectEndpoints.internetCaller({ host, "cf-connecting-ip": "198.51.100.1" }, host)).toBe(
++      "internet",
++    );
 +    expect(DirectEndpoints.internetCaller({ "cf-connecting-ip": "198.51.100.1" }, null)).toBe(
 +      "198.51.100.1",
 +    );
@@ -155,7 +164,7 @@ index d6d2856635670f4be766722f3f20a49ac6a8878e..0e9f85db9c7b3f0c2acde3d11ce1f14b
 +  });
  });
 diff --git a/apps/server/src/environment/DirectEndpoints.ts b/apps/server/src/environment/DirectEndpoints.ts
-index 8112cded968aa863fc63b8c87d913943be5858aa..2862ccbb274230ec547e9dbc03a13e80d7392c62 100644
+index 8112cded968aa863fc63b8c87d913943be5858aa..ec73fa1c1d89a8a6c3f8c41e66ad0c164c4291bb 100644
 --- a/apps/server/src/environment/DirectEndpoints.ts
 +++ b/apps/server/src/environment/DirectEndpoints.ts
 @@ -4,6 +4,7 @@ import {
@@ -166,7 +175,7 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..2862ccbb274230ec547e9dbc03a13e80
  import * as Context from "effect/Context";
  import * as Duration from "effect/Duration";
  import * as Effect from "effect/Effect";
-@@ -141,6 +142,50 @@ export const readIsolatedLinuxBridges = Effect.fn("DirectEndpoints.readIsolatedL
+@@ -141,6 +142,55 @@ export const readIsolatedLinuxBridges = Effect.fn("DirectEndpoints.readIsolatedL
    },
  );
  
@@ -183,23 +192,28 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..2862ccbb274230ec547e9dbc03a13e80
 +
 +const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 +
-+/** Tessaya: this machine's name under the one base domain, `<machine>.<domain>`; null when either is unusable. */
-+export const publicDomainHost = (domain: string, machine: string): string | null => {
-+  const label = machine.trim().toLowerCase().split(".")[0] ?? "";
-+  const base = domain.trim().toLowerCase().replace(/^\.+|\.+$/g, "");
-+  return DNS_LABEL.test(label) && base.split(".").length >= 2 && base.split(".").every((part) => DNS_LABEL.test(part))
++/** Tessaya: this brain's public name, `<name>.<domain>`; null when either is unusable. */
++export const publicDomainHost = (domain: string, name: string): string | null => {
++  const label = name.trim().toLowerCase();
++  const base = domain
++    .trim()
++    .toLowerCase()
++    .replace(/^\.+|\.+$/g, "");
++  const parts = base.split(".");
++  return DNS_LABEL.test(label) && parts.length >= 2 && parts.every((part) => DNS_LABEL.test(part))
 +    ? `${label}.${base}`
 +    : null;
 +};
 +
 +/**
-+ * Tessaya: `TESSAYA_PUBLIC_DOMAIN` is the one base domain every machine is reached at from the internet (through the
-+ * owner's reverse proxy), so moving to a new domain is this one value. Unset, nothing changes.
++ * Tessaya: `TESSAYA_PUBLIC_DOMAIN` is the one base domain every brain is reached at from the internet (through the
++ * owner's reverse proxy), so moving to a new domain is this one value; `TESSAYA_PUBLIC_NAME` is this brain's own label
++ * under it, a setting so no machine name goes public. Either unset, nothing changes.
 + */
-+export const PublicDomainHost = Config.String("TESSAYA_PUBLIC_DOMAIN").pipe(
-+  Config.withDefault(""),
-+  Config.map((domain) => publicDomainHost(domain, NodeOS.hostname())),
-+);
++export const PublicDomainHost = Config.all({
++  domain: Config.String("TESSAYA_PUBLIC_DOMAIN").pipe(Config.withDefault("")),
++  name: Config.String("TESSAYA_PUBLIC_NAME").pipe(Config.withDefault("")),
++}).pipe(Config.map(({ domain, name }) => publicDomainHost(domain, name)));
 +
 +/**
 + * Who called from the internet, or undefined for a caller on this machine's own networks. The owner's proxy for the
@@ -217,7 +231,7 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..2862ccbb274230ec547e9dbc03a13e80
  /**
   * AWS, GCP, Azure, DigitalOcean, Hetzner, Linode, Vultr, and Oracle all serve
   * instance metadata at this address. A plain TCP connect skips HTTP proxies,
-@@ -184,7 +229,9 @@ export const make = Effect.gen(function* () {
+@@ -184,7 +234,9 @@ export const make = Effect.gen(function* () {
      : Effect.succeed(false);
    yield* Effect.forkDetach(onCloudVm);
  
@@ -228,7 +242,7 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..2862ccbb274230ec547e9dbc03a13e80
    const resolveAvailable = Effect.fn("DirectEndpoints.resolveAvailable")(function* () {
      const interfaces = NodeOS.networkInterfaces();
      const isolatedBridges =
-@@ -203,34 +250,56 @@ export const make = Effect.gen(function* () {
+@@ -203,34 +255,64 @@ export const make = Effect.gen(function* () {
          ...(isolatedBridges === undefined ? {} : { isolatedBridges }),
        }),
      ];
@@ -267,7 +281,9 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..2862ccbb274230ec547e9dbc03a13e80
 +              ),
 +            )
 +          : Effect.succeed(null);
-+    const served = (baseUrl: Effect.Effect<string | null, unknown, ChildProcessSpawner.ChildProcessSpawner>) =>
++    const served = (
++      baseUrl: Effect.Effect<string | null, unknown, ChildProcessSpawner.ChildProcessSpawner>,
++    ) =>
 +      baseUrl.pipe(
 +        Effect.flatMap((httpBaseUrl) => {
 +          if (httpBaseUrl === null) return Effect.succeed(null);
@@ -293,10 +309,16 @@ index 8112cded968aa863fc63b8c87d913943be5858aa..2862ccbb274230ec547e9dbc03a13e80
 -      yield* Ref.set(servedEndpoint, servedUrl);
 -    }
 +    const found = yield* Effect.all(
-+      [served(ownName), served(Effect.succeed(domainHost === null ? null : publicBaseUrl(domainHost)))],
++      [
++        served(ownName),
++        served(Effect.succeed(domainHost === null ? null : publicBaseUrl(domainHost))),
++      ],
 +      { concurrency: "unbounded" },
 +    );
-+    yield* Ref.set(servedEndpoints, found.flatMap((e) => (Option.isSome(e) ? [e.value] : [])));
++    yield* Ref.set(
++      servedEndpoints,
++      found.flatMap((e) => (Option.isSome(e) ? [e.value] : [])),
++    );
      return yield* resolveAvailable();
    });
  

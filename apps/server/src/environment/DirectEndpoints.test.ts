@@ -2,7 +2,7 @@ import * as NodeFileSystem from "@effect/platform-node/NodeFileSystem";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { EnvironmentId } from "@t3tools/contracts";
 import { it as effectIt } from "@effect/vitest";
-import * as NodeOS from "node:os";
+import type * as NodeOS from "node:os";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -394,6 +394,7 @@ const resolveWithServe = (
               ConfigProvider.fromUnknown({
                 TESSAYA_PUBLIC_HOST: options.publicHost ?? "",
                 TESSAYA_PUBLIC_DOMAIN: options.domain ?? "",
+                TESSAYA_PUBLIC_NAME: options.name ?? "",
               }),
             ),
           ),
@@ -483,28 +484,34 @@ describe("DirectEndpoints Tailscale Serve", () => {
     }),
   );
 
-  effectIt.effect("lists this machine under TESSAYA_PUBLIC_DOMAIN beside the tailnet name", () =>
-    Effect.gen(function* () {
-      const host = DirectEndpoints.publicDomainHost("home.example.com", NodeOS.hostname());
-      expect(host).not.toBeNull();
-      expect(yield* resolveWithServe(200, { domain: "home.example.com" })).toEqual([
-        { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
-        { kind: "lan", httpBaseUrl: `https://${host}/` },
-      ]);
-      expect(yield* resolveWithServe(502, { domain: "home.example.com" })).toEqual([]);
-    }),
+  effectIt.effect(
+    "lists this brain's name under TESSAYA_PUBLIC_DOMAIN beside the tailnet name",
+    () =>
+      Effect.gen(function* () {
+        const options = { domain: "home.example.com", name: "hive" };
+        expect(yield* resolveWithServe(200, options)).toEqual([
+          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
+          { kind: "lan", httpBaseUrl: "https://hive.home.example.com/" },
+        ]);
+        expect(yield* resolveWithServe(502, options)).toEqual([]);
+        // No name, no public origin: the machine's own name is never used.
+        expect(yield* resolveWithServe(200, { domain: "home.example.com" })).toEqual([
+          { kind: "tailnet", httpBaseUrl: "https://bb-1.tail1234.ts.net/" },
+        ]);
+      }),
   );
 
   it.each([
-    ["home.example.com", "Box-1.local", "box-1.home.example.com"],
-    [" .Home.Example.com. ", "box", "box.home.example.com"],
-    ["", "box", null],
-    ["example", "box", null],
+    ["home.example.com", "Hive", "hive.home.example.com"],
+    [" .Home.Example.com. ", "nest", "nest.home.example.com"],
+    ["", "hive", null],
+    ["example", "hive", null],
     ["home.example.com", "", null],
     ["home.example.com", "bad_name", null],
-    ["home example.com", "box", null],
-  ])("publicDomainHost(%j, %j)", (domain, machine, expected) => {
-    expect(DirectEndpoints.publicDomainHost(domain, machine)).toBe(expected);
+    ["home.example.com", "a.b", null],
+    ["home example.com", "hive", null],
+  ])("publicDomainHost(%j, %j)", (domain, name, expected) => {
+    expect(DirectEndpoints.publicDomainHost(domain, name)).toBe(expected);
   });
 
   it("internetCaller tells the base domain's proxy and Cloudflare from the LAN", () => {
