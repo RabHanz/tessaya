@@ -2792,6 +2792,8 @@ export function mountBody(
       tier--;
       slow = 0;
       resize();
+      // a resize clears her canvas: drawn again now, or that frame shows her gone (0.1.201: a one-frame vanish)
+      if (shared === undefined) renderer.render(scene, camera);
     }
     // her body moving gets the tier's full rate; a blink or a face alone needs no more than 30
     const bodyMoving =

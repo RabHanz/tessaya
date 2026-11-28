@@ -601,6 +601,18 @@ export interface FormMorph {
   readonly dispose: () => void;
 }
 
+/** A gap between drawn frames past this (ms) is a stall, not a slow frame: the change holds through it. */
+const MORPH_STALL_MS = 250;
+/** What a change moves across a stall (ms): one frame at about 15 fps. */
+export const MORPH_STEP_MS = 66;
+
+/** Moves a change's clock (`t`, s) to `now` (ms): in real time, except across a stall, which moves it one step. */
+export const advanceMorph = (run: { t: number; last: number | null }, now: number) => {
+  const dt = now - (run.last ?? now);
+  run.t += (dt > MORPH_STALL_MS ? MORPH_STEP_MS : dt) / 1000;
+  run.last = now;
+};
+
 /** One change player for a body in a scene: the cartoon skin and her body share one clock. */
 export function createFormMorph(
   scene: THREE.Object3D,
@@ -612,7 +624,15 @@ export function createFormMorph(
   if (skin.face) scene.add(skin.face.mesh);
   if (skin.parts) scene.add(skin.parts.mesh);
   if (skin.hands) scene.add(skin.hands.root);
-  let run: { dir: MorphDir; look: MorphLook; t0: number | null; loaf: THREE.Matrix4 } | null = null;
+  // `t` is the change's own clock (s): it holds across a stall (advanceMorph), so a stalled frame (her body's
+  // patched shaders compiling cold on his laptop, 28 Nov) holds the change instead of skipping it to its end
+  let run: {
+    dir: MorphDir;
+    look: MorphLook;
+    t: number;
+    last: number | null;
+    loaf: THREE.Matrix4;
+  } | null = null;
   const pos = skin.mesh.geometry.attributes.position as THREE.BufferAttribute;
   const p0 = [0, 0, 0];
   const settle = (dir: MorphDir) => {
@@ -647,14 +667,13 @@ export function createFormMorph(
   };
   return {
     start: (dir, look, loaf, instant = false) => {
-      run = { dir, look, t0: instant ? -Infinity : null, loaf: loaf.clone() };
+      run = { dir, look, t: instant ? Infinity : 0, last: null, loaf: loaf.clone() };
     },
     active: () => run !== null,
     frame: (now) => {
       if (run === null) return false;
-      run.t0 ??= now;
-      const t = (now - run.t0) / 1000;
-      const { dir, look } = run;
+      advanceMorph(run, now);
+      const { dir, look, t } = run;
       const f = morphAt(dir, Math.min(t, morphSeconds(dir)), look);
       if (f.done) {
         settle(dir);
@@ -792,8 +811,13 @@ export function createFormSwap(
 ): FormSwap {
   scene.add(skin.mesh);
   const pos = skin.mesh.geometry.attributes.position as THREE.BufferAttribute;
-  let run: { from: typeof first; to: typeof first; look: MorphLook; t0: number | null } | null =
-    null;
+  let run: {
+    from: typeof first;
+    to: typeof first;
+    look: MorphLook;
+    t: number;
+    last: number | null;
+  } | null = null;
   const rest = (b: BodyForm) => {
     b.U.uLevel!.value = -10;
     b.U.uLegs!.value = -10;
@@ -803,13 +827,13 @@ export function createFormSwap(
   return {
     start: (to, look) => {
       const [from, into] = to === "second" ? [first, second] : [second, first];
-      run = { from, to: into, look, t0: null };
+      run = { from, to: into, look, t: 0, last: null };
     },
     active: () => run !== null,
     frame: (now) => {
       if (run === null) return false;
-      run.t0 ??= now;
-      const t = (now - run.t0) / 1000;
+      advanceMorph(run, now);
+      const t = run.t;
       const { from, to, look } = run;
       const covering = t < swapSeconds("cover");
       const half = covering ? "cover" : "reveal";
